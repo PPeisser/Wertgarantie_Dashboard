@@ -85,10 +85,11 @@ Mitarbeiter denselben Stand sehen.
    sicher für den Client-Code, siehe unten) sind bereits fest in
    `index.html` / `wertgarantie-performance-dashboard-v2.html` hinterlegt
    (`SUPABASE_URL`, `SUPABASE_ANON_KEY`).
-2. **Datenbank-Tabelle anlegen**: Im Supabase-Dashboard → SQL Editor das Skript
+2. **Datenbank-Tabellen anlegen**: Im Supabase-Dashboard → SQL Editor das Skript
    [`supabase/schema.sql`](supabase/schema.sql) einmalig ausführen. Es legt die
-   Tabelle `dashboard_kv` an und aktiviert Row Level Security mit Policies, die
-   Lese-/Schreibzugriff auf eingeloggte Nutzer beschränken.
+   Tabelle `dashboard_kv` (Ziele/Excel-Daten) sowie `profiles` (Rollen) an und
+   aktiviert Row Level Security mit Policies, die Zugriff auf eingeloggte
+   Nutzer beschränken.
 3. **Login aktivieren**: Im Supabase-Dashboard → Authentication → Providers ist
    „Email" standardmäßig aktiv. Unter Authentication → Users die
    Mitarbeiter-Logins (E-Mail + Passwort) manuell anlegen.
@@ -96,6 +97,16 @@ Mitarbeiter denselben Stand sehen.
    erfolgreicher Anmeldung wird der Datenstand aus Supabase geladen; „Excel
    einspielen" und persönliche Monatsziele schreiben automatisch zurück.
    Über den Button „Abmelden" im Header kann man sich ausloggen.
+
+## Rollen (Admin / Außendienst)
+
+Jeder Nutzer hat in `public.profiles` eine Rolle: `admin` oder `aussendienst`
+(Standard für neu registrierte Nutzer). Die Rolle wird nach dem Login geladen
+und als Badge im Header angezeigt. Aktuell ist das rein informativ – es gibt
+noch keine unterschiedlichen Berechtigungen im Dashboard selbst, nur beim
+Ändern von Rollen in der Datenbank (nur Admins dürfen laut RLS-Policy Rollen
+anderer Nutzer ändern). Rolle eines Nutzers anpassen: in der Tabelle
+`profiles` im Supabase-Dashboard das Feld `role` bearbeiten.
 
 **Hinweis zum Key**: `sb_publishable_…` ist Supabases neuer öffentlicher
 Client-Key (Nachfolger des `anon`-Keys) – er darf im Frontend-Code sichtbar
