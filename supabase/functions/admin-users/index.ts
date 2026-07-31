@@ -11,6 +11,9 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+// Erstpasswort für neu angelegte Nutzer – muss beim ersten Login geändert werden.
+const DEFAULT_PASSWORD = "WertGARANTIE";
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -47,16 +50,15 @@ Deno.serve(async (req) => {
   if (action === "createUser") {
     const name = String(body.name || "").trim();
     const email = String(body.email || "").trim();
-    const password = String(body.password || "");
     const role = body.role === "admin" ? "admin" : "aussendienst";
-    if (!name || !email || !password) return json({ error: "Name, E-Mail und Passwort erforderlich" }, 400);
+    if (!name || !email) return json({ error: "Name und E-Mail erforderlich" }, 400);
 
     const { data, error } = await admin.auth.admin.createUser({
-      email, password, email_confirm: true, user_metadata: { name },
+      email, password: DEFAULT_PASSWORD, email_confirm: true, user_metadata: { name },
     });
     if (error) return json({ error: error.message }, 400);
 
-    await admin.from("profiles").update({ name, role }).eq("id", data.user.id);
+    await admin.from("profiles").update({ name, role, must_change_password: true }).eq("id", data.user.id);
     return json({ ok: true, id: data.user.id });
   }
 
@@ -77,6 +79,8 @@ Deno.serve(async (req) => {
 
     const { error } = await admin.auth.admin.updateUserById(userId, { password: newPassword });
     if (error) return json({ error: error.message }, 400);
+
+    await admin.from("profiles").update({ must_change_password: true }).eq("id", userId);
     return json({ ok: true });
   }
 
