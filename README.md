@@ -85,10 +85,11 @@ Mitarbeiter denselben Stand sehen.
    sicher für den Client-Code, siehe unten) sind bereits fest in
    `index.html` / `wertgarantie-performance-dashboard-v2.html` hinterlegt
    (`SUPABASE_URL`, `SUPABASE_ANON_KEY`).
-2. **Datenbank-Tabelle anlegen**: Im Supabase-Dashboard → SQL Editor das Skript
+2. **Datenbank-Tabellen anlegen**: Im Supabase-Dashboard → SQL Editor das Skript
    [`supabase/schema.sql`](supabase/schema.sql) einmalig ausführen. Es legt die
-   Tabelle `dashboard_kv` an und aktiviert Row Level Security mit Policies, die
-   Lese-/Schreibzugriff auf eingeloggte Nutzer beschränken.
+   Tabelle `dashboard_kv` (Ziele/Excel-Daten) sowie `profiles` (Rollen) an und
+   aktiviert Row Level Security mit Policies, die Zugriff auf eingeloggte
+   Nutzer beschränken.
 3. **Login aktivieren**: Im Supabase-Dashboard → Authentication → Providers ist
    „Email" standardmäßig aktiv. Unter Authentication → Users die
    Mitarbeiter-Logins (E-Mail + Passwort) manuell anlegen.
@@ -96,6 +97,41 @@ Mitarbeiter denselben Stand sehen.
    erfolgreicher Anmeldung wird der Datenstand aus Supabase geladen; „Excel
    einspielen" und persönliche Monatsziele schreiben automatisch zurück.
    Über den Button „Abmelden" im Header kann man sich ausloggen.
+
+## Rollen (Admin / Außendienst)
+
+Jeder Nutzer hat in `public.profiles` einen Namen (`name`) und eine Rolle
+(`admin` oder `aussendienst`, Standard für neu registrierte Nutzer). Nach dem
+Login wird unterhalb von „Vertragsproduktion …" im Header „Herzlich
+Willkommen, NAME" angezeigt, außerdem die Rolle als Badge.
+
+- **Außendienst**: voller Zugriff auf das Dashboard inkl. aller Mitarbeiter
+  (wie bisher, keine Einschränkung).
+- **Admin**: zusätzlich zu allem, was Außendienst kann, sichtbarer
+  „⚙ Admin"-Button im Header, der das Admin-Panel öffnet.
+
+## Admin-Panel
+
+Nur für Nutzer mit Rolle `admin` sichtbar. Enthält:
+- Excel einspielen (identisch zur Funktion im Hauptheader)
+- Neue Nutzer anlegen (Name, E-Mail, Passwort, Rolle) – landet direkt in Supabase Auth
+- Nutzerübersicht: Name (bearbeitbar), E-Mail, Rolle-Umschalter, Passwort-Reset, Löschen-Button
+
+**Wichtig zur Sicherheit**: Nutzer anlegen/löschen/Passwort setzen sind
+privilegierte Supabase-Operationen (Admin API), die einen `service_role`-Key
+brauchen. Dieser Key darf niemals im Browser-Code stehen. Deshalb läuft das
+über eine separate **Supabase Edge Function**
+([`supabase/functions/admin-users/index.ts`](supabase/functions/admin-users/index.ts)),
+die serverseitig in Supabase läuft, den Key nur dort verwendet und jeden
+Aufruf gegen `profiles.role = 'admin'` prüft, bevor sie etwas tut.
+
+**Einmaliges Deployment der Edge Function** (Supabase CLI erforderlich):
+```bash
+supabase functions deploy admin-users --project-ref gfyjftwlombhmwirbyse
+```
+`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` etc. werden von Supabase
+automatisch als Umgebungsvariablen in jede Edge Function injiziert –
+es ist keine zusätzliche Secret-Konfiguration nötig.
 
 **Hinweis zum Key**: `sb_publishable_…` ist Supabases neuer öffentlicher
 Client-Key (Nachfolger des `anon`-Keys) – er darf im Frontend-Code sichtbar
