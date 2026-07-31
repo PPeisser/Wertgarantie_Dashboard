@@ -327,6 +327,15 @@ body.pdf-mode h2.sec{margin:6px 2px 3px;font-size:11.5px}
 body.pdf-mode h2.sec .arr{display:none}
 body.pdf-mode h2.sec small{font-size:9px}
 body.pdf-mode .duo,body.pdf-mode .trio,body.pdf-mode .kpis,body.pdf-mode .goals{gap:5px}
+/* foreignObjectRendering ignoriert html2canvas' windowWidth-Option und
+   rastert die Seite in ihrer tatsächlichen (ggf. schmalen) Fensterbreite –
+   ohne diese Regel würde die für schmale Bildschirme gedachte @media
+   (max-width:980px)-Regel die Spalten hier fälschlich einspaltig zusammenfallen lassen. */
+body.pdf-mode .kpis{grid-template-columns:repeat(3,1fr) !important}
+body.pdf-mode .goals{grid-template-columns:repeat(5,1fr) !important}
+body.pdf-mode .goals.cols4{grid-template-columns:repeat(4,1fr) !important}
+body.pdf-mode .duo{grid-template-columns:1fr 1fr !important}
+body.pdf-mode .trio{grid-template-columns:1.2fr 1fr 1fr !important}
 body.pdf-mode .goals.cols4{gap:5px}
 body.pdf-mode .goal,body.pdf-mode .goals .goal,body.pdf-mode .goals.cols4 .goal{padding:6px 8px}
 body.pdf-mode .goal .pct,body.pdf-mode .goals .goal .pct,body.pdf-mode .goals.cols4 .goal .pct{font-size:16px}
@@ -345,7 +354,12 @@ body.pdf-mode .obs-item .t span{font-size:8.5px}
 body.pdf-mode #obsList{columns:2;column-gap:10px}
 body.pdf-mode #akqList,body.pdf-mode #akqOpBody,body.pdf-mode #nwBody{max-height:none !important;overflow:visible !important}
 body.pdf-mode .print-only{display:block}
-body.pdf-mode .wrap{max-width:1400px;padding:10px 14px 20px}
+/* .wrap ist normalerweise über margin:0 auto zentriert – html2canvas
+   (foreignObjectRendering) schneidet ein Element, das nicht bündig am
+   linken Fensterrand liegt, falsch zu (Versatz je nach Browserbreite).
+   Für den Export daher body+wrap fest an x:0 ausrichten. */
+body.pdf-mode{margin:0}
+body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20px}
 
 @media (max-width:980px){
   .kpis,.goals,.duo,.trio{grid-template-columns:1fr}
