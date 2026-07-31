@@ -31,9 +31,12 @@ create policy "Authenticated update dashboard_kv"
 create table if not exists public.profiles (
   id         uuid primary key references auth.users(id) on delete cascade,
   email      text,
+  name       text,
   role       text not null default 'aussendienst' check (role in ('admin','aussendienst')),
   created_at timestamptz not null default now()
 );
+
+alter table public.profiles add column if not exists name text;
 
 alter table public.profiles enable row level security;
 
@@ -68,8 +71,8 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, email, role)
-  values (new.id, new.email, 'aussendienst');
+  insert into public.profiles (id, email, name, role)
+  values (new.id, new.email, new.raw_user_meta_data->>'name', 'aussendienst');
   return new;
 end;
 $$;
@@ -88,6 +91,6 @@ revoke execute on function public.is_admin() from public;
 grant execute on function public.is_admin() to authenticated;
 
 -- Bestehenden Nutzer peter@peisser.com als Admin anlegen/markieren (einmalig, idempotent).
-insert into public.profiles (id, email, role)
-select id, email, 'admin' from auth.users where email = 'peter@peisser.com'
-on conflict (id) do update set role = 'admin';
+insert into public.profiles (id, email, name, role)
+select id, email, 'Peter Peißer', 'admin' from auth.users where email = 'peter@peisser.com'
+on conflict (id) do update set role = 'admin', name = coalesce(public.profiles.name, excluded.name);

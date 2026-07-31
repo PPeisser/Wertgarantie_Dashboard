@@ -100,9 +100,10 @@ Mitarbeiter denselben Stand sehen.
 
 ## Rollen (Admin / Außendienst)
 
-Jeder Nutzer hat in `public.profiles` eine Rolle: `admin` oder `aussendienst`
-(Standard für neu registrierte Nutzer). Die Rolle wird nach dem Login geladen
-und als Badge im Header angezeigt.
+Jeder Nutzer hat in `public.profiles` einen Namen (`name`) und eine Rolle
+(`admin` oder `aussendienst`, Standard für neu registrierte Nutzer). Nach dem
+Login wird unterhalb von „Vertragsproduktion …" im Header „Herzlich
+Willkommen, NAME" angezeigt, außerdem die Rolle als Badge.
 
 - **Außendienst**: voller Zugriff auf das Dashboard inkl. aller Mitarbeiter
   (wie bisher, keine Einschränkung).
@@ -113,8 +114,8 @@ und als Badge im Header angezeigt.
 
 Nur für Nutzer mit Rolle `admin` sichtbar. Enthält:
 - Excel einspielen (identisch zur Funktion im Hauptheader)
-- Neue Nutzer anlegen (E-Mail, Passwort, Rolle) – landet direkt in Supabase Auth
-- Nutzerliste mit Rolle-Umschalter, Passwort-Reset und Löschen-Button
+- Neue Nutzer anlegen (Name, E-Mail, Passwort, Rolle) – landet direkt in Supabase Auth
+- Nutzerübersicht: Name (bearbeitbar), E-Mail, Rolle-Umschalter, Passwort-Reset, Löschen-Button
 
 **Wichtig zur Sicherheit**: Nutzer anlegen/löschen/Passwort setzen sind
 privilegierte Supabase-Operationen (Admin API), die einen `service_role`-Key

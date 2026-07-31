@@ -294,6 +294,7 @@ body.pdf-mode .wrap{max-width:1400px;padding:10px 14px 20px}
     <div class="title-block">
       <h1>Performance Dashboard Österreich</h1>
       <div class="sub">Vertragsproduktion · Ziele · Händler &amp; AKP im Blick <span style="background:var(--wg-blue);color:#fff;font-weight:800;font-size:10px;border-radius:99px;padding:2px 8px;margin-left:6px;vertical-align:1px">V2</span></div>
+      <div class="hidden" id="welcomeMsg" style="font-size:12.5px;color:var(--wg-blue-dark);font-weight:700;margin-top:2px"></div>
     </div>
     <div class="controls no-print">
       <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" class="hidden" multiple>
@@ -474,6 +475,7 @@ body.pdf-mode .wrap{max-width:1400px;padding:10px 14px 20px}
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input type="text" id="adName" placeholder="Name" autocomplete="off" style="flex:1;min-width:150px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
       <input type="email" id="adEmail" placeholder="E-Mail" autocomplete="off" style="flex:1;min-width:180px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
       <input type="password" id="adPassword" placeholder="Passwort" autocomplete="new-password" style="flex:1;min-width:150px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
       <select id="adRole" style="border:2px solid var(--line);border-radius:10px;padding:9px 12px;font:inherit">
@@ -484,7 +486,7 @@ body.pdf-mode .wrap{max-width:1400px;padding:10px 14px 20px}
     </div>
     <div class="error" id="adCreateHint"></div>
 
-    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Nutzer</h4>
+    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Nutzerübersicht</h4>
     <div id="adUserList" style="max-height:340px;overflow:auto"></div>
   </div>
 </div>
@@ -520,12 +522,13 @@ const sb = (typeof supabase!=="undefined")
   : null;
 let supaUser = null;
 let myRole = null;
+let myName = null;
 const ROLE_LABEL = { admin:"Admin", aussendienst:"Außendienst" };
-async function fetchRole(){
+async function fetchProfile(){
   try{
     if(sb && supaUser){
-      const { data, error } = await sb.from("profiles").select("role").eq("id",supaUser.id).maybeSingle();
-      if(!error && data) return data.role;
+      const { data, error } = await sb.from("profiles").select("role,name").eq("id",supaUser.id).maybeSingle();
+      if(!error && data) return data;
     }
   }catch(e){}
   return null;
@@ -535,6 +538,9 @@ function showRoleBadge(){
   if(myRole && ROLE_LABEL[myRole]){ b.textContent=ROLE_LABEL[myRole]; b.classList.remove("hidden"); }
   else b.classList.add("hidden");
   $("adminBtn").classList.toggle("hidden", myRole!=="admin");
+  const w=$("welcomeMsg");
+  if(myName){ w.textContent="Herzlich Willkommen, "+myName; w.classList.remove("hidden"); }
+  else w.classList.add("hidden");
 }
 
 /* ---------- Persistenz (Supabase, window.storage/Memory als Fallback) ---------- */
@@ -577,13 +583,13 @@ async function doLogin(){
   supaUser = data.user;
   hideAuthModal();
   $("logoutBtn").classList.remove("hidden");
-  myRole = await fetchRole(); showRoleBadge();
+  const p = await fetchProfile(); myRole = p && p.role; myName = p && p.name; showRoleBadge();
   await loadAll(); render();
 }
 async function doLogout(){
   try{ await sb.auth.signOut(); }catch(e){}
   supaUser=null;
-  myRole=null; showRoleBadge();
+  myRole=null; myName=null; showRoleBadge();
   $("logoutBtn").classList.add("hidden");
   $("adminModal").classList.add("hidden");
   $("dash").classList.add("hidden");
@@ -594,7 +600,7 @@ async function initAuth(){
   const { data:{ session } } = await sb.auth.getSession();
   if(session){
     supaUser=session.user; $("logoutBtn").classList.remove("hidden");
-    myRole = await fetchRole(); showRoleBadge();
+    const p = await fetchProfile(); myRole = p && p.role; myName = p && p.name; showRoleBadge();
     return true;
   }
   showAuthModal();
@@ -613,14 +619,18 @@ async function callAdminFn(action, payload){
     return await res.json();
   }catch(e){ return { error: String(e) }; }
 }
+function escapeHtml(s){
+  return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
 async function loadAdminUsers(){
   const box=$("adUserList");
   box.innerHTML="<p style='color:var(--muted)'>Lädt …</p>";
-  const { data, error } = await sb.from("profiles").select("id,email,role").order("email");
+  const { data, error } = await sb.from("profiles").select("id,email,name,role").order("email");
   if(error || !data){ box.innerHTML="<p style='color:var(--muted)'>Fehler beim Laden.</p>"; return; }
   box.innerHTML = data.map(u=>`
-    <div data-id="${u.id}" data-email="${u.email||""}" style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
-      <span style="flex:1;min-width:160px;font-weight:700">${u.email||"–"}</span>
+    <div data-id="${u.id}" data-email="${escapeHtml(u.email)}" style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
+      <input class="ad-name" value="${escapeHtml(u.name)}" placeholder="Name" style="flex:1;min-width:130px;font-weight:700;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
+      <span style="flex:1;min-width:160px;color:var(--muted);font-size:12.5px">${escapeHtml(u.email)||"–"}</span>
       <select class="ad-role-sel" style="border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
         <option value="aussendienst" ${u.role==="aussendienst"?"selected":""}>Außendienst</option>
         <option value="admin" ${u.role==="admin"?"selected":""}>Admin</option>
@@ -630,6 +640,13 @@ async function loadAdminUsers(){
     </div>
   `).join("") || "<p style='color:var(--muted)'>Keine Nutzer.</p>";
 
+  box.querySelectorAll(".ad-name").forEach(inp=>{
+    inp.addEventListener("change",async e=>{
+      const id=e.target.closest("[data-id]").dataset.id;
+      const { error } = await sb.from("profiles").update({name:e.target.value.trim()||null}).eq("id",id);
+      toast(error?("Fehler: "+error.message):"Name aktualisiert");
+    });
+  });
   box.querySelectorAll(".ad-role-sel").forEach(sel=>{
     sel.onchange=async e=>{
       const id=e.target.closest("[data-id]").dataset.id;
@@ -656,16 +673,17 @@ async function loadAdminUsers(){
   });
 }
 async function createAdminUser(){
+  const name=$("adName").value.trim();
   const email=$("adEmail").value.trim();
   const password=$("adPassword").value;
   const role=$("adRole").value;
-  if(!email||!password){ $("adCreateHint").textContent="Bitte E-Mail und Passwort eingeben."; return; }
+  if(!name||!email||!password){ $("adCreateHint").textContent="Bitte Name, E-Mail und Passwort eingeben."; return; }
   $("adCreateBtn").disabled=true;
-  const res=await callAdminFn("createUser",{email,password,role});
+  const res=await callAdminFn("createUser",{name,email,password,role});
   $("adCreateBtn").disabled=false;
   if(res.error){ $("adCreateHint").textContent=res.error; return; }
   $("adCreateHint").textContent="";
-  $("adEmail").value=""; $("adPassword").value="";
+  $("adName").value=""; $("adEmail").value=""; $("adPassword").value="";
   toast("Nutzer angelegt: "+email);
   loadAdminUsers();
 }

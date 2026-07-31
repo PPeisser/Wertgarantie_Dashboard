@@ -45,19 +45,18 @@ Deno.serve(async (req) => {
   const action = body.action;
 
   if (action === "createUser") {
+    const name = String(body.name || "").trim();
     const email = String(body.email || "").trim();
     const password = String(body.password || "");
     const role = body.role === "admin" ? "admin" : "aussendienst";
-    if (!email || !password) return json({ error: "E-Mail und Passwort erforderlich" }, 400);
+    if (!name || !email || !password) return json({ error: "Name, E-Mail und Passwort erforderlich" }, 400);
 
     const { data, error } = await admin.auth.admin.createUser({
-      email, password, email_confirm: true,
+      email, password, email_confirm: true, user_metadata: { name },
     });
     if (error) return json({ error: error.message }, 400);
 
-    if (role === "admin") {
-      await admin.from("profiles").update({ role: "admin" }).eq("id", data.user.id);
-    }
+    await admin.from("profiles").update({ name, role }).eq("id", data.user.id);
     return json({ ok: true, id: data.user.id });
   }
 
