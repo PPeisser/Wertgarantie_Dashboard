@@ -1665,7 +1665,6 @@ function renderNeunWochen(){
 
 /* ---------- PDF-Export ---------- */
 let pdfBusy=false;
-function inIframe(){ try{ return window.self!==window.top; }catch(e){ return true; } }
 
 // Lange, sonst intern scrollende Listen (Top 20 AKQ, Akquise ohne Produktion,
 // 9-Wochen-Plan) würden im Druck/PDF sonst mitten in der Zeile abgeschnitten
@@ -1712,9 +1711,10 @@ function adjustBreak(y,boxes){
 }
 async function exportPDF(){
   if(pdfBusy) return;
-  // Als eigenständige Datei im Browser: nativer Druckdialog (beste Qualität, "Als PDF speichern")
-  if(!inIframe()){ window.print(); return; }
-  // In der Vorschau/Sandbox: PDF direkt erzeugen und herunterladen
+  // PDF wird immer clientseitig erzeugt (nicht über window.print()/@page):
+  // Browser-Druckdialoge wählen Querformat/Ränder nicht zuverlässig automatisch,
+  // dadurch werden Kopf und Spalten abgeschnitten. So sind Format (A4 Querformat),
+  // Ränder und Seitenumbrüche immer exakt wie hier definiert.
   if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)){
     toast("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals auf PDF klicken.");
     return;
@@ -1728,7 +1728,7 @@ async function exportPDF(){
     const el=document.querySelector(".wrap");
     const scale=2;
     const boxes=getBreakBoxes(el,scale);
-    const canvas=await html2canvas(el,{scale,backgroundColor:"#ffffff",useCORS:true,logging:false,windowWidth:1400});
+    const canvas=await html2canvas(el,{scale,backgroundColor:"#ffffff",useCORS:true,logging:false,windowWidth:1400,foreignObjectRendering:true});
     const {jsPDF}=window.jspdf;
     const pdf=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
     const pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), margin=6;
