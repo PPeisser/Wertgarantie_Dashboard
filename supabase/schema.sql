@@ -29,14 +29,16 @@ create policy "Authenticated update dashboard_kv"
 -- ---------- Rollen (Admin / Außendienst) ----------
 
 create table if not exists public.profiles (
-  id         uuid primary key references auth.users(id) on delete cascade,
-  email      text,
-  name       text,
-  role       text not null default 'aussendienst' check (role in ('admin','aussendienst')),
-  created_at timestamptz not null default now()
+  id                   uuid primary key references auth.users(id) on delete cascade,
+  email                text,
+  name                 text,
+  role                 text not null default 'aussendienst' check (role in ('admin','aussendienst')),
+  must_change_password boolean not null default false,
+  created_at           timestamptz not null default now()
 );
 
 alter table public.profiles add column if not exists name text;
+alter table public.profiles add column if not exists must_change_password boolean not null default false;
 
 alter table public.profiles enable row level security;
 
@@ -62,6 +64,18 @@ create policy "Admins can update roles"
   to authenticated
   using (public.is_admin())
   with check (public.is_admin());
+
+-- Setzt must_change_password auf false für den eigenen Account, nachdem der
+-- Nutzer im Client sein Passwort geändert hat (client darf profiles sonst
+-- nicht selbst updaten, siehe Policy oben – nur Admins dürfen das direkt).
+create or replace function public.mark_password_changed()
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.profiles set must_change_password = false where id = auth.uid();
+$$;
 
 -- Legt bei jeder Neuregistrierung automatisch ein Profil mit Standardrolle "aussendienst" an.
 create or replace function public.handle_new_user()
@@ -89,6 +103,8 @@ create trigger on_auth_user_created
 revoke execute on function public.handle_new_user() from public;
 revoke execute on function public.is_admin() from public;
 grant execute on function public.is_admin() to authenticated;
+revoke execute on function public.mark_password_changed() from public;
+grant execute on function public.mark_password_changed() to authenticated;
 
 -- Bestehenden Nutzer peter@peisser.com als Admin anlegen/markieren (einmalig, idempotent).
 insert into public.profiles (id, email, name, role)

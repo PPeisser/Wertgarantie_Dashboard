@@ -462,6 +462,20 @@ body.pdf-mode .wrap{max-width:1400px;padding:10px 14px 20px}
   </div>
 </div>
 
+<!-- Passwort ändern erforderlich -->
+<div class="modal-bg hidden" id="forcePasswordModal">
+  <div class="modal">
+    <h3>Neues Passwort erforderlich</h3>
+    <p>Aus Sicherheitsgründen musst du dein Erstpasswort jetzt durch ein eigenes Passwort ersetzen.</p>
+    <input type="password" id="fpNew" placeholder="Neues Passwort" autocomplete="new-password">
+    <input type="password" id="fpNew2" placeholder="Neues Passwort bestätigen" autocomplete="new-password">
+    <div class="error" id="fpHint"></div>
+    <div class="actions">
+      <button class="btn btn-blue" id="fpSaveBtn" style="width:100%">Passwort ändern</button>
+    </div>
+  </div>
+</div>
+
 <!-- Admin-Panel -->
 <div class="modal-bg hidden" id="adminModal">
   <div class="modal wide">
@@ -477,13 +491,13 @@ body.pdf-mode .wrap{max-width:1400px;padding:10px 14px 20px}
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <input type="text" id="adName" placeholder="Name" autocomplete="off" style="flex:1;min-width:150px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
       <input type="email" id="adEmail" placeholder="E-Mail" autocomplete="off" style="flex:1;min-width:180px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
-      <input type="password" id="adPassword" placeholder="Passwort" autocomplete="new-password" style="flex:1;min-width:150px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
       <select id="adRole" style="border:2px solid var(--line);border-radius:10px;padding:9px 12px;font:inherit">
         <option value="aussendienst">Außendienst</option>
         <option value="admin">Admin</option>
       </select>
       <button class="btn btn-blue" id="adCreateBtn">Anlegen</button>
     </div>
+    <div class="hint">Standardpasswort: <b>WertGARANTIE</b> - wird nach Anmeldung geändert</div>
     <div class="error" id="adCreateHint"></div>
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Nutzerübersicht</h4>
@@ -527,7 +541,7 @@ const ROLE_LABEL = { admin:"Admin", aussendienst:"Außendienst" };
 async function fetchProfile(){
   try{
     if(sb && supaUser){
-      const { data, error } = await sb.from("profiles").select("role,name").eq("id",supaUser.id).maybeSingle();
+      const { data, error } = await sb.from("profiles").select("role,name,must_change_password").eq("id",supaUser.id).maybeSingle();
       if(!error && data) return data;
     }
   }catch(e){}
@@ -584,6 +598,7 @@ async function doLogin(){
   hideAuthModal();
   $("logoutBtn").classList.remove("hidden");
   const p = await fetchProfile(); myRole = p && p.role; myName = p && p.name; showRoleBadge();
+  if(p && p.must_change_password) showForcePasswordModal();
   await loadAll(); render();
 }
 async function doLogout(){
@@ -593,7 +608,25 @@ async function doLogout(){
   $("logoutBtn").classList.add("hidden");
   $("adminModal").classList.add("hidden");
   $("dash").classList.add("hidden");
+  hideForcePasswordModal();
   showAuthModal("Abgemeldet.");
+}
+function showForcePasswordModal(){
+  $("fpHint").textContent=""; $("fpNew").value=""; $("fpNew2").value="";
+  $("forcePasswordModal").classList.remove("hidden");
+}
+function hideForcePasswordModal(){ $("forcePasswordModal").classList.add("hidden"); }
+async function doForcePasswordChange(){
+  const pw1=$("fpNew").value, pw2=$("fpNew2").value;
+  if(!pw1||pw1.length<8){ $("fpHint").textContent="Mindestens 8 Zeichen."; return; }
+  if(pw1!==pw2){ $("fpHint").textContent="Passwörter stimmen nicht überein."; return; }
+  $("fpSaveBtn").disabled=true;
+  const { error } = await sb.auth.updateUser({ password: pw1 });
+  if(error){ $("fpSaveBtn").disabled=false; $("fpHint").textContent="Fehler: "+error.message; return; }
+  await sb.rpc("mark_password_changed");
+  $("fpSaveBtn").disabled=false;
+  hideForcePasswordModal();
+  toast("Passwort geändert.");
 }
 async function initAuth(){
   if(!sb) return true;
@@ -601,6 +634,7 @@ async function initAuth(){
   if(session){
     supaUser=session.user; $("logoutBtn").classList.remove("hidden");
     const p = await fetchProfile(); myRole = p && p.role; myName = p && p.name; showRoleBadge();
+    if(p && p.must_change_password) showForcePasswordModal();
     return true;
   }
   showAuthModal();
@@ -675,16 +709,15 @@ async function loadAdminUsers(){
 async function createAdminUser(){
   const name=$("adName").value.trim();
   const email=$("adEmail").value.trim();
-  const password=$("adPassword").value;
   const role=$("adRole").value;
-  if(!name||!email||!password){ $("adCreateHint").textContent="Bitte Name, E-Mail und Passwort eingeben."; return; }
+  if(!name||!email){ $("adCreateHint").textContent="Bitte Name und E-Mail eingeben."; return; }
   $("adCreateBtn").disabled=true;
-  const res=await callAdminFn("createUser",{name,email,password,role});
+  const res=await callAdminFn("createUser",{name,email,role});
   $("adCreateBtn").disabled=false;
   if(res.error){ $("adCreateHint").textContent=res.error; return; }
   $("adCreateHint").textContent="";
-  $("adName").value=""; $("adEmail").value=""; $("adPassword").value="";
-  toast("Nutzer angelegt: "+email);
+  $("adName").value=""; $("adEmail").value="";
+  toast("Nutzer angelegt: "+email+" (Erstpasswort: WertGARANTIE)");
   loadAdminUsers();
 }
 function openAdminModal(){ $("adminModal").classList.remove("hidden"); loadAdminUsers(); }
@@ -1651,7 +1684,9 @@ $("gmSave").onclick=saveGoal;
 $("gmSkip").onclick=()=>$("goalModal").classList.add("hidden");
 $("gmInput").addEventListener("keydown",e=>{ if(e.key==="Enter") saveGoal(); });
 $("authLoginBtn").onclick=doLogin;
+$("fpSaveBtn").onclick=doForcePasswordChange;
 $("authPassword").addEventListener("keydown",e=>{ if(e.key==="Enter") doLogin(); });
+$("fpNew2").addEventListener("keydown",e=>{ if(e.key==="Enter") doForcePasswordChange(); });
 $("logoutBtn").onclick=doLogout;
 $("adminBtn").onclick=openAdminModal;
 $("adminClose").onclick=()=>$("adminModal").classList.add("hidden");
