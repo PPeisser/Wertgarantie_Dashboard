@@ -70,6 +70,34 @@ auf den **Plan** (109.500).
 ## Technik
 
 Vanilla JS in einer HTML-Datei. Externe Bibliotheken via CDN: SheetJS (Excel-Import),
-html2canvas + jsPDF (PDF-Export). Datenstand und Ziele werden – wo verfügbar – über
+html2canvas + jsPDF (PDF-Export), Supabase JS (Login & Datenpersistenz). Datenstand
+und Ziele werden – sofern eingeloggt – zentral in Supabase gespeichert, sonst über
 eine Storage-API bzw. im Speicher gehalten; die zuletzt eingebettete Auswertung dient
 als Startzustand.
+
+## Supabase-Setup
+
+Das Dashboard ist per Login geschützt und speichert Zieldaten & eingespielte
+Auswertungen zentral in Supabase (statt nur lokal im Browser), damit alle
+Mitarbeiter denselben Stand sehen.
+
+1. **Projekt & Key**: Project URL und der *Publishable Key* (`sb_publishable_…`,
+   sicher für den Client-Code, siehe unten) sind bereits fest in
+   `index.html` / `wertgarantie-performance-dashboard-v2.html` hinterlegt
+   (`SUPABASE_URL`, `SUPABASE_ANON_KEY`).
+2. **Datenbank-Tabelle anlegen**: Im Supabase-Dashboard → SQL Editor das Skript
+   [`supabase/schema.sql`](supabase/schema.sql) einmalig ausführen. Es legt die
+   Tabelle `dashboard_kv` an und aktiviert Row Level Security mit Policies, die
+   Lese-/Schreibzugriff auf eingeloggte Nutzer beschränken.
+3. **Login aktivieren**: Im Supabase-Dashboard → Authentication → Providers ist
+   „Email" standardmäßig aktiv. Unter Authentication → Users die
+   Mitarbeiter-Logins (E-Mail + Passwort) manuell anlegen.
+4. **Nutzung**: Beim Öffnen der Datei erscheint ein Login-Fenster. Nach
+   erfolgreicher Anmeldung wird der Datenstand aus Supabase geladen; „Excel
+   einspielen" und persönliche Monatsziele schreiben automatisch zurück.
+   Über den Button „Abmelden" im Header kann man sich ausloggen.
+
+**Hinweis zum Key**: `sb_publishable_…` ist Supabases neuer öffentlicher
+Client-Key (Nachfolger des `anon`-Keys) – er darf im Frontend-Code sichtbar
+sein, die eigentliche Absicherung erfolgt über Row Level Security (Schritt 2)
+und den Login-Zwang.

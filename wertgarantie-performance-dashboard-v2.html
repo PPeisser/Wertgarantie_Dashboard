@@ -7,6 +7,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
 :root{
   --wg-blue:#009FE3;
@@ -245,6 +246,9 @@ td .betr{font-size:11px;color:var(--muted)}
 .modal .actions{display:flex;gap:10px;margin-top:18px}
 .modal .actions .btn{flex:1;justify-content:center;font-size:14px}
 .hidden{display:none !important}
+#authModal input{font-size:15px;font-weight:600;text-align:left;text-transform:none}
+#authModal input+input{margin-top:10px}
+#authModal .error{color:var(--neg);font-size:12.5px;margin-top:8px;text-align:center;min-height:16px}
 
 /* ---------- Toast ---------- */
 #toast{
@@ -298,6 +302,7 @@ body.pdf-mode .wrap{max-width:1400px;padding:10px 14px 20px}
         Excel einspielen
       </button>
       <select id="mitarbeiter" title="Mitarbeiter wählen"></select>
+      <button class="btn btn-ghost hidden" id="logoutBtn" title="Abmelden">Abmelden</button>
       <button class="btn btn-ghost" id="pdfBtn" title="Als PDF drucken / speichern">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
         PDF
@@ -440,6 +445,20 @@ body.pdf-mode .wrap{max-width:1400px;padding:10px 14px 20px}
   </div>
 </div>
 
+<!-- Login-Modal -->
+<div class="modal-bg hidden" id="authModal">
+  <div class="modal">
+    <h3>Anmeldung erforderlich</h3>
+    <p>Bitte mit E-Mail und Passwort anmelden, um das Dashboard zu nutzen.</p>
+    <input type="email" id="authEmail" placeholder="E-Mail" autocomplete="username">
+    <input type="password" id="authPassword" placeholder="Passwort" autocomplete="current-password">
+    <div class="error" id="authHint"></div>
+    <div class="actions">
+      <button class="btn btn-blue" id="authLoginBtn" style="width:100%">Anmelden</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -463,15 +482,69 @@ const PERS_JAHRESZIELE = {
 };
 PERS_JAHRESZIELE[AT_GESAMT]=Object.values(PERS_JAHRESZIELE).reduce((a,b)=>a+b,0); // 121.000
 
-/* ---------- Persistenz (window.storage mit Fallback) ---------- */
+/* ---------- Supabase Konfiguration ---------- */
+const SUPABASE_URL = "https://gfyjftwlombhmwirbyse.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_cRlqSLEgLbOtIo_QX_Q3Zw_zWp2HmZU";
+const sb = (typeof supabase!=="undefined")
+  ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+let supaUser = null;
+
+/* ---------- Persistenz (Supabase, window.storage/Memory als Fallback) ---------- */
 const mem = {};
 async function stGet(k){
+  try{
+    if(sb && supaUser){
+      const { data, error } = await sb.from("dashboard_kv").select("value").eq("key",k).maybeSingle();
+      if(!error && data) return data.value;
+    }
+  }catch(e){}
   try{ if(window.storage){ const r = await window.storage.get(k); return r ? r.value : null; } }catch(e){}
   return mem[k] ?? null;
 }
 async function stSet(k,v){
+  try{
+    if(sb && supaUser){
+      const { error } = await sb.from("dashboard_kv").upsert({ key:k, value:v, updated_at:new Date().toISOString() });
+      if(!error) return;
+    }
+  }catch(e){}
   try{ if(window.storage){ await window.storage.set(k,v); return; } }catch(e){}
   mem[k]=v;
+}
+
+/* ---------- Auth (Supabase) ---------- */
+function showAuthModal(msg){
+  $("authHint").textContent = msg||"";
+  $("authModal").classList.remove("hidden");
+}
+function hideAuthModal(){ $("authModal").classList.add("hidden"); }
+async function doLogin(){
+  const email=$("authEmail").value.trim();
+  const password=$("authPassword").value;
+  if(!email||!password){ showAuthModal("Bitte E-Mail und Passwort eingeben."); return; }
+  $("authLoginBtn").disabled=true;
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  $("authLoginBtn").disabled=false;
+  if(error){ showAuthModal("Anmeldung fehlgeschlagen: "+error.message); return; }
+  supaUser = data.user;
+  hideAuthModal();
+  $("logoutBtn").classList.remove("hidden");
+  await loadAll(); render();
+}
+async function doLogout(){
+  try{ await sb.auth.signOut(); }catch(e){}
+  supaUser=null;
+  $("logoutBtn").classList.add("hidden");
+  $("dash").classList.add("hidden");
+  showAuthModal("Abgemeldet.");
+}
+async function initAuth(){
+  if(!sb) return true;
+  const { data:{ session } } = await sb.auth.getSession();
+  if(session){ supaUser=session.user; $("logoutBtn").classList.remove("hidden"); return true; }
+  showAuthModal();
+  return false;
 }
 
 /* ---------- Feiertage Österreich / Arbeitstage (Mo–Sa) ---------- */
@@ -1435,6 +1508,9 @@ $("pdfBtn").onclick=()=>exportPDF();
 $("gmSave").onclick=saveGoal;
 $("gmSkip").onclick=()=>$("goalModal").classList.add("hidden");
 $("gmInput").addEventListener("keydown",e=>{ if(e.key==="Enter") saveGoal(); });
+$("authLoginBtn").onclick=doLogin;
+$("authPassword").addEventListener("keydown",e=>{ if(e.key==="Enter") doLogin(); });
+$("logoutBtn").onclick=doLogout;
 $("mitarbeiter").onchange=e=>{ currentEmp=e.target.value; render(); };
 document.querySelectorAll("#periodTabs button").forEach(b=>{
   b.onclick=()=>{ document.querySelectorAll("#periodTabs button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); currentPeriod=b.dataset.p; renderTopFlop(); };
@@ -1452,10 +1528,11 @@ document.querySelectorAll("#akpNBtns button").forEach(b=>{
 });
 
 /* ---------- Init ---------- */
-(function init(){
+(async function init(){
   const sel=$("mitarbeiter");
   [AT_GESAMT,...EMPLOYEES].forEach(n=>{ const o=document.createElement("option"); o.value=n; o.textContent=n; sel.appendChild(o); });
-  loadAll().then(render);
+  const authed = await initAuth();
+  if(authed){ await loadAll(); render(); }
 })();
 </script>
 </body>
