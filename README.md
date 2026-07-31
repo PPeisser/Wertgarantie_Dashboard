@@ -102,11 +102,35 @@ Mitarbeiter denselben Stand sehen.
 
 Jeder Nutzer hat in `public.profiles` eine Rolle: `admin` oder `aussendienst`
 (Standard für neu registrierte Nutzer). Die Rolle wird nach dem Login geladen
-und als Badge im Header angezeigt. Aktuell ist das rein informativ – es gibt
-noch keine unterschiedlichen Berechtigungen im Dashboard selbst, nur beim
-Ändern von Rollen in der Datenbank (nur Admins dürfen laut RLS-Policy Rollen
-anderer Nutzer ändern). Rolle eines Nutzers anpassen: in der Tabelle
-`profiles` im Supabase-Dashboard das Feld `role` bearbeiten.
+und als Badge im Header angezeigt.
+
+- **Außendienst**: voller Zugriff auf das Dashboard inkl. aller Mitarbeiter
+  (wie bisher, keine Einschränkung).
+- **Admin**: zusätzlich zu allem, was Außendienst kann, sichtbarer
+  „⚙ Admin"-Button im Header, der das Admin-Panel öffnet.
+
+## Admin-Panel
+
+Nur für Nutzer mit Rolle `admin` sichtbar. Enthält:
+- Excel einspielen (identisch zur Funktion im Hauptheader)
+- Neue Nutzer anlegen (E-Mail, Passwort, Rolle) – landet direkt in Supabase Auth
+- Nutzerliste mit Rolle-Umschalter, Passwort-Reset und Löschen-Button
+
+**Wichtig zur Sicherheit**: Nutzer anlegen/löschen/Passwort setzen sind
+privilegierte Supabase-Operationen (Admin API), die einen `service_role`-Key
+brauchen. Dieser Key darf niemals im Browser-Code stehen. Deshalb läuft das
+über eine separate **Supabase Edge Function**
+([`supabase/functions/admin-users/index.ts`](supabase/functions/admin-users/index.ts)),
+die serverseitig in Supabase läuft, den Key nur dort verwendet und jeden
+Aufruf gegen `profiles.role = 'admin'` prüft, bevor sie etwas tut.
+
+**Einmaliges Deployment der Edge Function** (Supabase CLI erforderlich):
+```bash
+supabase functions deploy admin-users --project-ref gfyjftwlombhmwirbyse
+```
+`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` etc. werden von Supabase
+automatisch als Umgebungsvariablen in jede Edge Function injiziert –
+es ist keine zusätzliche Secret-Konfiguration nötig.
 
 **Hinweis zum Key**: `sb_publishable_…` ist Supabases neuer öffentlicher
 Client-Key (Nachfolger des `anon`-Keys) – er darf im Frontend-Code sichtbar

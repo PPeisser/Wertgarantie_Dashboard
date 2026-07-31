@@ -303,6 +303,7 @@ body.pdf-mode .wrap{max-width:1400px;padding:10px 14px 20px}
       </button>
       <select id="mitarbeiter" title="Mitarbeiter wählen"></select>
       <span class="hidden" id="roleBadge" style="background:var(--wg-navy);color:#fff;font-weight:800;font-size:10px;border-radius:99px;padding:4px 10px;white-space:nowrap"></span>
+      <button class="btn btn-ghost hidden" id="adminBtn" title="Admin-Panel">⚙ Admin</button>
       <button class="btn btn-ghost hidden" id="logoutBtn" title="Abmelden">Abmelden</button>
       <button class="btn btn-ghost" id="pdfBtn" title="Als PDF drucken / speichern">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
@@ -460,6 +461,34 @@ body.pdf-mode .wrap{max-width:1400px;padding:10px 14px 20px}
   </div>
 </div>
 
+<!-- Admin-Panel -->
+<div class="modal-bg hidden" id="adminModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
+      <h3 style="margin:0">Admin-Panel</h3>
+      <button class="btn btn-ghost" id="adminClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+
+    <h4 style="margin:16px 0 8px;color:var(--wg-navy);font-size:14px">Daten</h4>
+    <button class="btn btn-blue" id="adminUploadBtn">📤 Excel einspielen</button>
+
+    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input type="email" id="adEmail" placeholder="E-Mail" autocomplete="off" style="flex:1;min-width:180px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <input type="password" id="adPassword" placeholder="Passwort" autocomplete="new-password" style="flex:1;min-width:150px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <select id="adRole" style="border:2px solid var(--line);border-radius:10px;padding:9px 12px;font:inherit">
+        <option value="aussendienst">Außendienst</option>
+        <option value="admin">Admin</option>
+      </select>
+      <button class="btn btn-blue" id="adCreateBtn">Anlegen</button>
+    </div>
+    <div class="error" id="adCreateHint"></div>
+
+    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Nutzer</h4>
+    <div id="adUserList" style="max-height:340px;overflow:auto"></div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -505,6 +534,7 @@ function showRoleBadge(){
   const b=$("roleBadge");
   if(myRole && ROLE_LABEL[myRole]){ b.textContent=ROLE_LABEL[myRole]; b.classList.remove("hidden"); }
   else b.classList.add("hidden");
+  $("adminBtn").classList.toggle("hidden", myRole!=="admin");
 }
 
 /* ---------- Persistenz (Supabase, window.storage/Memory als Fallback) ---------- */
@@ -555,6 +585,7 @@ async function doLogout(){
   supaUser=null;
   myRole=null; showRoleBadge();
   $("logoutBtn").classList.add("hidden");
+  $("adminModal").classList.add("hidden");
   $("dash").classList.add("hidden");
   showAuthModal("Abgemeldet.");
 }
@@ -569,6 +600,76 @@ async function initAuth(){
   showAuthModal();
   return false;
 }
+
+/* ---------- Admin-Panel (Nutzerverwaltung via Edge Function) ---------- */
+async function callAdminFn(action, payload){
+  try{
+    const { data:{ session } } = await sb.auth.getSession();
+    const res = await fetch(SUPABASE_URL+"/functions/v1/admin-users", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+session.access_token },
+      body: JSON.stringify({ action, ...payload })
+    });
+    return await res.json();
+  }catch(e){ return { error: String(e) }; }
+}
+async function loadAdminUsers(){
+  const box=$("adUserList");
+  box.innerHTML="<p style='color:var(--muted)'>Lädt …</p>";
+  const { data, error } = await sb.from("profiles").select("id,email,role").order("email");
+  if(error || !data){ box.innerHTML="<p style='color:var(--muted)'>Fehler beim Laden.</p>"; return; }
+  box.innerHTML = data.map(u=>`
+    <div data-id="${u.id}" data-email="${u.email||""}" style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
+      <span style="flex:1;min-width:160px;font-weight:700">${u.email||"–"}</span>
+      <select class="ad-role-sel" style="border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
+        <option value="aussendienst" ${u.role==="aussendienst"?"selected":""}>Außendienst</option>
+        <option value="admin" ${u.role==="admin"?"selected":""}>Admin</option>
+      </select>
+      <button class="btn btn-ghost ad-reset" style="padding:6px 10px;font-size:12px">Passwort ändern</button>
+      <button class="btn btn-ghost ad-delete" style="padding:6px 10px;font-size:12px;color:var(--neg)">Löschen</button>
+    </div>
+  `).join("") || "<p style='color:var(--muted)'>Keine Nutzer.</p>";
+
+  box.querySelectorAll(".ad-role-sel").forEach(sel=>{
+    sel.onchange=async e=>{
+      const id=e.target.closest("[data-id]").dataset.id;
+      const { error } = await sb.from("profiles").update({role:e.target.value}).eq("id",id);
+      toast(error?("Fehler: "+error.message):"Rolle aktualisiert");
+    };
+  });
+  box.querySelectorAll(".ad-reset").forEach(btn=>{
+    btn.onclick=async e=>{
+      const row=e.target.closest("[data-id]");
+      const pw=prompt("Neues Passwort für "+row.dataset.email+":");
+      if(!pw) return;
+      const res=await callAdminFn("resetPassword",{userId:row.dataset.id,newPassword:pw});
+      toast(res.error?("Fehler: "+res.error):"Passwort geändert");
+    };
+  });
+  box.querySelectorAll(".ad-delete").forEach(btn=>{
+    btn.onclick=async e=>{
+      const row=e.target.closest("[data-id]");
+      if(!confirm("Nutzer "+row.dataset.email+" wirklich löschen?")) return;
+      const res=await callAdminFn("deleteUser",{userId:row.dataset.id});
+      if(res.error) toast("Fehler: "+res.error); else { toast("Nutzer gelöscht"); loadAdminUsers(); }
+    };
+  });
+}
+async function createAdminUser(){
+  const email=$("adEmail").value.trim();
+  const password=$("adPassword").value;
+  const role=$("adRole").value;
+  if(!email||!password){ $("adCreateHint").textContent="Bitte E-Mail und Passwort eingeben."; return; }
+  $("adCreateBtn").disabled=true;
+  const res=await callAdminFn("createUser",{email,password,role});
+  $("adCreateBtn").disabled=false;
+  if(res.error){ $("adCreateHint").textContent=res.error; return; }
+  $("adCreateHint").textContent="";
+  $("adEmail").value=""; $("adPassword").value="";
+  toast("Nutzer angelegt: "+email);
+  loadAdminUsers();
+}
+function openAdminModal(){ $("adminModal").classList.remove("hidden"); loadAdminUsers(); }
 
 /* ---------- Feiertage Österreich / Arbeitstage (Mo–Sa) ---------- */
 function easter(y){
@@ -1534,6 +1635,10 @@ $("gmInput").addEventListener("keydown",e=>{ if(e.key==="Enter") saveGoal(); });
 $("authLoginBtn").onclick=doLogin;
 $("authPassword").addEventListener("keydown",e=>{ if(e.key==="Enter") doLogin(); });
 $("logoutBtn").onclick=doLogout;
+$("adminBtn").onclick=openAdminModal;
+$("adminClose").onclick=()=>$("adminModal").classList.add("hidden");
+$("adminUploadBtn").onclick=pickFiles;
+$("adCreateBtn").onclick=createAdminUser;
 $("mitarbeiter").onchange=e=>{ currentEmp=e.target.value; render(); };
 document.querySelectorAll("#periodTabs button").forEach(b=>{
   b.onclick=()=>{ document.querySelectorAll("#periodTabs button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); currentPeriod=b.dataset.p; renderTopFlop(); };
