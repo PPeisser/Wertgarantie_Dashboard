@@ -79,6 +79,14 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
+-- Postgres vergibt EXECUTE standardmäßig an PUBLIC – das würde beide Funktionen
+-- als öffentliche RPC-Endpunkte exponieren (/rest/v1/rpc/...). Einschränken:
+-- handle_new_user() braucht niemand direkt aufrufbar (nur der Trigger nutzt sie).
+-- is_admin() muss für authenticated ausführbar bleiben (RLS-Policy oben ruft sie auf).
+revoke execute on function public.handle_new_user() from public;
+revoke execute on function public.is_admin() from public;
+grant execute on function public.is_admin() to authenticated;
+
 -- Bestehenden Nutzer peter@peisser.com als Admin anlegen/markieren (einmalig, idempotent).
 insert into public.profiles (id, email, role)
 select id, email, 'admin' from auth.users where email = 'peter@peisser.com'
