@@ -259,24 +259,91 @@ td .betr{font-size:11px;color:var(--muted)}
 }
 #toast.show{opacity:1}
 
-/* ---------- Print ---------- */
+/* ---------- Print / PDF (kompakt, Querformat, ~2 Seiten) ---------- */
 @media print{
-  @page{size:A4 landscape;margin:8mm}
-  body{background:#fff;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  @page{size:A4 landscape;margin:6mm}
+  body{background:#fff;font-size:10px;line-height:1.28;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .wrap{max-width:none;padding:0}
   .controls,.no-print,#emptyState .btns{display:none !important}
+  header{padding:7px 12px;gap:10px}
+  header img.logo{height:30px}
+  .title-block h1{font-size:15px}
+  .title-block .sub{font-size:9.5px}
+  #roleBadge,#welcomeMsg{display:none !important}
   header,.kpi,.goal,.panel{box-shadow:none;border:1px solid var(--line)}
-  h2.sec{margin:10px 2px 6px;break-after:avoid}
-  .kpi .num{font-size:28px}
-  .goal .pct{font-size:22px}
-  .duo,.trio,.kpis,.goals{gap:8px}
-  .panel,.kpi,.goal{break-inside:avoid}
+  h2.sec{margin:6px 2px 3px;font-size:11.5px;break-after:avoid}
+  h2.sec .arr{display:none}
+  h2.sec small{font-size:9px}
+  .duo,.trio,.kpis,.goals{gap:5px}
+  .goals.cols4{gap:5px}
+  .goal,.goals .goal,.goals.cols4 .goal{padding:6px 8px}
+  .goal .pct,.goals .goal .pct,.goals.cols4 .goal .pct{font-size:16px}
+  .goal .name{font-size:10px}
+  .goal .target,.goal .stk{font-size:8.5px}
+  .goal .big{margin:3px 0 3px}
+  .goal .hr{margin-top:5px;padding-top:4px;font-size:8.5px}
+  .goal .hr b{font-size:10px}
+  .goal .delta{margin-top:4px;font-size:9px}
+  .goal .pill{font-size:8.5px;padding:1px 6px}
+  .bar{height:7px}
+  .kpi{padding:6px 9px 6px}
+  .kpi .num{font-size:19px}
+  .kpi .lbl{font-size:9px}
+  .kpi .row{margin-top:3px;gap:8px}
+  .kpi .vs{margin-top:3px;font-size:8.5px}
+  .panel{padding:6px 8px}
+  .panel h3{font-size:10.5px;margin-bottom:3px}
+  table{font-size:9px}
+  th{padding:2px 4px;font-size:8px}
+  td{padding:2.5px 4px}
+  td .hname{max-width:150px}
+  tr{break-inside:avoid}
+  .akp-row{padding:4px 2px;break-inside:avoid}
+  .akp-row .val{font-size:12px}
+  .mixbar{height:19px}
+  .obs-item{padding:4px 6px;margin-bottom:3px;gap:5px;break-inside:avoid}
+  .obs-item .ic{font-size:12px}
+  .obs-item .t b{font-size:9.5px}
+  .obs-item .t span{font-size:8.5px}
+  #obsList{columns:2;column-gap:10px}
+  #akqList,#akqOpBody,#nwBody{max-height:none !important;overflow:visible !important}
+  /* Panels dürfen über eine Seitengrenze laufen (Tabellenzeilen/Karten bleiben
+     dank obiger Regeln trotzdem ganz) – nur so entsteht kein Leerraum am
+     Seitenende, wenn ein Panel nicht mehr komplett auf die Seite passt. */
+  .kpi,.goal{break-inside:avoid}
+  .panel h3{break-after:avoid}
   .print-only{display:block !important}
 }
 .print-only{display:none;font-size:11px;color:var(--muted);margin-top:6px}
-body.pdf-mode{background:#fff}
+body.pdf-mode{background:#fff;font-size:10px;line-height:1.28}
 body.pdf-mode .controls,body.pdf-mode .no-print,body.pdf-mode #toast{display:none !important}
+body.pdf-mode header{padding:7px 12px;gap:10px}
+body.pdf-mode header img.logo{height:30px}
+body.pdf-mode .title-block h1{font-size:15px}
+body.pdf-mode .title-block .sub{font-size:9.5px}
+body.pdf-mode #roleBadge,body.pdf-mode #welcomeMsg{display:none !important}
 body.pdf-mode header,body.pdf-mode .kpi,body.pdf-mode .goal,body.pdf-mode .panel{box-shadow:none;border:1px solid var(--line)}
+body.pdf-mode h2.sec{margin:6px 2px 3px;font-size:11.5px}
+body.pdf-mode h2.sec .arr{display:none}
+body.pdf-mode h2.sec small{font-size:9px}
+body.pdf-mode .duo,body.pdf-mode .trio,body.pdf-mode .kpis,body.pdf-mode .goals{gap:5px}
+body.pdf-mode .goals.cols4{gap:5px}
+body.pdf-mode .goal,body.pdf-mode .goals .goal,body.pdf-mode .goals.cols4 .goal{padding:6px 8px}
+body.pdf-mode .goal .pct,body.pdf-mode .goals .goal .pct,body.pdf-mode .goals.cols4 .goal .pct{font-size:16px}
+body.pdf-mode .bar{height:7px}
+body.pdf-mode .kpi{padding:6px 9px 6px}
+body.pdf-mode .kpi .num{font-size:19px}
+body.pdf-mode .panel{padding:6px 8px}
+body.pdf-mode .panel h3{font-size:10.5px;margin-bottom:3px}
+body.pdf-mode table{font-size:9px}
+body.pdf-mode th{padding:2px 4px;font-size:8px}
+body.pdf-mode td{padding:2.5px 4px}
+body.pdf-mode .akp-row{padding:4px 2px}
+body.pdf-mode .obs-item{padding:4px 6px;margin-bottom:3px;gap:5px}
+body.pdf-mode .obs-item .t b{font-size:9.5px}
+body.pdf-mode .obs-item .t span{font-size:8.5px}
+body.pdf-mode #obsList{columns:2;column-gap:10px}
+body.pdf-mode #akqList,body.pdf-mode #akqOpBody,body.pdf-mode #nwBody{max-height:none !important;overflow:visible !important}
 body.pdf-mode .print-only{display:block}
 body.pdf-mode .wrap{max-width:1400px;padding:10px 14px 20px}
 
@@ -1599,6 +1666,50 @@ function renderNeunWochen(){
 /* ---------- PDF-Export ---------- */
 let pdfBusy=false;
 function inIframe(){ try{ return window.self!==window.top; }catch(e){ return true; } }
+
+// Lange, sonst intern scrollende Listen (Top 20 AKQ, Akquise ohne Produktion,
+// 9-Wochen-Plan) würden im Druck/PDF sonst mitten in der Zeile abgeschnitten
+// (fixe max-height + overflow:auto). Für den Ausdruck stattdessen bewusst auf
+// eine handliche Zeilenzahl kappen und die Restmenge als Hinweis ausweisen.
+const PRINT_LIST_CAPS={ akqList:7, akqOpBody:10, nwBody:10 };
+let printListBackup=null;
+function applyPrintCaps(){
+  printListBackup={};
+  for(const [id,n] of Object.entries(PRINT_LIST_CAPS)){
+    const el=$(id); if(!el) continue;
+    const tbody=el.querySelector("tbody"); if(!tbody) continue;
+    const rows=Array.from(tbody.children);
+    if(rows.length<=n) continue;
+    printListBackup[id]=el.innerHTML;
+    rows.slice(n).forEach(r=>r.remove());
+    const cols=(el.querySelectorAll("thead th").length)||1;
+    const note=document.createElement("tr");
+    note.innerHTML=`<td colspan="${cols}" style="text-align:center;color:var(--muted);font-style:italic">+ ${rows.length-n} weitere in der App</td>`;
+    tbody.appendChild(note);
+  }
+}
+function restorePrintCaps(){
+  if(!printListBackup) return;
+  for(const [id,html] of Object.entries(printListBackup)){ const el=$(id); if(el) el.innerHTML=html; }
+  printListBackup=null;
+}
+window.addEventListener("beforeprint",applyPrintCaps);
+window.addEventListener("afterprint",restorePrintCaps);
+
+// Sammelt Elemente, die beim Zerschneiden des Screenshots in Seiten nicht
+// mitten durchtrennt werden sollen (Karten/Panels/Überschriften), damit ein
+// Seitenumbruch immer zwischen zwei Elementen landet statt in einem.
+function getBreakBoxes(el,scale){
+  const wrapTop=el.getBoundingClientRect().top;
+  return Array.from(el.querySelectorAll(".panel,.kpi,.goal,h2.sec")).map(n=>{
+    const r=n.getBoundingClientRect();
+    return { top:(r.top-wrapTop)*scale, bottom:(r.bottom-wrapTop)*scale };
+  });
+}
+function adjustBreak(y,boxes){
+  for(const b of boxes){ if(y>b.top+2&&y<b.bottom-2) return Math.max(0,b.top); }
+  return y;
+}
 async function exportPDF(){
   if(pdfBusy) return;
   // Als eigenständige Datei im Browser: nativer Druckdialog (beste Qualität, "Als PDF speichern")
@@ -1611,10 +1722,13 @@ async function exportPDF(){
   pdfBusy=true;
   toast("PDF wird erstellt … einen Moment bitte");
   document.body.classList.add("pdf-mode");
+  applyPrintCaps();
   await new Promise(r=>setTimeout(r,60));
   try{
     const el=document.querySelector(".wrap");
-    const canvas=await html2canvas(el,{scale:2,backgroundColor:"#ffffff",useCORS:true,logging:false,windowWidth:1400});
+    const scale=2;
+    const boxes=getBreakBoxes(el,scale);
+    const canvas=await html2canvas(el,{scale,backgroundColor:"#ffffff",useCORS:true,logging:false,windowWidth:1400});
     const {jsPDF}=window.jspdf;
     const pdf=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
     const pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), margin=6;
@@ -1623,13 +1737,18 @@ async function exportPDF(){
     const pageHpx=Math.floor((ph-2*margin)*pxPerMm);
     let y=0,page=0;
     while(y<canvas.height){
-      const sliceH=Math.min(pageHpx,canvas.height-y);
+      let sliceEnd=Math.min(y+pageHpx,canvas.height);
+      if(sliceEnd<canvas.height){
+        const adj=adjustBreak(sliceEnd,boxes);
+        if(adj>y) sliceEnd=adj;
+      }
+      const sliceH=sliceEnd-y;
       const c2=document.createElement("canvas");
       c2.width=canvas.width; c2.height=sliceH;
       c2.getContext("2d").drawImage(canvas,0,y,canvas.width,sliceH,0,0,canvas.width,sliceH);
       if(page>0) pdf.addPage();
       pdf.addImage(c2.toDataURL("image/jpeg",0.92),"JPEG",margin,margin,imgW,sliceH/pxPerMm);
-      y+=sliceH; page++;
+      y=sliceEnd; page++;
     }
     const s=state.latest;
     const fname="Wertgarantie_Dashboard_"+currentEmp.replace(/[^\wÄÖÜäöüß]+/g,"_")+(s?"_"+s.vortag:"")+".pdf";
@@ -1640,6 +1759,7 @@ async function exportPDF(){
     toast("PDF-Erstellung fehlgeschlagen – Tipp: Datei herunterladen, im Browser öffnen und dort auf PDF klicken.");
   }finally{
     document.body.classList.remove("pdf-mode");
+    restorePrintCaps();
     pdfBusy=false;
   }
 }
