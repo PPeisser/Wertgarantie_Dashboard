@@ -1501,24 +1501,15 @@ function renderAKP(){
    Top  = beste nach Periodenwert (Vortagesvergleich/VJ als Pill)
    Flop = größter Verlust ggü. Vorjahr; gibt es keine Verluste, die schwächsten der Periode */
 function akpRanked(rows,p){
-  const s=state.latest;
-  let list;
-  if(p==="woche"){
-    if(historyDays().length<2) return null;
-    list=rows.map(r=>{
-      const cw=sumWeek((state.dailyAKP||{})[akpKey(r)]||{}, s.vortag);
-      const vw=sumWeek((state.dailyAKP||{})[akpKey(r)]||{}, iso(addDays(parseISO(s.vortag),-7)));
-      const diff=vw.days>0?cw.sum-vw.sum:null;
-      return {...r,val:cw.sum,vjDiff:diff,
-        pill:diff==null?`<span class="pill pos">VT +${fmt(r.vt)}</span>`:`<span class="pill ${diff>=0?"pos":"neg"}">${fmtSign(diff)} vs. VW</span>`};
-    });
-  } else if(p==="monat"){
-    list=rows.map(r=>({...r,val:r.monat,vjDiff:r.lj-r.vj,
-      pill:`<span class="pill ${(r.lj-r.vj)>=0?"pos":"neg"}">${fmtSign(r.lj-r.vj)} vs. VJ</span>`}));
-  } else {
-    list=rows.map(r=>({...r,val:r.lj,vjDiff:r.lj-r.vj,
-      pill:`<span class="pill ${(r.lj-r.vj)>=0?"pos":"neg"}">${fmtSign(r.lj-r.vj)} vs. VJ (${fmtPct(pctOf(r.lj,r.vj))})</span>`}));
-  }
+  if(p==="woche"&&historyDays().length<2) return null;
+  // Rangwert (val) richtet sich nach dem gewählten Zeitraum (Woche/Monat/Jahr),
+  // die Steigerung/der Vergleich (vjDiff, Pille) ist aber immer ggü. Vorjahr –
+  // unabhängig vom Zeitraum, nie Vortag/Vorwoche.
+  const valFor=p==="woche"
+    ? r=>sumWeek((state.dailyAKP||{})[akpKey(r)]||{},state.latest.vortag).sum
+    : p==="monat" ? r=>r.monat : r=>r.lj;
+  const list=rows.map(r=>({...r,val:valFor(r),vjDiff:r.lj-r.vj,
+    pill:`<span class="pill ${(r.lj-r.vj)>=0?"pos":"neg"}">${fmtSign(r.lj-r.vj)} vs. VJ (${fmtPct(pctOf(r.lj,r.vj))})</span>`}));
   const top=[...list].sort((a,b)=>b.val-a.val||(b.vjDiff??0)-(a.vjDiff??0));
   const neg=list.filter(r=>r.vjDiff!=null&&r.vjDiff<0).sort((a,b)=>a.vjDiff-b.vjDiff);
   const flop=neg.length?neg:[...list].sort((a,b)=>a.val-b.val||(a.vjDiff??0)-(b.vjDiff??0));
