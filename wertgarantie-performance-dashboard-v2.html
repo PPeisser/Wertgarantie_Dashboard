@@ -1478,9 +1478,8 @@ function renderTopFlop(){
     return {...f,cur,prev,diff,pct,extra};
   }).filter(r=>r.cur>0||(r.prev||0)>0||r.vt>0);
 
-  // Regel: In TOP nur Händler ohne negative Entwicklung – Negative gehören in die FLOP-Liste
-  const top=[...rows].filter(r=>r.diff==null||r.diff>=0)
-    .sort((a,b)=>b.cur-a.cur||(b.diff??0)-(a.diff??0)).slice(0,10);
+  // TOP reiht ausschließlich nach Produktion – unabhängig von Zugewinnen/Verlusten ggü. VJ/Vorwoche
+  const top=[...rows].sort((a,b)=>b.cur-a.cur).slice(0,10);
   let flop;
   if(rows.some(r=>r.diff!=null)){
     flop=[...rows].filter(r=>r.diff!=null&&r.diff<0).sort((a,b)=>a.diff-b.diff).slice(0,10);
@@ -1554,7 +1553,7 @@ function renderAKP(){
   const p=akpPeriod, medal=["#FFD700","#C0C0C0","#CD7F32"];
   const row=(r,i,neg,val,unit,pill)=>`<div class="akp-row">
       <div class="med" style="background:${neg?"var(--neg-bg)":medal[i]+"33"};color:${neg?"var(--neg)":"var(--wg-navy)"}">${neg?"▼":(i+1)}</div>
-      <div class="info"><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><span>Nr. ${escapeHtml(r.nr)} · ${r.firma}${r.fhNr?" · "+r.fhNr:""} · ${r.ort}${showGL&&r.emp?" · "+r.emp:""}</span></div>
+      <div class="info"><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><span>Nr. ${escapeHtml(r.nr)} · ${r.firma} · ${r.ort}${showGL&&r.emp?" · "+r.emp:""}</span></div>
       <div class="val">${fmt(val)}<small> ${unit} </small>${pill}</div>
     </div>`;
   let html="";
@@ -1576,18 +1575,31 @@ function renderAKP(){
    Flop = größter Verlust ggü. Vorjahr; gibt es keine Verluste, die schwächsten der Periode */
 function akpRanked(rows,p){
   if(p==="woche"&&historyDays().length<2) return null;
+  const s=state.latest;
+  const monateBisher=(s.monat-1)+((s.tageIst&&s.tageSoll)?s.tageIst/s.tageSoll:1);
   // Rangwert (val) richtet sich nach dem gewählten Zeitraum (Woche/Monat/Jahr),
   // die Steigerung/der Vergleich (vjDiff, Pille) ist aber immer ggü. Vorjahr –
   // unabhängig vom Zeitraum, nie Vortag/Vorwoche.
   const valFor=p==="woche"
-    ? r=>sumWeek((state.dailyAKP||{})[akpKey(r)]||{},state.latest.vortag).sum
+    ? r=>sumWeek((state.dailyAKP||{})[akpKey(r)]||{},s.vortag).sum
     : p==="monat" ? r=>r.monat : r=>r.lj;
-  const list=rows.map(r=>({...r,val:valFor(r),vjDiff:r.lj-r.vj,
-    pill:`<span class="pill ${(r.lj-r.vj)>=0?"pos":"neg"}">${fmtSign(r.lj-r.vj)} vs. VJ (${fmtPct(pctOf(r.lj,r.vj))})</span>`}));
+  // Für die FLOP-Auswahl (im Unterschied zur Pille) muss der Rückgang zum selben
+  // Zeitraum passen wie val – sonst wirkt "Flop" bei Woche/Monat willkürlich,
+  // weil es eigentlich immer den Jahresvergleich zeigt.
+  const prevFor=p==="woche"
+    ? r=>{ const vw=sumWeek((state.dailyAKP||{})[akpKey(r)]||{}, iso(addDays(parseISO(s.vortag),-7))); return vw.days>0?vw.sum:null; }
+    : p==="monat" ? r=>monateBisher>0?r.lj/monateBisher:null
+    : r=>r.vj;
+  const list=rows.map(r=>{
+    const val=valFor(r), prevVal=prevFor(r);
+    return {...r,val,vjDiff:r.lj-r.vj,periodDiff:prevVal==null?null:val-prevVal,
+      pill:`<span class="pill ${(r.lj-r.vj)>=0?"pos":"neg"}">${fmtSign(r.lj-r.vj)} vs. VJ (${fmtPct(pctOf(r.lj,r.vj))})</span>`};
+  });
   const top=[...list].sort((a,b)=>b.val-a.val||(b.vjDiff??0)-(a.vjDiff??0));
-  const neg=list.filter(r=>r.vjDiff!=null&&r.vjDiff<0).sort((a,b)=>a.vjDiff-b.vjDiff);
-  const flop=neg.length?neg:[...list].sort((a,b)=>a.val-b.val||(a.vjDiff??0)-(b.vjDiff??0));
-  return {top,flop,flopLbl:neg.length?"größter Verlust ggü. Vorjahr":"schwächste Produktion (keine VJ-Verluste)"};
+  const decliners=list.filter(r=>r.periodDiff!=null&&r.periodDiff<0).sort((a,b)=>a.periodDiff-b.periodDiff);
+  const flop=decliners.length?decliners:[...list].sort((a,b)=>a.val-b.val||(a.vjDiff??0)-(b.vjDiff??0));
+  const flopLblFor={woche:"größter Rückgang ggü. Vorwoche",monat:"größter Rückgang ggü. Ø-Monat",jahr:"größter Verlust ggü. Vorjahr"};
+  return {top,flop,flopLbl:decliners.length?flopLblFor[p]:"schwächste Produktion (kein Rückgang im Zeitraum)"};
 }
 /* PopUp: Top/Flop 5·10·20·30 AKP */
 let akpN=10;
@@ -1603,7 +1615,7 @@ function openAkpModal(){
     const mkTbl=(list,neg)=>`<table><thead><tr><th></th><th>AKP / Firma${showGL?" / Betreuer":""}</th><th class="r">${unit}</th><th class="r">VT</th><th class="r">vs. VJ</th></tr></thead><tbody>`+
       list.slice(0,akpN).map((r,i)=>`<tr>
         <td><span class="rank" style="${neg?"background:var(--neg-bg);color:var(--neg)":""}">${i+1}</span></td>
-        <td><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><br><span class="betr">Nr. ${escapeHtml(r.nr)} · ${r.firma}${r.fhNr?" · "+r.fhNr:""} · ${r.ort}${showGL&&r.emp?" · "+r.emp:""}</span></td>
+        <td><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><br><span class="betr">Nr. ${escapeHtml(r.nr)} · ${r.firma} · ${r.ort}${showGL&&r.emp?" · "+r.emp:""}</span></td>
         <td class="r" style="font-weight:900">${fmt(r.val)}</td>
         <td class="r" style="color:var(--muted)">${fmt(r.vt)}</td>
         <td class="r">${r.vjDiff==null?"–":`<span class="pill ${r.vjDiff>=0?"pos":"neg"}">${fmtSign(r.vjDiff)}</span>`}</td>
@@ -1639,7 +1651,7 @@ async function openAkpContact(nr,fallbackName){
   const c=akpContactCurrent;
   const name=(c.vorname||c.nachname)?[c.vorname,c.nachname].filter(Boolean).join(" "):(fallbackName||nr);
   $("acName").textContent=name;
-  $("acMeta").innerHTML=`AKP-Nr. <b>${escapeHtml(nr)}</b>${c.firma?" · "+escapeHtml(c.firma):""}${c.ort?" · "+escapeHtml(c.ort):""}`;
+  $("acMeta").innerHTML=`AKP-Nr. <b>${escapeHtml(nr)}</b>${c.firma?" · "+escapeHtml(c.firma):""}${c.fh_nr?" · FH "+escapeHtml(c.fh_nr):""}${c.ort?" · "+escapeHtml(c.ort):""}`;
   renderAkpContactView();
   renderAkpMonthly();
 }
