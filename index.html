@@ -1551,7 +1551,7 @@ function renderAKP(){
   const p=akpPeriod, medal=["#FFD700","#C0C0C0","#CD7F32"];
   const row=(r,i,neg,val,unit,pill)=>`<div class="akp-row">
       <div class="med" style="background:${neg?"var(--neg-bg)":medal[i]+"33"};color:${neg?"var(--neg)":"var(--wg-navy)"}">${neg?"▼":(i+1)}</div>
-      <div class="info"><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><span>${r.firma}${r.fhNr?" · "+r.fhNr:""} · ${r.ort}${showGL&&r.emp?" · "+r.emp:""}</span></div>
+      <div class="info"><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><span>Nr. ${escapeHtml(r.nr)} · ${r.firma}${r.fhNr?" · "+r.fhNr:""} · ${r.ort}${showGL&&r.emp?" · "+r.emp:""}</span></div>
       <div class="val">${fmt(val)}<small> ${unit} </small>${pill}</div>
     </div>`;
   let html="";
@@ -1600,7 +1600,7 @@ function openAkpModal(){
     const mkTbl=(list,neg)=>`<table><thead><tr><th></th><th>AKP / Firma${showGL?" / Betreuer":""}</th><th class="r">${unit}</th><th class="r">VT</th><th class="r">vs. VJ</th></tr></thead><tbody>`+
       list.slice(0,akpN).map((r,i)=>`<tr>
         <td><span class="rank" style="${neg?"background:var(--neg-bg);color:var(--neg)":""}">${i+1}</span></td>
-        <td><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><br><span class="betr">${r.firma}${r.fhNr?" · "+r.fhNr:""} · ${r.ort}${showGL&&r.emp?" · "+r.emp:""}</span></td>
+        <td><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><br><span class="betr">Nr. ${escapeHtml(r.nr)} · ${r.firma}${r.fhNr?" · "+r.fhNr:""} · ${r.ort}${showGL&&r.emp?" · "+r.emp:""}</span></td>
         <td class="r" style="font-weight:900">${fmt(r.val)}</td>
         <td class="r" style="color:var(--muted)">${fmt(r.vt)}</td>
         <td class="r">${r.vjDiff==null?"–":`<span class="pill ${r.vjDiff>=0?"pos":"neg"}">${fmtSign(r.vjDiff)}</span>`}</td>
