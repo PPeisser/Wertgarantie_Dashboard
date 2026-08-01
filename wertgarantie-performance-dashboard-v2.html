@@ -250,6 +250,21 @@ td .betr{font-size:11px;color:var(--muted)}
 #authModal input+input{margin-top:10px}
 #authModal .error{color:var(--neg);font-size:12.5px;margin-top:8px;text-align:center;min-height:16px}
 
+/* ---------- AKP-Kontakt PopUp ---------- */
+.akp-name-link{background:none;border:none;padding:0;margin:0;font:inherit;font-weight:inherit;color:inherit;cursor:pointer;text-align:left;text-decoration:underline;text-decoration-color:transparent;transition:text-decoration-color .15s}
+.akp-name-link:hover{text-decoration-color:currentColor}
+.ac-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px}
+.ac-lbl{display:block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:3px}
+.ac-val{font-size:14px;font-weight:700;color:var(--ink)}
+#akpContactModal input,#akpContactModal select{font:inherit;font-size:14px;font-weight:600;text-align:left;text-transform:none;width:100%;border:2px solid var(--line);border-radius:10px;padding:8px 10px;outline:none}
+#akpContactModal input:focus,#akpContactModal select:focus{border-color:var(--wg-blue)}
+#akpContactModal .error{color:var(--neg);font-size:12.5px;margin-top:8px;min-height:16px}
+.ac-month-table{width:100%;border-collapse:collapse;font-size:11.5px}
+.ac-month-table th{text-align:right;font-weight:800;color:var(--muted);padding:3px 6px;font-size:10.5px}
+.ac-month-table th:first-child,.ac-month-table td:first-child{text-align:left}
+.ac-month-table td{text-align:right;padding:3px 6px;border-top:1px solid #ECF2F6}
+.ac-month-table td.empty{color:var(--muted)}
+
 /* ---------- Toast ---------- */
 #toast{
   position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
@@ -512,6 +527,51 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       </span>
     </div>
     <div id="amBody"></div>
+  </div>
+</div>
+
+<!-- AKP-Kontakt PopUp -->
+<div class="modal-bg hidden" id="akpContactModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px">
+      <h3 id="acName" style="margin:0">AKP</h3>
+      <button class="btn btn-ghost" id="acClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+    <div id="acMeta" style="font-size:12.5px;color:var(--muted);margin-bottom:14px"></div>
+
+    <div id="acViewMode">
+      <div class="ac-grid">
+        <div><span class="ac-lbl">Telefon</span><div class="ac-val" id="acTelefonView">–</div></div>
+        <div><span class="ac-lbl">E-Mail</span><div class="ac-val" id="acEmailView">–</div></div>
+        <div><span class="ac-lbl">Geburtsdatum</span><div class="ac-val" id="acGebView">–</div></div>
+        <div><span class="ac-lbl">Aktionsteilnahme</span><div class="ac-val" id="acAktView">–</div></div>
+        <div><span class="ac-lbl">Profi-Training</span><div class="ac-val" id="acTrainView">–</div></div>
+        <div><span class="ac-lbl">Letzte Produktion</span><div class="ac-val" id="acLastProdView">–</div></div>
+      </div>
+      <button class="btn btn-blue" id="acEditBtn" style="margin-top:14px">✎ Kontaktdaten bearbeiten</button>
+    </div>
+
+    <div id="acEditMode" class="hidden">
+      <div class="ac-grid">
+        <div><label class="ac-lbl" for="acTelefonEdit">Telefon</label><input id="acTelefonEdit" autocomplete="off"></div>
+        <div><label class="ac-lbl" for="acEmailEdit">E-Mail</label><input id="acEmailEdit" type="email" autocomplete="off"></div>
+        <div><label class="ac-lbl" for="acGebEdit">Geburtsdatum</label><input id="acGebEdit" type="date"></div>
+        <div><label class="ac-lbl" for="acAktEdit">Aktionsteilnahme</label>
+          <select id="acAktEdit"><option value="">–</option><option value="ja">Ja</option><option value="nein">Nein</option></select>
+        </div>
+        <div><label class="ac-lbl" for="acTrainEdit">Profi-Training</label>
+          <select id="acTrainEdit"><option value="">Keine</option><option value="1">Stufe 1</option><option value="2">Stufe 2</option><option value="3">Stufe 3</option></select>
+        </div>
+      </div>
+      <div class="actions" style="margin-top:14px">
+        <button class="btn btn-ghost" id="acCancelBtn">Abbrechen</button>
+        <button class="btn btn-blue" id="acSaveBtn">Speichern</button>
+      </div>
+      <div class="error" id="acSaveHint"></div>
+    </div>
+
+    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:13px">Monatsproduktion</h4>
+    <div id="acMonthly"></div>
   </div>
 </div>
 
@@ -1143,13 +1203,24 @@ async function handleFiles(files){
     const buf=await file.arrayBuffer();
     const wb=XLSX.read(buf,{type:"array",cellDates:true});
     const snap=parseAuswertung(wb);
-    if(snap){ mergeSnapshot(snap); okCount++; }
+    if(snap){ mergeSnapshot(snap); syncAkpContacts(snap); okCount++; }
   }
   if(!okCount){ toast("Format nicht erkannt – bitte die Auswertung_TAG-Datei mit den Blättern FH_Liste, AKP Liste, AKQ-Liste einspielen."); return; }
   await saveData();
   const s=state.latest;
   toast(`Eingespielt ✓ Stand ${fmtDate(s.vortag)} · ${fmt(Object.keys(s.fh).length)} Händler · ${fmt(s.akp.length)} AKP · ${fmt(s.akq.length)} AKQ`);
   render();
+}
+// Hält die AKP-Kontaktdatenbank (Firma/Ort/Fachhändler + Monatsproduktion)
+// bei jeder Einspielung aktuell; Kontaktdaten/Name bleiben unangetastet
+// (siehe akp_sync_daily). Läuft im Hintergrund, blockiert den Upload nicht.
+async function syncAkpContacts(snap){
+  if(!(sb&&supaUser&&snap&&snap.akp&&snap.akp.length)) return;
+  try{
+    const mk=snap.jahr+"-"+String(snap.monat).padStart(2,"0");
+    const rows=snap.akp.filter(a=>a.nr).map(a=>({nr:a.nr,fh:a.fhNr,nm:a.name,fi:a.firma,or:a.ort,mk,mv:a.monat||0}));
+    if(rows.length) await sb.rpc("akp_sync_daily",{rows});
+  }catch(e){}
 }
 
 async function saveData(){ try{ await stSet("wg-state",JSON.stringify(state)); }catch(e){} }
@@ -1480,7 +1551,7 @@ function renderAKP(){
   const p=akpPeriod, medal=["#FFD700","#C0C0C0","#CD7F32"];
   const row=(r,i,neg,val,unit,pill)=>`<div class="akp-row">
       <div class="med" style="background:${neg?"var(--neg-bg)":medal[i]+"33"};color:${neg?"var(--neg)":"var(--wg-navy)"}">${neg?"▼":(i+1)}</div>
-      <div class="info"><b>${r.name}</b><span>${r.firma}${r.fhNr?" · "+r.fhNr:""} · ${r.ort}${showGL&&r.emp?" · "+r.emp:""}</span></div>
+      <div class="info"><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><span>${r.firma}${r.fhNr?" · "+r.fhNr:""} · ${r.ort}${showGL&&r.emp?" · "+r.emp:""}</span></div>
       <div class="val">${fmt(val)}<small> ${unit} </small>${pill}</div>
     </div>`;
   let html="";
@@ -1529,7 +1600,7 @@ function openAkpModal(){
     const mkTbl=(list,neg)=>`<table><thead><tr><th></th><th>AKP / Firma${showGL?" / Betreuer":""}</th><th class="r">${unit}</th><th class="r">VT</th><th class="r">vs. VJ</th></tr></thead><tbody>`+
       list.slice(0,akpN).map((r,i)=>`<tr>
         <td><span class="rank" style="${neg?"background:var(--neg-bg);color:var(--neg)":""}">${i+1}</span></td>
-        <td><b>${r.name}</b><br><span class="betr">${r.firma}${r.fhNr?" · "+r.fhNr:""} · ${r.ort}${showGL&&r.emp?" · "+r.emp:""}</span></td>
+        <td><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><br><span class="betr">${r.firma}${r.fhNr?" · "+r.fhNr:""} · ${r.ort}${showGL&&r.emp?" · "+r.emp:""}</span></td>
         <td class="r" style="font-weight:900">${fmt(r.val)}</td>
         <td class="r" style="color:var(--muted)">${fmt(r.vt)}</td>
         <td class="r">${r.vjDiff==null?"–":`<span class="pill ${r.vjDiff>=0?"pos":"neg"}">${fmtSign(r.vjDiff)}</span>`}</td>
@@ -1540,6 +1611,98 @@ function openAkpModal(){
   }
   $("akpModal").classList.remove("hidden");
 }
+
+/* ---------- AKP-Kontakt PopUp (Stammdaten, Kontakt, Aktionsteilnahme, Profi-Training) ---------- */
+let akpContactCurrent=null;
+const MONTH_LABELS=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
+function akpLastProdDay(nr){
+  const map=(state.dailyAKP||{})[nr]; if(!map) return null;
+  let best=null;
+  for(const [d,v] of Object.entries(map)){ if(v>0&&(!best||d>best)) best=d; }
+  return best;
+}
+async function openAkpContact(nr,fallbackName){
+  if(!nr) return;
+  akpContactCurrent={nr,vorname:null,nachname:null,firma:null,telefon:null,email:null,geburtsdatum:null,aktionsteilnahme:null,profi_training:null,prod_monthly:{}};
+  $("acName").textContent=fallbackName||nr;
+  $("acMeta").textContent="AKP-Nr. "+nr+" · lädt …";
+  $("acMonthly").innerHTML="";
+  toggleAkpEdit(false);
+  $("akpContactModal").classList.remove("hidden");
+  try{
+    const {data,error}=await sb.from("akp_contacts").select("*").eq("nr",nr).maybeSingle();
+    if(!error&&data) akpContactCurrent=data;
+  }catch(e){}
+  const c=akpContactCurrent;
+  const name=(c.vorname||c.nachname)?[c.vorname,c.nachname].filter(Boolean).join(" "):(fallbackName||nr);
+  $("acName").textContent=name;
+  $("acMeta").innerHTML=`AKP-Nr. <b>${escapeHtml(nr)}</b>${c.firma?" · "+escapeHtml(c.firma):""}${c.ort?" · "+escapeHtml(c.ort):""}`;
+  renderAkpContactView();
+  renderAkpMonthly();
+}
+function renderAkpContactView(){
+  const c=akpContactCurrent;
+  $("acTelefonView").textContent=c.telefon||"–";
+  $("acEmailView").textContent=c.email||"–";
+  $("acGebView").textContent=c.geburtsdatum?fmtDate(c.geburtsdatum):"–";
+  $("acAktView").textContent=c.aktionsteilnahme==null?"–":(c.aktionsteilnahme?"Ja":"Nein");
+  $("acTrainView").textContent=c.profi_training?"Stufe "+c.profi_training:"Keine";
+  const lastDay=akpLastProdDay(c.nr);
+  $("acLastProdView").textContent=lastDay?fmtDate(lastDay):"Noch keine Tagesdaten erfasst";
+}
+function renderAkpMonthly(){
+  const prod=akpContactCurrent.prod_monthly||{};
+  const years=[...new Set(Object.keys(prod).map(k=>k.slice(0,4)))].sort();
+  if(!years.length){ $("acMonthly").innerHTML=`<div class="empty-note">Keine Monatsdaten vorhanden.</div>`; return; }
+  $("acMonthly").innerHTML=`<div style="overflow:auto"><table class="ac-month-table"><thead><tr><th>Jahr</th>${MONTH_LABELS.map(m=>`<th>${m}</th>`).join("")}<th>Summe</th></tr></thead><tbody>`+
+    years.map(y=>{
+      let sum=0;
+      const cells=MONTH_LABELS.map((_,i)=>{
+        const v=prod[y+"-"+String(i+1).padStart(2,"0")];
+        if(v!=null) sum+=v;
+        return `<td class="${v==null?"empty":""}">${v==null?"–":fmt(v)}</td>`;
+      }).join("");
+      return `<tr><td><b>${y}</b></td>${cells}<td><b>${fmt(sum)}</b></td></tr>`;
+    }).join("")+`</tbody></table></div>`;
+}
+function toggleAkpEdit(on){
+  $("acViewMode").classList.toggle("hidden",on);
+  $("acEditMode").classList.toggle("hidden",!on);
+  $("acSaveHint").textContent="";
+  if(on){
+    const c=akpContactCurrent;
+    $("acTelefonEdit").value=c.telefon||"";
+    $("acEmailEdit").value=c.email||"";
+    $("acGebEdit").value=c.geburtsdatum||"";
+    $("acAktEdit").value=c.aktionsteilnahme==null?"":(c.aktionsteilnahme?"ja":"nein");
+    $("acTrainEdit").value=c.profi_training||"";
+  }
+}
+async function saveAkpContact(){
+  const nr=akpContactCurrent&&akpContactCurrent.nr; if(!nr) return;
+  const telefon=$("acTelefonEdit").value.trim()||null;
+  const email=$("acEmailEdit").value.trim()||null;
+  const geburtsdatum=$("acGebEdit").value||null;
+  const aktSel=$("acAktEdit").value;
+  const aktionsteilnahme=aktSel===""?null:(aktSel==="ja");
+  const trainSel=$("acTrainEdit").value;
+  const profi_training=trainSel===""?null:+trainSel;
+  $("acSaveBtn").disabled=true;
+  const {error}=await sb.from("akp_contacts").upsert({
+    nr,telefon,email,geburtsdatum,aktionsteilnahme,profi_training,
+    updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()
+  },{onConflict:"nr"});
+  $("acSaveBtn").disabled=false;
+  if(error){ $("acSaveHint").textContent="Fehler: "+error.message; return; }
+  Object.assign(akpContactCurrent,{telefon,email,geburtsdatum,aktionsteilnahme,profi_training});
+  renderAkpContactView();
+  toggleAkpEdit(false);
+  toast("Kontaktdaten gespeichert ✓");
+}
+document.addEventListener("click",e=>{
+  const btn=e.target.closest(".akp-name-link");
+  if(btn) openAkpContact(btn.dataset.akpNr,btn.textContent);
+});
 
 /* Top 20 AKQ · Filter: Akquise-Jahrgang + ohne Groß-FH (>300 Verträge im VJ) */
 let akqJahrFilter="alle";
@@ -1841,6 +2004,10 @@ document.querySelectorAll("#akqYearTabs button").forEach(b=>{
 });
 $("akpMoreBtn").onclick=()=>openAkpModal();
 $("amClose").onclick=()=>$("akpModal").classList.add("hidden");
+$("acClose").onclick=()=>$("akpContactModal").classList.add("hidden");
+$("acEditBtn").onclick=()=>toggleAkpEdit(true);
+$("acCancelBtn").onclick=()=>toggleAkpEdit(false);
+$("acSaveBtn").onclick=saveAkpContact;
 document.querySelectorAll("#akpNBtns button").forEach(b=>{
   b.onclick=()=>{ akpN=+b.dataset.n; openAkpModal(); };
 });

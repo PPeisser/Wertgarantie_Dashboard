@@ -110,3 +110,87 @@ grant execute on function public.mark_password_changed() to authenticated;
 insert into public.profiles (id, email, name, role)
 select id, email, 'Peter Peißer', 'admin' from auth.users where email = 'peter@peisser.com'
 on conflict (id) do update set role = 'admin', name = coalesce(public.profiles.name, excluded.name);
+
+-- ---------- AKP-Kontakte (Ansprechpartner beim Fachhändler) ----------
+
+create table if not exists public.akp_contacts (
+  nr               text primary key,
+  fh_nr            text not null default '',
+  vorname          text,
+  nachname         text,
+  firma            text,
+  strasse          text,
+  plz              text,
+  ort              text,
+  telefon          text,
+  email            text,
+  geburtsdatum     date,
+  aktionsteilnahme boolean,
+  profi_training   smallint check (profi_training is null or profi_training between 1 and 3),
+  -- Monatsproduktion als offene Kalender-Map "YYYY-MM" -> Verträge, damit
+  -- künftige Monate bei jeder täglichen Einspielung einfach ergänzt werden
+  -- können, ohne das Schema zu ändern.
+  prod_monthly     jsonb not null default '{}'::jsonb,
+  updated_at       timestamptz not null default now(),
+  updated_by       uuid references auth.users(id)
+);
+
+alter table public.akp_contacts enable row level security;
+
+-- Kontaktdaten sind Team-Arbeitswerkzeug: jeder eingeloggte Nutzer (jede Rolle)
+-- darf lesen und pflegen, analog zu dashboard_kv.
+create policy "Authenticated read akp_contacts"
+  on public.akp_contacts for select
+  to authenticated
+  using (true);
+
+create policy "Authenticated insert akp_contacts"
+  on public.akp_contacts for insert
+  to authenticated
+  with check (true);
+
+create policy "Authenticated update akp_contacts"
+  on public.akp_contacts for update
+  to authenticated
+  using (true)
+  with check (true);
+
+create index if not exists akp_contacts_nr_idx on public.akp_contacts (nr);
+
+-- Wird bei jeder täglichen Excel-Einspielung aufgerufen (siehe syncAkpContacts
+-- in index.html): legt neue AKP an (Name best-effort aus der Einspielliste
+-- gesplittet) und hält bei bereits bekannten AKP zumindest Fachhändler/Firma/
+-- Ort sowie die Monatsproduktion aktuell (Kontaktdaten/Vorname/Nachname aus
+-- der Stammliste bzw. manuellen Bearbeitung bleiben dabei unangetastet).
+create or replace function public.akp_sync_daily(rows jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  r jsonb; nm text; vn text; nn text; sp int; mval int; mkey text; monthjson jsonb;
+begin
+  for r in select * from jsonb_array_elements(rows) loop
+    if coalesce(r->>'nr','') = '' then continue; end if;
+    nm := nullif(trim(r->>'nm'), '');
+    vn := null; nn := null;
+    if nm is not null then
+      sp := position(' ' in nm);
+      if sp > 0 then vn := left(nm, sp-1); nn := substring(nm from sp+1);
+      else vn := nm; end if;
+    end if;
+    mkey := r->>'mk';
+    mval := coalesce((r->>'mv')::int, 0);
+    monthjson := case when mkey is not null and mval <> 0 then jsonb_build_object(mkey, mval) else '{}'::jsonb end;
+
+    insert into public.akp_contacts (nr, fh_nr, vorname, nachname, firma, ort, prod_monthly)
+    values (r->>'nr', coalesce(r->>'fh',''), vn, nn, r->>'fi', r->>'or', monthjson)
+    on conflict (nr) do update set
+      fh_nr = excluded.fh_nr,
+      firma = coalesce(excluded.firma, akp_contacts.firma),
+      ort = coalesce(excluded.ort, akp_contacts.ort),
+      prod_monthly = coalesce(akp_contacts.prod_monthly,'{}'::jsonb) || excluded.prod_monthly,
+      updated_at = now();
+  end loop;
+end;
+$$;
+
+revoke execute on function public.akp_sync_daily(jsonb) from public;
+grant execute on function public.akp_sync_daily(jsonb) to authenticated;
