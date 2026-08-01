@@ -131,9 +131,15 @@ create table if not exists public.akp_contacts (
   -- künftige Monate bei jeder täglichen Einspielung einfach ergänzt werden
   -- können, ohne das Schema zu ändern.
   prod_monthly     jsonb not null default '{}'::jsonb,
+  -- Produktion in Monaten, in denen die Person bei einem ANDEREN (frueheren)
+  -- Fachhaendler produziert hat, nicht beim aktuell hinterlegten (fh_nr).
+  -- Wird separat/farblich im Popup angezeigt, zaehlt aber in der Gesamtsumme mit.
+  prod_monthly_other jsonb not null default '{}'::jsonb,
   updated_at       timestamptz not null default now(),
   updated_by       uuid references auth.users(id)
 );
+
+alter table public.akp_contacts add column if not exists prod_monthly_other jsonb not null default '{}'::jsonb;
 
 alter table public.akp_contacts enable row level security;
 
