@@ -206,8 +206,10 @@ td .betr{font-size:11px;color:var(--muted)}
 .obs-item .t{font-size:12.5px}
 .obs-item .t>b{display:block}
 .obs-item .t span{color:var(--muted);font-size:11.5px}
-/* Feste Höhe für die Beschreibungszeile(n), damit alle Einträge gleich hoch
-   sind, egal ob der Text ein- oder zweizeilig ist. */
+/* Feste, einzeilige Namenszeile (abgeschnitten statt umgebrochen) + feste
+   Höhe für die Beschreibungszeile(n), damit alle Einträge gleich hoch sind,
+   unabhängig von Namenslänge oder ein-/zweizeiliger Beschreibung. */
+.obs-item .obs-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default}
 .obs-item .obs-desc{display:block;line-height:1.35;min-height:2.7em}
 .akp-row{display:flex;align-items:center;gap:10px;padding:7px 4px;border-bottom:1px solid #ECF2F6}
 .akp-row:last-child{border-bottom:none}
@@ -1659,7 +1661,7 @@ function renderObs(){
   $("obsList").innerHTML=items.length?items.slice(0,8).map((o,i)=>`
     <div class="obs-item ${o.type}${i>=8?" extra":""}">
       <div class="ic">${o.ic||(o.type==="up"?"🚀":"⚠️")}</div>
-      <div class="t"><b>${o.f.name} <span style="font-weight:600;color:var(--muted)">· ${o.f.nr?o.f.nr+" · ":""}${o.f.ort}${showGL&&(o.f.emp||o.f.gl)?" · "+(o.f.emp||o.f.gl):""}</span></b>
+      <div class="t"><b class="obs-name" title="${escapeHtml(o.f.name)} · ${escapeHtml(o.f.nr||"")} · ${escapeHtml(o.f.ort||"")}${showGL&&(o.f.emp||o.f.gl)?" · "+escapeHtml(o.f.emp||o.f.gl):""}">${escapeHtml(o.f.name)} <span style="font-weight:600;color:var(--muted)">· ${o.f.nr?escapeHtml(o.f.nr)+" · ":""}${escapeHtml(o.f.ort||"")}${showGL&&(o.f.emp||o.f.gl)?" · "+escapeHtml(o.f.emp||o.f.gl):""}</span></b>
         <span class="obs-desc">${o.txt}</span></div>
     </div>`).join(""):`<div class="empty-note">Aktuell keine auffälligen Abweichungen – alle Händler laufen im gewohnten Rahmen. ✅</div>`;
 }
