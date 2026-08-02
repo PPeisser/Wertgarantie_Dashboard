@@ -211,12 +211,20 @@ td .betr{font-size:11px;color:var(--muted)}
 .akp-row .info{flex:1;min-width:0}
 .akp-row .info b{display:block;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .akp-row .info span{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
-/* Feste Breite + eigene Zeile für die Pille, damit die Zahlen selbst bei
-   unterschiedlich langen Firmennamen/Prozentwerten untereinander stehen. */
-.akp-row .val{flex:none;width:128px;display:flex;flex-direction:column;align-items:flex-end;gap:3px;font-weight:900;font-size:15px;color:var(--wg-navy)}
-.akp-row .val-num{white-space:nowrap}
+/* Zahl in fester Breite (rechtsbündig) + Pille daneben in derselben Zeile,
+   damit die Zahlen bei unterschiedlich langen Firmennamen/Prozentwerten
+   untereinander stehen, aber die Zeilenhöhe fix/einzeilig bleibt – der
+   Firmenname darf dafür ruhig abgeschnitten werden (siehe .info). */
+.akp-row .val{flex:none;display:flex;align-items:baseline;gap:8px;white-space:nowrap;font-weight:900;font-size:15px;color:var(--wg-navy)}
+.akp-row .val-num{display:inline-block;width:58px;text-align:right}
 .akp-row .val small{font-weight:700;font-size:10px;color:var(--muted)}
-.akp-row .val .pill{text-align:right;white-space:normal;line-height:1.3}
+.akp-row .val .pill{white-space:nowrap}
+/* Akquise ohne Produktion: schmalere, fixe Zeilenhöhe – Adresse fest auf
+   2 Zeilen gekappt (mit Ellipsis), damit mehr Platz für den Namen bleibt. */
+.akqop-table td{padding:5px 8px}
+.akqop-table .akqop-name{max-width:230px}
+.akqop-table .akqop-name b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default}
+.akqop-table .akqop-addr{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;height:2.6em;line-height:1.3;max-width:150px;white-space:normal}
 
 /* ---------- Empty state ---------- */
 #emptyState{
@@ -2035,11 +2043,11 @@ function renderAkqOhneProd(){
     .sort((a,b)=>(b.beginn||"").localeCompare(a.beginn||""));
   $("akqOpWho").textContent=`${rows.length} Händler · ${currentEmp}`;
   if(!rows.length){ $("akqOpBody").innerHTML=`<div class="empty-note">Alle Akquisekunden dieser Ansicht haben ${s.jahr} bereits produziert. 🎉</div>`; return; }
-  $("akqOpBody").innerHTML=`<table><thead><tr><th>Händler${showGL?" / Betreuer":""}</th><th>Beginn</th><th>Adresse</th><th>Telefon</th></tr></thead><tbody>`+
+  $("akqOpBody").innerHTML=`<table class="akqop-table"><thead><tr><th>Händler${showGL?" / Betreuer":""}</th><th>Adresse</th><th>Beginn</th><th>Telefon</th></tr></thead><tbody>`+
     rows.map(a=>`<tr>
-      <td style="max-width:150px"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default" title="${escapeHtml(a.name)}">${escapeHtml(a.name)}</b><br><span class="betr">${a.nr}${showGL?" · "+(a.emp||a.glRaw||"–"):""}</span></td>
+      <td class="akqop-name"><b title="${escapeHtml(a.name)}">${escapeHtml(a.name)}</b><br><span class="betr">${a.nr}${showGL?" · "+(a.emp||a.glRaw||"–"):""}</span></td>
+      <td><span class="betr akqop-addr">${a.strasse||""}${a.strasse?", ":""}${a.plz} ${a.ort}</span></td>
       <td>${a.beginn?fmtDate(a.beginn):"–"}</td>
-      <td style="white-space:normal;min-width:150px"><span class="betr">${a.strasse||""}${a.strasse?", ":""}${a.plz} ${a.ort}</span></td>
       <td>${a.tel?`<a href="tel:${a.tel.replace(/[^+\d]/g,"")}" style="color:var(--wg-blue);font-weight:700;text-decoration:none">${a.tel}</a>`:"–"}</td>
     </tr>`).join("")+`</tbody></table>`;
 }
