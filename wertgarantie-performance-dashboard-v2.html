@@ -997,14 +997,6 @@ let askedGoal = {};
 function hasData(){ return !!state.latest; }
 
 /* ---------- Excel-Parsing (Auswertung_TAG-Format) ---------- */
-function dataSheet(wb, part){
-  const p=part.toLowerCase().replace(/[^a-z0-9]/g,"");
-  for(const n of wb.SheetNames){
-    if(!n.toLowerCase().startsWith("data_")) continue;
-    if(n.toLowerCase().replace(/[^a-z0-9]/g,"").includes(p)) return wb.Sheets[n];
-  }
-  return null;
-}
 function sheetByName(wb, part){
   const p=part.toLowerCase().replace(/[^a-z]/g,"");
   for(const n of wb.SheetNames){
@@ -1212,24 +1204,33 @@ function parseAuswertung(wb){
     }
   })();
 
-  /* --- data_Region_nach_GL_4: Gebrauchtgeräte-Quote LJ/VJ je GL --- */
+  /* --- Gebrauchtgeräte-Quote LJ/VJ je GL: liegt in einem der "data_"-Hilfsblätter
+     hinter dem sichtbaren Region_nach_GL-Tab (Excel-PivotTable-Cache). Welches
+     data_-Blatt das genau ist (z. B. "_3" vs. "_4"), verschiebt sich je nach
+     Anzahl der Pivot-Tabellen in der Exportvorlage - deshalb nicht mehr auf
+     einen festen Suffix verlassen, sondern alle data_-Blätter nach der
+     Kopfzeile "Quote Gebrauchtgeräte" durchsuchen. */
   (function(){
-    const ws=dataSheet(wb,"regionnachgl4"); if(!ws) return;
-    const rows=toRows(ws);
-    let hi=-1,q=-1,qv=-1;
-    for(let i=0;i<rows.length;i++){
-      const r=rows[i]; if(!r) continue;
-      for(let j=0;j<r.length;j++){
-        const v=String(r[j]||"");
-        if(v.includes("Quote Gebrauchtgeräte")&&!v.includes("VJ")){ hi=i; q=j; }
-        if(v.includes("Quote Gebrauchtgeräte VJ")){ hi=i; qv=j; }
+    let hi=-1,q=-1,qv=-1,foundRows=null;
+    for(const n of wb.SheetNames){
+      if(!n.toLowerCase().startsWith("data_")) continue;
+      const rows=toRows(wb.Sheets[n]);
+      hi=-1; q=-1; qv=-1;
+      for(let i=0;i<rows.length;i++){
+        const r=rows[i]; if(!r) continue;
+        for(let j=0;j<r.length;j++){
+          const v=String(r[j]||"");
+          if(v.includes("Quote Gebrauchtgeräte")&&!v.includes("VJ")){ hi=i; q=j; }
+          if(v.includes("Quote Gebrauchtgeräte VJ")){ hi=i; qv=j; }
+        }
+        if(hi>-1) break;
       }
-      if(hi>-1) break;
+      if(hi>-1){ foundRows=rows; break; }
     }
-    if(hi<0) return;
+    if(hi<0||!foundRows) return;
     snap.gwQuote={};
-    for(let i=hi+1;i<rows.length;i++){
-      const r=rows[i]; if(!r||r[0]==null) continue;
+    for(let i=hi+1;i<foundRows.length;i++){
+      const r=foundRows[i]; if(!r||r[0]==null) continue;
       const name=String(r[0]).trim();
       snap.gwQuote[matchEmployee(name)||("x_"+name)]={lj:num(r[q]),vj:qv>-1?num(r[qv]):0};
     }
