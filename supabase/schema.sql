@@ -126,7 +126,8 @@ create table if not exists public.akp_contacts (
   email            text,
   geburtsdatum     date,
   aktionsteilnahme boolean,
-  profi_training   smallint check (profi_training is null or profi_training between 1 and 3),
+  -- '1'/'2'/'3' = Trainingsstufe, 'erledigt' = abgeschlossen, '500' = 500-Verträge-Meilenstein.
+  profi_training   text check (profi_training is null or profi_training in ('1','2','3','erledigt','500')),
   -- Monatsproduktion als offene Kalender-Map "YYYY-MM" -> Verträge, damit
   -- künftige Monate bei jeder täglichen Einspielung einfach ergänzt werden
   -- können, ohne das Schema zu ändern.

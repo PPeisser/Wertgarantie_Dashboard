@@ -273,6 +273,10 @@ td .betr{font-size:11px;color:var(--muted)}
 .ac-month-table td.other-fh{color:var(--amber);font-weight:800}
 .ac-month-note{font-size:11px;color:var(--muted);margin-top:8px;display:flex;align-items:center;gap:6px}
 .ac-month-note .dot-amber{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--amber);flex:none}
+.ac-yearly-table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+.ac-yearly-table th{text-align:right;font-weight:800;color:var(--muted);padding:4px 8px;font-size:10.5px}
+.ac-yearly-table th:first-child,.ac-yearly-table td:first-child{text-align:left}
+.ac-yearly-table td{text-align:right;padding:5px 8px;border-top:1px solid #ECF2F6;font-weight:700}
 
 /* ---------- Toast ---------- */
 #toast{
@@ -573,7 +577,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
           <select id="acAktEdit"><option value="">–</option><option value="ja">Ja</option><option value="nein">Nein</option></select>
         </div>
         <div><label class="ac-lbl" for="acTrainEdit">Profi-Training</label>
-          <select id="acTrainEdit"><option value="">Keine</option><option value="1">Stufe 1</option><option value="2">Stufe 2</option><option value="3">Stufe 3</option></select>
+          <select id="acTrainEdit"><option value="">Keines</option><option value="1">Stufe 1</option><option value="2">Stufe 2</option><option value="3">Stufe 3</option><option value="erledigt">erledigt</option><option value="500">500 Verträge</option></select>
         </div>
       </div>
       <div class="actions" style="margin-top:14px">
@@ -585,6 +589,11 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:13px">Monatsproduktion</h4>
     <div id="acMonthly"></div>
+    <div id="acYearlyTrend"></div>
+
+    <div class="actions" style="margin-top:18px;justify-content:flex-start">
+      <button class="btn btn-ghost no-print" id="acPdfBtn">⬇ Datenblatt als PDF</button>
+    </div>
   </div>
 </div>
 
@@ -1275,9 +1284,13 @@ function akpContactSums(rec,jahr,monat){
   for(const [k,v] of Object.entries(rec.prod_monthly_other||{})) pm[k]=(pm[k]||0)+v;
   const mk=jahr+"-"+String(monat).padStart(2,"0");
   let lj=0,vj=0,mVal=0;
+  // VJ nur bis zum selben Monat wie LJ summieren (gleicher Zeitraum) – sonst
+  // wird ein "bis heuer" kumuliertes LJ mit einem vollen VJ-Jahr verglichen,
+  // was praktisch immer wie ein Rückgang aussieht.
   for(const [k,v] of Object.entries(pm)){
-    if(k.startsWith(jahr+"-")) lj+=v;
-    else if(k.startsWith((jahr-1)+"-")) vj+=v;
+    const [y,m]=k.split("-").map(Number);
+    if(y===jahr&&m<=monat) lj+=v;
+    else if(y===jahr-1&&m<=monat) vj+=v;
     if(k===mk) mVal=v;
   }
   return {lj,vj,monat:mVal};
@@ -1634,7 +1647,7 @@ function renderAKP(){
   const p=akpPeriod, medal=["#FFD700","#C0C0C0","#CD7F32","#8FB6C9","#8FB6C9"];
   const row=(r,i,neg,val,unit,pill)=>`<div class="akp-row">
       <div class="med" style="background:${neg?"var(--neg-bg)":medal[i]+"33"};color:${neg?"var(--neg)":"var(--wg-navy)"}">${neg?"▼":(i+1)}</div>
-      <div class="info"><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><span>Nr. ${escapeHtml(r.nr)} · ${r.firma} · ${r.ort}${showGL&&r.emp?" · "+r.emp:""}</span></div>
+      <div class="info"><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><span>${r.firma} · ${r.ort}${showGL&&r.emp?" · "+r.emp:""}</span></div>
       <div class="val">${fmt(val)}<small> ${unit} </small>${pill}</div>
     </div>`;
   let html="";
@@ -1668,8 +1681,7 @@ function renderAkpSearch(){
   if(!hits.length){ box.innerHTML=`<div class="empty-note">Keine AKP gefunden.</div>`; return; }
   box.innerHTML=hits.map(r=>`<div class="akp-search-row">
       <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><br>
-      <span class="betr">Nr. ${escapeHtml(r.nr)} · ${escapeHtml(r.firma||"")} · ${escapeHtml(r.ort||"")}</span></span>
-      <span class="betr">FH ${escapeHtml(r.fhNr||"–")}</span>
+      <span class="betr">${escapeHtml(r.firma||"")} · ${escapeHtml(r.ort||"")}</span></span>
     </div>`).join("");
 }
 /* Ranking für Panel & PopUp:
@@ -1695,10 +1707,15 @@ function akpRanked(rows,p){
   const list=rows.map(r=>{
     const val=valFor(r), prevVal=prevFor(r);
     return {...r,val,vjDiff:r.lj-r.vj,periodDiff:prevVal==null?null:val-prevVal,
+      periodPct:prevVal==null?null:pctOf(val,prevVal),
       pill:`<span class="pill ${(r.lj-r.vj)>=0?"pos":"neg"}">${fmtSign(r.lj-r.vj)} vs. VJ (${fmtPct(pctOf(r.lj,r.vj))})</span>`};
   });
   const top=[...list].sort((a,b)=>b.val-a.val||(b.vjDiff??0)-(a.vjDiff??0));
-  const decliners=list.filter(r=>r.periodDiff!=null&&r.periodDiff<0).sort((a,b)=>a.periodDiff-b.periodDiff);
+  // Rückgang relativ (%) statt absolut reihen – sonst dominieren immer dieselben
+  // großen Produzenten die Flop-Liste allein wegen ihrer hohen Stückzahlen,
+  // auch wenn ihr Rückgang prozentuell klein ist.
+  const decliners=list.filter(r=>r.periodDiff!=null&&r.periodDiff<0&&r.periodPct!=null)
+    .sort((a,b)=>a.periodPct-b.periodPct);
   const flop=decliners.length?decliners:[...list].sort((a,b)=>a.val-b.val||(a.vjDiff??0)-(b.vjDiff??0));
   const flopLblFor={woche:"größter Rückgang ggü. Vorwoche",monat:"größter Rückgang ggü. Ø-Monat",jahr:"größter Verlust ggü. Vorjahr"};
   return {top,flop,flopLbl:decliners.length?flopLblFor[p]:"schwächste Produktion (kein Rückgang im Zeitraum)"};
@@ -1717,7 +1734,7 @@ function openAkpModal(){
     const mkTbl=(list,neg)=>`<table><thead><tr><th></th><th>AKP / Firma${showGL?" / Betreuer":""}</th><th class="r">${unit}</th><th class="r">VT</th><th class="r">vs. VJ</th></tr></thead><tbody>`+
       list.slice(0,akpN).map((r,i)=>`<tr>
         <td><span class="rank" style="${neg?"background:var(--neg-bg);color:var(--neg)":""}">${i+1}</span></td>
-        <td><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><br><span class="betr">Nr. ${escapeHtml(r.nr)} · ${r.firma} · ${r.ort}${showGL&&r.emp?" · "+r.emp:""}</span></td>
+        <td><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><br><span class="betr">${r.firma} · ${r.ort}${showGL&&r.emp?" · "+r.emp:""}</span></td>
         <td class="r" style="font-weight:900">${fmt(r.val)}</td>
         <td class="r" style="color:var(--muted)">${fmt(r.vt)}</td>
         <td class="r">${r.vjDiff==null?"–":`<span class="pill ${r.vjDiff>=0?"pos":"neg"}">${fmtSign(r.vjDiff)}</span>`}</td>
@@ -1756,6 +1773,7 @@ async function openAkpContact(nr,fallbackName){
   $("acMeta").innerHTML=`AKP-Nr. <b>${escapeHtml(nr)}</b>${c.firma?" · "+escapeHtml(c.firma):""}${c.fh_nr?" · FH "+escapeHtml(c.fh_nr):""}${c.ort?" · "+escapeHtml(c.ort):""}`;
   renderAkpContactView();
   renderAkpMonthly();
+  renderAkpYearlyTrend();
 }
 function renderAkpContactView(){
   const c=akpContactCurrent;
@@ -1763,7 +1781,7 @@ function renderAkpContactView(){
   $("acEmailView").textContent=c.email||"–";
   $("acGebView").textContent=c.geburtsdatum?fmtDate(c.geburtsdatum):"–";
   $("acAktView").textContent=c.aktionsteilnahme==null?"–":(c.aktionsteilnahme?"Ja":"Nein");
-  $("acTrainView").textContent=c.profi_training?"Stufe "+c.profi_training:"Keines";
+  $("acTrainView").textContent=c.profi_training?(TRAIN_LBL[c.profi_training]||c.profi_training):"Keines";
   const lastDay=akpLastProdDay(c.nr);
   $("acLastProdView").textContent=lastDay?fmtDate(lastDay):"Noch keine Tagesdaten erfasst";
 }
@@ -1789,6 +1807,94 @@ function renderAkpMonthly(){
     }).join("")+`</tbody></table></div>`+
     (hasOther?`<div class="ac-month-note"><span class="dot-amber"></span>Zahlen in dieser Farbe wurden nicht beim aktuell hinterlegten Fachhändler produziert, sind aber in der Gesamtproduktion mit eingerechnet.</div>`:"");
 }
+// Mehrjahresvergleich (nicht nur ggü. dem unmittelbaren Vorjahr, sondern über
+// alle erfassten Jahre hinweg), damit man Trends selbst einschätzen kann statt
+// sich nur auf eine einzelne Rückgang/Zuwachs-Kennzahl verlassen zu müssen.
+function renderAkpYearlyTrend(){
+  const c=akpContactCurrent;
+  const merged={};
+  for(const [k,v] of Object.entries(c.prod_monthly||{})) merged[k]=(merged[k]||0)+v;
+  for(const [k,v] of Object.entries(c.prod_monthly_other||{})) merged[k]=(merged[k]||0)+v;
+  const byYear={};
+  for(const [k,v] of Object.entries(merged)){
+    const y=k.slice(0,4);
+    if(!byYear[y]) byYear[y]={sum:0,months:0};
+    byYear[y].sum+=v; byYear[y].months++;
+  }
+  const years=Object.keys(byYear).sort();
+  if(years.length<2){ $("acYearlyTrend").innerHTML=""; return; }
+  let prevSum=null;
+  const rows=years.map(y=>{
+    const {sum,months}=byYear[y];
+    const diff=prevSum==null?null:sum-prevSum;
+    const pct=prevSum==null?null:pctOf(sum,prevSum);
+    prevSum=sum;
+    return `<tr><td><b>${y}</b></td><td>${months} ${months===1?"Monat":"Monate"}</td><td>${fmt(sum)}</td>
+      <td>${diff==null?"–":`<span class="pill ${diff>=0?"pos":"neg"}">${fmtSign(diff)} (${fmtPct(pct)})</span>`}</td></tr>`;
+  }).join("");
+  $("acYearlyTrend").innerHTML=`<h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:13px">Jahresvergleich</h4>
+    <table class="ac-yearly-table"><thead><tr><th>Jahr</th><th>Erfasst</th><th>Summe</th><th>vs. Vorjahr</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="ac-month-note">Jahre mit weniger als 12 erfassten Monaten sind noch nicht vollständig – der Vergleich ist dann nicht 1:1.</div>`;
+}
+const TRAIN_LBL={"1":"Stufe 1","2":"Stufe 2","3":"Stufe 3",erledigt:"erledigt",500:"500 Verträge"};
+let akpPdfBusy=false;
+// Eigenständiges, festes Ein-Seiten-A4-Hochformat-Datenblatt für den aktuell
+// geöffneten AKP – unabhängig vom Haupt-Dashboard-PDF (Querformat, mehrseitig).
+async function exportAkpPdf(){
+  if(akpPdfBusy) return;
+  if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)){
+    toast("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals klicken.");
+    return;
+  }
+  const c=akpContactCurrent; if(!c||!c.nr) return;
+  akpPdfBusy=true;
+  toast("PDF wird erstellt …");
+  const box=document.createElement("div");
+  try{
+    const name=(c.vorname||c.nachname)?[c.vorname,c.nachname].filter(Boolean).join(" "):c.nr;
+    const field=(lbl,val)=>`<div><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#5D7284;margin-bottom:3px">${lbl}</div><div style="font-size:14px;font-weight:700;color:#10202C">${val}</div></div>`;
+    const lastDay=akpLastProdDay(c.nr);
+    box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
+    box.innerHTML=`
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:18px">
+        <div>
+          <div style="font-size:21px;font-weight:900;color:#062A3F">${escapeHtml(name)}</div>
+          <div style="font-size:12px;color:#5D7284;margin-top:3px">AKP-Nr. ${escapeHtml(c.nr)}${c.firma?" · "+escapeHtml(c.firma):""}${c.fh_nr?" · FH "+escapeHtml(c.fh_nr):""}${c.ort?" · "+escapeHtml(c.ort):""}</div>
+        </div>
+        <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>AKP-Datenblatt</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px;margin-bottom:20px">
+        ${field("Telefon",escapeHtml(c.telefon||"–"))}
+        ${field("E-Mail",escapeHtml(c.email||"–"))}
+        ${field("Geburtsdatum",c.geburtsdatum?fmtDate(c.geburtsdatum):"–")}
+        ${field("Aktionsteilnahme",c.aktionsteilnahme==null?"–":(c.aktionsteilnahme?"Ja":"Nein"))}
+        ${field("Profi-Training",c.profi_training?(TRAIN_LBL[c.profi_training]||escapeHtml(c.profi_training)):"Keines")}
+        ${field("Letzte Produktion",lastDay?fmtDate(lastDay):"Noch keine Tagesdaten erfasst")}
+      </div>
+      <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Monatsproduktion</div>
+      ${$("acMonthly").innerHTML}
+      ${$("acYearlyTrend").innerHTML}
+    `;
+    document.body.appendChild(box);
+    await new Promise(r=>setTimeout(r,30));
+    const canvas=await html2canvas(box,{scale:2,backgroundColor:"#ffffff",useCORS:true,logging:false});
+    const {jsPDF}=window.jspdf;
+    const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+    const pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), margin=10;
+    let imgW=pw-2*margin, imgH=canvas.height*imgW/canvas.width;
+    if(imgH>ph-2*margin){ imgH=ph-2*margin; imgW=canvas.width*imgH/canvas.height; }
+    const x=(pw-imgW)/2;
+    pdf.addImage(canvas.toDataURL("image/jpeg",0.95),"JPEG",x,margin,imgW,imgH);
+    pdf.save("AKP_"+(c.nr||"Datenblatt").replace(/[^\wÄÖÜäöüß-]+/g,"_")+".pdf");
+    toast("PDF erstellt ✓ Download gestartet");
+  }catch(e){
+    console.error(e);
+    toast("PDF-Erstellung fehlgeschlagen.");
+  }finally{
+    if(box.parentNode) box.parentNode.removeChild(box);
+    akpPdfBusy=false;
+  }
+}
 function toggleAkpEdit(on){
   $("acViewMode").classList.toggle("hidden",on);
   $("acEditMode").classList.toggle("hidden",!on);
@@ -1810,7 +1916,7 @@ async function saveAkpContact(){
   const aktSel=$("acAktEdit").value;
   const aktionsteilnahme=aktSel===""?null:(aktSel==="ja");
   const trainSel=$("acTrainEdit").value;
-  const profi_training=trainSel===""?null:+trainSel;
+  const profi_training=trainSel===""?null:trainSel;
   $("acSaveBtn").disabled=true;
   const {error}=await sb.from("akp_contacts").upsert({
     nr,telefon,email,geburtsdatum,aktionsteilnahme,profi_training,
@@ -2133,6 +2239,7 @@ $("acClose").onclick=()=>$("akpContactModal").classList.add("hidden");
 $("acEditBtn").onclick=()=>toggleAkpEdit(true);
 $("acCancelBtn").onclick=()=>toggleAkpEdit(false);
 $("acSaveBtn").onclick=saveAkpContact;
+$("acPdfBtn").onclick=()=>exportAkpPdf();
 document.querySelectorAll("#akpNBtns button").forEach(b=>{
   b.onclick=()=>{ akpN=+b.dataset.n; openAkpModal(); };
 });
