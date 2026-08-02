@@ -210,6 +210,10 @@ td .betr{font-size:11px;color:var(--muted)}
    Höhe für die Beschreibungszeile(n), damit alle Einträge gleich hoch sind,
    unabhängig von Namenslänge oder ein-/zweizeiliger Beschreibung. */
 .obs-item .obs-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default}
+/* Akquise-ohne-Besuch-Layout: 2 zusätzliche, einzeilige Zeilen (Betreuer,
+   Jahresproduktion) statt einer variablen Beschreibung - in Summe genauso
+   hoch wie das Standard-Layout (Name + bis zu 2 Zeilen Beschreibung). */
+.obs-item .obs-sub{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default}
 .obs-item .obs-desc{display:block;line-height:1.35;min-height:2.7em}
 .akp-row{display:flex;align-items:center;gap:10px;padding:7px 4px;border-bottom:1px solid #ECF2F6}
 .akp-row:last-child{border-bottom:none}
@@ -1649,21 +1653,37 @@ function renderObs(){
   // Akquisekunden ohne einzigen Besuch in 2026 (Spalten P+Q = 0)
   (state.latest.akq||[]).filter(a=>(currentEmp===AT_GESAMT||a.emp===currentEmp)&&(a.besP||0)===0&&(a.besT||0)===0)
     .sort((a,b)=>b.p2026-a.p2026)
-    .forEach(a=>items.push({f:{name:a.name,nr:a.nr,ort:a.ort,emp:a.emp,gl:a.glRaw},type:"down",prio:2,sev:a.p2026,ic:"📞",
-      txt:`<b>Akquise ohne Besuch in ${s.jahr}</b><br><span style="white-space:nowrap">Jahresproduktion: <b>${fmt(a.p2026)}</b> Verträge</span>`}));
+    .forEach(a=>items.push({f:{name:a.name,nr:a.nr,ort:a.ort,emp:a.emp,gl:a.glRaw},type:"down",prio:2,sev:a.p2026,ic:"📞",layout:"akq",
+      sub:`${a.emp||a.glRaw||"– ohne Betreuer –"} · AKQ ohne Besuch ${s.jahr}`,
+      txt:`Jahresproduktion: <b>${fmt(a.p2026)}</b> Verträge`}));
   // Zuerst nach Priorität (Stufe), innerhalb einer Stufe nach Auffälligkeit
   // (Schweregrad) reihen, statt nach Einfüge-Reihenfolge – damit bei der
   // Kappung auf 8 die wichtigsten Fälle zuerst stehen.
   items.sort((a,b)=>(b.prio||0)-(a.prio||0)||(b.sev||0)-(a.sev||0));
-  // Auf dem Bildschirm nur die 6 wichtigsten (Platzersparnis, nicht länger
-  // als das AKP-Panel daneben) - im Druck/PDF bleiben wie bisher bis zu 8
-  // sichtbar (siehe .obs-item.extra unten).
-  $("obsList").innerHTML=items.length?items.slice(0,8).map((o,i)=>`
-    <div class="obs-item ${o.type}${i>=8?" extra":""}">
-      <div class="ic">${o.ic||(o.type==="up"?"🚀":"⚠️")}</div>
+  // Auf dem Bildschirm nur die 8 wichtigsten (nicht länger als das AKP-Panel
+  // daneben) - im Druck/PDF bleiben wie bisher bis zu 8 sichtbar (siehe
+  // .obs-item.extra unten).
+  $("obsList").innerHTML=items.length?items.slice(0,8).map((o,i)=>{
+    const cls=`obs-item ${o.type}${i>=8?" extra":""}`;
+    const ic=o.ic||(o.type==="up"?"🚀":"⚠️");
+    if(o.layout==="akq"){
+      // Eigenes 3-Zeilen-Layout: 1) Firma · AKQ-Nr. · Ort  2) Betreuer · AKQ ohne Besuch  3) Jahresproduktion.
+      // Fett nur bei Firmenname und Vertragszahl, alles einzeilig (keine variable Zeilenhöhe).
+      return `<div class="${cls}">
+      <div class="ic">${ic}</div>
+      <div class="t">
+        <b class="obs-name" title="${escapeHtml(o.f.name)} · ${escapeHtml(o.f.nr||"")} · ${escapeHtml(o.f.ort||"")}">${escapeHtml(o.f.name)} <span style="font-weight:600;color:var(--muted)">· ${escapeHtml(o.f.nr||"")} · ${escapeHtml(o.f.ort||"")}</span></b>
+        <span class="obs-sub" title="${escapeHtml(o.sub)}">${escapeHtml(o.sub)}</span>
+        <span class="obs-sub">${o.txt}</span>
+      </div>
+    </div>`;
+    }
+    return `<div class="${cls}">
+      <div class="ic">${ic}</div>
       <div class="t"><b class="obs-name" title="${escapeHtml(o.f.name)} · ${escapeHtml(o.f.nr||"")} · ${escapeHtml(o.f.ort||"")}${showGL&&(o.f.emp||o.f.gl)?" · "+escapeHtml(o.f.emp||o.f.gl):""}">${escapeHtml(o.f.name)} <span style="font-weight:600;color:var(--muted)">· ${escapeHtml(o.f.ort||"")}${showGL&&(o.f.emp||o.f.gl)?" · "+escapeHtml(o.f.emp||o.f.gl):""}</span></b>
         <span class="obs-desc">${o.txt}</span></div>
-    </div>`).join(""):`<div class="empty-note">Aktuell keine auffälligen Abweichungen – alle Händler laufen im gewohnten Rahmen. ✅</div>`;
+    </div>`;
+  }).join(""):`<div class="empty-note">Aktuell keine auffälligen Abweichungen – alle Händler laufen im gewohnten Rahmen. ✅</div>`;
 }
 
 /* AKP Top/Flop 3 · umschaltbar Woche/Monat/Jahr */
