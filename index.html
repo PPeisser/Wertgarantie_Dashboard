@@ -51,7 +51,9 @@ header img.logo{height:52px;width:auto}
 .title-block{flex:1;min-width:240px}
 .title-block h1{font-size:21px;font-weight:800;letter-spacing:-.3px;color:var(--wg-navy)}
 .title-block .sub{font-size:12.5px;color:var(--muted);margin-top:2px}
-.controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.controls{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.controls-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.controls-row2{gap:8px}
 select#mitarbeiter{
   appearance:none;-webkit-appearance:none;
   font:inherit;font-weight:700;font-size:15px;color:#fff;
@@ -436,23 +438,26 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <div class="hidden" id="welcomeMsg" style="font-size:12.5px;color:var(--wg-blue-dark);font-weight:700;margin-top:2px"></div>
     </div>
     <div class="controls no-print">
+     <div class="controls-row">
       <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" class="hidden" multiple>
       <button class="btn btn-blue" id="uploadBtn" title="Einspielliste (Excel) hochladen">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         Excel einspielen
       </button>
       <select id="mitarbeiter" title="Mitarbeiter wählen"></select>
-      <button class="btn btn-ghost" id="refreshBtn" title="Aktuellen Datenstand neu laden">
+      <button class="btn btn-ghost" id="refreshBtn" title="Aktuellen Datenstand neu laden" style="padding:11px 13px">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
-        Aktualisieren
       </button>
-      <span class="hidden" id="roleBadge" style="background:var(--wg-navy);color:#fff;font-weight:800;font-size:10px;border-radius:99px;padding:4px 10px;white-space:nowrap"></span>
-      <button class="btn btn-ghost hidden" id="adminBtn" title="Admin-Panel">⚙ Admin</button>
       <button class="btn btn-ghost hidden" id="logoutBtn" title="Abmelden">Abmelden</button>
       <button class="btn btn-ghost" id="pdfBtn" title="Als PDF drucken / speichern">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
         PDF
       </button>
+     </div>
+     <div class="controls-row controls-row2">
+      <span class="hidden" id="roleBadge" style="background:var(--wg-navy);color:#fff;font-weight:800;font-size:10px;border-radius:99px;padding:4px 10px;white-space:nowrap"></span>
+      <button class="btn btn-ghost hidden" id="adminBtn" title="Admin-Panel">⚙ Admin</button>
+     </div>
     </div>
     <div class="datenstand" id="datenstand"></div>
   </header>
