@@ -442,6 +442,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         Excel einspielen
       </button>
       <select id="mitarbeiter" title="Mitarbeiter wählen"></select>
+      <button class="btn btn-ghost" id="refreshBtn" title="Aktuellen Datenstand neu laden">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+        Aktualisieren
+      </button>
       <span class="hidden" id="roleBadge" style="background:var(--wg-navy);color:#fff;font-weight:800;font-size:10px;border-radius:99px;padding:4px 10px;white-space:nowrap"></span>
       <button class="btn btn-ghost hidden" id="adminBtn" title="Admin-Panel">⚙ Admin</button>
       <button class="btn btn-ghost hidden" id="logoutBtn" title="Abmelden">Abmelden</button>
@@ -2282,15 +2286,23 @@ $("adminBtn").onclick=openAdminModal;
 $("adminClose").onclick=()=>$("adminModal").classList.add("hidden");
 $("adminUploadBtn").onclick=pickFiles;
 $("adCreateBtn").onclick=createAdminUser;
-$("mitarbeiter").onchange=async e=>{
-  currentEmp=e.target.value;
-  // Ziele werden nur einmal beim Start geladen (goals-Objekt im Speicher) -
-  // beim Wechsel der Ansicht frisch nachladen, damit ein von einem anderen
-  // Mitarbeiter zwischenzeitlich gespeichertes Monatsziel sofort sichtbar
-  // ist, ohne dass man die Seite neu laden muss.
-  try{ const g=await stGet("wg-goals"); if(g) goals=JSON.parse(g); }catch(err){}
-  render();
-};
+// Datenstand (Excel-Auswertung + Ziele) wird nur einmal beim Start geladen
+// und danach nur noch aus dem lokalen Speicher gelesen. Beim Wechsel der
+// Mitarbeiter-Ansicht oder per Klick auf "Aktualisieren" frisch aus der
+// geteilten Supabase-Tabelle nachladen, damit z.B. ein von einem anderen
+// Mitarbeiter zwischenzeitlich eingetragenes Monatsziel oder eine neuere
+// Einspielung sofort sichtbar sind, ohne dass man die Seite neu laden muss.
+let refreshBusy=false;
+async function refreshData(silent){
+  if(refreshBusy) return;
+  refreshBusy=true;
+  const btn=$("refreshBtn"); if(btn) btn.disabled=true;
+  try{ await loadAll(); render(); if(!silent) toast("Aktualisiert ✓"); }
+  catch(e){ if(!silent) toast("Aktualisieren fehlgeschlagen."); }
+  finally{ refreshBusy=false; if(btn) btn.disabled=false; }
+}
+$("mitarbeiter").onchange=e=>{ currentEmp=e.target.value; refreshData(true); };
+$("refreshBtn").onclick=()=>refreshData(false);
 document.querySelectorAll("#periodTabs button").forEach(b=>{
   b.onclick=()=>{ document.querySelectorAll("#periodTabs button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); currentPeriod=b.dataset.p; renderTopFlop(); };
 });
