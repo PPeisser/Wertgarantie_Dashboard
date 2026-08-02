@@ -204,8 +204,11 @@ td .betr{font-size:11px;color:var(--muted)}
 .obs-item.extra{display:none}
 .obs-item .ic{font-size:16px;line-height:1.3}
 .obs-item .t{font-size:12.5px}
-.obs-item .t b{display:block}
+.obs-item .t>b{display:block}
 .obs-item .t span{color:var(--muted);font-size:11.5px}
+/* Feste Höhe für die Beschreibungszeile(n), damit alle Einträge gleich hoch
+   sind, egal ob der Text ein- oder zweizeilig ist. */
+.obs-item .obs-desc{display:block;line-height:1.35;min-height:2.7em}
 .akp-row{display:flex;align-items:center;gap:10px;padding:7px 4px;border-bottom:1px solid #ECF2F6}
 .akp-row:last-child{border-bottom:none}
 .akp-row .med{width:26px;height:26px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px;flex:none}
@@ -1645,7 +1648,7 @@ function renderObs(){
   (state.latest.akq||[]).filter(a=>(currentEmp===AT_GESAMT||a.emp===currentEmp)&&(a.besP||0)===0&&(a.besT||0)===0)
     .sort((a,b)=>b.p2026-a.p2026)
     .forEach(a=>items.push({f:{name:a.name,nr:a.nr,ort:a.ort,emp:a.emp,gl:a.glRaw},type:"down",prio:2,sev:a.p2026,ic:"📞",
-      txt:`<b>Akquise ohne Besuch in ${s.jahr}</b> – weder persönlich noch telefonisch · Jahresproduktion: <b>${fmt(a.p2026)}</b> Verträge`}));
+      txt:`<b>Akquise ohne Besuch in ${s.jahr}</b> – weder persönlich noch telefonisch<br><span style="white-space:nowrap">Jahresproduktion: <b>${fmt(a.p2026)}</b> Verträge</span>`}));
   // Zuerst nach Priorität (Stufe), innerhalb einer Stufe nach Auffälligkeit
   // (Schweregrad) reihen, statt nach Einfüge-Reihenfolge – damit bei der
   // Kappung auf 8 die wichtigsten Fälle zuerst stehen.
@@ -1654,10 +1657,10 @@ function renderObs(){
   // als das AKP-Panel daneben) - im Druck/PDF bleiben wie bisher bis zu 8
   // sichtbar (siehe .obs-item.extra unten).
   $("obsList").innerHTML=items.length?items.slice(0,8).map((o,i)=>`
-    <div class="obs-item ${o.type}${i>=6?" extra":""}">
+    <div class="obs-item ${o.type}${i>=8?" extra":""}">
       <div class="ic">${o.ic||(o.type==="up"?"🚀":"⚠️")}</div>
       <div class="t"><b>${o.f.name} <span style="font-weight:600;color:var(--muted)">· ${o.f.nr?o.f.nr+" · ":""}${o.f.ort}${showGL&&(o.f.emp||o.f.gl)?" · "+(o.f.emp||o.f.gl):""}</span></b>
-        <span>${o.txt}</span></div>
+        <span class="obs-desc">${o.txt}</span></div>
     </div>`).join(""):`<div class="empty-note">Aktuell keine auffälligen Abweichungen – alle Händler laufen im gewohnten Rahmen. ✅</div>`;
 }
 
