@@ -1738,7 +1738,7 @@ function renderAkpSearch(){
   if(!hits.length){ box.innerHTML=`<div class="empty-note">Keine AKP gefunden.</div>`; return; }
   const unit=akpPeriod==="woche"?"Woche":(akpPeriod==="monat"?"Monat":"Jahr");
   box.innerHTML=hits.map(r=>`<div class="akp-search-row">
-      <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><br>
+      <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b>
       <span class="betr">${escapeHtml(r.firma||"")} · ${escapeHtml(r.ort||"")}</span></span>
       <span class="val"><span class="val-num">${fmt(r.val)}<small> ${unit}</small></span>${r.pill||""}</span>
     </div>`).join("");
@@ -2127,7 +2127,7 @@ let pdfBusy=false;
 // 9-Wochen-Plan) würden im Druck/PDF sonst mitten in der Zeile abgeschnitten
 // (fixe max-height + overflow:auto). Für den Ausdruck stattdessen bewusst auf
 // eine handliche Zeilenzahl kappen und die Restmenge als Hinweis ausweisen.
-const PRINT_LIST_CAPS={ akqList:20, akqOpBody:10, nwBody:10 };
+const PRINT_LIST_CAPS={ akqList:12, akqOpBody:10, nwBody:10 };
 let printListBackup=null;
 function applyPrintCaps(){
   printListBackup={};
