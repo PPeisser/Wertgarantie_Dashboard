@@ -201,6 +201,7 @@ td .betr{font-size:11px;color:var(--muted)}
   padding:9px 10px;border-radius:12px;margin-bottom:7px;
 }
 .obs-item.up{background:var(--pos-bg)} .obs-item.down{background:var(--neg-bg)}
+.obs-item.extra{display:none}
 .obs-item .ic{font-size:16px;line-height:1.3}
 .obs-item .t{font-size:12.5px}
 .obs-item .t b{display:block}
@@ -344,6 +345,7 @@ td .betr{font-size:11px;color:var(--muted)}
   .akp-row .val{font-size:12px}
   .mixbar{height:19px}
   .obs-item{padding:4px 6px;margin-bottom:3px;gap:5px;break-inside:avoid}
+  .obs-item.extra{display:flex}
   .obs-item .ic{font-size:12px}
   .obs-item .t b{font-size:9.5px}
   .obs-item .t span{font-size:8.5px}
@@ -391,6 +393,7 @@ body.pdf-mode th{padding:2px 4px;font-size:8px}
 body.pdf-mode td{padding:2.5px 4px}
 body.pdf-mode .akp-row{padding:4px 2px}
 body.pdf-mode .obs-item{padding:4px 6px;margin-bottom:3px;gap:5px}
+body.pdf-mode .obs-item.extra{display:flex}
 body.pdf-mode .obs-item .t b{font-size:9.5px}
 body.pdf-mode .obs-item .t span{font-size:8.5px}
 body.pdf-mode #obsList{columns:2;column-gap:10px}
@@ -1647,8 +1650,11 @@ function renderObs(){
   // (Schweregrad) reihen, statt nach Einfüge-Reihenfolge – damit bei der
   // Kappung auf 8 die wichtigsten Fälle zuerst stehen.
   items.sort((a,b)=>(b.prio||0)-(a.prio||0)||(b.sev||0)-(a.sev||0));
-  $("obsList").innerHTML=items.length?items.slice(0,8).map(o=>`
-    <div class="obs-item ${o.type}">
+  // Auf dem Bildschirm nur die 6 wichtigsten (Platzersparnis, nicht länger
+  // als das AKP-Panel daneben) - im Druck/PDF bleiben wie bisher bis zu 8
+  // sichtbar (siehe .obs-item.extra unten).
+  $("obsList").innerHTML=items.length?items.slice(0,8).map((o,i)=>`
+    <div class="obs-item ${o.type}${i>=6?" extra":""}">
       <div class="ic">${o.ic||(o.type==="up"?"🚀":"⚠️")}</div>
       <div class="t"><b>${o.f.name} <span style="font-weight:600;color:var(--muted)">· ${o.f.nr?o.f.nr+" · ":""}${o.f.ort}${showGL&&(o.f.emp||o.f.gl)?" · "+(o.f.emp||o.f.gl):""}</span></b>
         <span>${o.txt}</span></div>
