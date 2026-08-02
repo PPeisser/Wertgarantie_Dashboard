@@ -1631,19 +1631,22 @@ function renderObs(){
     const avg=f.monat/s.tageIst;
     if(avg>=1.5||f.vt>=4){
       const dev=avg>0?(f.vt-avg)/avg*100:(f.vt>0?999:0);
-      if(dev>=120&&f.vt>=4) items.push({f,type:"up",txt:`Gestern <b>${fmt(f.vt)}</b> Verträge – deutlich über dem Monatsschnitt von ${avg.toFixed(1).replace(".",",")} pro Tag (<b class="pos-t">${fmtPct(dev)}</b>)`});
-      else if(dev<=-80&&avg>=2) items.push({f,type:"down",txt:`Gestern nur <b>${fmt(f.vt)}</b> Verträge – sonst Ø ${avg.toFixed(1).replace(".",",")} pro Tag (<b class="neg-t">${fmtPct(dev)}</b>)`});
+      if(dev>=120&&f.vt>=4) items.push({f,type:"up",sev:dev,txt:`Gestern <b>${fmt(f.vt)}</b> Verträge – deutlich über dem Monatsschnitt von ${avg.toFixed(1).replace(".",",")} pro Tag (<b class="pos-t">${fmtPct(dev)}</b>)`});
+      else if(dev<=-80&&avg>=2) items.push({f,type:"down",sev:-dev,txt:`Gestern nur <b>${fmt(f.vt)}</b> Verträge – sonst Ø ${avg.toFixed(1).replace(".",",")} pro Tag (<b class="neg-t">${fmtPct(dev)}</b>)`});
     }
     const yDev=f.vj>0?(f.lj-f.vj)/f.vj*100:null;
-    if(yDev!=null&&yDev<=-30&&f.vj>=100) items.push({f,type:"down",prio:1,txt:`Jahresproduktion bricht ein: <b>${fmt(f.lj)}</b> statt ${fmt(f.vj)} im Vorjahr (<b class="neg-t">${fmtPct(yDev)}</b>)`});
-    if(f.vj===0&&f.lj>=100) items.push({f,type:"up",prio:1,txt:`Neuer Produzent: bereits <b>${fmt(f.lj)}</b> Verträge im Jahr – im Vorjahr noch 0`});
+    if(yDev!=null&&yDev<=-30&&f.vj>=100) items.push({f,type:"down",prio:1,sev:-yDev,txt:`Jahresproduktion bricht ein: <b>${fmt(f.lj)}</b> statt ${fmt(f.vj)} im Vorjahr (<b class="neg-t">${fmtPct(yDev)}</b>)`});
+    if(f.vj===0&&f.lj>=100) items.push({f,type:"up",prio:1,sev:f.lj,txt:`Neuer Produzent: bereits <b>${fmt(f.lj)}</b> Verträge im Jahr – im Vorjahr noch 0`});
   });
   // Akquisekunden ohne einzigen Besuch in 2026 (Spalten P+Q = 0)
   (state.latest.akq||[]).filter(a=>(currentEmp===AT_GESAMT||a.emp===currentEmp)&&(a.besP||0)===0&&(a.besT||0)===0)
     .sort((a,b)=>b.p2026-a.p2026)
-    .forEach(a=>items.push({f:{name:a.name,nr:a.nr,ort:a.ort,emp:a.emp,gl:a.glRaw},type:"down",prio:2,ic:"📞",
+    .forEach(a=>items.push({f:{name:a.name,nr:a.nr,ort:a.ort,emp:a.emp,gl:a.glRaw},type:"down",prio:2,sev:a.p2026,ic:"📞",
       txt:`<b>Akquise ohne Besuch in ${s.jahr}</b> – weder persönlich noch telefonisch · Jahresproduktion: <b>${fmt(a.p2026)}</b> Verträge`}));
-  items.sort((a,b)=>(b.prio||0)-(a.prio||0));
+  // Zuerst nach Priorität (Stufe), innerhalb einer Stufe nach Auffälligkeit
+  // (Schweregrad) reihen, statt nach Einfüge-Reihenfolge – damit die
+  // relevantesten Fälle zuerst stehen, auch ohne zu scrollen.
+  items.sort((a,b)=>(b.prio||0)-(a.prio||0)||(b.sev||0)-(a.sev||0));
   $("obsList").innerHTML=items.length?items.map(o=>`
     <div class="obs-item ${o.type==="up"?"up":""}">
       <div class="ic">${o.ic||(o.type==="up"?"🚀":"⚠️")}</div>
