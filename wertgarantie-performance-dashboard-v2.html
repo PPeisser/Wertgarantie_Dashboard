@@ -211,12 +211,13 @@ td .betr{font-size:11px;color:var(--muted)}
 .akp-row .info{flex:1;min-width:0}
 .akp-row .info b{display:block;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .akp-row .info span{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
-/* Zahl in fester Breite (rechtsbündig) + Pille daneben in derselben Zeile,
-   damit die Zahlen bei unterschiedlich langen Firmennamen/Prozentwerten
-   untereinander stehen, aber die Zeilenhöhe fix/einzeilig bleibt – der
-   Firmenname darf dafür ruhig abgeschnitten werden (siehe .info). */
-.akp-row .val{flex:none;display:flex;align-items:baseline;gap:8px;white-space:nowrap;font-weight:900;font-size:15px;color:var(--wg-navy)}
-.akp-row .val-num{display:inline-block;width:58px;text-align:right}
+/* Zahl in eigener Zeile, Pille (einzeilig, nicht umbrechend) direkt darunter,
+   beide rechtsbündig -> Zahlen stehen sauber untereinander (jede Zahlenzeile
+   endet exakt am rechten Rand), die Pille bleibt schmal statt danebenzustehen,
+   Zeilenhöhe ist fix (immer genau 2 Zeilen). Der Firmenname darf dafür ruhig
+   abgeschnitten werden (siehe .info). */
+.akp-row .val{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-weight:900;font-size:15px;color:var(--wg-navy)}
+.akp-row .val-num{white-space:nowrap}
 .akp-row .val small{font-weight:700;font-size:10px;color:var(--muted)}
 .akp-row .val .pill{white-space:nowrap}
 /* Akquise ohne Produktion: schmalere, fixe Zeilenhöhe – Adresse fest auf
@@ -224,7 +225,8 @@ td .betr{font-size:11px;color:var(--muted)}
 .akqop-table td{padding:5px 8px}
 .akqop-table .akqop-name{max-width:230px}
 .akqop-table .akqop-name b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default}
-.akqop-table .akqop-addr{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;height:2.6em;line-height:1.3;max-width:150px;white-space:normal}
+.akqop-table .akqop-name .betr{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.akqop-table .akqop-addr{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;height:2.6em;line-height:1.3;max-width:130px;white-space:normal}
 
 /* ---------- Empty state ---------- */
 #emptyState{
