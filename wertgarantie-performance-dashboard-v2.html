@@ -1650,7 +1650,7 @@ function renderObs(){
   (state.latest.akq||[]).filter(a=>(currentEmp===AT_GESAMT||a.emp===currentEmp)&&(a.besP||0)===0&&(a.besT||0)===0)
     .sort((a,b)=>b.p2026-a.p2026)
     .forEach(a=>items.push({f:{name:a.name,nr:a.nr,ort:a.ort,emp:a.emp,gl:a.glRaw},type:"down",prio:2,sev:a.p2026,ic:"📞",
-      txt:`<b>Akquise ohne Besuch in ${s.jahr}</b> – weder persönlich noch telefonisch<br><span style="white-space:nowrap">Jahresproduktion: <b>${fmt(a.p2026)}</b> Verträge</span>`}));
+      txt:`<b>Akquise ohne Besuch in ${s.jahr}</b><br><span style="white-space:nowrap">Jahresproduktion: <b>${fmt(a.p2026)}</b> Verträge</span>`}));
   // Zuerst nach Priorität (Stufe), innerhalb einer Stufe nach Auffälligkeit
   // (Schweregrad) reihen, statt nach Einfüge-Reihenfolge – damit bei der
   // Kappung auf 8 die wichtigsten Fälle zuerst stehen.
@@ -1661,7 +1661,7 @@ function renderObs(){
   $("obsList").innerHTML=items.length?items.slice(0,8).map((o,i)=>`
     <div class="obs-item ${o.type}${i>=8?" extra":""}">
       <div class="ic">${o.ic||(o.type==="up"?"🚀":"⚠️")}</div>
-      <div class="t"><b class="obs-name" title="${escapeHtml(o.f.name)} · ${escapeHtml(o.f.nr||"")} · ${escapeHtml(o.f.ort||"")}${showGL&&(o.f.emp||o.f.gl)?" · "+escapeHtml(o.f.emp||o.f.gl):""}">${escapeHtml(o.f.name)} <span style="font-weight:600;color:var(--muted)">· ${o.f.nr?escapeHtml(o.f.nr)+" · ":""}${escapeHtml(o.f.ort||"")}${showGL&&(o.f.emp||o.f.gl)?" · "+escapeHtml(o.f.emp||o.f.gl):""}</span></b>
+      <div class="t"><b class="obs-name" title="${escapeHtml(o.f.name)} · ${escapeHtml(o.f.nr||"")} · ${escapeHtml(o.f.ort||"")}${showGL&&(o.f.emp||o.f.gl)?" · "+escapeHtml(o.f.emp||o.f.gl):""}">${escapeHtml(o.f.name)} <span style="font-weight:600;color:var(--muted)">· ${escapeHtml(o.f.ort||"")}${showGL&&(o.f.emp||o.f.gl)?" · "+escapeHtml(o.f.emp||o.f.gl):""}</span></b>
         <span class="obs-desc">${o.txt}</span></div>
     </div>`).join(""):`<div class="empty-note">Aktuell keine auffälligen Abweichungen – alle Händler laufen im gewohnten Rahmen. ✅</div>`;
 }
