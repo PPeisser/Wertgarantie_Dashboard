@@ -1248,19 +1248,27 @@ async function syncAkpContacts(snap){
 async function loadAkpContactsIndex(){
   if(!(sb&&supaUser)) return;
   try{
-    const idx={}; const PAGE=1000; let from=0;
+    const idx={}; let from=0, guard=0;
     for(;;){
+      guard++;
       const {data,error}=await sb.from("akp_contacts")
         .select("nr,vorname,nachname,firma,ort,fh_nr,prod_monthly,prod_monthly_other")
-        .range(from,from+PAGE-1);
-      if(error||!data||!data.length) break;
+        .order("nr")
+        .range(from,from+999);
+      if(error){ console.error("loadAkpContactsIndex:",error.message||error); break; }
+      if(!data||!data.length) break;
       for(const r of data) if(r.nr) idx[r.nr]=r;
-      if(data.length<PAGE) break;
-      from+=PAGE;
+      // Nicht anhand der Antwortgröße auf "letzte Seite" schließen (der
+      // Server kann ein eigenes, kleineres Zeilenlimit pro Anfrage haben) –
+      // stattdessen immer um genau so viele Zeilen weiterrücken, wie
+      // tatsächlich zurückkamen, und erst bei einer leeren Antwort stoppen.
+      from+=data.length;
+      if(guard>50) break; // Sicherheitsnetz gegen Endlosschleifen
     }
     akpContactsIndex=idx;
+    console.log("AKP-Kontaktdatenbank geladen:",Object.keys(idx).length,"Einträge");
     if(hasData()) render();
-  }catch(e){}
+  }catch(e){ console.error("loadAkpContactsIndex failed:",e); }
 }
 function akpContactSums(rec,jahr,monat){
   const pm={...(rec.prod_monthly||{})};
