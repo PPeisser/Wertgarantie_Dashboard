@@ -253,6 +253,12 @@ td .betr{font-size:11px;color:var(--muted)}
 /* ---------- AKP-Kontakt PopUp ---------- */
 .akp-name-link{background:none;border:none;padding:0;margin:0;font:inherit;font-weight:inherit;color:inherit;cursor:pointer;text-align:left;text-decoration:underline;text-decoration-color:transparent;transition:text-decoration-color .15s}
 .akp-name-link:hover{text-decoration-color:currentColor}
+.akp-search{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.akp-search input{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:10px;font-size:12.5px;font-family:inherit;background:var(--paper);color:var(--ink)}
+.akp-search input:focus{outline:none;border-color:var(--wg-blue)}
+.akp-search-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 2px;border-top:1px solid #ECF2F6}
+.akp-search-row:first-child{border-top:none}
+.akp-search-row .betr{font-size:11px;color:var(--muted)}
 .ac-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px}
 .ac-lbl{display:block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:3px}
 .ac-val{font-size:14px;font-weight:700;color:var(--ink)}
@@ -474,7 +480,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div id="obsList"></div>
       </div>
       <div class="panel">
-        <h3 style="justify-content:space-between"><span style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--wg-blue)"></span>Top &amp; Flop 3 AKP</span>
+        <h3 style="justify-content:space-between"><span style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--wg-blue)"></span>Top &amp; Flop 5 AKP</span>
           <span style="display:flex;gap:6px;align-items:center">
           <span class="tabs mini no-print" id="akpTabs">
             <button data-p="woche">Woche</button>
@@ -484,6 +490,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
           <button class="btn btn-ghost no-print" id="akpMoreBtn" style="padding:5px 10px;font-size:11px;border-radius:9px" title="Top/Flop 5, 10, 20 oder 30 AKP anzeigen">Top/Flop 5–30 ⤢</button>
           </span></h3>
         <div id="akpList"></div>
+        <div class="akp-search no-print">
+          <input type="text" id="akpSearchInput" placeholder="AKP suchen: Name, AKP-Nr., FH-Nr. oder Fachhändler …" autocomplete="off">
+          <div id="akpSearchResults"></div>
+        </div>
       </div>
       <div class="panel">
         <h3 style="justify-content:space-between"><span style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--wg-navy)"></span>Top 20 AKQ</span>
@@ -1379,6 +1389,7 @@ function render(){
   renderGoals(); renderMix(); renderGW(); renderSparten();
   renderKPIs(); renderTopFlop(); renderObs(); renderAKP(); renderAKQ();
   renderAkqOhneProd(); renderNeunWochen();
+  if($("akpSearchInput")) renderAkpSearch();
   maybeAskGoal();
 }
 
@@ -1612,7 +1623,7 @@ function renderAKP(){
   const s=state.latest, showGL=currentEmp===AT_GESAMT;
   const rows=akpFullList(s).filter(a=>currentEmp===AT_GESAMT||a.emp===currentEmp);
   if(!rows.length){ $("akpList").innerHTML=`<div class="empty-note">Keine AKP-Daten in der Einspielliste gefunden.</div>`; return; }
-  const p=akpPeriod, medal=["#FFD700","#C0C0C0","#CD7F32"];
+  const p=akpPeriod, medal=["#FFD700","#C0C0C0","#CD7F32","#8FB6C9","#8FB6C9"];
   const row=(r,i,neg,val,unit,pill)=>`<div class="akp-row">
       <div class="med" style="background:${neg?"var(--neg-bg)":medal[i]+"33"};color:${neg?"var(--neg)":"var(--wg-navy)"}">${neg?"▼":(i+1)}</div>
       <div class="info"><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><span>Nr. ${escapeHtml(r.nr)} · ${r.firma} · ${r.ort}${showGL&&r.emp?" · "+r.emp:""}</span></div>
@@ -1625,12 +1636,33 @@ function renderAKP(){
     return;
   }
   const unit=p==="woche"?"Woche":(p==="monat"?"Monat":"Jahr");
-  const top=ranked.top.slice(0,3), flop=ranked.flop.slice(0,3);
-  html=`<div class="akp-h pos-t">Top 3 · ${unit}</div>`+
+  const top=ranked.top.slice(0,5), flop=ranked.flop.slice(0,5);
+  html=`<div class="akp-h pos-t">Top 5 · ${unit}</div>`+
     top.map((r,i)=>row(r,i,false,r.val,unit,r.pill)).join("")+
-    (flop.length?`<div class="akp-h neg-t">Flop 3 · ${ranked.flopLbl}</div>`+
+    (flop.length?`<div class="akp-h neg-t">Flop 5 · ${ranked.flopLbl}</div>`+
       flop.map((r,i)=>row(r,i,true,r.val,unit,r.pill)).join(""):"");
   $("akpList").innerHTML=html;
+}
+/* AKP-Suche: Name, AKP-Nr., FH-Nr. oder Fachhändler – innerhalb der aktuellen Mitarbeiter-Ansicht */
+function renderAkpSearch(){
+  const q=($("akpSearchInput").value||"").trim().toLowerCase();
+  const box=$("akpSearchResults");
+  if(!q){ box.innerHTML=""; return; }
+  if(!hasData()){ box.innerHTML=""; return; }
+  const s=state.latest;
+  const rows=akpFullList(s).filter(a=>currentEmp===AT_GESAMT||a.emp===currentEmp);
+  const hits=rows.filter(r=>
+    (r.name||"").toLowerCase().includes(q) ||
+    (r.nr||"").toLowerCase().includes(q) ||
+    (r.fhNr||"").toLowerCase().includes(q) ||
+    (r.firma||"").toLowerCase().includes(q)
+  ).slice(0,20);
+  if(!hits.length){ box.innerHTML=`<div class="empty-note">Keine AKP gefunden.</div>`; return; }
+  box.innerHTML=hits.map(r=>`<div class="akp-search-row">
+      <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><br>
+      <span class="betr">Nr. ${escapeHtml(r.nr)} · ${escapeHtml(r.firma||"")} · ${escapeHtml(r.ort||"")}</span></span>
+      <span class="betr">FH ${escapeHtml(r.fhNr||"–")}</span>
+    </div>`).join("");
 }
 /* Ranking für Panel & PopUp:
    Top  = beste nach Periodenwert (Vortagesvergleich/VJ als Pill)
@@ -2087,6 +2119,7 @@ document.querySelectorAll("#akqYearTabs button").forEach(b=>{
   b.onclick=()=>{ document.querySelectorAll("#akqYearTabs button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); akqJahrFilter=b.dataset.y; renderAKQ(); };
 });
 $("akpMoreBtn").onclick=()=>openAkpModal();
+$("akpSearchInput").oninput=()=>renderAkpSearch();
 $("amClose").onclick=()=>$("akpModal").classList.add("hidden");
 $("acClose").onclick=()=>$("akpContactModal").classList.add("hidden");
 $("acEditBtn").onclick=()=>toggleAkpEdit(true);
