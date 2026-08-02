@@ -200,7 +200,7 @@ td .betr{font-size:11px;color:var(--muted)}
   display:flex;gap:10px;align-items:flex-start;
   padding:9px 10px;border-radius:12px;margin-bottom:7px;
 }
-.obs-item.up{background:var(--pos-bg)} .obs-item.down{background:var(--neg-bg)}
+.obs-item.up{background:var(--pos-bg)}
 .obs-item .ic{font-size:16px;line-height:1.3}
 .obs-item .t{font-size:12.5px}
 .obs-item .t b{display:block}
@@ -347,7 +347,7 @@ td .betr{font-size:11px;color:var(--muted)}
   .obs-item .ic{font-size:12px}
   .obs-item .t b{font-size:9.5px}
   .obs-item .t span{font-size:8.5px}
-  #obsList{columns:2;column-gap:10px}
+  #obsList{columns:2;column-gap:10px;max-height:none !important;overflow:visible !important}
   #akqList,#akqOpBody,#nwBody{max-height:none !important;overflow:visible !important}
   /* Panels dürfen über eine Seitengrenze laufen (Tabellenzeilen/Karten bleiben
      dank obiger Regeln trotzdem ganz) – nur so entsteht kein Leerraum am
@@ -393,7 +393,7 @@ body.pdf-mode .akp-row{padding:4px 2px}
 body.pdf-mode .obs-item{padding:4px 6px;margin-bottom:3px;gap:5px}
 body.pdf-mode .obs-item .t b{font-size:9.5px}
 body.pdf-mode .obs-item .t span{font-size:8.5px}
-body.pdf-mode #obsList{columns:2;column-gap:10px}
+body.pdf-mode #obsList{columns:2;column-gap:10px;max-height:none !important;overflow:visible !important}
 body.pdf-mode #akqList,body.pdf-mode #akqOpBody,body.pdf-mode #nwBody{max-height:none !important;overflow:visible !important}
 body.pdf-mode .print-only{display:block}
 /* .wrap ist normalerweise über margin:0 auto zentriert – html2canvas
@@ -495,10 +495,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div class="trio">
       <div class="panel">
         <h3><span class="dot" style="background:var(--amber)"></span>Besondere Beobachtung <small style="color:var(--muted);font-weight:600">Händler außerhalb des gewohnten Verlaufs</small></h3>
-        <div id="obsList"></div>
+        <div id="obsList" style="max-height:380px;overflow:auto"></div>
       </div>
       <div class="panel">
-        <h3 style="justify-content:space-between"><span style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--wg-blue)"></span>Top &amp; Flop 5 AKP</span>
+        <h3 style="justify-content:space-between"><span style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--wg-blue)"></span>Top &amp; Flop 3 AKP</span>
           <span style="display:flex;gap:6px;align-items:center">
           <span class="tabs mini no-print" id="akpTabs">
             <button data-p="woche">Woche</button>
@@ -1644,10 +1644,10 @@ function renderObs(){
     .forEach(a=>items.push({f:{name:a.name,nr:a.nr,ort:a.ort,emp:a.emp,gl:a.glRaw},type:"down",prio:2,ic:"📞",
       txt:`<b>Akquise ohne Besuch in ${s.jahr}</b> – weder persönlich noch telefonisch · Jahresproduktion: <b>${fmt(a.p2026)}</b> Verträge`}));
   items.sort((a,b)=>(b.prio||0)-(a.prio||0));
-  $("obsList").innerHTML=items.length?items.slice(0,8).map(o=>`
-    <div class="obs-item ${o.type}">
+  $("obsList").innerHTML=items.length?items.map(o=>`
+    <div class="obs-item ${o.type==="up"?"up":""}">
       <div class="ic">${o.ic||(o.type==="up"?"🚀":"⚠️")}</div>
-      <div class="t"><b>${o.f.name} <span style="font-weight:600;color:var(--muted)">· ${o.f.nr?o.f.nr+" · ":""}${o.f.ort}${showGL&&(o.f.emp||o.f.gl)?" · "+(o.f.emp||o.f.gl):""}</span></b>
+      <div class="t"><b><span style="color:${o.type==="down"?"var(--neg)":"inherit"}">${o.f.name}</span> <span style="font-weight:600;color:var(--muted)">· ${o.f.nr?o.f.nr+" · ":""}${o.f.ort}${showGL&&(o.f.emp||o.f.gl)?" · "+(o.f.emp||o.f.gl):""}</span></b>
         <span>${o.txt}</span></div>
     </div>`).join(""):`<div class="empty-note">Aktuell keine auffälligen Abweichungen – alle Händler laufen im gewohnten Rahmen. ✅</div>`;
 }
@@ -1671,10 +1671,10 @@ function renderAKP(){
     return;
   }
   const unit=p==="woche"?"Woche":(p==="monat"?"Monat":"Jahr");
-  const top=ranked.top.slice(0,5), flop=ranked.flop.slice(0,5);
-  html=`<div class="akp-h pos-t">Top 5 · ${unit}</div>`+
+  const top=ranked.top.slice(0,3), flop=ranked.flop.slice(0,3);
+  html=`<div class="akp-h pos-t">Top 3 · ${unit}</div>`+
     top.map((r,i)=>row(r,i,false,r.val,unit,r.pill)).join("")+
-    (flop.length?`<div class="akp-h neg-t">Flop 5 · ${ranked.flopLbl}</div>`+
+    (flop.length?`<div class="akp-h neg-t">Flop 3 · ${ranked.flopLbl}</div>`+
       flop.map((r,i)=>row(r,i,true,r.val,unit,r.pill)).join(""):"");
   $("akpList").innerHTML=html;
 }
