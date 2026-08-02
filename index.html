@@ -203,7 +203,7 @@ td .betr{font-size:11px;color:var(--muted)}
 .obs-item.up{background:var(--pos-bg)} .obs-item.down{background:var(--neg-bg)}
 .obs-item.extra{display:none}
 .obs-item .ic{font-size:16px;line-height:1.3}
-.obs-item .t{font-size:12.5px}
+.obs-item .t{font-size:12.5px;min-width:0;flex:1}
 .obs-item .t>b{display:block}
 .obs-item .t span{color:var(--muted);font-size:11.5px}
 /* Feste, einzeilige Namenszeile (abgeschnitten statt umgebrochen) + feste
@@ -226,10 +226,10 @@ td .betr{font-size:11px;color:var(--muted)}
    endet exakt am rechten Rand), die Pille bleibt schmal statt danebenzustehen,
    Zeilenhöhe ist fix (immer genau 2 Zeilen). Der Firmenname darf dafür ruhig
    abgeschnitten werden (siehe .info). */
-.akp-row .val{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-weight:900;font-size:15px;color:var(--wg-navy)}
-.akp-row .val-num{white-space:nowrap}
-.akp-row .val small{font-weight:700;font-size:10px;color:var(--muted)}
-.akp-row .val .pill{white-space:nowrap}
+.akp-row .val,.akp-search-row .val{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-weight:900;font-size:15px;color:var(--wg-navy)}
+.akp-row .val-num,.akp-search-row .val-num{white-space:nowrap}
+.akp-row .val small,.akp-search-row .val small{font-weight:700;font-size:10px;color:var(--muted)}
+.akp-row .val .pill,.akp-search-row .val .pill{white-space:nowrap}
 /* Akquise ohne Produktion: schmalere, fixe Zeilenhöhe – Adresse fest auf
    2 Zeilen gekappt (mit Ellipsis), damit mehr Platz für den Namen bleibt. */
 .akqop-table td{padding:5px 8px}
@@ -282,6 +282,8 @@ td .betr{font-size:11px;color:var(--muted)}
 .akp-search input:focus{outline:none;border-color:var(--wg-blue)}
 .akp-search-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 2px;border-top:1px solid #ECF2F6}
 .akp-search-row:first-child{border-top:none}
+.akp-search-row>span:first-child{flex:1;min-width:0}
+.akp-search-row>span:first-child b,.akp-search-row .betr{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 .akp-search-row .betr{font-size:11px;color:var(--muted)}
 .ac-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px}
 .ac-lbl{display:block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:3px}
@@ -418,6 +420,8 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 @media (max-width:980px){
   .kpis,.goals,.duo,.trio{grid-template-columns:1fr}
   .datenstand{text-align:left}
+  h2.sec{flex-wrap:wrap;row-gap:8px}
+  .tabs{flex-wrap:wrap}
 }
 </style>
 </head>
@@ -495,11 +499,11 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div class="duo">
       <div class="panel">
         <h3><span class="dot" style="background:var(--pos)"></span>TOP 10 Händler <small id="topRange" style="color:var(--muted);font-weight:600"></small></h3>
-        <div id="topTable"></div>
+        <div id="topTable" style="overflow-x:auto"></div>
       </div>
       <div class="panel">
         <h3><span class="dot" style="background:var(--neg)"></span>FLOP 10 Händler <small style="color:var(--muted);font-weight:600">größter Rückgang</small></h3>
-        <div id="flopTable"></div>
+        <div id="flopTable" style="overflow-x:auto"></div>
       </div>
     </div>
 
@@ -534,7 +538,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
             <button data-y="2026">2026</button>
           </span></h3>
         <div style="font-size:11px;color:var(--muted);margin:-2px 0 6px" id="akqWho"></div>
-        <div id="akqList" style="max-height:420px;overflow:auto"></div>
+        <div id="akqList" style="max-height:650px;overflow:auto"></div>
       </div>
     </div>
 
@@ -569,7 +573,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <button data-n="30">30</button>
       </span>
     </div>
-    <div id="amBody"></div>
+    <div id="amBody" style="overflow-x:auto"></div>
   </div>
 </div>
 
@@ -1663,7 +1667,10 @@ function renderObs(){
   // Auf dem Bildschirm nur die 8 wichtigsten (nicht länger als das AKP-Panel
   // daneben) - im Druck/PDF bleiben wie bisher bis zu 8 sichtbar (siehe
   // .obs-item.extra unten).
-  $("obsList").innerHTML=items.length?items.slice(0,8).map((o,i)=>{
+  // Pool von bis zu 16 sammeln: Bildschirm zeigt nur die ersten 8 (siehe
+  // .obs-item.extra), im Druck/PDF ist inzwischen (Top-20-AKQ-Liste) deutlich
+  // mehr Platz - dort dürfen alle bis zu 16 auffüllen.
+  $("obsList").innerHTML=items.length?items.slice(0,16).map((o,i)=>{
     const cls=`obs-item ${o.type}${i>=8?" extra":""}`;
     const ic=o.ic||(o.type==="up"?"🚀":"⚠️");
     if(o.layout==="akq"){
@@ -1720,16 +1727,20 @@ function renderAkpSearch(){
   if(!hasData()){ box.innerHTML=""; return; }
   const s=state.latest;
   const rows=akpFullList(s).filter(a=>currentEmp===AT_GESAMT||a.emp===currentEmp);
-  const hits=rows.filter(r=>
+  const ranked=akpRanked(rows,akpPeriod);
+  const enriched=ranked?ranked.top:rows.map(r=>({...r,val:null,pill:""}));
+  const hits=enriched.filter(r=>
     (r.name||"").toLowerCase().includes(q) ||
     (r.nr||"").toLowerCase().includes(q) ||
     (r.fhNr||"").toLowerCase().includes(q) ||
     (r.firma||"").toLowerCase().includes(q)
   ).slice(0,20);
   if(!hits.length){ box.innerHTML=`<div class="empty-note">Keine AKP gefunden.</div>`; return; }
+  const unit=akpPeriod==="woche"?"Woche":(akpPeriod==="monat"?"Monat":"Jahr");
   box.innerHTML=hits.map(r=>`<div class="akp-search-row">
       <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><br>
       <span class="betr">${escapeHtml(r.firma||"")} · ${escapeHtml(r.ort||"")}</span></span>
+      <span class="val"><span class="val-num">${fmt(r.val)}<small> ${unit}</small></span>${r.pill||""}</span>
     </div>`).join("");
 }
 /* Ranking für Panel & PopUp:
@@ -2116,7 +2127,7 @@ let pdfBusy=false;
 // 9-Wochen-Plan) würden im Druck/PDF sonst mitten in der Zeile abgeschnitten
 // (fixe max-height + overflow:auto). Für den Ausdruck stattdessen bewusst auf
 // eine handliche Zeilenzahl kappen und die Restmenge als Hinweis ausweisen.
-const PRINT_LIST_CAPS={ akqList:7, akqOpBody:10, nwBody:10 };
+const PRINT_LIST_CAPS={ akqList:20, akqOpBody:10, nwBody:10 };
 let printListBackup=null;
 function applyPrintCaps(){
   printListBackup={};
