@@ -2047,7 +2047,7 @@ function renderAkqOhneProd(){
   if(!rows.length){ $("akqOpBody").innerHTML=`<div class="empty-note">Alle Akquisekunden dieser Ansicht haben ${s.jahr} bereits produziert. 🎉</div>`; return; }
   $("akqOpBody").innerHTML=`<table class="akqop-table"><thead><tr><th>Händler${showGL?" / Betreuer":""}</th><th>Adresse</th><th>Beginn</th><th>Telefon</th></tr></thead><tbody>`+
     rows.map(a=>`<tr>
-      <td class="akqop-name"><b title="${escapeHtml(a.name)}">${escapeHtml(a.name)}</b><br><span class="betr">${a.nr}${showGL?" · "+(a.emp||a.glRaw||"–"):""}</span></td>
+      <td class="akqop-name"><b title="${escapeHtml(a.name)}">${escapeHtml(a.name)}</b><span class="betr">${a.nr}${showGL?" · "+(a.emp||a.glRaw||"–"):""}</span></td>
       <td><span class="betr akqop-addr">${a.strasse||""}${a.strasse?", ":""}${a.plz} ${a.ort}</span></td>
       <td>${a.beginn?fmtDate(a.beginn):"–"}</td>
       <td>${a.tel?`<a href="tel:${a.tel.replace(/[^+\d]/g,"")}" style="color:var(--wg-blue);font-weight:700;text-decoration:none">${a.tel}</a>`:"–"}</td>
