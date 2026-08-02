@@ -2033,7 +2033,7 @@ function renderAkqOhneProd(){
   if(!rows.length){ $("akqOpBody").innerHTML=`<div class="empty-note">Alle Akquisekunden dieser Ansicht haben ${s.jahr} bereits produziert. 🎉</div>`; return; }
   $("akqOpBody").innerHTML=`<table><thead><tr><th>Händler${showGL?" / Betreuer":""}</th><th>Beginn</th><th>Adresse</th><th>Telefon</th></tr></thead><tbody>`+
     rows.map(a=>`<tr>
-      <td><b>${a.name}</b><br><span class="betr">${a.nr}${showGL?" · "+(a.emp||a.glRaw||"–"):""}</span></td>
+      <td style="max-width:150px"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default" title="${escapeHtml(a.name)}">${escapeHtml(a.name)}</b><br><span class="betr">${a.nr}${showGL?" · "+(a.emp||a.glRaw||"–"):""}</span></td>
       <td>${a.beginn?fmtDate(a.beginn):"–"}</td>
       <td style="white-space:normal;min-width:150px"><span class="betr">${a.strasse||""}${a.strasse?", ":""}${a.plz} ${a.ort}</span></td>
       <td>${a.tel?`<a href="tel:${a.tel.replace(/[^+\d]/g,"")}" style="color:var(--wg-blue);font-weight:700;text-decoration:none">${a.tel}</a>`:"–"}</td>
@@ -2051,7 +2051,7 @@ function renderNeunWochen(){
   $("nwWho").textContent=`${rows.length} Händler, davon ${warnCount} kritisch · Beginn ab ${fmtDate(grenze)} · ${currentEmp}`;
   if(!rows.length){ $("nwBody").innerHTML=`<div class="empty-note">Keine Händler mit Beginn der Zusammenarbeit in den letzten 9 Wochen.</div>`; return; }
   $("nwBody").innerHTML=`<table><thead><tr><th></th><th>Händler${showGL?" / Betreuer":""}</th><th>Beginn</th><th class="r">Termine</th><th class="r">Prod. ${s.jahr}</th></tr></thead><tbody>`+
-    rows.map(a=>`<tr style="${a.warn?"background:var(--neg-bg)":""}">
+    rows.map(a=>`<tr>
       <td>${a.warn?"⚠️":"✅"}</td>
       <td><b>${a.name}</b><br><span class="betr">${a.nr} · ${a.ort}${showGL?" · "+(a.emp||a.glRaw||"–"):""}</span></td>
       <td>${fmtDate(a.beginn)}</td>
