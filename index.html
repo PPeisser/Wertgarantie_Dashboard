@@ -2282,7 +2282,15 @@ $("adminBtn").onclick=openAdminModal;
 $("adminClose").onclick=()=>$("adminModal").classList.add("hidden");
 $("adminUploadBtn").onclick=pickFiles;
 $("adCreateBtn").onclick=createAdminUser;
-$("mitarbeiter").onchange=e=>{ currentEmp=e.target.value; render(); };
+$("mitarbeiter").onchange=async e=>{
+  currentEmp=e.target.value;
+  // Ziele werden nur einmal beim Start geladen (goals-Objekt im Speicher) -
+  // beim Wechsel der Ansicht frisch nachladen, damit ein von einem anderen
+  // Mitarbeiter zwischenzeitlich gespeichertes Monatsziel sofort sichtbar
+  // ist, ohne dass man die Seite neu laden muss.
+  try{ const g=await stGet("wg-goals"); if(g) goals=JSON.parse(g); }catch(err){}
+  render();
+};
 document.querySelectorAll("#periodTabs button").forEach(b=>{
   b.onclick=()=>{ document.querySelectorAll("#periodTabs button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); currentPeriod=b.dataset.p; renderTopFlop(); };
 });
