@@ -997,6 +997,7 @@ let akpPeriod="monat";
 // die an dem Tag nicht produziert haben und deshalb nicht in der Excel-Liste
 // auftauchen, aber in Woche/Monat/Jahr trotzdem berücksichtigt werden müssen.
 let akpContactsIndex = null;
+let akpIndexGen = 0;
 let akpExtrasCache = null, akpExtrasCacheKey = null;
 let currentEmp = AT_GESAMT;
 let currentPeriod = "tag";
@@ -1315,6 +1316,7 @@ async function loadAkpContactsIndex(){
       if(guard>50) break; // Sicherheitsnetz gegen Endlosschleifen
     }
     akpContactsIndex=idx;
+    akpIndexGen++;
     console.log("AKP-Kontaktdatenbank geladen:",Object.keys(idx).length,"Einträge");
     if(hasData()) render();
   }catch(e){ console.error("loadAkpContactsIndex failed:",e); }
@@ -1341,7 +1343,10 @@ function akpContactSums(rec,jahr,monat){
 // komplett, obwohl sie im gewählten Zeitraum produziert haben.
 function akpFullList(s){
   if(!akpContactsIndex) return s.akp;
-  const key=s.vortag+":"+Object.keys(akpContactsIndex).length;
+  // akpIndexGen (statt nur der Anzahl) im Cache-Key, damit ein Neuladen der
+  // Kontaktdatenbank (z.B. über den Aktualisieren-Button) den Cache immer
+  // invalidiert - auch wenn die Anzahl der Einträge zufällig gleich bleibt.
+  const key=s.vortag+":"+akpIndexGen;
   if(akpExtrasCacheKey!==key){
     const seen=new Set(s.akp.map(a=>a.nr).filter(Boolean));
     const extra=[];
@@ -2297,12 +2302,18 @@ $("adCreateBtn").onclick=createAdminUser;
 // geteilten Supabase-Tabelle nachladen, damit z.B. ein von einem anderen
 // Mitarbeiter zwischenzeitlich eingetragenes Monatsziel oder eine neuere
 // Einspielung sofort sichtbar sind, ohne dass man die Seite neu laden muss.
+// Die AKP-Kontaktdatenbank (akpContactsIndex) wurde bisher nur einmal beim
+// Start geladen - schlug das fehl (Netzwerk-Hänger, Auth noch nicht bereit
+// o.ä.), fehlten AKP ohne Produktion am Einspieltag dauerhaft in der Ansicht,
+// und selbst der Aktualisieren-Button half nicht, weil er das nie erneut
+// versucht hat. Jetzt bei jeder Aktualisierung (Button/Ansicht-Wechsel)
+// ebenfalls neu laden.
 let refreshBusy=false;
 async function refreshData(silent){
   if(refreshBusy) return;
   refreshBusy=true;
   const btn=$("refreshBtn"); if(btn) btn.disabled=true;
-  try{ await loadAll(); render(); if(!silent) toast("Aktualisiert ✓"); }
+  try{ await Promise.all([loadAll(), loadAkpContactsIndex()]); render(); if(!silent) toast("Aktualisiert ✓"); }
   catch(e){ if(!silent) toast("Aktualisieren fehlgeschlagen."); }
   finally{ refreshBusy=false; if(btn) btn.disabled=false; }
 }
