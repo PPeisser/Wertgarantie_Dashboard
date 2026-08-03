@@ -523,14 +523,11 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div id="obsList"></div>
       </div>
       <div class="panel">
-        <h3 style="flex-direction:column;align-items:stretch;gap:6px">
-          <span style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--wg-blue)"></span>Top &amp; Flop 5 AKP</span>
-          <span style="display:flex;gap:6px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+        <h3 style="justify-content:space-between"><span style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--wg-blue)"></span>Top &amp; Flop 5 AKP</span>
+          <span style="display:flex;gap:6px;align-items:center">
           <span class="tabs mini no-print" id="akpTabs">
-            <button data-p="tag">Tag</button>
             <button data-p="woche">Woche</button>
             <button data-p="monat" class="on">Monat</button>
-            <button data-p="quartal">Quartal</button>
             <button data-p="jahr">Jahr</button>
           </span>
           <button class="btn btn-ghost no-print" id="akpMoreBtn" style="padding:5px 10px;font-size:11px;border-radius:9px" title="Top/Flop 5, 10, 20 oder 30 AKP anzeigen">Top/Flop 5–30 ⤢</button>
@@ -576,13 +573,19 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <h3 id="amTitle" style="margin:0">Top &amp; Flop AKP</h3>
       <button class="btn btn-ghost" id="amClose" style="padding:7px 12px">✕ Schließen</button>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-      <span style="font-size:12px;color:var(--muted);font-weight:700">Anzahl:</span>
-      <span class="tabs mini" id="akpNBtns">
-        <button data-n="5">5</button>
-        <button data-n="10" class="on">10</button>
-        <button data-n="20">20</button>
-        <button data-n="30">30</button>
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:10px;flex-wrap:wrap">
+      <span id="amPeriodRow" style="display:flex;align-items:center;gap:8px" class="hidden">
+        <span style="font-size:12px;color:var(--muted);font-weight:700">Zeitraum:</span>
+        <span class="tabs mini no-print" id="amPeriodTabs"></span>
+      </span>
+      <span style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:var(--muted);font-weight:700">Anzahl:</span>
+        <span class="tabs mini" id="akpNBtns">
+          <button data-n="5">5</button>
+          <button data-n="10" class="on">10</button>
+          <button data-n="20">20</button>
+          <button data-n="30">30</button>
+        </span>
       </span>
     </div>
     <div id="amBody" style="overflow-x:auto"></div>
@@ -647,8 +650,18 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <button class="btn btn-ghost" id="fhClose" style="padding:7px 12px">✕ Schließen</button>
     </div>
     <div id="fhMeta" style="font-size:12.5px;color:var(--muted);margin-bottom:14px"></div>
-    <div class="actions" style="justify-content:flex-start;margin-bottom:14px">
+    <div class="actions" style="justify-content:flex-start;margin-bottom:10px">
       <button class="btn btn-blue" id="fhTopFlopBtn">Top &amp; Flop AKP dieses Händlers ⤢</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <span style="font-size:12px;color:var(--muted);font-weight:700">Zeitraum:</span>
+      <span class="tabs mini no-print" id="fhPeriodTabs">
+        <button data-p="tag">Tag</button>
+        <button data-p="woche">Woche</button>
+        <button data-p="monat" class="on">Monat</button>
+        <button data-p="quartal">Quartal</button>
+        <button data-p="jahr">Jahr</button>
+      </span>
     </div>
     <h4 style="margin:0 0 8px;color:var(--wg-navy);font-size:13px">Ansprechpartner (AKP)</h4>
     <div id="fhBody" style="overflow-x:auto"></div>
@@ -1756,9 +1769,7 @@ function renderAKP(){
   let html="";
   const ranked=akpRanked(rows,p);
   if(ranked==null){
-    $("akpList").innerHTML=p==="quartal"
-      ? `<div class="empty-note">Die Quartalsansicht braucht die AKP-Kontaktdatenbank – sie konnte noch nicht geladen werden. Bitte kurz auf "Aktualisieren" klicken.</div>`
-      : `<div class="empty-note">Die Wochenansicht baut sich aus den täglichen Einspielungen auf – ab der 2. Einspielung erscheinen hier Top &amp; Flop der Woche.</div>`;
+    $("akpList").innerHTML=`<div class="empty-note">Die Wochenansicht baut sich aus den täglichen Einspielungen auf – ab der 2. Einspielung erscheinen hier Top &amp; Flop der Woche.</div>`;
     return;
   }
   const unit=akpUnitLabel(p);
@@ -1846,17 +1857,27 @@ let akpN=10;
 // nur die AKP dieses einen Händlers zeigen. Wird beim allgemeinen Einstieg
 // (akpMoreBtn) wieder zurückgesetzt, damit der Filter nicht "hängen bleibt".
 let fhAkpFilter=null;
+// Eigener Zeitraum für die Fachhändler-Ansichten (PopUp + darin geöffnetes
+// Top/Flop-PopUp): dort stehen zusätzlich Tag & Quartal zur Wahl, unabhängig
+// vom Zeitraum des allgemeinen AKP-Panels (akpPeriod, nur Woche/Monat/Jahr).
+let fhAkpPeriod="monat";
+const FH_AKP_PERIODS=["tag","woche","monat","quartal","jahr"];
 function openAkpModal(){
   const fhScope=fhAkpFilter?state.latest.fh[fhAkpFilter]:null;
+  const period=fhAkpFilter?fhAkpPeriod:akpPeriod;
+  $("amPeriodRow").classList.toggle("hidden",!fhAkpFilter);
+  if(fhAkpFilter){
+    $("amPeriodTabs").innerHTML=FH_AKP_PERIODS.map(p=>`<button data-p="${p}" class="${p===period?"on":""}">${akpUnitLabel(p)}</button>`).join("");
+  }
   const rows=akpFullList(state.latest).filter(a=>fhAkpFilter?a.fhNr===fhAkpFilter:(currentEmp===AT_GESAMT||a.emp===currentEmp));
-  const ranked=akpRanked(rows,akpPeriod);
-  const unit=akpUnitLabel(akpPeriod);
+  const ranked=akpRanked(rows,period);
+  const unit=akpUnitLabel(period);
   $("amTitle").textContent=fhAkpFilter
     ? `Top & Flop ${akpN} AKP · ${unit} · ${(fhScope&&fhScope.name)||fhAkpFilter}`
     : `Top & Flop ${akpN} AKP · ${unit} · ${currentEmp}`;
   document.querySelectorAll("#akpNBtns button").forEach(b=>b.classList.toggle("on",+b.dataset.n===akpN));
   if(!ranked){
-    $("amBody").innerHTML=akpPeriod==="quartal"
+    $("amBody").innerHTML=period==="quartal"
       ? `<div class="empty-note">Die Quartalsansicht braucht die AKP-Kontaktdatenbank – sie konnte noch nicht geladen werden. Bitte kurz auf "Aktualisieren" klicken.</div>`
       : `<div class="empty-note">Wochenansicht erst ab der 2. täglichen Einspielung verfügbar.</div>`;
   }
@@ -1878,21 +1899,30 @@ function openAkpModal(){
 }
 
 /* ---------- Fachhändler PopUp (Liste der AKP eines Händlers, Test) ---------- */
+let fhModalCurrent=null;
 function openFhModal(fhNr){
   if(!fhNr) return;
+  fhModalCurrent=fhNr;
   const f=state.latest.fh[fhNr];
   $("fhName").textContent=(f&&f.name)||fhNr;
   $("fhMeta").innerHTML=`FH-Nr. <b>${escapeHtml(fhNr)}</b>${f&&f.ort?" · "+escapeHtml(f.ort):""}${f&&(f.emp||f.gl)?" · "+escapeHtml(f.emp||f.gl):""}`;
   $("fhTopFlopBtn").dataset.fhNr=fhNr;
+  document.querySelectorAll("#fhPeriodTabs button").forEach(b=>b.classList.toggle("on",b.dataset.p===fhAkpPeriod));
   const rows=akpFullList(state.latest).filter(a=>a.fhNr===fhNr);
-  const ranked=akpRanked(rows,akpPeriod);
-  const unit=akpUnitLabel(akpPeriod);
-  const list=ranked?ranked.top:[...rows].sort((a,b)=>b.lj-a.lj).map(r=>({...r,val:r.lj,pill:""}));
-  $("fhBody").innerHTML=list.length?list.map(r=>`<div class="akp-search-row">
-      <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b>
-      <span class="betr">${escapeHtml(r.firma||"")} · ${escapeHtml(r.ort||"")}</span></span>
-      <span class="val"><span class="val-num">${fmt(r.val)}<small> ${unit}</small></span>${r.pill||""}</span>
-    </div>`).join(""):`<div class="empty-note">Keine AKP für diesen Händler gefunden.</div>`;
+  const ranked=akpRanked(rows,fhAkpPeriod);
+  if(!ranked){
+    $("fhBody").innerHTML=fhAkpPeriod==="quartal"
+      ? `<div class="empty-note">Die Quartalsansicht braucht die AKP-Kontaktdatenbank – sie konnte noch nicht geladen werden. Bitte kurz auf "Aktualisieren" klicken.</div>`
+      : `<div class="empty-note">Wochenansicht erst ab der 2. täglichen Einspielung verfügbar.</div>`;
+  } else {
+    const unit=akpUnitLabel(fhAkpPeriod);
+    const list=ranked.top;
+    $("fhBody").innerHTML=list.length?list.map(r=>`<div class="akp-search-row">
+        <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b>
+        <span class="betr">${escapeHtml(r.firma||"")} · ${escapeHtml(r.ort||"")}</span></span>
+        <span class="val"><span class="val-num">${fmt(r.val)}<small> ${unit}</small></span>${r.pill||""}</span>
+      </div>`).join(""):`<div class="empty-note">Keine AKP für diesen Händler in diesem Zeitraum gefunden.</div>`;
+  }
   $("fhModal").classList.remove("hidden");
 }
 
@@ -2412,6 +2442,13 @@ $("amClose").onclick=()=>$("akpModal").classList.add("hidden");
 $("acClose").onclick=()=>$("akpContactModal").classList.add("hidden");
 $("fhClose").onclick=()=>$("fhModal").classList.add("hidden");
 $("fhTopFlopBtn").onclick=()=>{ fhAkpFilter=$("fhTopFlopBtn").dataset.fhNr; $("fhModal").classList.add("hidden"); openAkpModal(); };
+document.querySelectorAll("#fhPeriodTabs button").forEach(b=>{
+  b.onclick=()=>{ fhAkpPeriod=b.dataset.p; if(fhModalCurrent) openFhModal(fhModalCurrent); };
+});
+$("amPeriodTabs").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  fhAkpPeriod=b.dataset.p; openAkpModal();
+});
 $("acEditBtn").onclick=()=>toggleAkpEdit(true);
 $("acCancelBtn").onclick=()=>toggleAkpEdit(false);
 $("acSaveBtn").onclick=saveAkpContact;
