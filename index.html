@@ -523,11 +523,14 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div id="obsList"></div>
       </div>
       <div class="panel">
-        <h3 style="justify-content:space-between"><span style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--wg-blue)"></span>Top &amp; Flop 5 AKP</span>
-          <span style="display:flex;gap:6px;align-items:center">
+        <h3 style="flex-direction:column;align-items:stretch;gap:6px">
+          <span style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--wg-blue)"></span>Top &amp; Flop 5 AKP</span>
+          <span style="display:flex;gap:6px;align-items:center;justify-content:space-between;flex-wrap:wrap">
           <span class="tabs mini no-print" id="akpTabs">
+            <button data-p="tag">Tag</button>
             <button data-p="woche">Woche</button>
             <button data-p="monat" class="on">Monat</button>
+            <button data-p="quartal">Quartal</button>
             <button data-p="jahr">Jahr</button>
           </span>
           <button class="btn btn-ghost no-print" id="akpMoreBtn" style="padding:5px 10px;font-size:11px;border-radius:9px" title="Top/Flop 5, 10, 20 oder 30 AKP anzeigen">Top/Flop 5–30 ⤢</button>
@@ -1353,6 +1356,20 @@ function akpContactSums(rec,jahr,monat){
   }
   return {lj,vj,monat:mVal};
 }
+// Summe der letzten 3 Monate (laufendes Quartal) bzw. der 3 Monate davor
+// (Vorquartal) aus der Monatsproduktion eines AKP-Kontakts – Basis für die
+// "Quartal"-Ansicht im AKP-Ranking (akpRanked).
+function akpQuarterSum(rec,jahr,monat){
+  if(!rec) return null;
+  const pm={...(rec.prod_monthly||{})};
+  for(const [k,v] of Object.entries(rec.prod_monthly_other||{})) pm[k]=(pm[k]||0)+v;
+  const keysBack=(y,m,n)=>{ const out=[]; for(let i=0;i<n;i++){ out.push(y+"-"+String(m).padStart(2,"0")); m--; if(m<1){m=12;y--;} } return out; };
+  const sum=keys=>keys.reduce((t,k)=>t+(pm[k]||0),0);
+  const cur=sum(keysBack(jahr,monat,3));
+  let py=jahr,pm2=monat-3; if(pm2<1){pm2+=12;py--;}
+  const prev=sum(keysBack(py,pm2,3));
+  return {cur,prev};
+}
 // Ergänzt die Tages-Einspielliste (s.akp) um AKP aus der Kontaktdatenbank, die
 // an diesem Tag nicht produziert haben und deshalb nicht im Excel-Export
 // stehen – sonst fehlen sie in Woche/Monat/Jahr-Ansichten je Mitarbeiter
@@ -1739,10 +1756,12 @@ function renderAKP(){
   let html="";
   const ranked=akpRanked(rows,p);
   if(ranked==null){
-    $("akpList").innerHTML=`<div class="empty-note">Die Wochenansicht baut sich aus den täglichen Einspielungen auf – ab der 2. Einspielung erscheinen hier Top &amp; Flop der Woche.</div>`;
+    $("akpList").innerHTML=p==="quartal"
+      ? `<div class="empty-note">Die Quartalsansicht braucht die AKP-Kontaktdatenbank – sie konnte noch nicht geladen werden. Bitte kurz auf "Aktualisieren" klicken.</div>`
+      : `<div class="empty-note">Die Wochenansicht baut sich aus den täglichen Einspielungen auf – ab der 2. Einspielung erscheinen hier Top &amp; Flop der Woche.</div>`;
     return;
   }
-  const unit=p==="woche"?"Woche":(p==="monat"?"Monat":"Jahr");
+  const unit=akpUnitLabel(p);
   const top=ranked.top.slice(0,5), flop=ranked.flop.slice(0,5);
   html=`<div class="akp-h pos-t">Top 5 · ${unit}</div>`+
     top.map((r,i)=>row(r,i,false,r.val,unit,r.pill)).join("")+
@@ -1767,32 +1786,42 @@ function renderAkpSearch(){
     (r.firma||"").toLowerCase().includes(q)
   ).slice(0,20);
   if(!hits.length){ box.innerHTML=`<div class="empty-note">Keine AKP gefunden.</div>`; return; }
-  const unit=akpPeriod==="woche"?"Woche":(akpPeriod==="monat"?"Monat":"Jahr");
+  const unit=akpUnitLabel(akpPeriod);
   box.innerHTML=hits.map(r=>`<div class="akp-search-row">
       <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b>
       <span class="betr">${escapeHtml(r.firma||"")} · ${escapeHtml(r.ort||"")}</span></span>
       <span class="val"><span class="val-num">${fmt(r.val)}<small> ${unit}</small></span>${r.pill||""}</span>
     </div>`).join("");
 }
+/* Zeitraum-Label für Anzeige/Spaltenköpfe – zentral, damit Tag/Woche/Monat/
+   Quartal/Jahr überall (Panel, PopUp, Suche, Fachhändler-PopUp) gleich heißen. */
+function akpUnitLabel(p){ return {tag:"Tag",woche:"Woche",monat:"Monat",quartal:"Quartal",jahr:"Jahr"}[p]||p; }
 /* Ranking für Panel & PopUp:
    Top  = beste nach Periodenwert (Vortagesvergleich/VJ als Pill)
    Flop = größter Verlust ggü. Vorjahr; gibt es keine Verluste, die schwächsten der Periode */
 function akpRanked(rows,p){
   if(p==="woche"&&historyDays().length<2) return null;
+  if(p==="quartal"&&!akpContactsIndex) return null; // Quartalswerte kommen aus der Kontaktdatenbank (Monatsproduktion)
   const s=state.latest;
   const monateBisher=(s.monat-1)+((s.tageIst&&s.tageSoll)?s.tageIst/s.tageSoll:1);
-  // Rangwert (val) richtet sich nach dem gewählten Zeitraum (Woche/Monat/Jahr),
-  // die Steigerung/der Vergleich (vjDiff, Pille) ist aber immer ggü. Vorjahr –
-  // unabhängig vom Zeitraum, nie Vortag/Vorwoche.
-  const valFor=p==="woche"
-    ? r=>sumWeek((state.dailyAKP||{})[akpKey(r)]||{},s.vortag).sum
-    : p==="monat" ? r=>r.monat : r=>r.lj;
+  const quarterOf=r=>akpQuarterSum(akpContactsIndex&&akpContactsIndex[r.nr],s.jahr,s.monat);
+  // Rangwert (val) richtet sich nach dem gewählten Zeitraum (Tag/Woche/Monat/
+  // Quartal/Jahr), die Steigerung/der Vergleich (vjDiff, Pille) ist aber immer
+  // ggü. Vorjahr – unabhängig vom Zeitraum, nie Vortag/Vorwoche/Vorquartal.
+  const valFor=p==="tag" ? r=>r.vt
+    : p==="woche" ? r=>sumWeek((state.dailyAKP||{})[akpKey(r)]||{},s.vortag).sum
+    : p==="monat" ? r=>r.monat
+    : p==="quartal" ? r=>(quarterOf(r)||{}).cur||0
+    : r=>r.lj;
   // Für die FLOP-Auswahl (im Unterschied zur Pille) muss der Rückgang zum selben
-  // Zeitraum passen wie val – sonst wirkt "Flop" bei Woche/Monat willkürlich,
-  // weil es eigentlich immer den Jahresvergleich zeigt.
-  const prevFor=p==="woche"
+  // Zeitraum passen wie val – sonst wirkt "Flop" bei Tag/Woche/Monat/Quartal
+  // willkürlich, weil es eigentlich immer den Jahresvergleich zeigt.
+  const prevFor=p==="tag"
+    ? r=>{ const pv=prevStored((state.dailyAKP||{})[akpKey(r)]||{}, s.vortag); return pv?pv.val:null; }
+    : p==="woche"
     ? r=>{ const vw=sumWeek((state.dailyAKP||{})[akpKey(r)]||{}, iso(addDays(parseISO(s.vortag),-7))); return vw.days>0?vw.sum:null; }
     : p==="monat" ? r=>monateBisher>0?r.lj/monateBisher:null
+    : p==="quartal" ? r=>{ const q=quarterOf(r); return q?q.prev:null; }
     : r=>r.vj;
   const list=rows.map(r=>{
     const val=valFor(r), prevVal=prevFor(r);
@@ -1807,7 +1836,7 @@ function akpRanked(rows,p){
   const decliners=list.filter(r=>r.periodDiff!=null&&r.periodDiff<0&&r.periodPct!=null)
     .sort((a,b)=>a.periodPct-b.periodPct);
   const flop=decliners.length?decliners:[...list].sort((a,b)=>a.val-b.val||(a.vjDiff??0)-(b.vjDiff??0));
-  const flopLblFor={woche:"größter Rückgang ggü. Vorwoche",monat:"größter Rückgang ggü. Ø-Monat",jahr:"größter Verlust ggü. Vorjahr"};
+  const flopLblFor={tag:"größter Rückgang ggü. Vortag",woche:"größter Rückgang ggü. Vorwoche",monat:"größter Rückgang ggü. Ø-Monat",quartal:"größter Rückgang ggü. Vorquartal",jahr:"größter Verlust ggü. Vorjahr"};
   return {top,flop,flopLbl:decliners.length?flopLblFor[p]:"schwächste Produktion (kein Rückgang im Zeitraum)"};
 }
 /* PopUp: Top/Flop 5·10·20·30 AKP */
@@ -1821,12 +1850,16 @@ function openAkpModal(){
   const fhScope=fhAkpFilter?state.latest.fh[fhAkpFilter]:null;
   const rows=akpFullList(state.latest).filter(a=>fhAkpFilter?a.fhNr===fhAkpFilter:(currentEmp===AT_GESAMT||a.emp===currentEmp));
   const ranked=akpRanked(rows,akpPeriod);
-  const unit=akpPeriod==="woche"?"Woche":(akpPeriod==="monat"?"Monat":"Jahr");
+  const unit=akpUnitLabel(akpPeriod);
   $("amTitle").textContent=fhAkpFilter
     ? `Top & Flop ${akpN} AKP · ${unit} · ${(fhScope&&fhScope.name)||fhAkpFilter}`
     : `Top & Flop ${akpN} AKP · ${unit} · ${currentEmp}`;
   document.querySelectorAll("#akpNBtns button").forEach(b=>b.classList.toggle("on",+b.dataset.n===akpN));
-  if(!ranked){ $("amBody").innerHTML=`<div class="empty-note">Wochenansicht erst ab der 2. täglichen Einspielung verfügbar.</div>`; }
+  if(!ranked){
+    $("amBody").innerHTML=akpPeriod==="quartal"
+      ? `<div class="empty-note">Die Quartalsansicht braucht die AKP-Kontaktdatenbank – sie konnte noch nicht geladen werden. Bitte kurz auf "Aktualisieren" klicken.</div>`
+      : `<div class="empty-note">Wochenansicht erst ab der 2. täglichen Einspielung verfügbar.</div>`;
+  }
   else{
     const showGL=!fhAkpFilter&&currentEmp===AT_GESAMT;
     const mkTbl=(list,neg)=>`<table><thead><tr><th></th><th>AKP / Firma${showGL?" / Betreuer":""}</th><th class="r">${unit}</th><th class="r">VT</th><th class="r">vs. VJ</th></tr></thead><tbody>`+
@@ -1853,7 +1886,7 @@ function openFhModal(fhNr){
   $("fhTopFlopBtn").dataset.fhNr=fhNr;
   const rows=akpFullList(state.latest).filter(a=>a.fhNr===fhNr);
   const ranked=akpRanked(rows,akpPeriod);
-  const unit=akpPeriod==="woche"?"Woche":(akpPeriod==="monat"?"Monat":"Jahr");
+  const unit=akpUnitLabel(akpPeriod);
   const list=ranked?ranked.top:[...rows].sort((a,b)=>b.lj-a.lj).map(r=>({...r,val:r.lj,pill:""}));
   $("fhBody").innerHTML=list.length?list.map(r=>`<div class="akp-search-row">
       <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b>
