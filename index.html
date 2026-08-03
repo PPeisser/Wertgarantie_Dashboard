@@ -277,8 +277,8 @@ td .betr{font-size:11px;color:var(--muted)}
 #authModal .error{color:var(--neg);font-size:12.5px;margin-top:8px;text-align:center;min-height:16px}
 
 /* ---------- AKP-Kontakt PopUp ---------- */
-.akp-name-link{background:none;border:none;padding:0;margin:0;font:inherit;font-weight:inherit;color:inherit;cursor:pointer;text-align:left;text-decoration:underline;text-decoration-color:transparent;transition:text-decoration-color .15s}
-.akp-name-link:hover{text-decoration-color:currentColor}
+.akp-name-link,.fh-name-link{background:none;border:none;padding:0;margin:0;font:inherit;font-weight:inherit;color:inherit;cursor:pointer;text-align:left;text-decoration:underline;text-decoration-color:transparent;transition:text-decoration-color .15s}
+.akp-name-link:hover,.fh-name-link:hover{text-decoration-color:currentColor}
 .akp-search{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
 .akp-search input{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:10px;font-size:12.5px;font-family:inherit;background:var(--paper);color:var(--ink)}
 .akp-search input:focus{outline:none;border-color:var(--wg-blue)}
@@ -633,6 +633,22 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div class="actions" style="margin-top:18px;justify-content:flex-start">
       <button class="btn btn-ghost no-print" id="acPdfBtn">⬇ Datenblatt als PDF</button>
     </div>
+  </div>
+</div>
+
+<!-- Fachhändler PopUp -->
+<div class="modal-bg hidden" id="fhModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px">
+      <h3 id="fhName" style="margin:0">Fachhändler</h3>
+      <button class="btn btn-ghost" id="fhClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+    <div id="fhMeta" style="font-size:12.5px;color:var(--muted);margin-bottom:14px"></div>
+    <div class="actions" style="justify-content:flex-start;margin-bottom:14px">
+      <button class="btn btn-blue" id="fhTopFlopBtn">Top &amp; Flop AKP dieses Händlers ⤢</button>
+    </div>
+    <h4 style="margin:0 0 8px;color:var(--wg-navy);font-size:13px">Ansprechpartner (AKP)</h4>
+    <div id="fhBody" style="overflow-x:auto"></div>
   </div>
 </div>
 
@@ -1647,7 +1663,7 @@ function tbl(rows,showGL,p,labels,kind){
     }
     return `<tr class="${i===0&&kind==="top"?"top1":""}">
       <td><span class="rank">${i+1}</span></td>
-      <td><span class="hname" title="${r.name} · ${r.ort} (FH ${r.nr})">${r.name}</span><br><span class="betr">${r.nr} · ${r.ort}${showGL?" · "+(r.emp||r.gl||"— ohne Betreuer —"):""}</span></td>
+      <td><button type="button" class="hname fh-name-link" data-fh-nr="${escapeHtml(r.nr)}" title="${escapeHtml(r.name)} · ${escapeHtml(r.ort)} (FH ${escapeHtml(r.nr)}) – klicken für AKP dieses Händlers">${escapeHtml(r.name)}</button><br><span class="betr">${escapeHtml(r.nr)} · ${escapeHtml(r.ort)}${showGL?" · "+escapeHtml(r.emp||r.gl||"— ohne Betreuer —"):""}</span></td>
       <td class="r">${c1}</td><td class="r" style="color:var(--muted)">${c2}</td><td class="r">${c3}</td><td class="r">${c4}</td>
       <td class="r" style="color:var(--muted)">${fmt(r.vt)}</td>
     </tr>`;}).join("")+`</tbody></table>`;
@@ -1796,15 +1812,23 @@ function akpRanked(rows,p){
 }
 /* PopUp: Top/Flop 5·10·20·30 AKP */
 let akpN=10;
+// Ist gesetzt (FH-Nr.), wenn der PopUp aus dem Fachhändler-PopUp heraus geöffnet
+// wurde ("Top & Flop AKP dieses Händlers") - dann statt der Mitarbeiter-Ansicht
+// nur die AKP dieses einen Händlers zeigen. Wird beim allgemeinen Einstieg
+// (akpMoreBtn) wieder zurückgesetzt, damit der Filter nicht "hängen bleibt".
+let fhAkpFilter=null;
 function openAkpModal(){
-  const rows=akpFullList(state.latest).filter(a=>currentEmp===AT_GESAMT||a.emp===currentEmp);
+  const fhScope=fhAkpFilter?state.latest.fh[fhAkpFilter]:null;
+  const rows=akpFullList(state.latest).filter(a=>fhAkpFilter?a.fhNr===fhAkpFilter:(currentEmp===AT_GESAMT||a.emp===currentEmp));
   const ranked=akpRanked(rows,akpPeriod);
   const unit=akpPeriod==="woche"?"Woche":(akpPeriod==="monat"?"Monat":"Jahr");
-  $("amTitle").textContent=`Top & Flop ${akpN} AKP · ${unit} · ${currentEmp}`;
+  $("amTitle").textContent=fhAkpFilter
+    ? `Top & Flop ${akpN} AKP · ${unit} · ${(fhScope&&fhScope.name)||fhAkpFilter}`
+    : `Top & Flop ${akpN} AKP · ${unit} · ${currentEmp}`;
   document.querySelectorAll("#akpNBtns button").forEach(b=>b.classList.toggle("on",+b.dataset.n===akpN));
   if(!ranked){ $("amBody").innerHTML=`<div class="empty-note">Wochenansicht erst ab der 2. täglichen Einspielung verfügbar.</div>`; }
   else{
-    const showGL=currentEmp===AT_GESAMT;
+    const showGL=!fhAkpFilter&&currentEmp===AT_GESAMT;
     const mkTbl=(list,neg)=>`<table><thead><tr><th></th><th>AKP / Firma${showGL?" / Betreuer":""}</th><th class="r">${unit}</th><th class="r">VT</th><th class="r">vs. VJ</th></tr></thead><tbody>`+
       list.slice(0,akpN).map((r,i)=>`<tr>
         <td><span class="rank" style="${neg?"background:var(--neg-bg);color:var(--neg)":""}">${i+1}</span></td>
@@ -1818,6 +1842,25 @@ function openAkpModal(){
       `<div class="akp-h neg-t" style="margin-top:14px">FLOP ${akpN} · ${ranked.flopLbl}</div>`+mkTbl(ranked.flop,true);
   }
   $("akpModal").classList.remove("hidden");
+}
+
+/* ---------- Fachhändler PopUp (Liste der AKP eines Händlers, Test) ---------- */
+function openFhModal(fhNr){
+  if(!fhNr) return;
+  const f=state.latest.fh[fhNr];
+  $("fhName").textContent=(f&&f.name)||fhNr;
+  $("fhMeta").innerHTML=`FH-Nr. <b>${escapeHtml(fhNr)}</b>${f&&f.ort?" · "+escapeHtml(f.ort):""}${f&&(f.emp||f.gl)?" · "+escapeHtml(f.emp||f.gl):""}`;
+  $("fhTopFlopBtn").dataset.fhNr=fhNr;
+  const rows=akpFullList(state.latest).filter(a=>a.fhNr===fhNr);
+  const ranked=akpRanked(rows,akpPeriod);
+  const unit=akpPeriod==="woche"?"Woche":(akpPeriod==="monat"?"Monat":"Jahr");
+  const list=ranked?ranked.top:[...rows].sort((a,b)=>b.lj-a.lj).map(r=>({...r,val:r.lj,pill:""}));
+  $("fhBody").innerHTML=list.length?list.map(r=>`<div class="akp-search-row">
+      <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b>
+      <span class="betr">${escapeHtml(r.firma||"")} · ${escapeHtml(r.ort||"")}</span></span>
+      <span class="val"><span class="val-num">${fmt(r.val)}<small> ${unit}</small></span>${r.pill||""}</span>
+    </div>`).join(""):`<div class="empty-note">Keine AKP für diesen Händler gefunden.</div>`;
+  $("fhModal").classList.remove("hidden");
 }
 
 /* ---------- AKP-Kontakt PopUp (Stammdaten, Kontakt, Aktionsteilnahme, Profi-Training) ---------- */
@@ -2005,7 +2048,9 @@ async function saveAkpContact(){
 }
 document.addEventListener("click",e=>{
   const btn=e.target.closest(".akp-name-link");
-  if(btn) openAkpContact(btn.dataset.akpNr,btn.textContent);
+  if(btn){ openAkpContact(btn.dataset.akpNr,btn.textContent); return; }
+  const fhBtn=e.target.closest(".fh-name-link");
+  if(fhBtn) openFhModal(fhBtn.dataset.fhNr);
 });
 
 /* Top 20 AKQ · Filter: Akquise-Jahrgang + ohne Groß-FH (>300 Verträge im VJ) */
@@ -2328,10 +2373,12 @@ document.querySelectorAll("#akpTabs button").forEach(b=>{
 document.querySelectorAll("#akqYearTabs button").forEach(b=>{
   b.onclick=()=>{ document.querySelectorAll("#akqYearTabs button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); akqJahrFilter=b.dataset.y; renderAKQ(); };
 });
-$("akpMoreBtn").onclick=()=>openAkpModal();
+$("akpMoreBtn").onclick=()=>{ fhAkpFilter=null; openAkpModal(); };
 $("akpSearchInput").oninput=()=>renderAkpSearch();
 $("amClose").onclick=()=>$("akpModal").classList.add("hidden");
 $("acClose").onclick=()=>$("akpContactModal").classList.add("hidden");
+$("fhClose").onclick=()=>$("fhModal").classList.add("hidden");
+$("fhTopFlopBtn").onclick=()=>{ fhAkpFilter=$("fhTopFlopBtn").dataset.fhNr; $("fhModal").classList.add("hidden"); openAkpModal(); };
 $("acEditBtn").onclick=()=>toggleAkpEdit(true);
 $("acCancelBtn").onclick=()=>toggleAkpEdit(false);
 $("acSaveBtn").onclick=saveAkpContact;
