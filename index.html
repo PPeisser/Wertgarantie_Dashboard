@@ -2340,6 +2340,13 @@ document.querySelectorAll("#akpNBtns button").forEach(b=>{
   b.onclick=()=>{ akpN=+b.dataset.n; openAkpModal(); };
 });
 
+// Bei aus dem Zwischenspeicher (bfcache) wiederhergestellten Seiten oder
+// nach längerer Inaktivität eines offenen Tabs läuft init() nicht erneut -
+// deshalb zusätzlich bei jedem Sichtbarwerden der Seite still nachladen,
+// damit man nie auf einem veralteten Stand hängen bleibt.
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible"&&hasData()) refreshData(true); });
+window.addEventListener("pageshow",e=>{ if(e.persisted&&hasData()) refreshData(true); });
+
 /* ---------- Init ---------- */
 (async function init(){
   const sel=$("mitarbeiter");
