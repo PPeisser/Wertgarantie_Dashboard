@@ -137,3 +137,92 @@ es ist keine zusätzliche Secret-Konfiguration nötig.
 Client-Key (Nachfolger des `anon`-Keys) – er darf im Frontend-Code sichtbar
 sein, die eigentliche Absicherung erfolgt über Row Level Security (Schritt 2)
 und den Login-Zwang.
+
+---
+
+# Event-Landingpage & Event-Admin
+
+Zwei zusätzliche, eigenständige Seiten für die Anmeldung zu einer
+Wertgarantie-Veranstaltung (eine Veranstaltung, mehrere Termine/Orte):
+
+- **[`event-landingpage.html`](event-landingpage.html)** – öffentliche
+  Anmeldeseite (kein Login). Zeigt Titel/Beschreibung der aktiven
+  Veranstaltung, ein Dropdown mit allen Terminen (Datum, Uhrzeit, Ort) und ein
+  Anmeldeformular, dessen Felder im Admin-Panel konfiguriert werden. Nach dem
+  Absenden wird – sofern die E-Mail-Adresse erfasst wurde – automatisch eine
+  Bestätigungsmail verschickt.
+- **[`event-admin.html`](event-admin.html)** – Admin-Panel (gleicher Login
+  wie das Performance-Dashboard, nur Rolle `admin`). Hier werden verwaltet:
+  - **Veranstaltung**: Titel, frei editierbare Beschreibung, Datenschutzhinweise
+    (Standardtext per Klick einfügbar, jederzeit überschreibbar)
+  - **Termine**: Datum, Uhrzeit (von/bis), Ort – hinzufügen, bearbeiten, löschen
+  - **Formularfelder**: Auswahl aus dem festen Katalog (Vorname, Name, PLZ,
+    Ort, Geburtsdatum, AKP-Nummer, FH-Nummer, Fachhändler, Telefonnummer,
+    E-Mail-Adresse, Anreise mit Auto, sonstige Bemerkungen) inkl.
+    Aktiv/Pflichtfeld-Umschalter, Beschriftung und Reihenfolge
+  - **E-Mail-Empfänger**: Adressen, die den automatischen täglichen bzw.
+    wöchentlichen Gesamt-Anmeldestand erhalten
+  - **Anmeldungen**: Übersicht aller Anmeldungen inkl. CSV-Export
+
+## Datenbank
+
+Tabellen `events`, `event_dates`, `event_form_fields`, `registrations`,
+`email_recipients` im selben Supabase-Projekt (`gfyjftwlombhmwirbyse`) wie das
+Dashboard, RLS-abgesichert:
+- Anmeldeformular (`registrations`) ist per `INSERT` öffentlich (kein Login),
+  Lesen/Löschen nur für `role = 'admin'`.
+- `events`, `event_dates`, `event_form_fields` sind öffentlich lesbar
+  (nötig für die Landingpage ohne Login), Schreiben nur für Admins.
+- `email_recipients` ist ausschließlich für Admins sichtbar/änderbar.
+
+## Mailversand (Edge Function `event-mailer`)
+
+[`supabase/functions/event-mailer/index.ts`](supabase/functions/event-mailer/index.ts)
+übernimmt zwei Aufgaben:
+1. **Bestätigungsmail** an den Anmelder direkt nach dem Absenden des Formulars.
+2. **Status-Report** (aktueller Gesamt-Anmeldestand je Termin/Ort) an alle im
+   Admin-Panel hinterlegten Empfänger – täglich bzw. wöchentlich, ausgelöst
+   über `pg_cron` + `pg_net` (siehe unten).
+
+Der Mailversand läuft über **SMTP** und braucht folgende Secrets, die
+**einmalig manuell** im Supabase-Dashboard hinterlegt werden müssen
+(_Project Settings → Edge Functions → Secrets_, da hierfür kein CLI-Zugriff
+aus dieser Session bestand):
+
+| Secret | Beschreibung |
+|---|---|
+| `SMTP_HOST` | z.B. `smtp.office365.com` |
+| `SMTP_PORT` | z.B. `587` (STARTTLS) oder `465` (TLS) |
+| `SMTP_USERNAME` | Login-Benutzername fürs Postfach |
+| `SMTP_PASSWORD` | Passwort bzw. App-Passwort |
+| `SMTP_FROM_EMAIL` | Absenderadresse, z.B. `veranstaltungen@wertgarantie.at` |
+| `SMTP_FROM_NAME` | Absendername, z.B. `Wertgarantie Veranstaltungen` |
+| `CRON_SECRET` | Schützt den `report`-Endpunkt vor fremden Aufrufen (Wert siehe unten, identisch zum in `pg_cron` hinterlegten Wert) |
+
+Erneut deployen nach Code-Änderungen:
+```bash
+supabase functions deploy event-mailer --project-ref gfyjftwlombhmwirbyse
+```
+
+## Automatischer täglicher/wöchentlicher Report (`pg_cron`)
+
+Zwei `pg_cron`-Jobs rufen `event-mailer` mit `{"type":"report","frequency":"daily"|"weekly"}`
+auf (Migration `event_report_cron`):
+- `event-daily-report`: täglich um 06:00 UTC
+- `event-weekly-report`: montags um 06:00 UTC
+
+Zeiten anpassen (z.B. andere Uhrzeit/Zeitzone):
+```sql
+select cron.alter_job(job_id := (select jobid from cron.job where jobname='event-daily-report'), schedule := '0 5 * * *');
+```
+
+## Domain / Deployment
+
+Die Seiten sind Teil desselben Repos/Vercel-Projekts wie das Dashboard und
+unter ihrem Dateinamen erreichbar (z.B. `https://<projekt>.vercel.app/event-landingpage.html`
+und `.../event-admin.html`). Für die Domain `wgaustria.at` (Registrar
+Easyname) muss im Vercel-Projekt unter *Settings → Domains* die Domain
+hinzugefügt werden – Vercel zeigt dann die einzutragenden DNS-Records
+(A-Record auf `76.76.21.21` für die Root-Domain bzw. CNAME auf
+`cname.vercel-dns.com` für eine Subdomain), die anschließend bei Easyname
+unter *Domains → wgaustria.at → DNS-Verwaltung* eingetragen werden.
