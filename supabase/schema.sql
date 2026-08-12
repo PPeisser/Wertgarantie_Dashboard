@@ -201,3 +201,41 @@ $$;
 
 revoke execute on function public.akp_sync_daily(jsonb) from public;
 grant execute on function public.akp_sync_daily(jsonb) to authenticated;
+
+-- ---------- Fachhändler-Zusatzdaten (Adresse, Kontakt, Ansprechpartner, Segmentierung, Besuch, Notizen) ----------
+
+create table if not exists public.fh_contacts (
+  fh_nr            text primary key,
+  strasse          text,
+  plz              text,
+  ort              text,
+  telefon          text,
+  email            text,
+  ansprechpartner  text,
+  homepage         text,
+  -- Feste Segmentierung A/B/C (Händlerpotenzial).
+  segmentierung    text check (segmentierung is null or segmentierung in ('A','B','C')),
+  letzter_besuch   date,
+  sonstige_infos   text,
+  updated_at       timestamptz not null default now(),
+  updated_by       uuid references auth.users(id)
+);
+
+alter table public.fh_contacts enable row level security;
+
+-- Team-Arbeitswerkzeug wie akp_contacts: jede Rolle darf lesen und pflegen.
+create policy "Authenticated read fh_contacts"
+  on public.fh_contacts for select
+  to authenticated
+  using (true);
+
+create policy "Authenticated insert fh_contacts"
+  on public.fh_contacts for insert
+  to authenticated
+  with check (true);
+
+create policy "Authenticated update fh_contacts"
+  on public.fh_contacts for update
+  to authenticated
+  using (true)
+  with check (true);

@@ -293,6 +293,9 @@ td .betr{font-size:11px;color:var(--muted)}
 #akpContactModal input,#akpContactModal select{font:inherit;font-size:14px;font-weight:600;text-align:left;text-transform:none;width:100%;border:2px solid var(--line);border-radius:10px;padding:8px 10px;outline:none}
 #akpContactModal input:focus,#akpContactModal select:focus{border-color:var(--wg-blue)}
 #akpContactModal .error{color:var(--neg);font-size:12.5px;margin-top:8px;min-height:16px}
+#fhModal input,#fhModal select,#fhModal textarea{font:inherit;font-size:14px;font-weight:600;text-align:left;text-transform:none;width:100%;border:2px solid var(--line);border-radius:10px;padding:8px 10px;outline:none;resize:vertical}
+#fhModal input:focus,#fhModal select:focus,#fhModal textarea:focus{border-color:var(--wg-blue)}
+#fhModal .error{color:var(--neg);font-size:12.5px;margin-top:8px;min-height:16px}
 .ac-month-table{width:100%;border-collapse:collapse;font-size:11.5px}
 .ac-month-table th{text-align:right;font-weight:800;color:var(--muted);padding:3px 6px;font-size:10.5px}
 .ac-month-table th:first-child,.ac-month-table td:first-child{text-align:left}
@@ -424,6 +427,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
   .datenstand{text-align:left}
   h2.sec{flex-wrap:wrap;row-gap:8px}
   .tabs{flex-wrap:wrap}
+  .ac-grid{grid-template-columns:1fr 1fr}
+}
+@media (max-width:480px){
+  .ac-grid{grid-template-columns:1fr}
 }
 </style>
 </head>
@@ -650,8 +657,49 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <button class="btn btn-ghost" id="fhClose" style="padding:7px 12px">✕ Schließen</button>
     </div>
     <div id="fhMeta" style="font-size:12.5px;color:var(--muted);margin-bottom:14px"></div>
-    <div class="actions" style="justify-content:flex-start;margin-bottom:10px">
+
+    <div id="fhViewMode">
+      <div class="ac-grid">
+        <div><span class="ac-lbl">Adresse</span><div class="ac-val" id="fhAddrView">–</div></div>
+        <div><span class="ac-lbl">Telefon</span><div class="ac-val" id="fhTelefonView">–</div></div>
+        <div><span class="ac-lbl">E-Mail</span><div class="ac-val" id="fhEmailView">–</div></div>
+        <div><span class="ac-lbl">Ansprechpartner</span><div class="ac-val" id="fhAnsprechpartnerView">–</div></div>
+        <div><span class="ac-lbl">Homepage</span><div class="ac-val" id="fhHomepageView">–</div></div>
+        <div><span class="ac-lbl">Händlersegmentierung</span><div class="ac-val" id="fhSegmentView">–</div></div>
+        <div><span class="ac-lbl">Letzter Besuch</span><div class="ac-val" id="fhBesuchView">–</div></div>
+      </div>
+      <div style="margin-top:14px"><span class="ac-lbl">Sonstige Infos</span><div class="ac-val" id="fhInfosView" style="font-weight:600;white-space:pre-wrap">–</div></div>
+      <button class="btn btn-blue" id="fhEditBtn" style="margin-top:14px">✎ Stammdaten bearbeiten</button>
+    </div>
+
+    <div id="fhEditMode" class="hidden">
+      <div class="ac-grid">
+        <div><label class="ac-lbl" for="fhStrasseEdit">Straße</label><input id="fhStrasseEdit" autocomplete="off"></div>
+        <div><label class="ac-lbl" for="fhPlzEdit">PLZ</label><input id="fhPlzEdit" autocomplete="off"></div>
+        <div><label class="ac-lbl" for="fhOrtEdit">Ort</label><input id="fhOrtEdit" autocomplete="off"></div>
+        <div><label class="ac-lbl" for="fhTelefonEdit">Telefon</label><input id="fhTelefonEdit" autocomplete="off"></div>
+        <div><label class="ac-lbl" for="fhEmailEdit">E-Mail</label><input id="fhEmailEdit" type="email" autocomplete="off"></div>
+        <div><label class="ac-lbl" for="fhAnsprechpartnerEdit">Ansprechpartner</label><input id="fhAnsprechpartnerEdit" autocomplete="off"></div>
+        <div><label class="ac-lbl" for="fhHomepageEdit">Homepage</label><input id="fhHomepageEdit" autocomplete="off" placeholder="https://…"></div>
+        <div><label class="ac-lbl" for="fhSegmentEdit">Händlersegmentierung</label>
+          <select id="fhSegmentEdit"><option value="">–</option><option value="A">A</option><option value="B">B</option><option value="C">C</option></select>
+        </div>
+        <div><label class="ac-lbl" for="fhBesuchEdit">Letzter Besuch</label><input id="fhBesuchEdit" type="date"></div>
+      </div>
+      <div style="margin-top:14px">
+        <label class="ac-lbl" for="fhInfosEdit">Sonstige Infos</label>
+        <textarea id="fhInfosEdit" rows="3"></textarea>
+      </div>
+      <div class="actions" style="margin-top:14px">
+        <button class="btn btn-ghost" id="fhCancelBtn">Abbrechen</button>
+        <button class="btn btn-blue" id="fhSaveBtn">Speichern</button>
+      </div>
+      <div class="error" id="fhSaveHint"></div>
+    </div>
+
+    <div class="actions" style="justify-content:flex-start;margin-top:18px;margin-bottom:10px">
       <button class="btn btn-blue" id="fhTopFlopBtn">Top &amp; Flop AKP dieses Händlers ⤢</button>
+      <button class="btn btn-ghost no-print" id="fhPdfBtn">⬇ Datenblatt als PDF</button>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
       <span style="font-size:12px;color:var(--muted);font-weight:700">Zeitraum:</span>
@@ -1900,13 +1948,17 @@ function openAkpModal(){
 
 /* ---------- Fachhändler PopUp (Liste der AKP eines Händlers, Test) ---------- */
 let fhModalCurrent=null;
-function openFhModal(fhNr){
+async function openFhModal(fhNr){
   if(!fhNr) return;
   fhModalCurrent=fhNr;
   const f=state.latest.fh[fhNr];
   $("fhName").textContent=(f&&f.name)||fhNr;
   $("fhMeta").innerHTML=`FH-Nr. <b>${escapeHtml(fhNr)}</b>${f&&f.ort?" · "+escapeHtml(f.ort):""}${f&&(f.emp||f.gl)?" · "+escapeHtml(f.emp||f.gl):""}`;
   $("fhTopFlopBtn").dataset.fhNr=fhNr;
+  toggleFhEdit(false);
+  fhContactCurrent=null;
+  ["fhAddrView","fhTelefonView","fhEmailView","fhAnsprechpartnerView","fhHomepageView","fhSegmentView","fhBesuchView","fhInfosView"]
+    .forEach(id=>$(id).textContent="lädt …");
   document.querySelectorAll("#fhPeriodTabs button").forEach(b=>b.classList.toggle("on",b.dataset.p===fhAkpPeriod));
   const rows=akpFullList(state.latest).filter(a=>a.fhNr===fhNr);
   const ranked=akpRanked(rows,fhAkpPeriod);
@@ -1924,6 +1976,152 @@ function openFhModal(fhNr){
       </div>`).join(""):`<div class="empty-note">Keine AKP für diesen Händler in diesem Zeitraum gefunden.</div>`;
   }
   $("fhModal").classList.remove("hidden");
+  await loadFhContact(fhNr);
+  if(fhModalCurrent===fhNr) renderFhContactView();
+}
+
+/* ---------- Fachhändler-Stammdaten (Adresse, Kontakt, Ansprechpartner, Segmentierung, Besuch, Notizen) ---------- */
+let fhContactCurrent=null;
+const FH_SEGMENT_LBL={A:"A",B:"B",C:"C"};
+function urlHref(u){ return /^https?:\/\//i.test(u)?u:"https://"+u; }
+async function loadFhContact(fhNr){
+  fhContactCurrent={fh_nr:fhNr,strasse:null,plz:null,ort:null,telefon:null,email:null,ansprechpartner:null,homepage:null,segmentierung:null,letzter_besuch:null,sonstige_infos:null};
+  try{
+    const {data,error}=await sb.from("fh_contacts").select("*").eq("fh_nr",fhNr).maybeSingle();
+    if(!error&&data) fhContactCurrent=data;
+  }catch(e){}
+}
+function renderFhContactView(){
+  const c=fhContactCurrent||{};
+  const f=state.latest.fh[fhModalCurrent];
+  const addr=[c.strasse,[c.plz,c.ort||(f&&f.ort)].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  $("fhAddrView").textContent=addr||"–";
+  $("fhTelefonView").textContent=c.telefon||"–";
+  $("fhEmailView").textContent=c.email||"–";
+  $("fhAnsprechpartnerView").textContent=c.ansprechpartner||"–";
+  $("fhHomepageView").innerHTML=c.homepage?`<a href="${escapeHtml(urlHref(c.homepage))}" target="_blank" rel="noopener">${escapeHtml(c.homepage)}</a>`:"–";
+  $("fhSegmentView").textContent=c.segmentierung?(FH_SEGMENT_LBL[c.segmentierung]||c.segmentierung):"–";
+  $("fhBesuchView").textContent=c.letzter_besuch?fmtDate(c.letzter_besuch):"–";
+  $("fhInfosView").textContent=c.sonstige_infos||"–";
+}
+function toggleFhEdit(on){
+  $("fhViewMode").classList.toggle("hidden",on);
+  $("fhEditMode").classList.toggle("hidden",!on);
+  $("fhSaveHint").textContent="";
+  if(on){
+    const c=fhContactCurrent||{};
+    const f=state.latest.fh[fhModalCurrent];
+    $("fhStrasseEdit").value=c.strasse||"";
+    $("fhPlzEdit").value=c.plz||(f&&f.plz)||"";
+    $("fhOrtEdit").value=c.ort||(f&&f.ort)||"";
+    $("fhTelefonEdit").value=c.telefon||"";
+    $("fhEmailEdit").value=c.email||"";
+    $("fhAnsprechpartnerEdit").value=c.ansprechpartner||"";
+    $("fhHomepageEdit").value=c.homepage||"";
+    $("fhSegmentEdit").value=c.segmentierung||"";
+    $("fhBesuchEdit").value=c.letzter_besuch||"";
+    $("fhInfosEdit").value=c.sonstige_infos||"";
+  }
+}
+async function saveFhContact(){
+  const fhNr=fhModalCurrent; if(!fhNr) return;
+  const strasse=$("fhStrasseEdit").value.trim()||null;
+  const plz=$("fhPlzEdit").value.trim()||null;
+  const ort=$("fhOrtEdit").value.trim()||null;
+  const telefon=$("fhTelefonEdit").value.trim()||null;
+  const email=$("fhEmailEdit").value.trim()||null;
+  const ansprechpartner=$("fhAnsprechpartnerEdit").value.trim()||null;
+  const homepage=$("fhHomepageEdit").value.trim()||null;
+  const segSel=$("fhSegmentEdit").value;
+  const segmentierung=segSel===""?null:segSel;
+  const letzter_besuch=$("fhBesuchEdit").value||null;
+  const sonstige_infos=$("fhInfosEdit").value.trim()||null;
+  $("fhSaveBtn").disabled=true;
+  const {error}=await sb.from("fh_contacts").upsert({
+    fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,homepage,segmentierung,letzter_besuch,sonstige_infos,
+    updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()
+  },{onConflict:"fh_nr"});
+  $("fhSaveBtn").disabled=false;
+  if(error){ $("fhSaveHint").textContent="Fehler: "+error.message; return; }
+  fhContactCurrent={...fhContactCurrent,fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,homepage,segmentierung,letzter_besuch,sonstige_infos};
+  renderFhContactView();
+  toggleFhEdit(false);
+  toast("Händlerdaten gespeichert ✓");
+}
+let fhPdfBusy=false;
+async function exportFhPdf(){
+  if(fhPdfBusy) return;
+  if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)){
+    toast("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals klicken.");
+    return;
+  }
+  const fhNr=fhModalCurrent; if(!fhNr) return;
+  const f=state.latest.fh[fhNr]||{};
+  const c=fhContactCurrent||{};
+  fhPdfBusy=true;
+  // Fenster synchron im Klick öffnen statt erst nach dem await für html2canvas -
+  // sonst werten Browser das spätere window.open() als Popup außerhalb einer
+  // Nutzer-Interaktion und blockieren es stillschweigend.
+  const pdfWindow=window.open("","_blank");
+  if(pdfWindow) pdfWindow.document.write("<p style='font-family:sans-serif;padding:20px;color:#5D7284'>PDF wird erstellt …</p>");
+  toast("PDF wird erstellt …");
+  const box=document.createElement("div");
+  try{
+    const field=(lbl,val)=>`<div><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#5D7284;margin-bottom:3px">${lbl}</div><div style="font-size:14px;font-weight:700;color:#10202C">${val}</div></div>`;
+    const addr=[c.strasse,[c.plz,c.ort||f.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ")||"–";
+    // Für die Ansprechpartner-Liste im Datenblatt auf max. 15 begrenzen, sonst
+    // müsste html2canvas eine sehr lange Liste auf eine A4-Seite herunterskalieren
+    // und der Text würde unleserlich klein.
+    const akpRows=[...document.querySelectorAll("#fhBody .akp-search-row")];
+    const akpHtml=akpRows.length
+      ? akpRows.slice(0,15).map(r=>r.outerHTML).join("")+(akpRows.length>15?`<div style="font-size:11px;color:#5D7284;margin-top:6px">… und ${akpRows.length-15} weitere</div>`:"")
+      : document.getElementById("fhBody").innerHTML;
+    box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
+    box.innerHTML=`
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:18px">
+        <div>
+          <div style="font-size:21px;font-weight:900;color:#062A3F">${escapeHtml((f&&f.name)||fhNr)}</div>
+          <div style="font-size:12px;color:#5D7284;margin-top:3px">FH-Nr. ${escapeHtml(fhNr)}${f&&f.ort?" · "+escapeHtml(f.ort):""}${f&&(f.emp||f.gl)?" · "+escapeHtml(f.emp||f.gl):""}</div>
+        </div>
+        <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Fachhändler-Datenblatt</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px;margin-bottom:18px">
+        ${field("Adresse",escapeHtml(addr))}
+        ${field("Telefon",escapeHtml(c.telefon||"–"))}
+        ${field("E-Mail",escapeHtml(c.email||"–"))}
+        ${field("Ansprechpartner",escapeHtml(c.ansprechpartner||"–"))}
+        ${field("Homepage",escapeHtml(c.homepage||"–"))}
+        ${field("Händlersegmentierung",c.segmentierung?escapeHtml(FH_SEGMENT_LBL[c.segmentierung]||c.segmentierung):"–")}
+        ${field("Letzter Besuch",c.letzter_besuch?fmtDate(c.letzter_besuch):"–")}
+      </div>
+      ${c.sonstige_infos?`<div style="margin-bottom:18px"><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#5D7284;margin-bottom:4px">Sonstige Infos</div><div style="font-size:12.5px;color:#10202C;white-space:pre-wrap;line-height:1.5">${escapeHtml(c.sonstige_infos)}</div></div>`:""}
+      <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Ansprechpartner (AKP) · ${akpUnitLabel(fhAkpPeriod)}</div>
+      ${akpHtml}
+    `;
+    document.body.appendChild(box);
+    await new Promise(r=>setTimeout(r,30));
+    const canvas=await html2canvas(box,{scale:2,backgroundColor:"#ffffff",useCORS:true,logging:false});
+    const {jsPDF}=window.jspdf;
+    const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+    const pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), margin=10;
+    let imgW=pw-2*margin, imgH=canvas.height*imgW/canvas.width;
+    if(imgH>ph-2*margin){ imgH=ph-2*margin; imgW=canvas.width*imgH/canvas.height; }
+    const x=(pw-imgW)/2;
+    pdf.addImage(canvas.toDataURL("image/jpeg",0.95),"JPEG",x,margin,imgW,imgH);
+    // Der Nutzer will das Datenblatt sofort einsehbar haben statt nur einen
+    // Download auszulösen - deshalb hier öffnen (neuer Tab, s.o.) statt pdf.save().
+    const blobUrl=pdf.output("bloburl");
+    if(pdfWindow) pdfWindow.location.href=blobUrl;
+    else window.open(blobUrl,"_blank");
+    toast("PDF erstellt ✓");
+  }catch(e){
+    console.error(e);
+    if(pdfWindow) pdfWindow.close();
+    toast("PDF-Erstellung fehlgeschlagen.");
+  }finally{
+    if(box.parentNode) box.parentNode.removeChild(box);
+    fhPdfBusy=false;
+  }
 }
 
 /* ---------- AKP-Kontakt PopUp (Stammdaten, Kontakt, Aktionsteilnahme, Profi-Training) ---------- */
@@ -2453,6 +2651,10 @@ $("acEditBtn").onclick=()=>toggleAkpEdit(true);
 $("acCancelBtn").onclick=()=>toggleAkpEdit(false);
 $("acSaveBtn").onclick=saveAkpContact;
 $("acPdfBtn").onclick=()=>exportAkpPdf();
+$("fhEditBtn").onclick=()=>toggleFhEdit(true);
+$("fhCancelBtn").onclick=()=>toggleFhEdit(false);
+$("fhSaveBtn").onclick=saveFhContact;
+$("fhPdfBtn").onclick=()=>exportFhPdf();
 document.querySelectorAll("#akpNBtns button").forEach(b=>{
   b.onclick=()=>{ akpN=+b.dataset.n; openAkpModal(); };
 });
