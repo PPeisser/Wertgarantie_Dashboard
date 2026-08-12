@@ -213,13 +213,23 @@ create table if not exists public.fh_contacts (
   email            text,
   ansprechpartner  text,
   homepage         text,
-  -- Feste Segmentierung A/B/C (Händlerpotenzial).
-  segmentierung    text check (segmentierung is null or segmentierung in ('A','B','C')),
+  -- Feste Segmentierung A+/A/B/C (Händlerpotenzial).
+  segmentierung    text check (segmentierung is null or segmentierung in ('A+','A','B','C')),
   letzter_besuch   date,
   sonstige_infos   text,
+  -- Monatsproduktion je Fachhändler (analog zu akp_contacts.prod_monthly),
+  -- "YYYY-MM" -> Verträge. Wird über einen Bulk-Import befüllt; bis dahin
+  -- ergänzt der Client die Ansicht clientseitig aus der Tages-Historie.
+  prod_monthly     jsonb not null default '{}'::jsonb,
   updated_at       timestamptz not null default now(),
   updated_by       uuid references auth.users(id)
 );
+
+alter table public.fh_contacts add column if not exists prod_monthly jsonb not null default '{}'::jsonb;
+
+alter table public.fh_contacts drop constraint if exists fh_contacts_segmentierung_check;
+alter table public.fh_contacts add constraint fh_contacts_segmentierung_check
+  check (segmentierung is null or segmentierung in ('A+','A','B','C'));
 
 alter table public.fh_contacts enable row level security;
 
