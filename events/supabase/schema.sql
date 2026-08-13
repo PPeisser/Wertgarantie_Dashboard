@@ -1,9 +1,58 @@
--- Wertgarantie Event-Landingpage – Supabase Schema
--- Ergänzt schema.sql um Events, Termine, Formularfelder, Anmeldungen und
--- E-Mail-Empfänger. Nutzt public.is_admin() aus schema.sql für Admin-Policies.
--- Im Supabase SQL-Editor ausführen (nach schema.sql), falls das Projekt neu
--- aufgesetzt wird. Auf dem bestehenden Projekt (gfyjftwlombhmwirbyse) wurde
--- dies bereits per Migration angewendet.
+-- Wertgarantie Events – eigenständiges Supabase-Schema (Projekt "wgaustria-events",
+-- getrennt vom Performance-Dashboard). Im Supabase SQL-Editor ausführen, falls
+-- das Projekt neu aufgesetzt wird. Auf dem bestehenden Projekt wurde dies
+-- bereits per Migration angewendet.
+
+-- ---------- Rollen ----------
+-- Dieses Projekt hat nur einen Nutzerkreis: Event-Admins. Jeder neu
+-- registrierte Nutzer wird automatisch Admin (siehe handle_new_user unten).
+
+create table if not exists public.profiles (
+  id         uuid primary key references auth.users(id) on delete cascade,
+  email      text,
+  name       text,
+  role       text not null default 'admin' check (role in ('admin')),
+  created_at timestamptz not null default now()
+);
+
+alter table public.profiles enable row level security;
+
+create policy "Authenticated read profiles"
+  on public.profiles for select
+  to authenticated
+  using (true);
+
+create or replace function public.is_admin()
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select exists (select 1 from public.profiles where id = auth.uid() and role = 'admin');
+$$;
+
+revoke execute on function public.is_admin() from public, anon;
+grant execute on function public.is_admin() to authenticated;
+
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, email, name, role)
+  values (new.id, new.email, new.raw_user_meta_data->>'name', 'admin');
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
 
 -- ---------- Events (fachlich: es gibt jeweils genau EIN aktives Event) ----------
 
@@ -12,6 +61,7 @@ create table if not exists public.events (
   title         text not null default 'Wertgarantie Veranstaltung',
   description   text not null default '',
   privacy_text  text not null default '',
+  photo_url     text,
   is_active     boolean not null default false,
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now()
@@ -64,7 +114,7 @@ create index if not exists event_dates_event_idx on public.event_dates (event_id
 
 -- ---------- Formularfelder-Konfiguration je Event ----------
 -- field_key ist ein fester Katalog, Label/Reihenfolge/Pflicht sind je Event
--- konfigurierbar (siehe FIELD_META in event-landingpage.html / event-admin.html).
+-- konfigurierbar (siehe FIELD_META in events/index.html / events/admin.html).
 
 create table if not exists public.event_form_fields (
   id          uuid primary key default gen_random_uuid(),
@@ -146,12 +196,39 @@ create policy "Admins manage email_recipients"
   using (public.is_admin())
   with check (public.is_admin());
 
--- Seed: ein leeres Default-Event anlegen, falls noch keines existiert.
+-- ---------- Foto-Storage ----------
+
+insert into storage.buckets (id, name, public)
+values ('event-photos', 'event-photos', true)
+on conflict (id) do nothing;
+
+create policy "Public read event photos"
+  on storage.objects for select
+  to anon, authenticated
+  using (bucket_id = 'event-photos');
+
+create policy "Admins upload event photos"
+  on storage.objects for insert
+  to authenticated
+  with check (bucket_id = 'event-photos' and public.is_admin());
+
+create policy "Admins update event photos"
+  on storage.objects for update
+  to authenticated
+  using (bucket_id = 'event-photos' and public.is_admin())
+  with check (bucket_id = 'event-photos' and public.is_admin());
+
+create policy "Admins delete event photos"
+  on storage.objects for delete
+  to authenticated
+  using (bucket_id = 'event-photos' and public.is_admin());
+
+-- ---------- Seed: Default-Event + Feldkonfiguration ----------
+
 insert into public.events (title, description, is_active)
 select 'Wertgarantie Roadshow', 'Beschreibung im Admin-Panel bearbeiten.', true
 where not exists (select 1 from public.events);
 
--- Sinnvolle Default-Feldkonfiguration für Events ohne eigene Konfiguration.
 insert into public.event_form_fields (event_id, field_key, enabled, required, sort_order, label)
 select e.id, f.field_key, f.enabled, f.required, f.sort_order, f.label
 from public.events e
@@ -176,7 +253,8 @@ where not exists (
 -- ---------- Automatischer täglicher/wöchentlicher Report (pg_cron + pg_net) ----------
 -- Ruft die Edge Function event-mailer auf, die den aktuellen Gesamt-Anmeldestand
 -- an alle aktiven email_recipients der jeweiligen Häufigkeit verschickt.
--- CRON_SECRET muss identisch als Edge-Function-Secret hinterlegt sein (siehe README).
+-- <CRON_SECRET> durch denselben Wert ersetzen, der auch als Edge-Function-Secret
+-- CRON_SECRET hinterlegt ist (siehe README).
 
 create extension if not exists pg_cron;
 create extension if not exists pg_net;
@@ -186,7 +264,7 @@ select cron.schedule(
   '0 6 * * *',
   $$
   select net.http_post(
-    url := 'https://gfyjftwlombhmwirbyse.supabase.co/functions/v1/event-mailer',
+    url := '<SUPABASE_PROJECT_URL>/functions/v1/event-mailer',
     headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'),
     body := jsonb_build_object('type','report','frequency','daily')
   );
@@ -198,7 +276,7 @@ select cron.schedule(
   '0 6 * * 1',
   $$
   select net.http_post(
-    url := 'https://gfyjftwlombhmwirbyse.supabase.co/functions/v1/event-mailer',
+    url := '<SUPABASE_PROJECT_URL>/functions/v1/event-mailer',
     headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'),
     body := jsonb_build_object('type','report','frequency','weekly')
   );

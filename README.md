@@ -140,21 +140,26 @@ und den Login-Zwang.
 
 ---
 
-# Event-Landingpage & Event-Admin
+# Event-Landingpage & Event-Admin (`events/`)
 
-Zwei zusätzliche, eigenständige Seiten für die Anmeldung zu einer
-Wertgarantie-Veranstaltung (eine Veranstaltung, mehrere Termine/Orte):
+Eigenständige Anwendung im Ordner [`events/`](events/) für die Anmeldung zu
+einer Wertgarantie-Veranstaltung (eine Veranstaltung, mehrere Termine/Orte).
+**Bewusst vollständig getrennt** vom Performance-Dashboard: eigenes
+Supabase-Projekt, eigenes Vercel-Projekt, eigene Domain, eigener Login –
+nichts wird zwischen den beiden Anwendungen geteilt.
 
-- **[`event-landingpage.html`](event-landingpage.html)** – öffentliche
-  Anmeldeseite (kein Login). Zeigt Titel/Beschreibung der aktiven
-  Veranstaltung, ein Dropdown mit allen Terminen (Datum, Uhrzeit, Ort) und ein
-  Anmeldeformular, dessen Felder im Admin-Panel konfiguriert werden. Nach dem
-  Absenden wird – sofern die E-Mail-Adresse erfasst wurde – automatisch eine
-  Bestätigungsmail verschickt.
-- **[`event-admin.html`](event-admin.html)** – Admin-Panel (gleicher Login
-  wie das Performance-Dashboard, nur Rolle `admin`). Hier werden verwaltet:
-  - **Veranstaltung**: Titel, frei editierbare Beschreibung, Datenschutzhinweise
-    (Standardtext per Klick einfügbar, jederzeit überschreibbar)
+- **[`events/index.html`](events/index.html)** – öffentliche Anmeldeseite
+  (kein Login). Zeigt Titel/Beschreibung/Foto der aktiven Veranstaltung, ein
+  Dropdown mit allen Terminen (Datum, Uhrzeit, Ort) und ein Anmeldeformular,
+  dessen Felder im Admin-Panel konfiguriert werden. Nach dem Absenden wird –
+  sofern die E-Mail-Adresse erfasst wurde – automatisch eine
+  Bestätigungsmail verschickt. Ganz unten im Kleingedruckten verlinkt ein
+  „Admin"-Link auf das Admin-Panel.
+- **[`events/admin.html`](events/admin.html)** – Admin-Panel, eigener Login
+  (Supabase Auth dieses Projekts, jeder hier registrierte Nutzer ist Admin).
+  Hier werden verwaltet:
+  - **Veranstaltung**: Titel, Foto (Upload), frei editierbare Beschreibung,
+    Datenschutzhinweise (Standardtext per Klick einfügbar, überschreibbar)
   - **Termine**: Datum, Uhrzeit (von/bis), Ort – hinzufügen, bearbeiten, löschen
   - **Formularfelder**: Auswahl aus dem festen Katalog (Vorname, Name, PLZ,
     Ort, Geburtsdatum, AKP-Nummer, FH-Nummer, Fachhändler, Telefonnummer,
@@ -164,50 +169,61 @@ Wertgarantie-Veranstaltung (eine Veranstaltung, mehrere Termine/Orte):
     wöchentlichen Gesamt-Anmeldestand erhalten
   - **Anmeldungen**: Übersicht aller Anmeldungen inkl. CSV-Export
 
-## Datenbank
+## Supabase-Projekt
 
-Tabellen `events`, `event_dates`, `event_form_fields`, `registrations`,
-`email_recipients` im selben Supabase-Projekt (`gfyjftwlombhmwirbyse`) wie das
-Dashboard, RLS-abgesichert:
+Eigenes Projekt **`wgaustria-events`** (Projekt-ID `jtgoytbcqkqopdpjlozq`,
+Region `eu-central-1`, Free Tier). Schema: [`events/supabase/schema.sql`](events/supabase/schema.sql)
+(Tabellen `events`, `event_dates`, `event_form_fields`, `registrations`,
+`email_recipients` + `profiles`/`is_admin` fürs Admin-Login), RLS-abgesichert:
 - Anmeldeformular (`registrations`) ist per `INSERT` öffentlich (kein Login),
-  Lesen/Löschen nur für `role = 'admin'`.
+  Lesen/Löschen nur für eingeloggte Admins.
 - `events`, `event_dates`, `event_form_fields` sind öffentlich lesbar
   (nötig für die Landingpage ohne Login), Schreiben nur für Admins.
 - `email_recipients` ist ausschließlich für Admins sichtbar/änderbar.
+- Storage-Bucket `event-photos` (öffentlich lesbar, Upload nur für Admins).
+
+### Ersten Admin-Nutzer anlegen
+
+Dieses Projekt hat noch keinen Nutzer. Im Supabase-Dashboard des Projekts
+`wgaustria-events` → **Authentication → Users → Add user** einen Nutzer mit
+E-Mail + Passwort anlegen (z.B. `peter@peisser.com`) – er wird durch den
+`handle_new_user`-Trigger automatisch als Admin angelegt und kann sich danach
+in `events/admin.html` einloggen.
 
 ## Mailversand (Edge Function `event-mailer`)
 
-[`supabase/functions/event-mailer/index.ts`](supabase/functions/event-mailer/index.ts)
+[`events/supabase/functions/event-mailer/index.ts`](events/supabase/functions/event-mailer/index.ts)
 übernimmt zwei Aufgaben:
 1. **Bestätigungsmail** an den Anmelder direkt nach dem Absenden des Formulars.
 2. **Status-Report** (aktueller Gesamt-Anmeldestand je Termin/Ort) an alle im
    Admin-Panel hinterlegten Empfänger – täglich bzw. wöchentlich, ausgelöst
-   über `pg_cron` + `pg_net` (siehe unten).
+   über `pg_cron` + `pg_net` (siehe unten). Bereits im Projekt deployt.
 
-Der Mailversand läuft über **SMTP** und braucht folgende Secrets, die
-**einmalig manuell** im Supabase-Dashboard hinterlegt werden müssen
-(_Project Settings → Edge Functions → Secrets_, da hierfür kein CLI-Zugriff
-aus dieser Session bestand):
+Der Mailversand läuft über **SMTP** (Easyname-Postfach `events@wgaustria.at`)
+und braucht folgende Secrets, die **einmalig manuell** im Supabase-Dashboard
+des Projekts `wgaustria-events` hinterlegt werden müssen
+(_Project Settings → Edge Functions → Secrets_, da hierfür kein
+Secrets-Tool in dieser Session zur Verfügung stand):
 
-| Secret | Beschreibung |
+| Secret | Wert |
 |---|---|
-| `SMTP_HOST` | z.B. `smtp.office365.com` |
-| `SMTP_PORT` | z.B. `587` (STARTTLS) oder `465` (TLS) |
-| `SMTP_USERNAME` | Login-Benutzername fürs Postfach |
-| `SMTP_PASSWORD` | Passwort bzw. App-Passwort |
-| `SMTP_FROM_EMAIL` | Absenderadresse, z.B. `veranstaltungen@wertgarantie.at` |
-| `SMTP_FROM_NAME` | Absendername, z.B. `Wertgarantie Veranstaltungen` |
-| `CRON_SECRET` | Schützt den `report`-Endpunkt vor fremden Aufrufen (Wert siehe unten, identisch zum in `pg_cron` hinterlegten Wert) |
+| `SMTP_HOST` | `web8.wh20.easyname.systems` |
+| `SMTP_PORT` | `465` |
+| `SMTP_USERNAME` | `events@wgaustria.at` |
+| `SMTP_PASSWORD` | *(Postfach-Passwort, wie separat mitgeteilt)* |
+| `SMTP_FROM_EMAIL` | `events@wgaustria.at` |
+| `SMTP_FROM_NAME` | z.B. `Wertgarantie Veranstaltungen` |
+| `CRON_SECRET` | *(wurde beim Einrichten von `pg_cron` erzeugt, identischer Wert wie dort hinterlegt – separat mitgeteilt)* |
 
 Erneut deployen nach Code-Änderungen:
 ```bash
-supabase functions deploy event-mailer --project-ref gfyjftwlombhmwirbyse
+supabase functions deploy event-mailer --project-ref jtgoytbcqkqopdpjlozq
 ```
 
 ## Automatischer täglicher/wöchentlicher Report (`pg_cron`)
 
-Zwei `pg_cron`-Jobs rufen `event-mailer` mit `{"type":"report","frequency":"daily"|"weekly"}`
-auf (Migration `event_report_cron`):
+Zwei `pg_cron`-Jobs im Projekt `wgaustria-events` rufen `event-mailer` mit
+`{"type":"report","frequency":"daily"|"weekly"}` auf:
 - `event-daily-report`: täglich um 06:00 UTC
 - `event-weekly-report`: montags um 06:00 UTC
 
@@ -216,13 +232,19 @@ Zeiten anpassen (z.B. andere Uhrzeit/Zeitzone):
 select cron.alter_job(job_id := (select jobid from cron.job where jobname='event-daily-report'), schedule := '0 5 * * *');
 ```
 
-## Domain / Deployment
+## Vercel-Projekt & Domain
 
-Die Seiten sind Teil desselben Repos/Vercel-Projekts wie das Dashboard und
-unter ihrem Dateinamen erreichbar (z.B. `https://<projekt>.vercel.app/event-landingpage.html`
-und `.../event-admin.html`). Für die Domain `wgaustria.at` (Registrar
-Easyname) muss im Vercel-Projekt unter *Settings → Domains* die Domain
-hinzugefügt werden – Vercel zeigt dann die einzutragenden DNS-Records
-(A-Record auf `76.76.21.21` für die Root-Domain bzw. CNAME auf
-`cname.vercel-dns.com` für eine Subdomain), die anschließend bei Easyname
-unter *Domains → wgaustria.at → DNS-Verwaltung* eingetragen werden.
+**Eigenes Vercel-Projekt**, *Root Directory* auf `events` gestellt (damit
+`events/index.html` unter „/" ausgeliefert wird und `events/vercel.json`
+unabhängig vom Dashboard-Vercel-Projekt gilt). Domain: **`events.wgaustria.at`**.
+
+Einrichtung (sobald die Vercel-Integration für diese Session autorisiert ist,
+aktuell noch nicht der Fall – bis dahin manuell im Vercel-Dashboard):
+1. Neues Vercel-Projekt aus diesem GitHub-Repo anlegen, *Root Directory* = `events`.
+2. Unter *Settings → Domains* `events.wgaustria.at` hinzufügen – Vercel zeigt
+   den nötigen DNS-Eintrag an (i.d.R. ein **CNAME** auf `cname.vercel-dns.com`
+   für eine Subdomain wie `events`).
+3. Diesen Eintrag bei Easyname eintragen: Login auf easyname.com → **CloudPit**
+   → Domain `wgaustria.at` suchen → „Mehr" (`⋯`) → **DNS-Verwaltung** → ggf.
+   auf manuelle Verwaltung umschalten → **+ DNS-Eintrag hinzufügen** → Typ
+   **CNAME**, Name `events`, Wert wie von Vercel angezeigt.
