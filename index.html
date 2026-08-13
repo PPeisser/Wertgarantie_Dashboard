@@ -1375,7 +1375,7 @@ async function handleFiles(files){
     const buf=await file.arrayBuffer();
     const wb=XLSX.read(buf,{type:"array",cellDates:true});
     const snap=parseAuswertung(wb);
-    if(snap){ mergeSnapshot(snap); syncAkpContacts(snap); okCount++; }
+    if(snap){ mergeSnapshot(snap); syncAkpContacts(snap); syncFhContacts(snap); okCount++; }
   }
   if(!okCount){ toast("Format nicht erkannt – bitte die Auswertung_TAG-Datei mit den Blättern FH_Liste, AKP Liste, AKQ-Liste einspielen."); return; }
   await saveData();
@@ -1392,6 +1392,18 @@ async function syncAkpContacts(snap){
     const mk=snap.jahr+"-"+String(snap.monat).padStart(2,"0");
     const rows=snap.akp.filter(a=>a.nr).map(a=>({nr:a.nr,fh:a.fhNr,nm:a.name,fi:a.firma,or:a.ort,mk,mv:a.monat||0}));
     if(rows.length) await sb.rpc("akp_sync_daily",{rows});
+  }catch(e){}
+}
+// Hält fh_contacts.prod_monthly (Fachhändler-Monatsproduktion, siehe
+// Fachhändler-PopUp) bei jeder Einspielung aktuell - schreibt den laufenden
+// Monat mit dem kumulierten Monatswert aus der FH-Liste fest (analog zu
+// syncAkpContacts/akp_sync_daily). Läuft im Hintergrund, blockiert nicht.
+async function syncFhContacts(snap){
+  if(!(sb&&supaUser&&snap&&snap.fh)) return;
+  try{
+    const mk=snap.jahr+"-"+String(snap.monat).padStart(2,"0");
+    const rows=Object.entries(snap.fh).map(([nr,f])=>({nr,mk,mv:f.monat||0}));
+    if(rows.length) await sb.rpc("fh_sync_daily",{rows});
   }catch(e){}
 }
 // Lädt die komplette AKP-Kontaktdatenbank einmal pro Sitzung (paginiert, >10.000
@@ -2121,26 +2133,33 @@ function renderFhMonthly(){
 }
 function renderFhYearlyTrend(){
   const merged=fhMonthlyMerged(fhModalCurrent);
+  const beitragsfrei=(fhContactCurrent&&fhContactCurrent.beitragsfrei_yearly)||{};
   const byYear={};
   for(const [k,v] of Object.entries(merged)){
     const y=k.slice(0,4);
     if(!byYear[y]) byYear[y]={sum:0,months:0};
     byYear[y].sum+=v; byYear[y].months++;
   }
-  const years=Object.keys(byYear).sort();
+  const years=[...new Set([...Object.keys(byYear),...Object.keys(beitragsfrei)])].sort();
   if(years.length<2){ $("fhYearlyTrend").innerHTML=""; return; }
   let prevSum=null;
   const rows=years.map(y=>{
-    const {sum,months}=byYear[y];
+    const {sum=0,months=0}=byYear[y]||{};
     const diff=prevSum==null?null:sum-prevSum;
     const pct=prevSum==null?null:pctOf(sum,prevSum);
     prevSum=sum;
+    const bf=beitragsfrei[y];
+    // Jeder beitragsfreie Vertrag entspricht einer 3-für-2-Aktion - Quote =
+    // beitragsfrei / Jahresproduktion.
+    const quote=(bf!=null&&sum>0)?bf/sum*100:null;
     return `<tr><td><b>${y}</b></td><td>${months} ${months===1?"Monat":"Monate"}</td><td>${fmt(sum)}</td>
-      <td>${diff==null?"–":`<span class="pill ${diff>=0?"pos":"neg"}">${fmtSign(diff)} (${fmtPct(pct)})</span>`}</td></tr>`;
+      <td>${diff==null?"–":`<span class="pill ${diff>=0?"pos":"neg"}">${fmtSign(diff)} (${fmtPct(pct)})</span>`}</td>
+      <td>${bf!=null?fmt(bf):"–"}</td>
+      <td>${quote!=null?quote.toFixed(1).replace(".",",")+" %":"–"}</td></tr>`;
   }).join("");
   $("fhYearlyTrend").innerHTML=`<h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:13px">Jahresvergleich</h4>
-    <table class="ac-yearly-table"><thead><tr><th>Jahr</th><th>Erfasst</th><th>Summe</th><th>vs. Vorjahr</th></tr></thead><tbody>${rows}</tbody></table>
-    <div class="ac-month-note">Jahre mit weniger als 12 erfassten Monaten sind noch nicht vollständig – der Vergleich ist dann nicht 1:1.</div>`;
+    <table class="ac-yearly-table"><thead><tr><th>Jahr</th><th>Erfasst</th><th>Summe</th><th>vs. Vorjahr</th><th>davon beitragsfrei</th><th>3-für-2-Quote</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="ac-month-note">Jahre mit weniger als 12 erfassten Monaten sind noch nicht vollständig – der Vergleich ist dann nicht 1:1. Jeder beitragsfreie Vertrag entspricht einer 3-für-2-Aktion.</div>`;
 }
 function toggleFhEdit(on){
   $("fhViewMode").classList.toggle("hidden",on);

@@ -226,12 +226,18 @@ create table if not exists public.fh_contacts (
   -- Händler ist mit dem 9-Wochen-Plan durch. Einmal gesetzt, "rastet" der
   -- Status dauerhaft ein (kein automatisches Zurücksetzen).
   neunwochen_erledigt boolean not null default false,
+  -- Jährliche "davon beitragsfrei"-Summe (aus dem Bulk-Import, nicht in der
+  -- täglichen Auswertung enthalten) - "YYYY" -> Anzahl. Jeder beitragsfreie
+  -- Vertrag entspricht einer 3-für-2-Aktion; die Quote wird clientseitig aus
+  -- prod_monthly (Jahressumme) und diesem Wert berechnet.
+  beitragsfrei_yearly jsonb not null default '{}'::jsonb,
   updated_at       timestamptz not null default now(),
   updated_by       uuid references auth.users(id)
 );
 
 alter table public.fh_contacts add column if not exists prod_monthly jsonb not null default '{}'::jsonb;
 alter table public.fh_contacts add column if not exists neunwochen_erledigt boolean not null default false;
+alter table public.fh_contacts add column if not exists beitragsfrei_yearly jsonb not null default '{}'::jsonb;
 
 alter table public.fh_contacts drop constraint if exists fh_contacts_segmentierung_check;
 alter table public.fh_contacts add constraint fh_contacts_segmentierung_check
@@ -255,3 +261,29 @@ create policy "Authenticated update fh_contacts"
   to authenticated
   using (true)
   with check (true);
+
+-- Hält fh_contacts.prod_monthly bei jeder täglichen Einspielung aktuell
+-- (analog zu akp_sync_daily) - schreibt den laufenden Monat mit dem
+-- kumulierten Monatswert aus der FH-Liste fest.
+create or replace function public.fh_sync_daily(rows jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  r jsonb; mval int; mkey text; monthjson jsonb;
+begin
+  for r in select * from jsonb_array_elements(rows) loop
+    if coalesce(r->>'nr','') = '' then continue; end if;
+    mkey := r->>'mk';
+    mval := coalesce((r->>'mv')::int, 0);
+    monthjson := case when mkey is not null and mval <> 0 then jsonb_build_object(mkey, mval) else '{}'::jsonb end;
+
+    insert into public.fh_contacts (fh_nr, prod_monthly)
+    values (r->>'nr', monthjson)
+    on conflict (fh_nr) do update set
+      prod_monthly = coalesce(fh_contacts.prod_monthly,'{}'::jsonb) || excluded.prod_monthly,
+      updated_at = now();
+  end loop;
+end;
+$$;
+
+revoke execute on function public.fh_sync_daily(jsonb) from public;
+grant execute on function public.fh_sync_daily(jsonb) to authenticated;
