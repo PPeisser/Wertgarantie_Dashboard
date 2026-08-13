@@ -1865,7 +1865,7 @@ function renderObs(){
       return `<div class="${cls}">
       <div class="ic">${ic}</div>
       <div class="t">
-        <b class="obs-name" title="${escapeHtml(o.f.name)} · ${escapeHtml(o.f.nr||"")} · ${escapeHtml(o.f.ort||"")}">${escapeHtml(o.f.name)} <span style="font-weight:600;color:var(--muted)">· ${escapeHtml(o.f.nr||"")} · ${escapeHtml(o.f.ort||"")}</span></b>
+        <b class="obs-name" title="${escapeHtml(o.f.name)} · ${escapeHtml(o.f.nr||"")} · ${escapeHtml(o.f.ort||"")}"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(o.f.nr||"")}">${escapeHtml(o.f.name)}</button> <span style="font-weight:600;color:var(--muted)">· ${escapeHtml(o.f.nr||"")} · ${escapeHtml(o.f.ort||"")}</span></b>
         <span class="obs-sub" title="${escapeHtml(o.sub)}">${escapeHtml(o.sub)}</span>
         <span class="obs-sub">${o.txt}</span>
       </div>
@@ -1873,7 +1873,7 @@ function renderObs(){
     }
     return `<div class="${cls}">
       <div class="ic">${ic}</div>
-      <div class="t"><b class="obs-name" title="${escapeHtml(o.f.name)} · ${escapeHtml(o.f.nr||"")} · ${escapeHtml(o.f.ort||"")}${showGL&&(o.f.emp||o.f.gl)?" · "+escapeHtml(o.f.emp||o.f.gl):""}">${escapeHtml(o.f.name)} <span style="font-weight:600;color:var(--muted)">· ${escapeHtml(o.f.ort||"")}${showGL&&(o.f.emp||o.f.gl)?" · "+escapeHtml(o.f.emp||o.f.gl):""}</span></b>
+      <div class="t"><b class="obs-name" title="${escapeHtml(o.f.name)} · ${escapeHtml(o.f.nr||"")} · ${escapeHtml(o.f.ort||"")}${showGL&&(o.f.emp||o.f.gl)?" · "+escapeHtml(o.f.emp||o.f.gl):""}"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(o.f.nr||"")}">${escapeHtml(o.f.name)}</button> <span style="font-weight:600;color:var(--muted)">· ${escapeHtml(o.f.ort||"")}${showGL&&(o.f.emp||o.f.gl)?" · "+escapeHtml(o.f.emp||o.f.gl):""}</span></b>
         <span class="obs-desc">${o.txt}</span></div>
     </div>`;
   }).join(""):`<div class="empty-note">Aktuell keine auffälligen Abweichungen – alle Händler laufen im gewohnten Rahmen. ✅</div>`;
@@ -1888,7 +1888,7 @@ function renderAKP(){
   const p=akpPeriod, medal=["#FFD700","#C0C0C0","#CD7F32","#8FB6C9","#8FB6C9"];
   const row=(r,i,neg,val,unit,pill)=>`<div class="akp-row">
       <div class="med" style="background:${neg?"var(--neg-bg)":medal[i]+"33"};color:${neg?"var(--neg)":"var(--wg-navy)"}">${neg?"▼":(i+1)}</div>
-      <div class="info"><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><span>${r.firma} · ${r.ort}${showGL&&r.emp?" · "+r.emp:""}</span></div>
+      <div class="info"><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><span><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.fhNr||"")}">${escapeHtml(r.firma||"")}</button> · ${escapeHtml(r.ort||"")}${showGL&&r.emp?" · "+escapeHtml(r.emp):""}</span></div>
       <div class="val"><span class="val-num">${fmt(val)}<small> ${unit}</small></span>${pill}</div>
     </div>`;
   let html="";
@@ -1925,7 +1925,7 @@ function renderAkpSearch(){
   const unit=akpUnitLabel(akpPeriod);
   box.innerHTML=hits.map(r=>`<div class="akp-search-row">
       <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b>
-      <span class="betr">${escapeHtml(r.firma||"")} · ${escapeHtml(r.ort||"")}</span></span>
+      <span class="betr"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.fhNr||"")}">${escapeHtml(r.firma||"")}</button> · ${escapeHtml(r.ort||"")}</span></span>
       <span class="val"><span class="val-num">${fmt(r.val)}<small> ${unit}</small></span>${r.pill||""}</span>
     </div>`).join("");
 }
@@ -2011,7 +2011,7 @@ function openAkpModal(){
     const mkTbl=(list,neg)=>`<table><thead><tr><th></th><th>AKP / Firma${showGL?" / Betreuer":""}</th><th class="r">${unit}</th><th class="r">VT</th><th class="r">vs. VJ</th></tr></thead><tbody>`+
       list.slice(0,akpN).map((r,i)=>`<tr>
         <td><span class="rank" style="${neg?"background:var(--neg-bg);color:var(--neg)":""}">${i+1}</span></td>
-        <td><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><br><span class="betr">${r.firma} · ${r.ort}${showGL&&r.emp?" · "+r.emp:""}</span></td>
+        <td><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><br><span class="betr"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.fhNr||"")}">${escapeHtml(r.firma||"")}</button> · ${escapeHtml(r.ort||"")}${showGL&&r.emp?" · "+escapeHtml(r.emp):""}</span></td>
         <td class="r" style="font-weight:900">${fmt(r.val)}</td>
         <td class="r" style="color:var(--muted)">${fmt(r.vt)}</td>
         <td class="r">${r.vjDiff==null?"–":`<span class="pill ${r.vjDiff>=0?"pos":"neg"}">${fmtSign(r.vjDiff)}</span>`}</td>
@@ -2348,7 +2348,7 @@ async function openAkpContact(nr,fallbackName){
   const c=akpContactCurrent;
   const name=(c.vorname||c.nachname)?[c.vorname,c.nachname].filter(Boolean).join(" "):(fallbackName||nr);
   $("acName").textContent=name;
-  $("acMeta").innerHTML=`AKP-Nr. <b>${escapeHtml(nr)}</b>${c.firma?" · "+escapeHtml(c.firma):""}${c.fh_nr?" · FH "+escapeHtml(c.fh_nr):""}${c.ort?" · "+escapeHtml(c.ort):""}`;
+  $("acMeta").innerHTML=`AKP-Nr. <b>${escapeHtml(nr)}</b>${c.firma?" · "+escapeHtml(c.firma):""}${c.fh_nr?` · <button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(c.fh_nr)}">FH ${escapeHtml(c.fh_nr)}</button>`:""}${c.ort?" · "+escapeHtml(c.ort):""}`;
   renderAkpContactView();
   renderAkpMonthly();
   renderAkpYearlyTrend();
@@ -2528,7 +2528,7 @@ function renderAKQ(){
   $("akqList").innerHTML=`<table><thead><tr><th></th><th>Akquisekunde${showGL?" / Betreuer":""}</th><th class="r">${s.jahr}</th><th class="r">akt. KW</th></tr></thead><tbody>`+
     rows.map((r,i)=>`<tr>
       <td><span class="rank">${i+1}</span></td>
-      <td><b>${r.name}</b><br><span class="betr">${r.nr} · ${r.ort}${showGL?" · "+(r.emp||r.glRaw||"–"):""}${r.produzent?"":" · <span style='color:var(--neg)'>kein Produzent</span>"}</span>
+      <td><b><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.nr||"")}">${escapeHtml(r.name)}</button></b><br><span class="betr">${escapeHtml(r.nr)} · ${escapeHtml(r.ort)}${showGL?" · "+escapeHtml(r.emp||r.glRaw||"–"):""}${r.produzent?"":" · <span style='color:var(--neg)'>kein Produzent</span>"}</span>
         <div class="bar" style="height:5px;margin-top:4px;max-width:150px"><div class="fill" style="width:${r.p2026/max*100}%;background:var(--wg-blue)"></div></div></td>
       <td class="r" style="font-weight:900;font-size:14px">${fmt(r.p2026)}</td>
       <td class="r">${r.kw>0?`<span class="pill pos">+${fmt(r.kw)}</span>`:`<span class="pill neu">0</span>`}</td>
@@ -2613,7 +2613,7 @@ function renderAkqOhneProd(){
   if(!rows.length){ $("akqOpBody").innerHTML=`<div class="empty-note">Alle Akquisekunden dieser Ansicht haben ${s.jahr} bereits produziert. 🎉</div>`; return; }
   $("akqOpBody").innerHTML=`<table class="akqop-table"><thead><tr><th>Händler${showGL?" / Betreuer":""}</th><th>Adresse</th><th>Beginn</th><th>Telefon</th></tr></thead><tbody>`+
     rows.map(a=>`<tr>
-      <td class="akqop-name"><b title="${escapeHtml(a.name)}">${escapeHtml(a.name)}</b><span class="betr">${a.nr}${showGL?" · "+(a.emp||a.glRaw||"–"):""}</span></td>
+      <td class="akqop-name"><b title="${escapeHtml(a.name)}"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(a.nr||"")}">${escapeHtml(a.name)}</button></b><span class="betr">${escapeHtml(a.nr)}${showGL?" · "+escapeHtml(a.emp||a.glRaw||"–"):""}</span></td>
       <td><span class="betr akqop-addr">${a.strasse||""}${a.strasse?", ":""}${a.plz} ${a.ort}</span></td>
       <td>${a.beginn?fmtDate(a.beginn):"–"}</td>
       <td>${a.tel?`<a href="tel:${a.tel.replace(/[^+\d]/g,"")}" style="color:var(--wg-blue);font-weight:700;text-decoration:none">${a.tel}</a>`:"–"}</td>
@@ -2650,7 +2650,7 @@ function renderNeunWochen(){
   $("nwBody").innerHTML=`<table><thead><tr><th></th><th>Händler${showGL?" / Betreuer":""}</th><th class="r">Resttage</th><th>Beginn</th><th class="r">Termine</th><th class="r">Prod. ${s.jahr}</th></tr></thead><tbody>`+
     visibleRows.map(a=>`<tr>
       <td>${a.warn?"⚠️":"✅"}</td>
-      <td><b>${a.name}</b><br><span class="betr">${a.nr} · ${a.ort}${showGL?" · "+(a.emp||a.glRaw||"–"):""}</span></td>
+      <td><b><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(a.nr||"")}">${escapeHtml(a.name)}</button></b><br><span class="betr">${escapeHtml(a.nr)} · ${escapeHtml(a.ort)}${showGL?" · "+escapeHtml(a.emp||a.glRaw||"–"):""}</span></td>
       <td class="r" style="font-weight:800;${a.resttage<=14?"color:var(--neg)":""}">${a.resttage}</td>
       <td>${fmtDate(a.beginn)}</td>
       <td class="r" style="font-weight:800;${a.termine<5?"color:var(--neg)":""}">${fmt(a.termine)} <span class="betr">(${fmt(a.besP)} p. / ${fmt(a.besT)} tel.)</span></td>
