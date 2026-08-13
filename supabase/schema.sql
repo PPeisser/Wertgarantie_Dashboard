@@ -221,11 +221,17 @@ create table if not exists public.fh_contacts (
   -- "YYYY-MM" -> Verträge. Wird über einen Bulk-Import befüllt; bis dahin
   -- ergänzt der Client die Ansicht clientseitig aus der Tages-Historie.
   prod_monthly     jsonb not null default '{}'::jsonb,
+  -- Manuell oder automatisch (alte Händler ohne aktuellen Akquise-Beginn,
+  -- bzw. 5+ Termine oder 20+ Verträge im laufenden Jahr) gesetzter Status:
+  -- Händler ist mit dem 9-Wochen-Plan durch. Einmal gesetzt, "rastet" der
+  -- Status dauerhaft ein (kein automatisches Zurücksetzen).
+  neunwochen_erledigt boolean not null default false,
   updated_at       timestamptz not null default now(),
   updated_by       uuid references auth.users(id)
 );
 
 alter table public.fh_contacts add column if not exists prod_monthly jsonb not null default '{}'::jsonb;
+alter table public.fh_contacts add column if not exists neunwochen_erledigt boolean not null default false;
 
 alter table public.fh_contacts drop constraint if exists fh_contacts_segmentierung_check;
 alter table public.fh_contacts add constraint fh_contacts_segmentierung_check
