@@ -1667,11 +1667,11 @@ function goalCard(name,target,ist,soll,extra,editable,hr,lbls){
     const hrT=hr.target||target;
     const hp=hrT>0?hr.val/hrT*100:null;
     const hGood=hp!=null?hp>=100:true; // grün ab 100 % des Bezugswerts (Plan bzw. Ziel)
-    // Hochrechnung ist jetzt die große, prominente Zahl - der aktuelle
-    // Ist-Stand rückt klein darunter nach (umgekehrt wie zuvor).
+    // Die Hochrechnungs-Quote (% vom Plan/Ziel) ist die große, fette Zahl -
+    // die absolute Summe rückt als kleine Beschriftung daneben nach.
     bigBlock=`<div class="big">
-      <span class="pct" style="color:${hGood?"var(--pos)":"var(--neg)"}">${fmt(hr.val)}</span>
-      <span class="stk">📈 Hochrechnung ${hr.lbl}${hp!=null?` · <span class="pill ${hGood?"pos":"neg"}">${hp.toFixed(1).replace(".",",")} % ${hr.vsLbl||"vom Ziel"}</span>`:""}</span>
+      <span class="pct" style="color:${hGood?"var(--pos)":"var(--neg)"}">${hp!=null?hp.toFixed(1).replace(".",",")+" %":"–"}</span>
+      <span class="stk">📈 Hochrechnung ${hr.lbl}: ${fmt(hr.val)}</span>
     </div>`;
     smallLine=`<div class="hr"><span class="hr-ic">📌</span> Ist-Stand: <b>${target>0?pct.toFixed(1).replace(".",",")+" %":"–"}</b>
       <span class="stk">${fmt(ist)} / ${target>0?fmt(target):"?"} Stk.</span><span class="hr-stand">Stand: ${hr.stand}</span></div>`;
