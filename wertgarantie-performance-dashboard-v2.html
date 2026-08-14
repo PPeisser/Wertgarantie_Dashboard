@@ -1856,6 +1856,11 @@ function parseAkquiseStaffeln(wb){
   if(!rows.length) return null;
   const header=rows[0].map(normHeader);
   const idxFh=header.findIndex(h=>h==="FH Nr");
+  // Firmenname als Fallback für "AKQ ohne Zuordnung" (siehe renderObs), falls
+  // der Händler in der aktuellen täglichen FH_Liste-Auswertung keine Zeile
+  // hat (z.B. keine Tagesproduktion) - die Akquisestaffel-Datei selbst
+  // enthält keinen Ort.
+  const idxBez=header.findIndex(h=>h==="FH Bez (ohne Nr)");
   // Mitarbeiter-Zuordnung (in der Praxis Spalte H): per Headername gesucht
   // ("GL aktuell" laut Dateiformat), mit Fallback auf die feste Spalte H
   // (Index 7), falls der Header abweicht - Quelle der Wahrheit für "AKQ ohne
@@ -1877,13 +1882,14 @@ function parseAkquiseStaffeln(wb){
   for(let i=1;i<rows.length;i++){
     const r=rows[i]; if(!r) continue;
     const fhNr=r[idxFh]; if(fhNr==null||fhNr==="") continue;
+    const name=idxBez>-1?String(r[idxBez]??"").trim()||null:null;
     const gl=idxGl>-1?String(r[idxGl]??"").trim()||null:null;
     const punkte=idxPunkte>-1?num(r[idxPunkte]):null;
     const staffeln=staffelIdx.map(idx=>{
       const v=r[idx];
       return (v==null||v==="")?null:String(v).trim();
     });
-    out.push({ fh_nr:String(fhNr).trim(), gl, punkte, staffeln });
+    out.push({ fh_nr:String(fhNr).trim(), name, gl, punkte, staffeln });
   }
   return out.length?out:null;
 }
@@ -1973,7 +1979,7 @@ async function handleAkqStaffelFile(files){
     const CHUNK=500;
     for(let i=0;i<rows.length;i+=CHUNK){
       const chunk=rows.slice(i,i+CHUNK).map(r=>({
-        fh_nr:r.fh_nr, akq_punkte:r.punkte, akq_staffeln:r.staffeln, akq_gl:r.gl,
+        fh_nr:r.fh_nr, akq_punkte:r.punkte, akq_staffeln:r.staffeln, akq_gl:r.gl, akq_name:r.name,
         updated_by:supaUser.id, updated_at:new Date().toISOString()
       }));
       const { error }=await sb.from("fh_contacts").upsert(chunk,{onConflict:"fh_nr"});
@@ -2075,11 +2081,11 @@ async function loadFhAkqIndex(){
     for(;;){
       guard++;
       const {data,error}=await sb.from("fh_contacts")
-        .select("fh_nr,akq_punkte,akq_staffeln,akq_gl")
+        .select("fh_nr,akq_punkte,akq_staffeln,akq_gl,akq_name")
         .range(from,from+999);
       if(error){ console.error("loadFhAkqIndex:",error.message||error); break; }
       if(!data||!data.length) break;
-      for(const r of data) if(r.fh_nr&&(r.akq_punkte!=null||(r.akq_staffeln&&r.akq_staffeln.length))) idx[r.fh_nr]={punkte:r.akq_punkte,staffeln:r.akq_staffeln||[],gl:r.akq_gl||null};
+      for(const r of data) if(r.fh_nr&&(r.akq_punkte!=null||(r.akq_staffeln&&r.akq_staffeln.length))) idx[r.fh_nr]={punkte:r.akq_punkte,staffeln:r.akq_staffeln||[],gl:r.akq_gl||null,name:r.akq_name||null};
       from+=data.length;
       if(guard>50) break;
     }
@@ -2537,7 +2543,7 @@ function renderObs(){
       const gl=String(rec.gl||"").trim().toLowerCase();
       if(!AKQ_OHNE_ZUORDNUNG_GL.some(g=>g.toLowerCase()===gl)) return;
       const fh=s.fh[fhNr];
-      items.push({f:{name:(fh&&fh.name)||fhNr,nr:fhNr,ort:fh&&fh.ort,emp:null,gl:rec.gl},type:"down",prio:2,cat:"akqohnezuordnung",sev:rec.punkte,ic:"🧭",layout:"akq",
+      items.push({f:{name:(fh&&fh.name)||rec.name||fhNr,nr:fhNr,ort:fh&&fh.ort,emp:null,gl:rec.gl},type:"down",prio:2,cat:"akqohnezuordnung",sev:rec.punkte,ic:"🧭",layout:"akq",
         sub:`${rec.gl||"ohne Zuordnung"} · AKQ ohne Zuordnung`,
         txt:`Akquisestaffel-Punkte: <b>${fmt(rec.punkte)}</b>`});
     });
