@@ -287,3 +287,50 @@ $$;
 
 revoke execute on function public.fh_sync_daily(jsonb) from public;
 grant execute on function public.fh_sync_daily(jsonb) to authenticated;
+
+-- Pro-Nutzer-Einstellungen (Passwort-Bereich separat über auth.updateUser,
+-- hier nur Benachrichtigungs-Präferenzen). Anders als alle bisherigen
+-- Tabellen NICHT team-weit lesbar - jeder Nutzer sieht/ändert nur seine
+-- eigene Zeile (auth.uid() = user_id).
+create table if not exists public.user_settings (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  notif_akp_enabled boolean not null default false,
+  notif_akp_days integer not null default 30,
+  notif_fh_enabled boolean not null default false,
+  notif_fh_days integer not null default 30,
+  notif_scope text not null default 'own',
+  updated_at timestamptz not null default now()
+);
+
+alter table public.user_settings drop constraint if exists user_settings_scope_check;
+alter table public.user_settings add constraint user_settings_scope_check
+  check (notif_scope in ('own','all'));
+
+alter table public.user_settings drop constraint if exists user_settings_akp_days_check;
+alter table public.user_settings add constraint user_settings_akp_days_check
+  check (notif_akp_days in (30,60,90));
+
+alter table public.user_settings drop constraint if exists user_settings_fh_days_check;
+alter table public.user_settings add constraint user_settings_fh_days_check
+  check (notif_fh_days in (30,60,90));
+
+alter table public.user_settings enable row level security;
+
+drop policy if exists "Users read own settings" on public.user_settings;
+create policy "Users read own settings"
+  on public.user_settings for select
+  to authenticated
+  using (auth.uid() = user_id);
+
+drop policy if exists "Users insert own settings" on public.user_settings;
+create policy "Users insert own settings"
+  on public.user_settings for insert
+  to authenticated
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users update own settings" on public.user_settings;
+create policy "Users update own settings"
+  on public.user_settings for update
+  to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);

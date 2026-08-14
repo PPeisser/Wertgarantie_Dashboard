@@ -465,6 +465,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
      </div>
      <div class="controls-row controls-row2">
       <span class="hidden" id="roleBadge" style="background:var(--wg-navy);color:#fff;font-weight:800;font-size:10px;border-radius:99px;padding:4px 10px;white-space:nowrap"></span>
+      <button class="btn btn-ghost hidden" id="settingsBtn" title="Einstellungen">⚙ Einstellungen</button>
       <button class="btn btn-ghost hidden" id="adminBtn" title="Admin-Panel">⚙ Admin</button>
      </div>
     </div>
@@ -572,6 +573,81 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- Einstellungen (pro Nutzer: Passwort, Rolle, Benachrichtigungen) -->
+<div class="modal-bg hidden" id="settingsModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
+      <h3 style="margin:0">⚙ Einstellungen</h3>
+      <button class="btn btn-ghost" id="settingsClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+
+    <h4 style="margin:16px 0 8px;color:var(--wg-navy);font-size:14px">Mitarbeiter</h4>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:13.5px;color:var(--muted)">
+      <div>Name: <b id="setName" style="color:var(--ink)">–</b></div>
+      <div>E-Mail: <b id="setEmail" style="color:var(--ink)">–</b></div>
+      <div>Rolle: <b id="setRole" style="color:var(--ink)">–</b></div>
+    </div>
+
+    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Passwort ändern</h4>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input type="password" id="setPwNew" placeholder="Neues Passwort" autocomplete="new-password" style="flex:1;min-width:180px;font-size:14px;font-weight:600;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <input type="password" id="setPwNew2" placeholder="Neues Passwort bestätigen" autocomplete="new-password" style="flex:1;min-width:180px;font-size:14px;font-weight:600;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <button class="btn btn-blue" id="setPwBtn">Ändern</button>
+    </div>
+    <div class="error" id="setPwHint"></div>
+
+    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Benachrichtigungen</h4>
+    <div style="display:flex;flex-direction:column;gap:13px">
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;flex-wrap:wrap">
+        Bereich für Benachrichtigungen:
+        <select id="setScope" style="border:2px solid var(--line);border-radius:8px;padding:6px 10px;font:inherit;font-weight:600">
+          <option value="own">Mein Bereich</option>
+          <option value="all">Österreich gesamt</option>
+        </select>
+      </label>
+
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;flex-wrap:wrap">
+        <input type="checkbox" id="setAkpEnabled" style="width:17px;height:17px;flex-shrink:0">
+        AKP: warnen, wenn keine Produktion seit
+        <select id="setAkpDays" style="border:2px solid var(--line);border-radius:8px;padding:6px 10px;font:inherit;font-weight:600">
+          <option value="30">30 Tagen</option>
+          <option value="60">60 Tagen</option>
+          <option value="90">90 Tagen</option>
+        </select>
+      </label>
+
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;flex-wrap:wrap">
+        <input type="checkbox" id="setFhEnabled" style="width:17px;height:17px;flex-shrink:0">
+        FH: warnen, wenn keine Produktion seit
+        <select id="setFhDays" style="border:2px solid var(--line);border-radius:8px;padding:6px 10px;font:inherit;font-weight:600">
+          <option value="30">30 Tagen</option>
+          <option value="60">60 Tagen</option>
+          <option value="90">90 Tagen</option>
+        </select>
+        <span style="font-weight:600;color:var(--muted)">oder Produktion ggü. Vorjahreszeitraum um mind. 20&nbsp;% gesunken ist</span>
+      </label>
+
+      <div class="hint">Bei aktivierten Benachrichtigungen öffnet sich das PopUp mit den Auffälligkeiten automatisch einmal pro Tag beim Login bzw. bei der ersten Aktualisierung. Danach jederzeit manuell über "Jetzt prüfen" abrufbar.</div>
+      <div class="error" id="setHint"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-blue" id="setSaveBtn">Speichern</button>
+        <button class="btn btn-ghost" id="setCheckNowBtn">🔔 Jetzt prüfen</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Benachrichtigungen (Ergebnis der Prüfung) -->
+<div class="modal-bg hidden" id="notifModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
+      <h3 style="margin:0">🔔 Benachrichtigungen</h3>
+      <button class="btn btn-ghost" id="notifClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+    <div id="notifBody" style="max-height:65vh;overflow:auto"></div>
   </div>
 </div>
 
@@ -852,11 +928,37 @@ async function fetchProfile(){
   }catch(e){}
   return null;
 }
+/* ---------- Einstellungen (pro Nutzer: Passwort, Benachrichtigungen) ---------- */
+let userSettings = { notif_akp_enabled:false, notif_akp_days:30, notif_fh_enabled:false, notif_fh_days:30, notif_scope:"own" };
+async function loadUserSettings(){
+  userSettings = { notif_akp_enabled:false, notif_akp_days:30, notif_fh_enabled:false, notif_fh_days:30, notif_scope:"own" };
+  try{
+    if(sb && supaUser){
+      const { data, error } = await sb.from("user_settings").select("*").eq("user_id",supaUser.id).maybeSingle();
+      if(!error && data) userSettings = { ...userSettings, ...data };
+    }
+  }catch(e){}
+}
+async function saveUserSettings(){
+  if(!(sb&&supaUser)) return;
+  const row={
+    user_id:supaUser.id,
+    notif_akp_enabled:userSettings.notif_akp_enabled,
+    notif_akp_days:userSettings.notif_akp_days,
+    notif_fh_enabled:userSettings.notif_fh_enabled,
+    notif_fh_days:userSettings.notif_fh_days,
+    notif_scope:userSettings.notif_scope,
+    updated_at:new Date().toISOString()
+  };
+  const { error } = await sb.from("user_settings").upsert(row,{onConflict:"user_id"});
+  if(error) throw error;
+}
 function showRoleBadge(){
   const b=$("roleBadge");
   if(myRole && ROLE_LABEL[myRole]){ b.textContent=ROLE_LABEL[myRole]; b.classList.remove("hidden"); }
   else b.classList.add("hidden");
   $("adminBtn").classList.toggle("hidden", myRole!=="admin");
+  $("settingsBtn").classList.toggle("hidden", !supaUser);
   const w=$("welcomeMsg");
   if(myName){ w.textContent="Herzlich Willkommen, "+myName; w.classList.remove("hidden"); }
   else w.classList.add("hidden");
@@ -904,7 +1006,9 @@ async function doLogin(){
   $("logoutBtn").classList.remove("hidden");
   const p = await fetchProfile(); myRole = p && p.role; myName = p && p.name; showRoleBadge();
   if(p && p.must_change_password) showForcePasswordModal();
+  await loadUserSettings();
   await loadAll(); render();
+  maybeAutoShowNotifications();
 }
 async function doLogout(){
   try{ await sb.auth.signOut(); }catch(e){}
@@ -912,6 +1016,8 @@ async function doLogout(){
   myRole=null; myName=null; showRoleBadge();
   $("logoutBtn").classList.add("hidden");
   $("adminModal").classList.add("hidden");
+  $("settingsModal").classList.add("hidden");
+  $("notifModal").classList.add("hidden");
   $("dash").classList.add("hidden");
   hideForcePasswordModal();
   showAuthModal("Abgemeldet.");
@@ -940,6 +1046,7 @@ async function initAuth(){
     supaUser=session.user; $("logoutBtn").classList.remove("hidden");
     const p = await fetchProfile(); myRole = p && p.role; myName = p && p.name; showRoleBadge();
     if(p && p.must_change_password) showForcePasswordModal();
+    await loadUserSettings();
     return true;
   }
   showAuthModal();
@@ -1026,6 +1133,221 @@ async function createAdminUser(){
   loadAdminUsers();
 }
 function openAdminModal(){ $("adminModal").classList.remove("hidden"); loadAdminUsers(); }
+
+/* ---------- Einstellungen (pro Nutzer: Passwort, Rolle, Benachrichtigungen) ---------- */
+function showSettingsModal(){
+  $("setName").textContent=myName||"–";
+  $("setEmail").textContent=(supaUser&&supaUser.email)||"–";
+  $("setRole").textContent=(myRole&&ROLE_LABEL[myRole])||"–";
+  $("setPwNew").value=""; $("setPwNew2").value=""; $("setPwHint").textContent="";
+  $("setHint").textContent="";
+  const ownAvailable=EMPLOYEES.includes(myName);
+  $("setScope").querySelector('option[value="own"]').disabled=!ownAvailable;
+  $("setScope").value=ownAvailable?(userSettings.notif_scope||"own"):"all";
+  $("setAkpEnabled").checked=!!userSettings.notif_akp_enabled;
+  $("setAkpDays").value=String(userSettings.notif_akp_days||30);
+  $("setFhEnabled").checked=!!userSettings.notif_fh_enabled;
+  $("setFhDays").value=String(userSettings.notif_fh_days||30);
+  $("settingsModal").classList.remove("hidden");
+}
+function hideSettingsModal(){ $("settingsModal").classList.add("hidden"); }
+async function doSettingsPasswordChange(){
+  const pw1=$("setPwNew").value, pw2=$("setPwNew2").value;
+  if(!pw1&&!pw2) return; // Passwortänderung in diesem PopUp optional
+  if(pw1.length<8){ $("setPwHint").textContent="Mindestens 8 Zeichen."; return; }
+  if(pw1!==pw2){ $("setPwHint").textContent="Passwörter stimmen nicht überein."; return; }
+  $("setPwBtn").disabled=true;
+  const { error } = await sb.auth.updateUser({ password: pw1 });
+  $("setPwBtn").disabled=false;
+  if(error){ $("setPwHint").textContent="Fehler: "+error.message; return; }
+  try{ await sb.rpc("mark_password_changed"); }catch(e){}
+  $("setPwNew").value=""; $("setPwNew2").value=""; $("setPwHint").textContent="";
+  toast("Passwort geändert.");
+}
+function syncSettingsFormToState(){
+  userSettings.notif_scope=$("setScope").value;
+  userSettings.notif_akp_enabled=$("setAkpEnabled").checked;
+  userSettings.notif_akp_days=+$("setAkpDays").value;
+  userSettings.notif_fh_enabled=$("setFhEnabled").checked;
+  userSettings.notif_fh_days=+$("setFhDays").value;
+}
+async function doSaveSettings(){
+  syncSettingsFormToState();
+  $("setSaveBtn").disabled=true;
+  try{ await saveUserSettings(); toast("Einstellungen gespeichert ✓"); }
+  catch(e){ $("setHint").textContent="Fehler beim Speichern: "+(e.message||e); }
+  finally{ $("setSaveBtn").disabled=false; }
+}
+
+/* ---------- Benachrichtigungen: AKP ohne Produktion / FH Rückgang ggü. Vorjahr ---------- */
+let fhContactsBulkIndex=null;
+async function loadFhContactsBulkIndex(){
+  if(!(sb&&supaUser)) return;
+  try{
+    const idx={}; let from=0, guard=0;
+    for(;;){
+      guard++;
+      const {data,error}=await sb.from("fh_contacts").select("fh_nr,prod_monthly").range(from,from+999);
+      if(error){ console.error("loadFhContactsBulkIndex:",error.message||error); break; }
+      if(!data||!data.length) break;
+      for(const r of data) if(r.fh_nr) idx[r.fh_nr]=r.prod_monthly||{};
+      from+=data.length;
+      if(guard>50) break;
+    }
+    fhContactsBulkIndex=idx;
+  }catch(e){ console.error("loadFhContactsBulkIndex failed:",e); }
+}
+function lastMonthKeyOf(pm){
+  let last=null;
+  for(const [k,v] of Object.entries(pm)) if(v>0&&(!last||k>last)) last=k;
+  return last;
+}
+function lastDailyDayOf(dailyMap){
+  if(!dailyMap) return null;
+  let last=null;
+  for(const [d,v] of Object.entries(dailyMap)) if(v>0&&(!last||d>last)) last=d;
+  return last;
+}
+function endOfMonthISO(ym){
+  const [y,m]=ym.split("-").map(Number);
+  return iso(new Date(Date.UTC(y,m,0)));
+}
+// Letztes tatsächliches Produktionsdatum: Tages-Historie (genau), sonst
+// letzter Monat mit Produktion aus der Bulk-Monatsproduktion (näherungsweise
+// als Monatsende) - je nachdem, was aktueller ist.
+function combinedLastProdDate(pm,dailyMap){
+  const lastDaily=lastDailyDayOf(dailyMap);
+  const lastMonth=lastMonthKeyOf(pm);
+  if(lastDaily&&(!lastMonth||lastDaily.slice(0,7)>=lastMonth)) return lastDaily;
+  if(lastMonth) return endOfMonthISO(lastMonth);
+  return null;
+}
+// Summe der letzten k Monate bis einschließlich jahr-monat (rückwärts) - Basis
+// für den FH-Vorjahresvergleich (Tage-Auswahl wird auf ganze Monate gerundet).
+function periodSum(pm,jahr,monat,k){
+  let y=jahr,m=monat,sum=0;
+  for(let i=0;i<k;i++){
+    sum+=(pm[y+"-"+String(m).padStart(2,"0")]||0);
+    m--; if(m<1){m=12;y--;}
+  }
+  return sum;
+}
+async function computeNotifications(){
+  const s=state.latest;
+  const result={akp:[],fh:[]};
+  if(!s) return result;
+  const ownAvailable=EMPLOYEES.includes(myName);
+  const scope=(ownAvailable&&userSettings.notif_scope==="own")?myName:null; // null = Österreich gesamt
+  const today=parseISO(s.vortag);
+
+  if(userSettings.notif_akp_enabled&&akpContactsIndex){
+    const days=userSettings.notif_akp_days||30;
+    for(const [nr,rec] of Object.entries(akpContactsIndex)){
+      const fh=s.fh[rec.fh_nr];
+      const emp=(fh&&fh.emp)||null;
+      if(scope&&emp!==scope) continue;
+      const pm={...(rec.prod_monthly||{})};
+      for(const [k,v] of Object.entries(rec.prod_monthly_other||{})) pm[k]=(pm[k]||0)+v;
+      const lastDate=combinedLastProdDate(pm,(state.dailyAKP||{})[nr]);
+      if(!lastDate) continue; // nie produziert - kein "abgekühlter" Kontakt
+      const daysSince=Math.round((today-parseISO(lastDate))/86400000);
+      if(daysSince>=days){
+        const name=[rec.vorname,rec.nachname].filter(Boolean).join(" ")||nr;
+        result.akp.push({nr,name,firma:rec.firma||(fh&&fh.name)||"",fhNr:rec.fh_nr||"",emp,lastDate,daysSince});
+      }
+    }
+    result.akp.sort((a,b)=>b.daysSince-a.daysSince);
+  }
+
+  if(userSettings.notif_fh_enabled){
+    if(!fhContactsBulkIndex) await loadFhContactsBulkIndex();
+    const days=userSettings.notif_fh_days||30;
+    const k=Math.max(1,Math.round(days/30));
+    for(const [fhNr,fh] of Object.entries(s.fh||{})){
+      if(scope&&fh.emp!==scope) continue;
+      const daily=state.dailyFH[fhNr]||{};
+      const fromDaily={};
+      for(const [d,v] of Object.entries(daily)){ const ym=d.slice(0,7); fromDaily[ym]=(fromDaily[ym]||0)+v; }
+      const pm={...fromDaily,...((fhContactsBulkIndex&&fhContactsBulkIndex[fhNr])||{})};
+      let daysSince=null,pct=null;
+      const lastDate=combinedLastProdDate(pm,daily);
+      if(lastDate) daysSince=Math.round((today-parseISO(lastDate))/86400000);
+      const cur=periodSum(pm,s.jahr,s.monat,k);
+      const prevYear=periodSum(pm,s.jahr-1,s.monat,k);
+      if(prevYear>0){ const p=pctOf(cur,prevYear); if(p!=null) pct=p; }
+      const noProd=daysSince!=null&&daysSince>=days;
+      const declined=pct!=null&&pct<=-20;
+      if(noProd||declined){
+        result.fh.push({fhNr,name:fh.name||fhNr,emp:fh.emp||null,daysSince:noProd?daysSince:null,pct:declined?pct:null});
+      }
+    }
+    result.fh.sort((a,b)=>(b.daysSince||0)-(a.daysSince||0));
+  }
+  return result;
+}
+function renderNotifResults(res){
+  const scopeLabel=(EMPLOYEES.includes(myName)&&userSettings.notif_scope==="own")?myName:AT_GESAMT;
+  const parts=[`<div class="hint" style="margin-bottom:14px">Bereich: <b>${escapeHtml(scopeLabel)}</b></div>`];
+
+  if(userSettings.notif_akp_enabled){
+    parts.push(`<h4 style="margin:0 0 8px;color:var(--wg-navy);font-size:14px">AKP ohne Produktion seit ≥ ${userSettings.notif_akp_days} Tagen (${res.akp.length})</h4>`);
+    parts.push(!res.akp.length?`<div class="empty-note">Keine Auffälligkeiten.</div>`:
+      `<div style="max-height:280px;overflow:auto;margin-bottom:18px">`+res.akp.map(a=>`
+      <div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">
+        <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(a.nr)}">${escapeHtml(a.name)}</button></b>
+          <span class="betr"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(a.fhNr||"")}">${escapeHtml(a.firma||"")}</button>${a.emp?" · "+escapeHtml(a.emp):""}</span></span>
+        <span style="color:var(--neg);font-weight:700;white-space:nowrap;text-align:right">${a.daysSince} Tage<br><span style="font-weight:600;color:var(--muted);font-size:11.5px">seit ${fmtDate(a.lastDate)}</span></span>
+      </div>`).join("")+`</div>`);
+  }
+
+  if(userSettings.notif_fh_enabled){
+    parts.push(`<h4 style="margin:0 0 8px;color:var(--wg-navy);font-size:14px">FH ohne Produktion / mit Rückgang ≥ 20&nbsp;% ggü. Vorjahr (${res.fh.length})</h4>`);
+    parts.push(!res.fh.length?`<div class="empty-note">Keine Auffälligkeiten.</div>`:
+      `<div style="max-height:280px;overflow:auto">`+res.fh.map(f=>`
+      <div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">
+        <span><b><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(f.fhNr)}">${escapeHtml(f.name)}</button></b>${f.emp?` <span class="betr">· ${escapeHtml(f.emp)}</span>`:""}</span>
+        <span style="text-align:right;white-space:nowrap">
+          ${f.daysSince!=null?`<div style="color:var(--neg);font-weight:700">${f.daysSince} Tage ohne Produktion</div>`:""}
+          ${f.pct!=null?`<div style="color:var(--neg);font-weight:700">${fmtPct(f.pct)} ggü. Vorjahreszeitraum</div>`:""}
+        </span>
+      </div>`).join("")+`</div>`);
+  }
+
+  if(!userSettings.notif_akp_enabled&&!userSettings.notif_fh_enabled){
+    parts.push(`<div class="empty-note">Keine Benachrichtigungen aktiviert. In den Einstellungen aktivieren.</div>`);
+  }
+  $("notifBody").innerHTML=parts.join("");
+}
+async function doCheckNow(){
+  $("setCheckNowBtn").disabled=true;
+  try{
+    syncSettingsFormToState();
+    try{ await saveUserSettings(); }catch(e){}
+    const res=await computeNotifications();
+    hideSettingsModal();
+    renderNotifResults(res);
+    $("notifModal").classList.remove("hidden");
+  }catch(e){ toast("Prüfung fehlgeschlagen."); }
+  finally{ $("setCheckNowBtn").disabled=false; }
+}
+// Öffnet das Benachrichtigungs-PopUp automatisch höchstens einmal pro
+// Kalendertag (pro Nutzer, per localStorage gemerkt) - beim Login bzw. der
+// ersten Aktualisierung des Tages. Nur wenn tatsächlich Auffälligkeiten
+// vorliegen, sonst kein PopUp (kein leerer Spam).
+async function maybeAutoShowNotifications(){
+  if(!(userSettings.notif_akp_enabled||userSettings.notif_fh_enabled)) return;
+  const dedupKey="wg-notif-shown-"+(supaUser?supaUser.id:"anon");
+  const today=new Date().toISOString().slice(0,10);
+  try{ if(localStorage.getItem(dedupKey)===today) return; }catch(e){}
+  try{ localStorage.setItem(dedupKey,today); }catch(e){}
+  try{
+    const res=await computeNotifications();
+    if(res.akp.length||res.fh.length){
+      renderNotifResults(res);
+      $("notifModal").classList.remove("hidden");
+    }
+  }catch(e){ console.error("maybeAutoShowNotifications failed:",e); }
+}
 
 /* ---------- Feiertage Österreich / Arbeitstage (Mo–Sa) ---------- */
 function easter(y){
@@ -2820,6 +3142,12 @@ $("adminBtn").onclick=openAdminModal;
 $("adminClose").onclick=()=>$("adminModal").classList.add("hidden");
 $("adminUploadBtn").onclick=pickFiles;
 $("adCreateBtn").onclick=createAdminUser;
+$("settingsBtn").onclick=showSettingsModal;
+$("settingsClose").onclick=hideSettingsModal;
+$("setPwBtn").onclick=doSettingsPasswordChange;
+$("setSaveBtn").onclick=doSaveSettings;
+$("setCheckNowBtn").onclick=doCheckNow;
+$("notifClose").onclick=()=>$("notifModal").classList.add("hidden");
 // Datenstand (Excel-Auswertung + Ziele) wird nur einmal beim Start geladen
 // und danach nur noch aus dem lokalen Speicher gelesen. Beim Wechsel der
 // Mitarbeiter-Ansicht oder per Klick auf "Aktualisieren" frisch aus der
@@ -2837,7 +3165,12 @@ async function refreshData(silent){
   if(refreshBusy) return;
   refreshBusy=true;
   const btn=$("refreshBtn"); if(btn) btn.disabled=true;
-  try{ await Promise.all([loadAll(), loadAkpContactsIndex(), loadFhErledigtSet()]); render(); if(!silent) toast("Aktualisiert ✓"); }
+  try{
+    await Promise.all([loadAll(), loadAkpContactsIndex(), loadFhErledigtSet()]);
+    render();
+    if(!silent) toast("Aktualisiert ✓");
+    if(!silent) maybeAutoShowNotifications();
+  }
   catch(e){ if(!silent) toast("Aktualisieren fehlgeschlagen."); }
   finally{ refreshBusy=false; if(btn) btn.disabled=false; }
 }
@@ -2896,7 +3229,11 @@ window.addEventListener("pageshow",e=>{ if(e.persisted&&hasData()) refreshData(t
   const sel=$("mitarbeiter");
   [AT_GESAMT,...EMPLOYEES].forEach(n=>{ const o=document.createElement("option"); o.value=n; o.textContent=n; sel.appendChild(o); });
   const authed = await initAuth();
-  if(authed){ await loadAll(); render(); loadAkpContactsIndex(); loadFhErledigtSet(); }
+  if(authed){
+    await loadAll(); render();
+    await Promise.all([loadAkpContactsIndex(), loadFhErledigtSet()]);
+    maybeAutoShowNotifications();
+  }
 })();
 </script>
 </body>
