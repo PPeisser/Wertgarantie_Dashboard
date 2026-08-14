@@ -2416,11 +2416,15 @@ function renderAkqStaffelBar(){
   const {alle:reached,erst:erststaffeln}=akqStaffelnInJahr();
   const pct=ziel>0?reached/ziel*100:null;
   const good=pct!=null?pct>=100:true;
+  // Ohne vorgegebenes Ziel (Ziel=0, z.B. Dominik Szendi) war der Balken
+  // bisher leer (Breite 0%), obwohl schon Staffeln erreicht wurden - jetzt
+  // zeigt er in diesem Fall stattdessen einen vollen grünen Balken.
+  const width=pct!=null?Math.min(pct,100):(reached>0?100:0);
   box.innerHTML=`<div class="akq-bar">
     <div class="akq-bar-label">🏅 Akquisestaffeln ${s.jahr}<br><span class="akq-bar-sub">${escapeHtml(currentEmp)} · erreichte Staffeln (alle Stufen) in diesem Jahr · davon <b>${fmt(erststaffeln)}</b> Erststaffeln</span></div>
     <div class="akq-bar-num"><b>${fmt(reached)}</b><span class="akq-bar-of"> / ${ziel>0?fmt(ziel):"–"}</span>
       ${pct!=null?`<span class="akq-bar-pct" style="color:${good?"var(--pos)":"var(--neg)"}">${pct.toFixed(0)} %</span>`:""}</div>
-    <div class="akq-bar-track"><div class="akq-bar-fill" style="width:${pct!=null?Math.min(pct,100):0}%;background:${good?"var(--pos)":"var(--neg)"}"></div></div>
+    <div class="akq-bar-track"><div class="akq-bar-fill" style="width:${width}%;background:${good?"var(--pos)":"var(--neg)"}"></div></div>
   </div>`;
 }
 
