@@ -137,3 +137,167 @@ es ist keine zusätzliche Secret-Konfiguration nötig.
 Client-Key (Nachfolger des `anon`-Keys) – er darf im Frontend-Code sichtbar
 sein, die eigentliche Absicherung erfolgt über Row Level Security (Schritt 2)
 und den Login-Zwang.
+
+---
+
+# Event-Landingpage & Event-Admin (`events/`)
+
+Eigenständige Anwendung im Ordner [`events/`](events/) für die Anmeldung zu
+einer Wertgarantie-Veranstaltung (eine Veranstaltung, mehrere Termine/Orte).
+**Bewusst vollständig getrennt** vom Performance-Dashboard: eigenes
+Supabase-Projekt, eigenes Vercel-Projekt, eigene Domain, eigener Login –
+nichts wird zwischen den beiden Anwendungen geteilt.
+
+- **[`events/index.html`](events/index.html)** – öffentliche Anmeldeseite
+  (kein Login). Zeigt Titel/Beschreibung/Foto der aktiven Veranstaltung, ein
+  Dropdown mit allen Terminen (Datum, Uhrzeit, Ort) und ein Anmeldeformular,
+  dessen Felder im Admin-Panel konfiguriert werden. Nach dem Absenden wird –
+  sofern die E-Mail-Adresse erfasst wurde – automatisch eine
+  Bestätigungsmail verschickt. Ganz unten im Kleingedruckten verlinkt ein
+  „Admin"-Link auf das Admin-Panel.
+- **[`events/admin.html`](events/admin.html)** – Admin-Panel, eigener Login
+  (Supabase Auth dieses Projekts, jeder hier registrierte Nutzer ist Admin).
+  Hier werden verwaltet:
+  - **Veranstaltung**: Titel, Foto (Upload), frei editierbare Beschreibung,
+    Datenschutzhinweise (Standardtext per Klick einfügbar, überschreibbar)
+  - **Termine**: Datum, Uhrzeit (von/bis), Ort – hinzufügen, bearbeiten, löschen
+  - **Formularfelder**: Auswahl aus dem festen Katalog (Vorname, Name, PLZ,
+    Ort, Geburtsdatum, AKP-Nummer, FH-Nummer, Fachhändler, Telefonnummer,
+    E-Mail-Adresse, Anreise mit Auto, sonstige Bemerkungen) inkl.
+    Aktiv/Pflichtfeld-Umschalter, Beschriftung und Reihenfolge
+  - **E-Mail-Empfänger**: Adressen, die den automatischen täglichen bzw.
+    wöchentlichen Gesamt-Anmeldestand erhalten
+  - **Anmeldungen**: Übersicht aller Anmeldungen inkl. CSV-Export
+
+## Supabase-Projekt
+
+Eigenes Projekt **`wgaustria-events`** (Projekt-ID `jtgoytbcqkqopdpjlozq`,
+Region `eu-central-1`, Free Tier). Schema: [`events/supabase/schema.sql`](events/supabase/schema.sql)
+(Tabellen `events`, `event_dates`, `event_form_fields`, `registrations`,
+`email_recipients` + `profiles`/`is_admin` fürs Admin-Login), RLS-abgesichert:
+- Anmeldeformular (`registrations`) ist per `INSERT` öffentlich (kein Login),
+  Lesen/Löschen nur für eingeloggte Admins.
+- `events`, `event_dates`, `event_form_fields` sind öffentlich lesbar
+  (nötig für die Landingpage ohne Login), Schreiben nur für Admins.
+- `email_recipients` ist ausschließlich für Admins sichtbar/änderbar.
+- Storage-Bucket `event-photos` (öffentlich lesbar, Upload nur für Admins).
+
+### Nutzer-Synchronisation mit dem Dashboard
+
+Das Event-Panel hat **keine eigene Nutzerverwaltung** – jeder Nutzer, der im
+Performance-Dashboard angelegt oder gelöscht wird, wird automatisch auch hier
+angelegt/gelöscht (alle Dashboard-Nutzer, unabhängig von ihrer Dashboard-Rolle,
+bekommen vollen Admin-Zugriff auf das Event-Panel inkl. Teilnehmerdaten).
+
+Das läuft über zwei Edge Functions:
+- **[`events/supabase/functions/sync-user/index.ts`](events/supabase/functions/sync-user/index.ts)**
+  (im Projekt `wgaustria-events`, bereits deployt): nimmt `create`/`delete`/
+  `bulk_create`-Aufrufe entgegen, geschützt durch das Secret `SYNC_SECRET`.
+  Neu synchronisierte Nutzer bekommen das Erstpasswort `WertGARANTIE` und
+  müssen es beim ersten Login im Admin-Panel ändern (`must_change_password`).
+- **[`supabase/functions/admin-users/index.ts`](supabase/functions/admin-users/index.ts)**
+  (im Dashboard-Projekt `gfyjftwlombhmwirbyse`, bereits neu deployt): ruft nach
+  jedem Anlegen/Löschen eines Dashboard-Nutzers `sync-user` auf. Best-effort –
+  schlägt der Sync fehl (z.B. weil die Secrets unten noch fehlen), wird die
+  Dashboard-Aktion trotzdem ausgeführt, nur `eventsSync` in der Antwort zeigt
+  `"not_configured"`/`"failed"` statt `"created"`/`"deleted"`.
+
+**Einmalig einzurichtende Secrets** (Supabase-Dashboard → Project Settings →
+Edge Functions → Secrets, kein Tool dafür in dieser Session verfügbar):
+
+| Projekt | Secret | Wert |
+|---|---|---|
+| `wgaustria-events` | `SYNC_SECRET` | *(separat mitgeteilt)* |
+| `gfyjftwlombhmwirbyse` (Dashboard) | `EVENTS_SYNC_URL` | `https://jtgoytbcqkqopdpjlozq.supabase.co/functions/v1/sync-user` |
+| `gfyjftwlombhmwirbyse` (Dashboard) | `EVENTS_SYNC_SECRET` | *(identischer Wert wie `SYNC_SECRET` oben)* |
+
+**Einmaliger Bulk-Import der bereits bestehenden Dashboard-Nutzer:** Sobald
+`SYNC_SECRET` im Projekt `wgaustria-events` gesetzt ist, per `curl` (oder
+gleichwertig) einmalig ausführen, um die 9 aktuellen Dashboard-Nutzer ins
+Event-Panel zu übernehmen:
+
+```bash
+curl -X POST https://jtgoytbcqkqopdpjlozq.supabase.co/functions/v1/sync-user \
+  -H "Content-Type: application/json" \
+  -H "x-sync-secret: <SYNC_SECRET>" \
+  -d '{"action":"bulk_create","users":[
+    {"email":"d.szendi@wertgarantie.com","name":"Dominik Szendi"},
+    {"email":"f.hasibeder@wertgarantie.com","name":"Florian Hasibeder"},
+    {"email":"h.otto@wertgarantie.com","name":"Helmut Otto"},
+    {"email":"k.scheiermann@wertgarantie.com","name":"Konstantin Scheiermann"},
+    {"email":"k.witting@wertgarantie.com","name":"Klaus Witting"},
+    {"email":"p.peisser@wertgarantie.com","name":"Peter Peißer"},
+    {"email":"peter@peisser.com","name":"Peter Peißer (ADMIN)"},
+    {"email":"s.eigenseer@wertgarantie.com","name":"Sergej Eigenseer"},
+    {"email":"t.eitzinger@wertgarantie.com","name":"Thomas Eitzinger"}
+  ]}'
+```
+
+Danach hat jeder dieser Nutzer im Event-Panel das Erstpasswort `WertGARANTIE`
+und wird beim ersten Login zur Passwortänderung aufgefordert.
+
+## Mailversand (Edge Function `event-mailer`)
+
+[`events/supabase/functions/event-mailer/index.ts`](events/supabase/functions/event-mailer/index.ts)
+übernimmt drei Aufgaben:
+1. **Bestätigungsmail** an den Anmelder direkt nach dem Absenden des
+   Formulars – persönlich in Du-Form ("Hallo Vorname, ... Dein Wertgarantie
+   Österreich Team").
+2. **Status-Report** (Anmeldestand je Termin/Ort **inkl. Liste der
+   angemeldeten Personen**) an alle im Admin-Panel hinterlegten Empfänger –
+   täglich, wöchentlich oder monatlich, ausgelöst über `pg_cron` + `pg_net`
+   (siehe unten). Bereits im Projekt deployt.
+3. **SMTP-Test** (`{"type":"test","to":"..."}`, mit `x-cron-secret`-Header):
+   verschickt eine einzelne Testmail, um die SMTP-Verbindung zu prüfen.
+
+Der Mailversand läuft über **SMTP** (Easyname-Postfach `events@wgaustria.at`)
+und braucht folgende Secrets, die **einmalig manuell** im Supabase-Dashboard
+des Projekts `wgaustria-events` hinterlegt werden müssen
+(_Project Settings → Edge Functions → Secrets_, da hierfür kein
+Secrets-Tool in dieser Session zur Verfügung stand):
+
+| Secret | Wert |
+|---|---|
+| `SMTP_HOST` | `web8.wh20.easyname.systems` |
+| `SMTP_PORT` | `465` |
+| `SMTP_USERNAME` | `events@wgaustria.at` |
+| `SMTP_PASSWORD` | *(Postfach-Passwort, wie separat mitgeteilt)* |
+| `SMTP_FROM_EMAIL` | `events@wgaustria.at` |
+| `SMTP_FROM_NAME` | z.B. `Wertgarantie Veranstaltungen` |
+| `CRON_SECRET` | *(separat mitgeteilt)* |
+| `SYNC_SECRET` | *(separat mitgeteilt, für die Nutzer-Synchronisation, siehe oben)* |
+
+Erneut deployen nach Code-Änderungen:
+```bash
+supabase functions deploy event-mailer --project-ref jtgoytbcqkqopdpjlozq
+```
+
+## Automatischer Report – täglich/wöchentlich/monatlich (`pg_cron`)
+
+Drei `pg_cron`-Jobs im Projekt `wgaustria-events` rufen `event-mailer` mit
+`{"type":"report","frequency":"daily"|"weekly"|"monthly"}` auf:
+- `event-daily-report`: täglich um 06:00 UTC
+- `event-weekly-report`: montags um 06:00 UTC
+- `event-monthly-report`: am 1. jedes Monats um 06:00 UTC
+
+Zeiten anpassen (z.B. andere Uhrzeit/Zeitzone):
+```sql
+select cron.alter_job(job_id := (select jobid from cron.job where jobname='event-daily-report'), schedule := '0 5 * * *');
+```
+
+## Vercel-Projekt & Domain
+
+**Eigenes Vercel-Projekt**, *Root Directory* auf `events` gestellt (damit
+`events/index.html` unter „/" ausgeliefert wird und `events/vercel.json`
+unabhängig vom Dashboard-Vercel-Projekt gilt). Domain: **`events.wgaustria.at`**.
+
+Einrichtung (sobald die Vercel-Integration für diese Session autorisiert ist,
+aktuell noch nicht der Fall – bis dahin manuell im Vercel-Dashboard):
+1. Neues Vercel-Projekt aus diesem GitHub-Repo anlegen, *Root Directory* = `events`.
+2. Unter *Settings → Domains* `events.wgaustria.at` hinzufügen – Vercel zeigt
+   den nötigen DNS-Eintrag an (i.d.R. ein **CNAME** auf `cname.vercel-dns.com`
+   für eine Subdomain wie `events`).
+3. Diesen Eintrag bei Easyname eintragen: Login auf easyname.com → **CloudPit**
+   → Domain `wgaustria.at` suchen → „Mehr" (`⋯`) → **DNS-Verwaltung** → ggf.
+   auf manuelle Verwaltung umschalten → **+ DNS-Eintrag hinzufügen** → Typ
+   **CNAME**, Name `events`, Wert wie von Vercel angezeigt.

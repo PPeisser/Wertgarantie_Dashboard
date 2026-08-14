@@ -21,6 +21,28 @@ function json(body: unknown, status = 200) {
   });
 }
 
+// Spiegelt Anlegen/Löschen ins getrennte Event-Admin-Projekt (siehe
+// events/supabase/functions/sync-user). Best-effort: schlägt der Sync fehl
+// (z.B. Secrets noch nicht hinterlegt), bricht die Dashboard-Aktion trotzdem
+// nicht ab – der Status wird nur in der Antwort mitgegeben.
+async function syncToEvents(action: "create" | "delete", email: string, name?: string | null) {
+  const url = Deno.env.get("EVENTS_SYNC_URL");
+  const secret = Deno.env.get("EVENTS_SYNC_SECRET");
+  if (!url || !secret) return "not_configured";
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-sync-secret": secret },
+      body: JSON.stringify({ action, email, name }),
+    });
+    const j = await res.json().catch(() => ({} as Record<string, unknown>));
+    if (!res.ok) return "failed";
+    return (j.status as string) || "ok";
+  } catch {
+    return "failed";
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS_HEADERS });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -59,7 +81,8 @@ Deno.serve(async (req) => {
     if (error) return json({ error: error.message }, 400);
 
     await admin.from("profiles").update({ name, role, must_change_password: true }).eq("id", data.user.id);
-    return json({ ok: true, id: data.user.id });
+    const eventsSync = await syncToEvents("create", email, name);
+    return json({ ok: true, id: data.user.id, eventsSync });
   }
 
   if (action === "deleteUser") {
@@ -67,9 +90,13 @@ Deno.serve(async (req) => {
     if (!userId) return json({ error: "userId erforderlich" }, 400);
     if (userId === user.id) return json({ error: "Der eigene Account kann nicht gelöscht werden" }, 400);
 
+    const { data: toDelete } = await admin.from("profiles").select("email").eq("id", userId).maybeSingle();
+
     const { error } = await admin.auth.admin.deleteUser(userId);
     if (error) return json({ error: error.message }, 400);
-    return json({ ok: true });
+
+    const eventsSync = toDelete?.email ? await syncToEvents("delete", toDelete.email) : "no_email";
+    return json({ ok: true, eventsSync });
   }
 
   if (action === "resetPassword") {
