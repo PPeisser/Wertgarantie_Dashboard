@@ -179,6 +179,11 @@ create table if not exists public.registrations (
   email                 text,
   consent_at            timestamptz not null default now(),
   confirmation_sent_at  timestamptz,
+  -- Ergebnis des serverseitigen AKP/FH-Datenabgleichs mit dem
+  -- Dashboard-Projekt (siehe supabase/functions/match-registration und
+  -- lookup-akp im Dashboard-Projekt). Wird nicht im Anmeldeschritt
+  -- angezeigt, nur im Admin-Panel/CSV-Export.
+  matched_akp           jsonb,
   created_at            timestamptz not null default now()
 );
 
