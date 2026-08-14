@@ -75,6 +75,11 @@ Minimum version required to store current data is: `+i+`.
   .field{margin-bottom:14px}
   .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
   .row > .field{flex:1;min-width:140px}
+  .date-card{border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px;background:#FBFDFE}
+  .date-card:last-child{margin-bottom:0}
+  .date-card .row{margin-bottom:0}
+  .date-card .row + .row{margin-top:14px}
+  .date-card .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
 
   table{width:100%;border-collapse:collapse;font-size:13.5px}
   th{text-align:left;color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;padding:8px 10px;border-bottom:2px solid var(--line)}
@@ -244,12 +249,7 @@ Minimum version required to store current data is: `+i+`.
       <h2>Termine (Ort, Datum, Uhrzeit)</h2>
       <p class="sub">Diese Termine erscheinen als Dropdown auf der Anmeldeseite.</p>
       <div id="datesMsg" class="msg"></div>
-      <div style="overflow-x:auto">
-        <table>
-          <thead><tr><th>Datum</th><th>Von</th><th>Bis</th><th>Veranstaltungsort</th><th>Straße</th><th>PLZ</th><th>Ort</th><th>Reihenfolge</th><th></th></tr></thead>
-          <tbody id="datesBody"></tbody>
-        </table>
-      </div>
+      <div id="datesBody"></div>
       <div class="empty" id="datesEmpty" style="display:none">Noch keine Termine angelegt.</div>
     </div>
     <div class="card">
@@ -726,54 +726,58 @@ async function loadDates(){
   const rows = data || [];
   $("datesEmpty").style.display = rows.length ? "none" : "block";
   $("datesBody").innerHTML = rows.map(d => `
-    <tr data-id="${d.id}">
-      <td><input type="date" class="dt-date" value="${d.event_date}"></td>
-      <td><input type="time" class="dt-start" value="${d.start_time?.slice(0,5)||''}"></td>
-      <td><input type="time" class="dt-end" value="${d.end_time?d.end_time.slice(0,5):''}"></td>
-      <td style="min-width:150px"><input type="text" class="dt-loc" value="${escapeHtml(d.location)}"></td>
-      <td style="min-width:150px"><input type="text" class="dt-street" value="${escapeHtml(d.street||'')}"></td>
-      <td style="max-width:80px"><input type="text" class="dt-zip" value="${escapeHtml(d.zip||'')}"></td>
-      <td style="min-width:110px"><input type="text" class="dt-city" value="${escapeHtml(d.city||'')}"></td>
-      <td style="max-width:90px"><input type="number" class="dt-sort" value="${d.sort_order}"></td>
-      <td style="white-space:nowrap">
+    <div class="date-card" data-id="${d.id}">
+      <div class="row">
+        <div class="field" style="max-width:160px"><label>Datum</label><input type="date" class="dt-date" value="${d.event_date}"></div>
+        <div class="field" style="max-width:120px"><label>Von</label><input type="time" class="dt-start" value="${d.start_time?.slice(0,5)||''}"></div>
+        <div class="field" style="max-width:120px"><label>Bis</label><input type="time" class="dt-end" value="${d.end_time?d.end_time.slice(0,5):''}"></div>
+        <div class="field" style="max-width:110px"><label>Reihenfolge</label><input type="number" class="dt-sort" value="${d.sort_order}"></div>
+      </div>
+      <div class="row">
+        <div class="field" style="flex:2;min-width:200px"><label>Veranstaltungsort</label><input type="text" class="dt-loc" value="${escapeHtml(d.location)}"></div>
+        <div class="field" style="flex:2;min-width:180px"><label>Straße</label><input type="text" class="dt-street" value="${escapeHtml(d.street||'')}"></div>
+        <div class="field" style="max-width:100px"><label>PLZ</label><input type="text" class="dt-zip" value="${escapeHtml(d.zip||'')}"></div>
+        <div class="field" style="flex:1;min-width:120px"><label>Ort</label><input type="text" class="dt-city" value="${escapeHtml(d.city||'')}"></div>
+      </div>
+      <div class="actions">
         <button class="btn btn-primary btn-sm dt-save">Speichern</button>
         <button class="btn btn-ghost btn-sm dt-qr" style="color:var(--wg-blue);background:#E0F4FC">QR-Code</button>
         <button class="btn btn-danger btn-sm dt-del" title="Termin löschen" aria-label="Termin löschen" style="padding:6px 10px;font-size:16px;line-height:1">🗑️</button>
-      </td>
-    </tr>`).join("");
+      </div>
+    </div>`).join("");
 
   $("datesBody").querySelectorAll(".dt-save").forEach(btn=>{
     btn.addEventListener("click", async ()=>{
-      const tr = btn.closest("tr");
+      const card = btn.closest(".date-card");
       const patch = {
-        event_date: tr.querySelector(".dt-date").value,
-        start_time: tr.querySelector(".dt-start").value,
-        end_time: tr.querySelector(".dt-end").value || null,
-        location: tr.querySelector(".dt-loc").value.trim(),
-        street: tr.querySelector(".dt-street").value.trim(),
-        zip: tr.querySelector(".dt-zip").value.trim(),
-        city: tr.querySelector(".dt-city").value.trim(),
-        sort_order: parseInt(tr.querySelector(".dt-sort").value,10) || 0
+        event_date: card.querySelector(".dt-date").value,
+        start_time: card.querySelector(".dt-start").value,
+        end_time: card.querySelector(".dt-end").value || null,
+        location: card.querySelector(".dt-loc").value.trim(),
+        street: card.querySelector(".dt-street").value.trim(),
+        zip: card.querySelector(".dt-zip").value.trim(),
+        city: card.querySelector(".dt-city").value.trim(),
+        sort_order: parseInt(card.querySelector(".dt-sort").value,10) || 0
       };
-      const { error } = await sb.from("event_dates").update(patch).eq("id", tr.dataset.id);
+      const { error } = await sb.from("event_dates").update(patch).eq("id", card.dataset.id);
       flash("datesMsg", error ? ("Fehler: "+error.message) : "Termin gespeichert.", !error);
       if (!error) loadDates();
     });
   });
   $("datesBody").querySelectorAll(".dt-del").forEach(btn=>{
     btn.addEventListener("click", async ()=>{
-      const tr = btn.closest("tr");
+      const card = btn.closest(".date-card");
       if (!confirm("Diesen Termin wirklich löschen?")) return;
-      const { error } = await sb.from("event_dates").delete().eq("id", tr.dataset.id);
+      const { error } = await sb.from("event_dates").delete().eq("id", card.dataset.id);
       flash("datesMsg", error ? ("Fehler: "+error.message) : "Termin gelöscht.", !error);
       if (!error) loadDates();
     });
   });
   $("datesBody").querySelectorAll(".dt-qr").forEach(btn=>{
     btn.addEventListener("click", ()=>{
-      const tr = btn.closest("tr");
-      const label = `${tr.querySelector(".dt-date").value}_${tr.querySelector(".dt-loc").value}`;
-      showQrModal(registrationUrlForDate(activeEvent.slug, tr.dataset.id), label);
+      const card = btn.closest(".date-card");
+      const label = `${card.querySelector(".dt-date").value}_${card.querySelector(".dt-loc").value}`;
+      showQrModal(registrationUrlForDate(activeEvent.slug, card.dataset.id), label);
     });
   });
 }
