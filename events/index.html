@@ -250,7 +250,12 @@
 <script>
 const SUPABASE_URL = "https://jtgoytbcqkqopdpjlozq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_ic_T8F0q2Ogc1-8jaf3SIg_UTKtLXqe";
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// cache:'no-store' erzwingt bei jeder Abfrage einen echten Netzwerk-Roundtrip
+// statt einer gecachten Browser-Antwort, damit nach dem Aktualisieren immer
+// der aktuelle Anmeldestand/Termine angezeigt werden.
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  global: { fetch: (url, options) => fetch(url, { ...options, cache: "no-store" }) }
+});
 
 const DEFAULT_PRIVACY_TEXT = `Datenschutzhinweise zur Veranstaltungsanmeldung
 
