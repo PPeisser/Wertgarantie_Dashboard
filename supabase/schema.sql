@@ -249,6 +249,11 @@ alter table public.fh_contacts add column if not exists akq_staffeln jsonb not n
 -- Zuordnung" (siehe renderObs in index.html), unabhängig von der
 -- GL-Zuordnung aus der täglichen FH_Liste-Auswertung.
 alter table public.fh_contacts add column if not exists akq_gl text;
+-- Firmenname laut Akquisestaffel-Datei (Spalte "FH Bez (ohne Nr)") - Fallback
+-- für "AKQ ohne Zuordnung" (siehe renderObs in index.html), falls der
+-- Händler in der aktuellen täglichen FH_Liste-Auswertung keine Zeile hat
+-- (z.B. keine Tagesproduktion) und dort daher kein Name verfügbar ist.
+alter table public.fh_contacts add column if not exists akq_name text;
 
 alter table public.fh_contacts drop constraint if exists fh_contacts_segmentierung_check;
 alter table public.fh_contacts add constraint fh_contacts_segmentierung_check
