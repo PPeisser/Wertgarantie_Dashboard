@@ -559,6 +559,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div class="trio">
       <div class="panel">
         <h3><span class="dot" style="background:var(--amber)"></span>Besondere Beobachtung <small style="color:var(--muted);font-weight:600">Händler außerhalb des gewohnten Verlaufs</small></h3>
+        <div class="tabs mini no-print" id="obsFilters" style="flex-wrap:wrap;display:inline-flex;height:auto;margin-bottom:8px"></div>
         <div id="obsList"></div>
       </div>
       <div class="panel">
@@ -2353,7 +2354,7 @@ function renderGoals(){
     goalCard("🎯 Persönliches Monatsziel · "+MONATE[s.monat-1]+"<br><span style='font-weight:600;font-size:11px;color:var(--muted)'>"+currentEmp+(isATv?" · fest hinterlegt":"")+"</span>",
       g, me.monat, g*mfrac,
       g>0?`Tag ${s.tageIst} von ${s.tageSoll} Arbeitstagen`:(isATv?"kein Monatsziel hinterlegt":`<button class="edit no-print" onclick="openGoalModal(true)" style="background:none;border:none;color:var(--wg-blue);font-weight:700;cursor:pointer;font-size:12px">Jetzt Ziel festlegen →</button>`), g>0&&!isATv,
-      g>0?{val:hrMe,lbl:"Monatsende",stand:standM,...(isATv?{target:s.planMonat||g,vsLbl:"vom Plan"}:{})}:null)
+      g>0?{val:hrMe,lbl:"Monatsende",stand:standM}:null)
   ];
   if(!isATv){
     cards.push(goalCard("🏁 Persönliches Jahresziel "+s.jahr+"<br><span style='font-weight:600;font-size:11px;color:var(--muted)'>"+currentEmp+" · fest hinterlegt</span>",
@@ -2467,6 +2468,17 @@ function tbl(rows,showGL,p,labels,kind){
 }
 
 /* Besondere Beobachtung */
+// Filter-Kategorien für "Besondere Beobachtung" - Set bleibt über Renders
+// hinweg erhalten (leer = alle anzeigen), umgeschaltet über die Chips in
+// #obsFilters (siehe delegierter Klick-Handler weiter unten).
+let obsActiveFilters=new Set();
+const OBS_CATEGORIES=[
+  {cat:"akqbesuch",label:jahr=>`AKQ ohne Besuch ${jahr}`},
+  {cat:"neuprod",label:()=>"Neuer Produzent"},
+  {cat:"einbruch",label:()=>"Jahresproduktion bricht ein"},
+  {cat:"ueberschnitt",label:()=>"deutlich über dem Monatsschnitt"},
+  {cat:"tagesabweichung",label:()=>"Veränderung zu Schnitt pro Tag"},
+];
 function renderObs(){
   const s=state.latest, showGL=currentEmp===AT_GESAMT;
   const items=[];
@@ -2475,27 +2487,31 @@ function renderObs(){
     const avg=f.monat/s.tageIst;
     if(avg>=1.5||f.vt>=4){
       const dev=avg>0?(f.vt-avg)/avg*100:(f.vt>0?999:0);
-      if(dev>=120&&f.vt>=4) items.push({f,type:"up",sev:dev,txt:`Gestern <b>${fmt(f.vt)}</b> Verträge – deutlich über dem Monatsschnitt von ${avg.toFixed(1).replace(".",",")} pro Tag (<b class="pos-t">${fmtPct(dev)}</b>)`});
-      else if(dev<=-80&&avg>=2) items.push({f,type:"down",sev:-dev,txt:`Gestern nur <b>${fmt(f.vt)}</b> Verträge – sonst Ø ${avg.toFixed(1).replace(".",",")} pro Tag (<b class="neg-t">${fmtPct(dev)}</b>)`});
+      if(dev>=120&&f.vt>=4) items.push({f,type:"up",cat:"ueberschnitt",sev:dev,txt:`Gestern <b>${fmt(f.vt)}</b> Verträge – deutlich über dem Monatsschnitt von ${avg.toFixed(1).replace(".",",")} pro Tag (<b class="pos-t">${fmtPct(dev)}</b>)`});
+      else if(dev<=-80&&avg>=2) items.push({f,type:"down",cat:"tagesabweichung",sev:-dev,txt:`Gestern nur <b>${fmt(f.vt)}</b> Verträge – sonst Ø ${avg.toFixed(1).replace(".",",")} pro Tag (<b class="neg-t">${fmtPct(dev)}</b>)`});
     }
     const yDev=f.vj>0?(f.lj-f.vj)/f.vj*100:null;
-    if(yDev!=null&&yDev<=-30&&f.vj>=100) items.push({f,type:"down",prio:1,sev:-yDev,txt:`Jahresproduktion bricht ein: <b>${fmt(f.lj)}</b> statt ${fmt(f.vj)} im Vorjahr (<b class="neg-t">${fmtPct(yDev)}</b>)`});
-    if(f.vj===0&&f.lj>=100) items.push({f,type:"up",prio:1,sev:f.lj,txt:`Neuer Produzent: bereits <b>${fmt(f.lj)}</b> Verträge im Jahr – im Vorjahr noch 0`});
+    if(yDev!=null&&yDev<=-30&&f.vj>=100) items.push({f,type:"down",prio:1,cat:"einbruch",sev:-yDev,txt:`Jahresproduktion bricht ein: <b>${fmt(f.lj)}</b> statt ${fmt(f.vj)} im Vorjahr (<b class="neg-t">${fmtPct(yDev)}</b>)`});
+    if(f.vj===0&&f.lj>=100) items.push({f,type:"up",prio:1,cat:"neuprod",sev:f.lj,txt:`Neuer Produzent: bereits <b>${fmt(f.lj)}</b> Verträge im Jahr – im Vorjahr noch 0`});
   });
   // Akquisekunden ohne einzigen Besuch in 2026 (Spalten P+Q = 0)
   (state.latest.akq||[]).filter(a=>(currentEmp===AT_GESAMT||a.emp===currentEmp)&&(a.besP||0)===0&&(a.besT||0)===0)
     .sort((a,b)=>b.p2026-a.p2026)
-    .forEach(a=>items.push({f:{name:a.name,nr:a.nr,ort:a.ort,emp:a.emp,gl:a.glRaw},type:"down",prio:2,sev:a.p2026,ic:"📞",layout:"akq",
+    .forEach(a=>items.push({f:{name:a.name,nr:a.nr,ort:a.ort,emp:a.emp,gl:a.glRaw},type:"down",prio:2,cat:"akqbesuch",sev:a.p2026,ic:"📞",layout:"akq",
       sub:`${a.emp||a.glRaw||"– ohne Betreuer –"} · AKQ ohne Besuch ${s.jahr}`,
       txt:`Jahresproduktion: <b>${fmt(a.p2026)}</b> Verträge`}));
   // Zuerst nach Priorität (Stufe), innerhalb einer Stufe nach Auffälligkeit
   // (Schweregrad) reihen, statt nach Einfüge-Reihenfolge – damit bei der
   // Druck-Kappung auf 16 die wichtigsten Fälle zuerst stehen.
   items.sort((a,b)=>(b.prio||0)-(a.prio||0)||(b.sev||0)-(a.sev||0));
+  $("obsFilters").innerHTML=OBS_CATEGORIES.map(c=>
+    `<button type="button" data-cat="${c.cat}" class="${obsActiveFilters.has(c.cat)?"on":""}">${escapeHtml(c.label(s.jahr))}</button>`
+  ).join("");
+  const filtered=obsActiveFilters.size?items.filter(o=>obsActiveFilters.has(o.cat)):items;
   // Bildschirm: alle Treffer, das Panel scrollt selbst (wie AKQ-Liste/
   // 9-Wochen-Plan daneben). Druck/PDF bleibt bewusst bei den bisherigen
   // max. 16 (siehe .obs-item.pcap), da dort keine Scrollfläche existiert.
-  $("obsList").innerHTML=items.length?items.map((o,i)=>{
+  $("obsList").innerHTML=filtered.length?filtered.map((o,i)=>{
     const cls=`obs-item ${o.type}${i>=16?" pcap":""}`;
     const ic=o.ic||(o.type==="up"?"🚀":"⚠️");
     if(o.layout==="akq"){
@@ -2515,7 +2531,7 @@ function renderObs(){
       <div class="t"><b class="obs-name" title="${escapeHtml(o.f.name)} · ${escapeHtml(o.f.nr||"")} · ${escapeHtml(o.f.ort||"")}${showGL&&(o.f.emp||o.f.gl)?" · "+escapeHtml(o.f.emp||o.f.gl):""}"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(o.f.nr||"")}">${escapeHtml(o.f.name)}</button> <span style="font-weight:600;color:var(--muted)">· ${escapeHtml(o.f.ort||"")}${showGL&&(o.f.emp||o.f.gl)?" · "+escapeHtml(o.f.emp||o.f.gl):""}</span></b>
         <span class="obs-desc">${o.txt}</span></div>
     </div>`;
-  }).join(""):`<div class="empty-note">Aktuell keine auffälligen Abweichungen – alle Händler laufen im gewohnten Rahmen. ✅</div>`;
+  }).join(""):(obsActiveFilters.size?`<div class="empty-note">Keine Treffer für die gewählten Filter.</div>`:`<div class="empty-note">Aktuell keine auffälligen Abweichungen – alle Händler laufen im gewohnten Rahmen. ✅</div>`);
 }
 
 /* AKP Top/Flop 3 · umschaltbar Woche/Monat/Jahr */
@@ -3189,16 +3205,21 @@ document.addEventListener("click",e=>{
   const btn=e.target.closest(".akp-name-link");
   if(btn){ openAkpContact(btn.dataset.akpNr,btn.textContent); return; }
   const fhBtn=e.target.closest(".fh-name-link");
-  if(fhBtn) openFhModal(fhBtn.dataset.fhNr);
+  if(fhBtn){ openFhModal(fhBtn.dataset.fhNr); return; }
+  const obsFilterBtn=e.target.closest("#obsFilters button");
+  if(obsFilterBtn){
+    const cat=obsFilterBtn.dataset.cat;
+    if(obsActiveFilters.has(cat)) obsActiveFilters.delete(cat); else obsActiveFilters.add(cat);
+    renderObs();
+  }
 });
 
-/* Top 20 AKQ · Filter: Akquise-Jahrgang + ohne Groß-FH (>300 Verträge im VJ) */
+/* Top 20 AKQ · Filter: Akquise-Jahrgang */
 let akqJahrFilter="alle";
 function renderAKQ(){
   const s=state.latest, showGL=currentEmp===AT_GESAMT;
-  $("akqWho").textContent=currentEmp+" · nach Produktion "+s.jahr+(akqJahrFilter==="alle"?"":" · Akquise "+akqJahrFilter)+" · ohne FH > 300 Verträge im VJ";
+  $("akqWho").textContent=currentEmp+" · nach Produktion "+s.jahr+(akqJahrFilter==="alle"?"":" · Akquise "+akqJahrFilter);
   const rows=s.akq.filter(a=>currentEmp===AT_GESAMT||a.emp===currentEmp)
-    .filter(a=>(a.p2025||0)<=300)                                   // Groß-FH ohne Staffeln ausblenden
     .filter(a=>akqJahrFilter==="alle"||a.beginnJahr===+akqJahrFilter)
     .sort((a,b)=>b.p2026-a.p2026||b.kw-a.kw).slice(0,20);
   if(!rows.length){ $("akqList").innerHTML=`<div class="empty-note">Keine Akquisekunden für diese Ansicht in der AKQ-Liste.</div>`; return; }

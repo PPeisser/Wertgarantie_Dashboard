@@ -63,7 +63,7 @@ auf den **Plan** (109.500).
   Negative automatisch in der Flop-Liste; Monat vs. eigenem Ø-Monat
 - Besondere Beobachtungen (Ausreißer, Jahres-Einbrüche, Akquisen ohne Besuch)
 - Top & Flop 3 AKP (Woche/Monat/Jahr) + PopUp „Top/Flop 5–30"
-- Top 20 AKQ mit Jahrgangsfilter (2024/2025/2026/gesamt), ohne FH > 300 VJ-Verträge
+- Top 20 AKQ mit Jahrgangsfilter (2024/2025/2026/gesamt)
 - Akquise ohne Produktion 2026 (Kontaktliste mit Telefon-Links) & 9-Wochen-Plan (⚠️ bei < 5 Terminen und < 20 Verträgen)
 - PDF-Export (nativer Druckdialog bzw. direkter PDF-Download in Sandbox-Umgebungen)
 
