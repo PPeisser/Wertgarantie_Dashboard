@@ -406,6 +406,39 @@ curl -X POST https://jtgoytbcqkqopdpjlozq.supabase.co/functions/v1/sync-user \
 Danach hat jeder dieser Nutzer im Event-Panel das Erstpasswort `WertGARANTIE`
 und wird beim ersten Login zur Passwortänderung aufgefordert.
 
+## AKP/FH-Datenabgleich mit dem Dashboard
+
+Trägt jemand im Anmeldeformular eine AKP- und/oder FH-Nummer ein, wird diese
+im Hintergrund (unsichtbar für die anmeldende Person, keinerlei Auswirkung
+auf den Anmeldeschritt) mit den echten Stammdaten aus dem
+Dashboard-Projekt (`akp_contacts`/`fh_contacts`) abgeglichen. Das Ergebnis
+landet in `registrations.matched_akp` und wird im Admin-Panel als Spalte
+"DB-Abgleich" sowie mit allen Detailfeldern im CSV-Export angezeigt.
+
+Ablauf über zwei Edge Functions:
+- **[`events/supabase/functions/match-registration/index.ts`](events/supabase/functions/match-registration/index.ts)**
+  (im Projekt `wgaustria-events`, bereits deployt): wird von `index.html`
+  direkt nach jeder Anmeldung mit der neuen `registration_id` aufgerufen,
+  liest die eingegebene AKP-/FH-Nummer aus, ruft `lookup-akp` im
+  Dashboard-Projekt auf und speichert das Ergebnis in `matched_akp`.
+- **[`supabase/functions/lookup-akp/index.ts`](supabase/functions/lookup-akp/index.ts)**
+  (im Dashboard-Projekt `gfyjftwlombhmwirbyse`, bereits deployt): sucht in
+  `akp_contacts` per AKP-Nummer (liefert dabei auch die hinterlegte
+  FH-Nummer mit) und in `fh_contacts` per FH-Nummer, geschützt durch
+  `EVENTS_LOOKUP_SECRET`.
+- Best-effort: fehlt eine Nummer, gibt es keinen Treffer, oder sind die
+  Secrets unten noch nicht gesetzt, bleibt `matched_akp` einfach leer – die
+  Anmeldung selbst ist davon nie betroffen.
+
+**Einmalig einzurichtende Secrets** (Supabase-Dashboard → Project Settings →
+Edge Functions → Secrets):
+
+| Projekt | Secret | Wert |
+|---|---|---|
+| `wgaustria-events` | `DASHBOARD_LOOKUP_URL` | `https://gfyjftwlombhmwirbyse.supabase.co/functions/v1/lookup-akp` |
+| `wgaustria-events` | `DASHBOARD_LOOKUP_SECRET` | *(separat mitgeteilt)* |
+| `gfyjftwlombhmwirbyse` (Dashboard) | `EVENTS_LOOKUP_SECRET` | *(identischer Wert wie `DASHBOARD_LOOKUP_SECRET` oben)* |
+
 ## Mailversand (Edge Function `event-mailer`)
 
 [`events/supabase/functions/event-mailer/index.ts`](events/supabase/functions/event-mailer/index.ts)

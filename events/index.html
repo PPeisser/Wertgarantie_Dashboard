@@ -503,6 +503,14 @@ document.getElementById('regForm').addEventListener('submit', async (e) => {
     } catch (_e) { /* Anmeldung ist trotzdem gespeichert, Mailversand best-effort */ }
   }
 
+  // Läuft im Hintergrund, unsichtbar für die Teilnehmerin/den Teilnehmer:
+  // gleicht AKP-/FH-Nummer mit der Dashboard-Datenbank ab (siehe Admin-Panel).
+  fetch(SUPABASE_URL + '/functions/v1/match-registration', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
+    body: JSON.stringify({ registration_id: inserted.id })
+  }).catch(() => { /* best-effort, Anmeldung bleibt davon unberührt */ });
+
   const chosenDate = currentDates.find(d => d.id === dateId);
   if (chosenDate && (chosenDate.street || chosenDate.zip || chosenDate.city)){
     document.getElementById('successAddressText').textContent = fullAddress(chosenDate);
