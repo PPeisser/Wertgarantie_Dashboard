@@ -1024,8 +1024,13 @@ AKQ_STAFFEL_ZIEL[AT_GESAMT]=Object.values(AKQ_STAFFEL_ZIEL).reduce((a,b)=>a+b,0)
 /* ---------- Supabase Konfiguration ---------- */
 const SUPABASE_URL = "https://gfyjftwlombhmwirbyse.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_cRlqSLEgLbOtIo_QX_Q3Zw_zWp2HmZU";
+// cache:"no-store" erzwingt bei jeder Abfrage einen echten Netzwerk-Roundtrip
+// statt einer gecachten Browser-Antwort, damit "Aktualisieren" (Button oder
+// Neuladen der Seite) nie veraltete Daten anzeigt.
 const sb = (typeof supabase!=="undefined")
-  ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { fetch: (url, options) => fetch(url, { ...options, cache: "no-store" }) }
+    })
   : null;
 let supaUser = null;
 let myRole = null;
