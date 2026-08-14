@@ -163,9 +163,14 @@ liefert HTTP 200 und zeigt das Dashboard korrekt an.
 
 [`supabase/functions/dashboard-mailer/index.ts`](supabase/functions/dashboard-mailer/index.ts)
 (bereits deployt) verschickt Mails über **SMTP** (Easyname-Postfach
-`dashboard@wgaustria.at`), aktuell mit den Aktionen `test` (einzelne
-Testmail) und `send` (generischer Versand) – Basis für künftige
-Dashboard-Mailfunktionen, noch ohne eigenen Aufrufer im Dashboard selbst.
+`dashboard@wgaustria.at`), mit den Aktionen `test` (einzelne Testmail),
+`send` (generischer Versand, x-cron-secret-geschützt) und `sendPdf`
+(PDF-Versand aus dem Dashboard – Auth über die normale Nutzer-Session, kein
+Secret im Browser-Code nötig). `sendPdf` wird über den "📧 Versenden"-Button
+aufgerufen, der bei jedem PDF-Export (Haupt-Dashboard, FH- und AKP-Datenblatt)
+als Alternative zu "🖨 Drucken" erscheint – Empfänger ist entweder die eigene
+hinterlegte Adresse oder eine frei eingegebene (dann mit "Lieber Kunde, …"-
+Anrede und Signatur des angemeldeten Nutzers).
 
 **Einmalig einzurichten** (Supabase-Dashboard des Projekts
 `gfyjftwlombhmwirbyse` → *Project Settings → Edge Functions → Secrets*, kein

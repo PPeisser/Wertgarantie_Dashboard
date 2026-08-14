@@ -1,16 +1,21 @@
 // Wertgarantie Performance Dashboard: Mailversand über dashboard@wgaustria.at.
-// Aktuell zwei Aktionen:
+// Aktionen:
 // - "test": verschickt eine einzelne Testmail, um die SMTP-Verbindung zu
 //   prüfen (mit x-cron-secret-Header geschützt).
 // - "send": generischer Versand (Betreff/Empfänger/HTML), ebenfalls über
 //   x-cron-secret geschützt - Basis für künftige Dashboard-Mailfunktionen
-//   (z.B. automatische Reports), noch ohne eigenen Aufrufer im Dashboard.
+//   (z.B. automatische Reports).
+// - "sendPdf": PDF-Versand direkt aus dem Dashboard (Button "Versenden" bei
+//   den PDF-Exporten) - Auth über die Nutzer-Session (Authorization-Header),
+//   NICHT über x-cron-secret, da jeder eingeloggte Nutzer sein eigenes PDF
+//   versenden darf, ohne das Cron-Secret im Browser-Code zu benötigen.
 //
 // Secrets (Supabase Dashboard -> Project Settings -> Edge Functions ->
 // Secrets, Projekt gfyjftwlombhmwirbyse):
 //   SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD,
 //   SMTP_FROM_EMAIL, SMTP_FROM_NAME, CRON_SECRET
 
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
 const CORS_HEADERS = {
@@ -36,7 +41,14 @@ function getSmtpClient() {
   });
 }
 
-async function sendMail(subject: string, to: string, html: string) {
+interface Attachment {
+  filename: string;
+  content: string;
+  encoding: "base64";
+  contentType?: string;
+}
+
+async function sendMail(subject: string, to: string, html: string, attachments?: Attachment[]) {
   const fromEmail = Deno.env.get("SMTP_FROM_EMAIL")!;
   const fromName = Deno.env.get("SMTP_FROM_NAME") || "Wertgarantie Dashboard";
   const client = getSmtpClient();
@@ -47,6 +59,7 @@ async function sendMail(subject: string, to: string, html: string) {
       subject,
       html,
       content: "Bitte verwenden Sie einen E-Mail-Client mit HTML-Unterstützung.",
+      ...(attachments && attachments.length ? { attachments } : {}),
     });
   } finally {
     await client.close();
@@ -59,6 +72,41 @@ Deno.serve(async (req) => {
 
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return json({ error: "Ungültiger Body" }, 400); }
+
+  if (body.type === "sendPdf") {
+    // Auth über die normale Nutzer-Session, nicht über x-cron-secret - jeder
+    // eingeloggte Nutzer darf ein PDF (an sich selbst oder eine andere
+    // Adresse) versenden.
+    const authHeader = req.headers.get("Authorization") || "";
+    const token = authHeader.replace(/^Bearer\s+/i, "");
+    if (!token) return json({ error: "Fehlender Authorization-Header" }, 401);
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data: { user }, error: userErr } = await admin.auth.getUser(token);
+    if (userErr || !user) return json({ error: "Ungültige Session" }, 401);
+
+    const to = String(body.to || "");
+    const subject = String(body.subject || "");
+    const html = String(body.html || "");
+    const attachmentBase64 = String(body.attachmentBase64 || "");
+    const attachmentFilename = String(body.attachmentFilename || "Dashboard.pdf");
+    if (!to || !subject || !html || !attachmentBase64) {
+      return json({ error: "to, subject, html, attachmentBase64 erforderlich" }, 400);
+    }
+    try {
+      await sendMail(subject, to, html, [{
+        filename: attachmentFilename,
+        content: attachmentBase64,
+        encoding: "base64",
+        contentType: "application/pdf",
+      }]);
+      return json({ ok: true });
+    } catch (e) {
+      return json({ error: "Mailversand fehlgeschlagen: " + String(e) }, 500);
+    }
+  }
 
   const secret = req.headers.get("x-cron-secret") || "";
   if (!secret || secret !== Deno.env.get("CRON_SECRET")) {

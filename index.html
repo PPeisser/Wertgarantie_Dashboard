@@ -839,6 +839,41 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
   </div>
 </div>
 
+<!-- PDF: Drucken oder Versenden (gilt für Dashboard-, FH- und AKP-PDF) -->
+<div class="modal-bg hidden" id="pdfTargetModal">
+  <div class="modal" style="max-width:380px">
+    <h3 style="margin:0 0 6px">PDF</h3>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 16px">Soll das PDF heruntergeladen/gedruckt oder per E-Mail versendet werden?</p>
+    <div class="actions">
+      <button class="btn btn-ghost" id="pdfTargetCancel">Abbrechen</button>
+      <button class="btn btn-ghost" id="pdfTargetSend">📧 Versenden</button>
+      <button class="btn btn-blue" id="pdfTargetPrint">🖨 Drucken</button>
+    </div>
+  </div>
+</div>
+
+<!-- PDF per Mail versenden: eigene Adresse oder freie Eingabe -->
+<div class="modal-bg hidden" id="pdfSendModal">
+  <div class="modal" style="max-width:420px">
+    <h3 style="margin:0 0 6px">PDF per E-Mail versenden</h3>
+    <label style="display:flex;align-items:flex-start;gap:8px;font-weight:700;font-size:13.5px;margin:14px 0 4px;cursor:pointer">
+      <input type="radio" name="pdfSendTarget" id="pdfSendOwnRadio" checked style="width:auto;margin-top:3px;flex-shrink:0">
+      <span>An meine E-Mail-Adresse (<span id="pdfSendOwnEmail" style="white-space:nowrap">–</span>)</span>
+    </label>
+    <label style="display:flex;align-items:flex-start;gap:8px;font-weight:700;font-size:13.5px;margin:10px 0 4px;cursor:pointer">
+      <input type="radio" name="pdfSendTarget" id="pdfSendCustomRadio" style="width:auto;margin-top:3px;flex-shrink:0">
+      <span>Andere E-Mail-Adresse</span>
+    </label>
+    <input type="email" id="pdfSendCustomEmail" placeholder="kunde@beispiel.at" autocomplete="off" style="margin-top:4px">
+    <div class="hint">Bei einer anderen Adresse beginnt die Mail automatisch mit „Lieber Kunde, …“ und endet mit „Liebe Grüße, <span id="pdfSendMyName">–</span>“.</div>
+    <div class="error" id="pdfSendHint"></div>
+    <div class="actions">
+      <button class="btn btn-ghost" id="pdfSendCancel">Abbrechen</button>
+      <button class="btn btn-blue" id="pdfSendConfirm">Senden</button>
+    </div>
+  </div>
+</div>
+
 <!-- Ziel-Modal -->
 <div class="modal-bg hidden" id="goalModal">
   <div class="modal">
@@ -1193,6 +1228,60 @@ async function callAdminFn(action, payload){
     });
     return await res.json();
   }catch(e){ return { error: String(e) }; }
+}
+async function sendPdfByMail({to,subject,html,pdfDataUri,filename}){
+  const base64=pdfDataUri.split(",")[1]||"";
+  try{
+    const { data:{ session } } = await sb.auth.getSession();
+    const res = await fetch(SUPABASE_URL+"/functions/v1/dashboard-mailer", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+session.access_token },
+      body: JSON.stringify({ type:"sendPdf", to, subject, html, attachmentBase64:base64, attachmentFilename:filename })
+    });
+    return await res.json();
+  }catch(e){ return { error: String(e) }; }
+}
+/* ---------- PDF: Drucken oder Versenden (Dashboard-, FH- und AKP-PDF) ----------
+   pdfSendTarget ist gesetzt, sobald der Nutzer im Versenden-Dialog eine
+   Zieladresse bestätigt hat - die jeweilige exportXyzPdf()-Funktion baut das
+   PDF danach unverändert wie bisher, übergibt es aber an finalizePdf(), das
+   dann statt Download/neuem Tab den Mailversand auslöst. */
+let pdfSendTarget=null;
+let pendingPdfAction=null;
+function openPdfTargetChoice(fn){
+  pendingPdfAction=fn;
+  $("pdfTargetModal").classList.remove("hidden");
+}
+// Event-Bindings für die Modals siehe unten bei den übrigen $("...").onclick-
+// Zuweisungen ("---------- Events ----------") - $ ist an dieser Stelle im
+// Script (vor seiner eigenen Definition weiter unten) noch nicht verfügbar.
+// finalizePdf ersetzt die frühere direkte pdf.save()/pdf.output("bloburl")-
+// Logik am Ende jeder exportXyzPdf()-Funktion - windowRef nur bei der
+// FH-PDF gesetzt (öffnet dort normalerweise in einem neuen Tab).
+async function finalizePdf(pdf, filename, windowRef){
+  if(pdfSendTarget){
+    const target=pdfSendTarget; pdfSendTarget=null;
+    toast("PDF wird per Mail versendet …");
+    const dataUri=pdf.output("datauristring");
+    const senderName=myName||(supaUser&&supaUser.email)||"Wertgarantie Dashboard";
+    const subject="Wertgarantie Dashboard – "+filename.replace(/\.pdf$/i,"").replace(/_/g," ");
+    const html=target.isOwn
+      ? `<div style="font-family:'Segoe UI',Arial,sans-serif;color:#10202C"><p>Anbei das angeforderte PDF (${escapeHtml(filename)}).</p></div>`
+      : `<div style="font-family:'Segoe UI',Arial,sans-serif;color:#10202C"><p>Lieber Kunde,</p><p>anbei das gewünschte Dokument.</p><p>Liebe Grüße<br>${escapeHtml(senderName)}</p></div>`;
+    const res=await sendPdfByMail({to:target.to,subject,html,pdfDataUri:dataUri,filename});
+    if(windowRef){ try{ windowRef.close(); }catch(e){} }
+    if(res&&res.ok) toast("PDF per Mail versendet ✓ ("+target.to+")");
+    else toast("Mailversand fehlgeschlagen: "+((res&&res.error)||"unbekannter Fehler"));
+    return;
+  }
+  if(windowRef!==undefined){
+    const blobUrl=pdf.output("bloburl");
+    if(windowRef) windowRef.location.href=blobUrl; else window.open(blobUrl,"_blank");
+    toast("PDF erstellt ✓");
+  }else{
+    pdf.save(filename);
+    toast("PDF erstellt ✓ Download gestartet");
+  }
 }
 function escapeHtml(s){
   return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -2970,6 +3059,7 @@ async function exportFhPdf(includeAkp){
   if(fhPdfBusy) return;
   if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)){
     toast("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals klicken.");
+    pdfSendTarget=null;
     return;
   }
   const fhNr=fhModalCurrent; if(!fhNr) return;
@@ -2978,8 +3068,9 @@ async function exportFhPdf(includeAkp){
   fhPdfBusy=true;
   // Fenster synchron im Klick öffnen statt erst nach dem await für html2canvas -
   // sonst werten Browser das spätere window.open() als Popup außerhalb einer
-  // Nutzer-Interaktion und blockieren es stillschweigend.
-  const pdfWindow=window.open("","_blank");
+  // Nutzer-Interaktion und blockieren es stillschweigend. Beim Versenden per
+  // Mail wird das PDF nicht angezeigt - kein Tab nötig.
+  const pdfWindow=pdfSendTarget?null:window.open("","_blank");
   if(pdfWindow) pdfWindow.document.write("<p style='font-family:sans-serif;padding:20px;color:#5D7284'>PDF wird erstellt …</p>");
   toast("PDF wird erstellt …");
   const box=document.createElement("div");
@@ -3070,11 +3161,10 @@ async function exportFhPdf(includeAkp){
       pageIdx++;
     }
     // Der Nutzer will das Datenblatt sofort einsehbar haben statt nur einen
-    // Download auszulösen - deshalb hier öffnen (neuer Tab, s.o.) statt pdf.save().
-    const blobUrl=pdf.output("bloburl");
-    if(pdfWindow) pdfWindow.location.href=blobUrl;
-    else window.open(blobUrl,"_blank");
-    toast("PDF erstellt ✓");
+    // Download auszulösen - deshalb hier öffnen (neuer Tab, s.o.) statt
+    // pdf.save() (außer beim Versenden per Mail, siehe finalizePdf).
+    const pdfFname="FH_"+fhNr+"_"+((f&&f.name)||"Datenblatt").replace(/[^\wÄÖÜäöüß-]+/g,"_")+".pdf";
+    await finalizePdf(pdf,pdfFname,pdfWindow);
   }catch(e){
     console.error(e);
     if(pdfWindow) pdfWindow.close();
@@ -3183,6 +3273,7 @@ async function exportAkpPdf(){
   if(akpPdfBusy) return;
   if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)){
     toast("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals klicken.");
+    pdfSendTarget=null;
     return;
   }
   const c=akpContactCurrent; if(!c||!c.nr) return;
@@ -3224,8 +3315,8 @@ async function exportAkpPdf(){
     if(imgH>ph-2*margin){ imgH=ph-2*margin; imgW=canvas.width*imgH/canvas.height; }
     const x=(pw-imgW)/2;
     pdf.addImage(canvas.toDataURL("image/jpeg",0.95),"JPEG",x,margin,imgW,imgH);
-    pdf.save("AKP_"+(c.nr||"Datenblatt").replace(/[^\wÄÖÜäöüß-]+/g,"_")+".pdf");
-    toast("PDF erstellt ✓ Download gestartet");
+    const pdfFname="AKP_"+(c.nr||"Datenblatt").replace(/[^\wÄÖÜäöüß-]+/g,"_")+".pdf";
+    await finalizePdf(pdf,pdfFname);
   }catch(e){
     console.error(e);
     toast("PDF-Erstellung fehlgeschlagen.");
@@ -3496,6 +3587,7 @@ async function exportPDF(){
   // Ränder und Seitenumbrüche immer exakt wie hier definiert.
   if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)){
     toast("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals auf PDF klicken.");
+    pdfSendTarget=null;
     return;
   }
   pdfBusy=true;
@@ -3531,8 +3623,7 @@ async function exportPDF(){
     }
     const s=state.latest;
     const fname="Wertgarantie_Dashboard_"+currentEmp.replace(/[^\wÄÖÜäöüß]+/g,"_")+(s?"_"+s.vortag:"")+".pdf";
-    pdf.save(fname);
-    toast("PDF erstellt ✓ Download gestartet ("+page+" Seiten)");
+    await finalizePdf(pdf,fname);
   }catch(e){
     console.error(e);
     toast("PDF-Erstellung fehlgeschlagen – Tipp: Datei herunterladen, im Browser öffnen und dort auf PDF klicken.");
@@ -3577,7 +3668,35 @@ function maybeAskGoal(){
 function pickFiles(){ $("fileInput").click(); }
 $("uploadBtn2").onclick=pickFiles;
 $("fileInput").onchange=async e=>{ if(e.target.files.length){ toast("Einspielliste wird verarbeitet …"); await handleFiles([...e.target.files]); e.target.value=""; } };
-$("pdfBtn").onclick=()=>exportPDF();
+$("pdfBtn").onclick=()=>openPdfTargetChoice(()=>exportPDF());
+$("pdfTargetCancel").onclick=()=>{ $("pdfTargetModal").classList.add("hidden"); pendingPdfAction=null; };
+$("pdfTargetPrint").onclick=()=>{
+  $("pdfTargetModal").classList.add("hidden");
+  pdfSendTarget=null;
+  const fn=pendingPdfAction; pendingPdfAction=null;
+  if(fn) fn();
+};
+$("pdfTargetSend").onclick=()=>{
+  $("pdfTargetModal").classList.add("hidden");
+  $("pdfSendOwnEmail").textContent=(supaUser&&supaUser.email)||"–";
+  $("pdfSendMyName").textContent=myName||(supaUser&&supaUser.email)||"–";
+  $("pdfSendOwnRadio").checked=true;
+  $("pdfSendCustomEmail").value="";
+  $("pdfSendHint").textContent="";
+  $("pdfSendModal").classList.remove("hidden");
+};
+$("pdfSendCancel").onclick=()=>{ $("pdfSendModal").classList.add("hidden"); pendingPdfAction=null; };
+$("pdfSendCustomEmail").addEventListener("focus",()=>{ $("pdfSendCustomRadio").checked=true; });
+$("pdfSendCustomEmail").addEventListener("input",()=>{ $("pdfSendCustomRadio").checked=true; });
+$("pdfSendConfirm").onclick=()=>{
+  const useOwn=$("pdfSendOwnRadio").checked;
+  const to=(useOwn?(supaUser&&supaUser.email):$("pdfSendCustomEmail").value.trim())||"";
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)){ $("pdfSendHint").textContent="Bitte eine gültige E-Mail-Adresse angeben."; return; }
+  pdfSendTarget={ to, isOwn:useOwn };
+  $("pdfSendModal").classList.add("hidden");
+  const fn=pendingPdfAction; pendingPdfAction=null;
+  if(fn) fn(); else pdfSendTarget=null;
+};
 $("gmSave").onclick=saveGoal;
 $("gmSkip").onclick=()=>$("goalModal").classList.add("hidden");
 $("gmInput").addEventListener("keydown",e=>{ if(e.key==="Enter") saveGoal(); });
@@ -3662,14 +3781,14 @@ $("amPeriodTabs").addEventListener("click",e=>{
 $("acEditBtn").onclick=()=>toggleAkpEdit(true);
 $("acCancelBtn").onclick=()=>toggleAkpEdit(false);
 $("acSaveBtn").onclick=saveAkpContact;
-$("acPdfBtn").onclick=()=>exportAkpPdf();
+$("acPdfBtn").onclick=()=>openPdfTargetChoice(()=>exportAkpPdf());
 $("fhEditBtn").onclick=()=>toggleFhEdit(true);
 $("fhCancelBtn").onclick=()=>toggleFhEdit(false);
 $("fhSaveBtn").onclick=saveFhContact;
 $("fhPdfBtn").onclick=()=>$("fhPdfChoiceModal").classList.remove("hidden");
 $("fhPdfChoiceCancel").onclick=()=>$("fhPdfChoiceModal").classList.add("hidden");
-$("fhPdfWithAkp").onclick=()=>{ $("fhPdfChoiceModal").classList.add("hidden"); exportFhPdf(true); };
-$("fhPdfWithoutAkp").onclick=()=>{ $("fhPdfChoiceModal").classList.add("hidden"); exportFhPdf(false); };
+$("fhPdfWithAkp").onclick=()=>{ $("fhPdfChoiceModal").classList.add("hidden"); openPdfTargetChoice(()=>exportFhPdf(true)); };
+$("fhPdfWithoutAkp").onclick=()=>{ $("fhPdfChoiceModal").classList.add("hidden"); openPdfTargetChoice(()=>exportFhPdf(false)); };
 document.querySelectorAll("#akpNBtns button").forEach(b=>{
   b.onclick=()=>{ akpN=+b.dataset.n; openAkpModal(); };
 });
