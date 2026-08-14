@@ -76,11 +76,18 @@ grant execute on function public.mark_password_changed() to authenticated;
 -- Dashboard ein Nutzer angelegt/gelöscht wird. Sync-Nutzer bekommen das
 -- Erstpasswort "WertGARANTIE" und must_change_password = true.
 
--- ---------- Events (fachlich: es gibt jeweils genau EIN aktives Event) ----------
+-- ---------- Events (mehrere Veranstaltungen gleichzeitig möglich) ----------
+-- Jede Veranstaltung hat einen eindeutigen, sprechenden Kurzlink (slug),
+-- über den register.html sie öffentlich lädt (?event=<slug>, von Vercel
+-- aus /<slug> umgeschrieben, siehe events/vercel.json). Es gibt keine
+-- öffentliche Übersicht -- nur wer den Link/QR-Code bekommt, kommt zur
+-- Anmeldeseite. is_active steuert je Veranstaltung, ob sie offen für
+-- Anmeldungen ist; mehrere Veranstaltungen dürfen gleichzeitig aktiv sein.
 
 create table if not exists public.events (
   id            uuid primary key default gen_random_uuid(),
   title         text not null default 'Wertgarantie Veranstaltung',
+  slug          text not null check (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
   description   text not null default '',
   privacy_text  text not null default '',
   photo_url     text,
@@ -90,6 +97,8 @@ create table if not exists public.events (
 );
 
 alter table public.events enable row level security;
+
+create unique index if not exists events_slug_idx on public.events (slug);
 
 create policy "Public read active events"
   on public.events for select
@@ -101,10 +110,6 @@ create policy "Admins manage events"
   to authenticated
   using (public.is_admin())
   with check (public.is_admin());
-
--- Nur ein aktives Event gleichzeitig (vereinfacht die Landingpage-Logik).
-create unique index if not exists events_single_active_idx
-  on public.events ((true)) where is_active;
 
 -- ---------- Termine (Ort/Datum/Uhrzeit je Event) ----------
 
@@ -255,8 +260,8 @@ create policy "Admins delete event photos"
 
 -- ---------- Seed: Default-Event + Feldkonfiguration ----------
 
-insert into public.events (title, description, is_active)
-select 'Wertgarantie Roadshow', 'Beschreibung im Admin-Panel bearbeiten.', true
+insert into public.events (title, slug, description, is_active)
+select 'Wertgarantie Roadshow', 'wertgarantie-roadshow', 'Beschreibung im Admin-Panel bearbeiten.', true
 where not exists (select 1 from public.events);
 
 insert into public.event_form_fields (event_id, field_key, enabled, required, sort_order, label)
