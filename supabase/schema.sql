@@ -238,6 +238,12 @@ create table if not exists public.fh_contacts (
 alter table public.fh_contacts add column if not exists prod_monthly jsonb not null default '{}'::jsonb;
 alter table public.fh_contacts add column if not exists neunwochen_erledigt boolean not null default false;
 alter table public.fh_contacts add column if not exists beitragsfrei_yearly jsonb not null default '{}'::jsonb;
+-- Akquisestaffeln: lebenslang-kumulative Punkte (nicht jährlich zurückgesetzt)
+-- und je der 7 fixen Stufen (20/50/100/150/200/250/300) das Erreichungsdatum
+-- als "MM/JJ"-String (null = noch nicht erreicht). Wird per Admin-Import aus
+-- der monatlichen Akquisestaffeln-Datei komplett überschrieben (Snapshot).
+alter table public.fh_contacts add column if not exists akq_punkte numeric;
+alter table public.fh_contacts add column if not exists akq_staffeln jsonb not null default '[]'::jsonb;
 
 alter table public.fh_contacts drop constraint if exists fh_contacts_segmentierung_check;
 alter table public.fh_contacts add constraint fh_contacts_segmentierung_check

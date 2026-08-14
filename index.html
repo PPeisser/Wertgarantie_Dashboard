@@ -158,6 +158,34 @@ h2.sec small{font-weight:600;text-transform:none;color:var(--muted);letter-spaci
 .goal .edit:hover{text-decoration:underline}
 .pos-t{color:var(--pos)} .neg-t{color:var(--neg)}
 
+.akq-bar{
+  background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+  padding:12px 18px;margin-top:10px;
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+}
+.akq-bar-label{font-size:12.5px;font-weight:800;color:var(--wg-navy);flex:1;min-width:220px}
+.akq-bar-sub{font-weight:600;font-size:11px;color:var(--muted)}
+.akq-bar-num{font-size:18px;font-weight:900;white-space:nowrap}
+.akq-bar-of{font-size:13px;font-weight:700;color:var(--muted)}
+.akq-bar-pct{font-size:14px;font-weight:800;margin-left:8px}
+.akq-bar-track{height:9px;background:#E4EDF3;border-radius:99px;overflow:hidden;flex:1;min-width:120px}
+.akq-bar-fill{height:100%;border-radius:99px;transition:width .6s ease}
+@media (max-width:1150px){.akq-bar{padding:10px 14px}.akq-bar-track{min-width:80px}}
+
+.akq-fh-block{margin-top:4px}
+.akq-fh-punkte{font-size:12.5px;color:var(--muted);font-weight:600;margin-bottom:10px}
+.akq-fh-punkte b{color:var(--ink)}
+.akq-steps{display:flex;gap:4px;overflow-x:auto;padding-bottom:2px}
+.akq-step{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:56px;flex:1}
+.akq-step-dot{
+  width:26px;height:26px;border-radius:99px;display:flex;align-items:center;justify-content:center;
+  font-size:11.5px;font-weight:800;background:#E4EDF3;color:var(--muted);
+}
+.akq-step.done .akq-step-dot{background:var(--pos);color:#fff}
+.akq-step-lbl{font-size:10.5px;font-weight:700;color:var(--muted);text-align:center;white-space:nowrap}
+.akq-step.done .akq-step-lbl{color:var(--ink)}
+.akq-step-date{font-size:9.5px;font-weight:600;color:var(--muted)}
+
 /* ---------- Tabs ---------- */
 .tabs{display:inline-flex;background:#E2ECF3;border-radius:12px;padding:4px;gap:2px}
 .tabs button{
@@ -485,6 +513,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 
     <h2 class="sec"><svg class="arr" viewBox="0 0 60 30"><path d="M4 22 C 20 10, 35 8, 48 12" fill="none" stroke="#009FE3" stroke-width="6" stroke-linecap="round"/><path d="M39 4 L 56 13 L 37 20 Z" fill="#009FE3"/></svg> Ziele &amp; Hochrechnung <small>Soll-Linie = erwarteter Stand · Jahresziele saisonal gerechnet (71 % bis 30.9., 29 % der Produktion in Q4) · Monat lt. „Tage Ist von Soll"</small></h2>
     <div class="goals" id="goalCards"></div>
+    <div id="akqStaffelBar"></div>
 
     <h2 class="sec"><svg class="arr" viewBox="0 0 60 30"><path d="M4 22 C 20 10, 35 8, 48 12" fill="none" stroke="#009FE3" stroke-width="6" stroke-linecap="round"/><path d="M39 4 L 56 13 L 37 20 Z" fill="#009FE3"/></svg> Produktmix &amp; Sparten</h2>
     <div class="trio">
@@ -703,6 +732,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:13px">Produktion nach Monaten</h4>
     <div id="fhMonthly"></div>
     <div id="fhYearlyTrend"></div>
+    <div id="fhAkqStaffelBlock"></div>
 
     <div class="actions" style="justify-content:flex-start;margin-top:18px;margin-bottom:10px">
       <button class="btn btn-blue" id="fhTopFlopBtn">Top &amp; Flop AKP dieses Händlers ⤢</button>
@@ -864,6 +894,9 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 
     <h4 style="margin:16px 0 8px;color:var(--wg-navy);font-size:14px">Daten</h4>
     <button class="btn btn-blue" id="adminUploadBtn">📤 Excel einspielen</button>
+    <input type="file" id="akqFileInput" accept=".xlsx,.xls" class="hidden">
+    <button class="btn btn-blue" id="adminAkqUploadBtn" style="margin-left:8px">📊 Akquisestaffeln einspielen</button>
+    <div class="hint">Ersetzt den kompletten Akquisestaffel-Stand (Punkte &amp; erreichte Stufen je Fachhändler) mit dem Inhalt der eingespielten Datei.</div>
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -905,6 +938,19 @@ const PERS_JAHRESZIELE = {
   "Dominik Szendi":55000,"Helmut Otto":7000,"Peter Peißer":7000
 };
 PERS_JAHRESZIELE[AT_GESAMT]=Object.values(PERS_JAHRESZIELE).reduce((a,b)=>a+b,0); // 121.000
+// Akquisestaffeln (siehe Fachhändler-PopUp/parseAkquiseStaffeln): die 7 fixen
+// Stufen (Punkteschwellen, absolut) laut "Zielstaffel"-Tabelle. Punkte werden
+// jährlich am 1.1. auf 0 zurückgesetzt; einmal erreichte Stufen bleiben aber
+// dauerhaft mit ihrem Erreichungsdatum erhalten (siehe akqNextStaffelInfo).
+const AKQ_STAFFEL_THRESHOLDS=[20,50,100,150,200,250,300];
+// Ziel 2026 = Anzahl "Erststaffeln" (Staffel 1 = FH erstmals aktiv/akquiriert)
+// pro Mitarbeiter in diesem Jahr - nur die 1. Staffel zählt hierfür, siehe
+// Erklärung des Nutzers vom 14.08.2026.
+const AKQ_ERSTSTAFFEL_ZIEL = {
+  "Klaus Witting":30,"Florian Hasibeder":30,"Thomas Eitzinger":0,
+  "Dominik Szendi":0,"Helmut Otto":30,"Peter Peißer":30
+};
+AKQ_ERSTSTAFFEL_ZIEL[AT_GESAMT]=Object.values(AKQ_ERSTSTAFFEL_ZIEL).reduce((a,b)=>a+b,0);
 
 /* ---------- Supabase Konfiguration ---------- */
 const SUPABASE_URL = "https://gfyjftwlombhmwirbyse.supabase.co";
@@ -1707,6 +1753,37 @@ function parseAuswertung(wb){
   return ok?snap:null;
 }
 
+/* ---------- Excel-Parsing (Akquisestaffeln-Datei, Admin-Import) ---------- */
+function normHeader(v){ return String(v??"").trim(); }
+// Liest die "Akquisen ..."-Übersicht (FH Nr, GL aktuell, Punkte <Jahr>,
+// Staffel 1-7 je als "MM/JJ"-Erreichungsdatum) - Spalten werden über den
+// Header per Namen gesucht (robust ggü. Spaltenverschiebungen/Jahreswechsel
+// der "Punkte <Jahr>"-Spalte), nicht über feste Indizes.
+function parseAkquiseStaffeln(wb){
+  let ws=null;
+  for(const n of wb.SheetNames){ if(/^akquisen/i.test(n.trim())){ ws=wb.Sheets[n]; break; } }
+  if(!ws) return null;
+  const rows=toRows(ws);
+  if(!rows.length) return null;
+  const header=rows[0].map(normHeader);
+  const idxFh=header.findIndex(h=>h==="FH Nr");
+  const idxPunkte=header.findIndex(h=>/^Punkte\s+\d{4}$/.test(h)&&!/bis VM/i.test(h));
+  const staffelIdx=AKQ_STAFFEL_THRESHOLDS.map((_,i)=>header.findIndex(h=>h==="Staffel "+(i+1)));
+  if(idxFh<0||staffelIdx.some(i=>i<0)) return null;
+  const out=[];
+  for(let i=1;i<rows.length;i++){
+    const r=rows[i]; if(!r) continue;
+    const fhNr=r[idxFh]; if(fhNr==null||fhNr==="") continue;
+    const punkte=idxPunkte>-1?num(r[idxPunkte]):null;
+    const staffeln=staffelIdx.map(idx=>{
+      const v=r[idx];
+      return (v==null||v==="")?null:String(v).trim();
+    });
+    out.push({ fh_nr:String(fhNr).trim(), punkte, staffeln });
+  }
+  return out.length?out:null;
+}
+
 function mergeSnapshot(snap){
   // Tageshistorie fortschreiben (Prod. Vortag → unter Vortagsdatum ablegen)
   for(const [k,g] of Object.entries(snap.gl)){
@@ -1736,6 +1813,35 @@ async function handleFiles(files){
   const s=state.latest;
   toast(`Eingespielt ✓ Stand ${fmtDate(s.vortag)} · ${fmt(Object.keys(s.fh).length)} Händler · ${fmt(s.akp.length)} AKP · ${fmt(s.akq.length)} AKQ`);
   render();
+}
+// Akquisestaffeln-Import (nur Admin-Panel): ersetzt Punkte + erreichte
+// Stufen je Fachhändler komplett mit dem Inhalt der eingespielten Datei
+// (aktueller Gesamtstand, keine Jahres-Historie, siehe parseAkquiseStaffeln).
+async function handleAkqStaffelFile(files){
+  if(!files||!files.length) return;
+  if(!(sb&&supaUser)){ toast("Nicht angemeldet."); return; }
+  toast("Akquisestaffeln werden verarbeitet …");
+  try{
+    const buf=await files[0].arrayBuffer();
+    const wb=XLSX.read(buf,{type:"array",cellDates:true});
+    const rows=parseAkquiseStaffeln(wb);
+    if(!rows){ toast('Format nicht erkannt – bitte die Akquisestaffeln-Datei mit dem Blatt "Akquisen …" einspielen.'); return; }
+    const CHUNK=500;
+    for(let i=0;i<rows.length;i+=CHUNK){
+      const chunk=rows.slice(i,i+CHUNK).map(r=>({
+        fh_nr:r.fh_nr, akq_punkte:r.punkte, akq_staffeln:r.staffeln,
+        updated_by:supaUser.id, updated_at:new Date().toISOString()
+      }));
+      const { error }=await sb.from("fh_contacts").upsert(chunk,{onConflict:"fh_nr"});
+      if(error) throw error;
+    }
+    await loadFhAkqIndex();
+    render();
+    toast(`Akquisestaffeln eingespielt ✓ ${fmt(rows.length)} Fachhändler aktualisiert`);
+  }catch(e){
+    console.error("handleAkqStaffelFile failed:",e);
+    toast("Akquisestaffeln-Import fehlgeschlagen: "+(e.message||e));
+  }
 }
 // Hält die AKP-Kontaktdatenbank (Firma/Ort/Fachhändler + Monatsproduktion)
 // bei jeder Einspielung aktuell; Kontaktdaten/Name bleiben unangetastet
@@ -1813,6 +1919,29 @@ async function loadFhErledigtSet(){
     fhErledigtSet=set;
     if(hasData()) render();
   }catch(e){ console.error("loadFhErledigtSet failed:",e); }
+}
+// Akquisestaffeln je Fachhändler (Punkte + 7 Erreichungsdaten, siehe
+// parseAkquiseStaffeln) - komplett geladen (klein genug), damit Dashboard-
+// Kachel und FH-PopUp ohne Einzelabfrage je Händler rendern können.
+let fhAkqIndex={};
+async function loadFhAkqIndex(){
+  if(!(sb&&supaUser)) return;
+  try{
+    const idx={}; let from=0, guard=0;
+    for(;;){
+      guard++;
+      const {data,error}=await sb.from("fh_contacts")
+        .select("fh_nr,akq_punkte,akq_staffeln")
+        .range(from,from+999);
+      if(error){ console.error("loadFhAkqIndex:",error.message||error); break; }
+      if(!data||!data.length) break;
+      for(const r of data) if(r.fh_nr&&(r.akq_punkte!=null||(r.akq_staffeln&&r.akq_staffeln.length))) idx[r.fh_nr]={punkte:r.akq_punkte,staffeln:r.akq_staffeln||[]};
+      from+=data.length;
+      if(guard>50) break;
+    }
+    fhAkqIndex=idx;
+    if(hasData()) render();
+  }catch(e){ console.error("loadFhAkqIndex failed:",e); }
 }
 // Schreibt den "9-Wochen-Plan erledigt"-Status dauerhaft fest (rastet ein -
 // kein automatisches Zurücksetzen, auch wenn sich Termine/Produktion später
@@ -1970,7 +2099,7 @@ function render(){
   const s=state.latest;
   $("datenstand").innerHTML=`Auswertung vom <b>${fmtDate(s.date)}</b> · Produktionsstand (Vortag): <b>${fmtDate(s.vortag)}</b> · Ansicht: <b>${currentEmp}</b>`;
   $("secKpiWho").textContent="– "+currentEmp;
-  renderGoals(); renderMix(); renderGW(); renderSparten();
+  renderGoals(); renderAkqStaffelBar(); renderMix(); renderGW(); renderSparten();
   renderKPIs(); renderTopFlop(); renderObs(); renderAKP(); renderAKQ();
   renderAkqOhneProd(); renderNeunWochen();
   if($("akpSearchInput")) renderAkpSearch();
@@ -2110,6 +2239,36 @@ function renderGoals(){
   }
   $("goalCards").classList.toggle("cols4",isATv);
   $("goalCards").innerHTML=cards.join("");
+}
+// Zählt Fachhändler (skaliert auf currentEmp), deren "Staffel 1" (Erststaffel
+// - erstmals als Akquise-Fachhändler aktiv geworden) im aktuell gezeigten
+// Jahr erreicht wurde. Nur Staffel 1 zählt hierfür - siehe AKQ_ERSTSTAFFEL_ZIEL.
+function akqErststaffelnInJahr(){
+  const s=state.latest; if(!s) return 0;
+  const yy=String(s.jahr).slice(2);
+  let count=0;
+  for(const [fhNr,rec] of Object.entries(fhAkqIndex)){
+    const d=(rec.staffeln||[])[0];
+    if(!d||String(d).slice(3,5)!==yy) continue;
+    const fh=s.fh[fhNr];
+    if(currentEmp!==AT_GESAMT&&(!fh||fh.emp!==currentEmp)) continue;
+    count++;
+  }
+  return count;
+}
+function renderAkqStaffelBar(){
+  const box=$("akqStaffelBar"); if(!box) return;
+  const s=state.latest; if(!s){ box.innerHTML=""; return; }
+  const ziel=AKQ_ERSTSTAFFEL_ZIEL[currentEmp]||0;
+  const reached=akqErststaffelnInJahr();
+  const pct=ziel>0?reached/ziel*100:null;
+  const good=pct!=null?pct>=100:true;
+  box.innerHTML=`<div class="akq-bar">
+    <div class="akq-bar-label">🏅 Akquise-Erststaffeln ${s.jahr}<br><span class="akq-bar-sub">${escapeHtml(currentEmp)} · neu aktivierte Fachhändler (Staffel 1) in diesem Jahr</span></div>
+    <div class="akq-bar-num"><b>${fmt(reached)}</b><span class="akq-bar-of"> / ${ziel>0?fmt(ziel):"–"}</span>
+      ${pct!=null?`<span class="akq-bar-pct" style="color:${good?"var(--pos)":"var(--neg)"}">${pct.toFixed(0)} %</span>`:""}</div>
+    <div class="akq-bar-track"><div class="akq-bar-fill" style="width:${pct!=null?Math.min(pct,100):0}%;background:${good?"var(--pos)":"var(--neg)"}"></div></div>
+  </div>`;
 }
 
 /* Top/Flop Händler */
@@ -2392,6 +2551,7 @@ async function openFhModal(fhNr){
     .forEach(id=>$(id).textContent="lädt …");
   $("fhMonthly").innerHTML="";
   $("fhYearlyTrend").innerHTML="";
+  renderFhAkqStaffel(fhNr);
   document.querySelectorAll("#fhPeriodTabs button").forEach(b=>b.classList.toggle("on",b.dataset.p===fhAkpPeriod));
   const rows=akpFullList(state.latest).filter(a=>a.fhNr===fhNr);
   const ranked=akpRanked(rows,fhAkpPeriod);
@@ -2484,6 +2644,44 @@ function renderFhMonthly(){
       }).join("");
       return `<tr><td><b>${y}</b></td>${cells}<td><b>${fmt(sum)}</b></td></tr>`;
     }).join("")+`</tbody></table></div>`;
+}
+// Nächste offene Akquisestaffel: "Punkte" aus der Staffeldatei ist das
+// laufende, am 1.1. zurückgesetzte Jahrespunktekonto (siehe Kommentar bei
+// AKQ_STAFFEL_THRESHOLDS) - die nächste noch offene Stufe braucht wieder
+// ihren vollen, absoluten Schwellenwert (nicht die Differenz zur zuletzt
+// erreichten Stufe). Anhand realer Beispielzeilen der Staffeldatei
+// verifiziert, u.a. FH 2259462: Staffel 6 (250 Pkt.) im Juli 2026 mit
+// Jahrespunkten=251 gerade erreicht, Staffel 7 (300 Pkt.) mit 251 noch
+// offen - 49 fehlend, nicht 300-250-251=-1.
+function akqNextStaffelInfo(rec){
+  const staffeln=(rec&&rec.staffeln)||[];
+  let lastIdx=-1;
+  for(let i=0;i<AKQ_STAFFEL_THRESHOLDS.length;i++) if(staffeln[i]) lastIdx=i;
+  if(lastIdx>=AKQ_STAFFEL_THRESHOLDS.length-1) return null; // alle 7 Stufen erreicht
+  const nextIdx=lastIdx+1;
+  const threshold=AKQ_STAFFEL_THRESHOLDS[nextIdx];
+  const punkte=(rec&&rec.punkte!=null)?rec.punkte:0;
+  return { nextIdx, threshold, missing:Math.max(0,threshold-punkte) };
+}
+function renderFhAkqStaffel(fhNr){
+  const box=$("fhAkqStaffelBlock"); if(!box) return;
+  const rec=fhAkqIndex[fhNr];
+  if(!rec||(rec.punkte==null&&!(rec.staffeln||[]).some(Boolean))){ box.innerHTML=""; return; }
+  const staffeln=rec.staffeln||[];
+  const next=akqNextStaffelInfo(rec);
+  const steps=AKQ_STAFFEL_THRESHOLDS.map((th,i)=>{
+    const d=staffeln[i];
+    return `<div class="akq-step${d?" done":""}" title="Staffel ${i+1} · ${th} Punkte${d?" · erreicht "+escapeHtml(d):" · offen"}">
+      <div class="akq-step-dot">${d?"✓":i+1}</div>
+      <div class="akq-step-lbl">${th}${d?`<br><span class="akq-step-date">${escapeHtml(d)}</span>`:""}</div>
+    </div>`;
+  }).join("");
+  box.innerHTML=`<h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:13px">Akquisestaffeln</h4>
+    <div class="akq-fh-block">
+      <div class="akq-fh-punkte">Aktuelle Punkte (laufendes Jahr): <b>${rec.punkte!=null?fmt(rec.punkte):"–"}</b>
+        ${next?` · noch <b>${fmt(next.missing)}</b> Punkte bis Staffel ${next.nextIdx+1} (${next.threshold})`:` · <span class="pos-t">alle 7 Staffeln erreicht 🏆</span>`}</div>
+      <div class="akq-steps">${steps}</div>
+    </div>`;
 }
 function renderFhYearlyTrend(){
   const merged=fhMonthlyMerged(fhModalCurrent);
@@ -3173,6 +3371,8 @@ $("logoutBtn").onclick=doLogout;
 $("adminBtn").onclick=openAdminModal;
 $("adminClose").onclick=()=>$("adminModal").classList.add("hidden");
 $("adminUploadBtn").onclick=pickFiles;
+$("adminAkqUploadBtn").onclick=()=>$("akqFileInput").click();
+$("akqFileInput").onchange=async e=>{ if(e.target.files.length){ await handleAkqStaffelFile([...e.target.files]); e.target.value=""; } };
 $("adCreateBtn").onclick=createAdminUser;
 $("settingsBtn").onclick=showSettingsModal;
 $("settingsClose").onclick=hideSettingsModal;
@@ -3198,7 +3398,7 @@ async function refreshData(silent){
   refreshBusy=true;
   const btn=$("refreshBtn"); if(btn) btn.disabled=true;
   try{
-    await Promise.all([loadAll(), loadAkpContactsIndex(), loadFhErledigtSet()]);
+    await Promise.all([loadAll(), loadAkpContactsIndex(), loadFhErledigtSet(), loadFhAkqIndex()]);
     render();
     if(!silent) toast("Aktualisiert ✓");
     if(!silent) maybeAutoShowNotifications();
@@ -3263,7 +3463,7 @@ window.addEventListener("pageshow",e=>{ if(e.persisted&&hasData()) refreshData(t
   const authed = await initAuth();
   if(authed){
     await loadAll(); render();
-    await Promise.all([loadAkpContactsIndex(), loadFhErledigtSet()]);
+    await Promise.all([loadAkpContactsIndex(), loadFhErledigtSet(), loadFhAkqIndex()]);
     maybeAutoShowNotifications();
   }
 })();
