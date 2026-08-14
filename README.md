@@ -138,6 +138,128 @@ Client-Key (Nachfolger des `anon`-Keys) – er darf im Frontend-Code sichtbar
 sein, die eigentliche Absicherung erfolgt über Row Level Security (Schritt 2)
 und den Login-Zwang.
 
+## Domain (`dashboard.wgaustria.at`)
+
+Eigenes Vercel-Projekt **`wertgarantie-dashboard`** (Team `wertgarantie`,
+bereits live unter `wertgarantie-dashboard.vercel.app`). Die Custom Domain
+lässt sich nicht per API hinzufügen (kein Tool dafür verfügbar) – einmalig
+manuell einrichten:
+
+1. [vercel.com/wertgarantie/wertgarantie-dashboard/settings/domains](https://vercel.com/wertgarantie/wertgarantie-dashboard/settings/domains) öffnen.
+2. `dashboard.wgaustria.at` eintragen und hinzufügen – Vercel zeigt danach
+   den nötigen DNS-Eintrag an (i. d. R. ein **CNAME** auf `cname.vercel-dns.com`).
+3. Bei Easyname eintragen: Login auf easyname.com → **CloudPit** → Domain
+   `wgaustria.at` suchen → „Mehr" (`⋯`) → **DNS-Verwaltung** → ggf. auf
+   manuelle Verwaltung umschalten → **+ DNS-Eintrag hinzufügen** → Typ
+   **CNAME**, Name `dashboard`, Wert wie von Vercel angezeigt.
+4. Nach DNS-Propagierung (meist wenige Minuten bis Stunden) zeigt Vercel die
+   Domain als „Valid" an – das Dashboard ist dann unter
+   `https://dashboard.wgaustria.at` erreichbar.
+
+## Mailversand (`dashboard@wgaustria.at`, Edge Function `dashboard-mailer`)
+
+[`supabase/functions/dashboard-mailer/index.ts`](supabase/functions/dashboard-mailer/index.ts)
+(bereits deployt) verschickt Mails über **SMTP** (Easyname-Postfach
+`dashboard@wgaustria.at`), aktuell mit den Aktionen `test` (einzelne
+Testmail) und `send` (generischer Versand) – Basis für künftige
+Dashboard-Mailfunktionen, noch ohne eigenen Aufrufer im Dashboard selbst.
+
+**Einmalig einzurichten** (Supabase-Dashboard des Projekts
+`gfyjftwlombhmwirbyse` → *Project Settings → Edge Functions → Secrets*, kein
+Tool dafür in dieser Session verfügbar):
+
+| Secret | Wert |
+|---|---|
+| `SMTP_HOST` | *(Easyname-Postfach-Server, z. B. `web8.wh20.easyname.systems` – im Easyname-Webmail-Postfach von `dashboard@wgaustria.at` unter „E-Mail-Programm einrichten" nachsehen)* |
+| `SMTP_PORT` | `465` |
+| `SMTP_USERNAME` | `dashboard@wgaustria.at` |
+| `SMTP_PASSWORD` | *(Postfach-Passwort)* |
+| `SMTP_FROM_EMAIL` | `dashboard@wgaustria.at` |
+| `SMTP_FROM_NAME` | z. B. `Wertgarantie Dashboard` |
+| `CRON_SECRET` | `wjRIsCww0sGxg9Hf6V45-j02penc_-hZ9azxv6blcVU` |
+
+Voraussetzung: Postfach `dashboard@wgaustria.at` existiert bereits bei
+Easyname (falls nicht: CloudPit → E-Mail → Postfach anlegen).
+
+Test nach Einrichtung:
+```bash
+curl -X POST https://gfyjftwlombhmwirbyse.supabase.co/functions/v1/dashboard-mailer \
+  -H "Content-Type: application/json" -H "x-cron-secret: wjRIsCww0sGxg9Hf6V45-j02penc_-hZ9azxv6blcVU" \
+  -d '{"type":"test","to":"deine@adresse.at"}'
+```
+
+Erneut deployen nach Code-Änderungen:
+```bash
+supabase functions deploy dashboard-mailer --project-ref gfyjftwlombhmwirbyse
+```
+
+## Automatischer Excel-Mail-Import (`input@wgaustria.at`)
+
+Ziel: die tägliche `Auswertung_TAG.xlsx` (bzw. die Akquisestaffeln-Datei)
+muss nicht mehr manuell über „Excel einspielen" hochgeladen werden – eine
+Mail mit der Datei im Anhang an `input@wgaustria.at` genügt, der Import
+passiert danach automatisch.
+
+**Architektur (bewusst kein serverseitiger Nachbau des Excel-Parsers):**
+Eine Edge Function (`dashboard-mail-poller`) ruft das Postfach per **IMAP**
+ab, sucht ungelesene Mails mit `.xlsx`/`.xls`-Anhang, lädt den Anhang in den
+privaten Storage-Bucket `mail-imports` hoch und legt eine Zeile in
+`public.pending_imports` an. Das eigentliche **Parsen und Einspielen**
+übernimmt weiterhin der bereits ausführlich getestete clientseitige Parser
+(`parseAuswertung` in `index.html`, identisch zum manuellen Excel-Upload) –
+`processPendingImports()` holt offene `pending_imports` beim Login bzw. bei
+jeder Aktualisierung automatisch ab, parst sie genauso wie eine manuelle
+Einspielung und markiert sie danach als `processed`. Das vermeidet doppelte,
+potenziell abweichende Parser-Logik auf Server und Client.
+
+- [`supabase/functions/dashboard-mail-poller/index.ts`](supabase/functions/dashboard-mail-poller/index.ts)
+  (bereits deployt): IMAP-Abruf, Storage-Upload, `pending_imports`-Eintrag.
+- `pg_cron`-Job **`dashboard-mail-poll`** (bereits eingerichtet, Projekt
+  `gfyjftwlombhmwirbyse`): ruft die Function alle 15 Minuten auf.
+- `processPendingImports()` in `index.html`: verarbeitet offene
+  `pending_imports` clientseitig (siehe oben).
+
+**Einmalig einzurichten:**
+
+1. Postfach `input@wgaustria.at` bei Easyname anlegen, falls noch nicht
+   vorhanden (CloudPit → E-Mail → Postfach anlegen).
+2. IMAP-Zugangsdaten des neuen Postfachs im Easyname-Webmail unter
+   „E-Mail-Programm einrichten" nachsehen (Host i. d. R. derselbe wie beim
+   SMTP-Postfach, z. B. `web8.wh20.easyname.systems`, Port `993`).
+3. Secrets im Supabase-Dashboard des Projekts `gfyjftwlombhmwirbyse` →
+   *Project Settings → Edge Functions → Secrets* hinterlegen:
+
+   | Secret | Wert |
+   |---|---|
+   | `IMAP_HOST` | *(z. B. `web8.wh20.easyname.systems`)* |
+   | `IMAP_PORT` | `993` |
+   | `IMAP_USERNAME` | `input@wgaustria.at` |
+   | `IMAP_PASSWORD` | *(Postfach-Passwort)* |
+   | `CRON_SECRET` | `wjRIsCww0sGxg9Hf6V45-j02penc_-hZ9azxv6blcVU` *(identischer Wert wie beim Mailversand oben)* |
+
+4. Danach läuft der Import vollautomatisch: Mail an `input@wgaustria.at`
+   schicken (Anhang `.xlsx`, egal ob Auswertung_TAG oder Akquisestaffeln –
+   `parseAuswertung` erkennt das Format automatisch), spätestens 15 Minuten
+   später ist sie abgeholt, und beim nächsten Login/„Aktualisieren" eines
+   beliebigen Nutzers wird sie automatisch eingespielt.
+
+Manueller Test-Aufruf (holt sofort ab, statt auf den nächsten
+15-Minuten-Takt zu warten):
+```bash
+curl -X POST https://gfyjftwlombhmwirbyse.supabase.co/functions/v1/dashboard-mail-poller \
+  -H "Content-Type: application/json" -H "x-cron-secret: wjRIsCww0sGxg9Hf6V45-j02penc_-hZ9azxv6blcVU"
+```
+
+Erneut deployen nach Code-Änderungen:
+```bash
+supabase functions deploy dashboard-mail-poller --project-ref gfyjftwlombhmwirbyse
+```
+
+**Fehlerfall**: schlägt das Parsen einer Mail clientseitig fehl (z. B.
+unbekanntes Format), wird die `pending_imports`-Zeile auf `status="failed"`
+mit Fehlermeldung gesetzt statt endlos erneut versucht zu werden – Abfrage
+in Supabase: `select * from pending_imports where status='failed' order by received_at desc;`
+
 ---
 
 # Event-Landingpage & Event-Admin (`events/`)

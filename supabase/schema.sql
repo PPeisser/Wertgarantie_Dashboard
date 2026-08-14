@@ -343,3 +343,66 @@ create policy "Users update own settings"
   to authenticated
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+-- Automatischer Excel-Mail-Import (input@wgaustria.at, siehe README) - die
+-- Edge Function dashboard-mail-poller legt hier pro gefundenem Excel-Anhang
+-- eine Zeile an; das Parsen selbst passiert weiterhin clientseitig
+-- (processPendingImports in index.html, wiederverwendet parseAuswertung).
+create table if not exists public.pending_imports (
+  id uuid primary key default gen_random_uuid(),
+  filename text not null,
+  storage_path text not null,
+  status text not null default 'pending',
+  source_subject text,
+  source_from text,
+  received_at timestamptz not null default now(),
+  processed_at timestamptz,
+  error text
+);
+
+alter table public.pending_imports drop constraint if exists pending_imports_status_check;
+alter table public.pending_imports add constraint pending_imports_status_check
+  check (status in ('pending','processed','failed'));
+
+alter table public.pending_imports enable row level security;
+
+drop policy if exists "Authenticated read pending_imports" on public.pending_imports;
+create policy "Authenticated read pending_imports"
+  on public.pending_imports for select
+  to authenticated
+  using (true);
+
+drop policy if exists "Authenticated update pending_imports" on public.pending_imports;
+create policy "Authenticated update pending_imports"
+  on public.pending_imports for update
+  to authenticated
+  using (true)
+  with check (true);
+
+insert into storage.buckets (id, name, public)
+values ('mail-imports', 'mail-imports', false)
+on conflict (id) do nothing;
+
+drop policy if exists "Authenticated read mail-imports" on storage.objects;
+create policy "Authenticated read mail-imports"
+  on storage.objects for select
+  to authenticated
+  using (bucket_id = 'mail-imports');
+
+-- pg_cron-Job: ruft die Edge Function dashboard-mail-poller alle 15 Minuten
+-- auf. <CRON_SECRET> durch denselben Wert ersetzen, der auch als
+-- Edge-Function-Secret CRON_SECRET hinterlegt ist (siehe README).
+create extension if not exists pg_cron;
+create extension if not exists pg_net;
+
+select cron.schedule(
+  'dashboard-mail-poll',
+  '*/15 * * * *',
+  $$
+  select net.http_post(
+    url := '<SUPABASE_PROJECT_URL>/functions/v1/dashboard-mail-poller',
+    headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'),
+    body := jsonb_build_object('trigger','cron')
+  );
+  $$
+);

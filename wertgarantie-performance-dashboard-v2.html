@@ -1815,6 +1815,46 @@ async function handleFiles(files){
   toast(`Eingespielt ✓ Stand ${fmtDate(s.vortag)} · ${fmt(Object.keys(s.fh).length)} Händler · ${fmt(s.akp.length)} AKP · ${fmt(s.akq.length)} AKQ`);
   render();
 }
+// Automatischer Mail-Import: übernimmt xlsx-Anhänge, die die Edge Function
+// dashboard-mail-poller aus dem Postfach input@wgaustria.at geholt hat
+// (siehe pending_imports/Storage-Bucket "mail-imports", supabase/schema.sql).
+// Nutzt bewusst denselben, bereits ausführlich getesteten Parser wie der
+// manuelle "Excel einspielen"-Button (parseAuswertung) - keine doppelte
+// Parserlogik, kein serverseitiges Nachbauen der Merge-Regeln.
+async function processPendingImports(){
+  if(!(sb&&supaUser)) return;
+  try{
+    const { data:rows, error } = await sb.from("pending_imports")
+      .select("*").eq("status","pending").order("received_at",{ascending:true});
+    if(error||!rows||!rows.length) return;
+    let okCount=0;
+    for(const row of rows){
+      // Optimistisches "Claimen" (bedingtes Update) - verhindert, dass zwei
+      // gleichzeitig geöffnete Tabs dieselbe Mail doppelt verarbeiten.
+      const { data:claimed } = await sb.from("pending_imports")
+        .update({status:"processing"}).eq("id",row.id).eq("status","pending").select().maybeSingle();
+      if(!claimed) continue;
+      try{
+        const { data:blob, error:dlErr } = await sb.storage.from("mail-imports").download(row.storage_path);
+        if(dlErr||!blob) throw new Error(dlErr?dlErr.message:"Download fehlgeschlagen");
+        const buf=await blob.arrayBuffer();
+        const wb=XLSX.read(buf,{type:"array",cellDates:true});
+        const snap=parseAuswertung(wb);
+        if(!snap) throw new Error("Format nicht erkannt");
+        mergeSnapshot(snap); syncAkpContacts(snap); syncFhContacts(snap);
+        okCount++;
+        await sb.from("pending_imports").update({status:"processed",processed_at:new Date().toISOString()}).eq("id",row.id);
+      }catch(e){
+        await sb.from("pending_imports").update({status:"failed",error:String((e&&e.message)||e),processed_at:new Date().toISOString()}).eq("id",row.id);
+      }
+    }
+    if(okCount){
+      await saveData();
+      const s=state.latest;
+      toast(`📧 ${okCount} Mail-Import${okCount===1?"":"e"} automatisch eingespielt ✓ Stand ${fmtDate(s.vortag)}`);
+    }
+  }catch(e){ console.error("processPendingImports failed:",e); }
+}
 // Akquisestaffeln-Import (nur Admin-Panel): ersetzt Punkte + erreichte
 // Stufen je Fachhändler komplett mit dem Inhalt der eingespielten Datei
 // (aktueller Gesamtstand, keine Jahres-Historie, siehe parseAkquiseStaffeln).
@@ -3403,6 +3443,7 @@ async function refreshData(silent){
   const btn=$("refreshBtn"); if(btn) btn.disabled=true;
   try{
     await Promise.all([loadAll(), loadAkpContactsIndex(), loadFhErledigtSet(), loadFhAkqIndex()]);
+    await processPendingImports();
     render();
     if(!silent) toast("Aktualisiert ✓");
     if(!silent) maybeAutoShowNotifications();
@@ -3468,6 +3509,8 @@ window.addEventListener("pageshow",e=>{ if(e.persisted&&hasData()) refreshData(t
   if(authed){
     await loadAll(); render();
     await Promise.all([loadAkpContactsIndex(), loadFhErledigtSet(), loadFhAkqIndex()]);
+    await processPendingImports();
+    render();
     maybeAutoShowNotifications();
   }
 })();
