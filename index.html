@@ -477,10 +477,6 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div class="controls no-print">
      <div class="controls-row">
       <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" class="hidden" multiple>
-      <button class="btn btn-blue" id="uploadBtn" title="Einspielliste (Excel) hochladen">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        Excel einspielen
-      </button>
       <select id="mitarbeiter" title="Mitarbeiter wählen"></select>
       <button class="btn btn-ghost" id="refreshBtn" title="Aktuellen Datenstand neu laden" style="padding:11px 13px">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
@@ -1834,6 +1830,10 @@ function parseAuswertung(wb){
     for(let i=hi+1;i<foundRows.length;i++){
       const r=foundRows[i]; if(!r||r[0]==null) continue;
       const name=String(r[0]).trim();
+      // Gesamt-/Summenzeile der Pivot-Tabelle nicht als eigene "Quote"
+      // aufnehmen - sonst würde sie beim Schnitt für "Österreich gesamt"
+      // (renderGW) mitgezählt und das Ergebnis verfälschen.
+      if(/^(auswertung|gesamt|summe|total)$/i.test(name)) break;
       snap.gwQuote[matchEmployee(name)||("x_"+name)]={lj:num(r[q]),vj:qv>-1?num(r[qv]):0};
     }
   })();
@@ -3007,6 +3007,10 @@ async function exportFhPdf(includeAkp){
         (list.length?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">${items}</div>`
           :`<div class="pdf-block" style="font-size:11px;color:#5D7284">Keine AKP für diesen Händler gefunden.</div>`);
     }
+    // Akquisestaffeln (falls für diesen Händler vorhanden, siehe
+    // renderFhAkqStaffel - lässt #fhAkqStaffelBlock leer, wenn nicht).
+    const akqStaffelInner=$("fhAkqStaffelBlock").innerHTML.trim();
+    const akqStaffelHtml=akqStaffelInner?`<div class="pdf-block" style="margin-bottom:18px">${akqStaffelInner}</div>`:"";
     box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
     box.innerHTML=`
       <div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:18px">
@@ -3029,6 +3033,7 @@ async function exportFhPdf(includeAkp){
       <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Produktion nach Monaten</div>
       <div class="pdf-block">${$("fhMonthly").innerHTML}</div>
       <div class="pdf-block">${$("fhYearlyTrend").innerHTML}</div>
+      ${akqStaffelHtml}
       ${akpHtml}
     `;
     document.body.appendChild(box);
@@ -3328,13 +3333,14 @@ function renderGW(){
   if(!s.gwQuote){ $("gwBody").innerHTML=`<div class="empty-note">GW-Quoten in dieser Einspielung nicht enthalten – bitte Auswertung mit dieser Version neu einspielen.</div>`; return; }
   let lj,vj,lblExtra="";
   if(currentEmp===AT_GESAMT){
-    // gewichteter Schnitt über alle GL (Gewicht = Monatsproduktion)
-    let wl=0,wv=0,w=0;
-    for(const [k,q] of Object.entries(s.gwQuote)){
-      const g=s.gl[k]; const wgt=g?g.monat:0; if(wgt<=0) continue;
-      wl+=q.lj*wgt; wv+=q.vj*wgt; w+=wgt;
-    }
-    lj=w>0?wl/w:0; vj=w>0?wv/w:0; lblExtra=" · gewichtet nach Monatsproduktion";
+    // Einfacher Schnitt über ALLE in der Tabelle aufgeführten Quoten (alle
+    // Mitarbeiter + "Technischer GL CE DE" + "Ohne Zuordnung RB" usw.) -
+    // bewusst NICHT nach Monatsproduktion gewichtet.
+    const vals=Object.values(s.gwQuote);
+    const n=vals.length;
+    lj=n>0?vals.reduce((a,q)=>a+q.lj,0)/n:0;
+    vj=n>0?vals.reduce((a,q)=>a+q.vj,0)/n:0;
+    lblExtra=" · Schnitt aller "+fmt(n)+" Quoten der Tabelle";
   } else {
     const q=s.gwQuote[currentEmp];
     if(!q){ $("gwBody").innerHTML=`<div class="empty-note">Keine GW-Quote für ${currentEmp} in der Auswertung.</div>`; return; }
@@ -3569,7 +3575,6 @@ function maybeAskGoal(){
 
 /* ---------- Events ---------- */
 function pickFiles(){ $("fileInput").click(); }
-$("uploadBtn").onclick=pickFiles;
 $("uploadBtn2").onclick=pickFiles;
 $("fileInput").onchange=async e=>{ if(e.target.files.length){ toast("Einspielliste wird verarbeitet …"); await handleFiles([...e.target.files]); e.target.value=""; } };
 $("pdfBtn").onclick=()=>exportPDF();
