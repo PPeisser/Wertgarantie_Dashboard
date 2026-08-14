@@ -156,6 +156,9 @@ manuell einrichten:
    Domain als „Valid" an – das Dashboard ist dann unter
    `https://dashboard.wgaustria.at` erreichbar.
 
+✅ **Erledigt und getestet** (Stand 14.08.2026): `https://dashboard.wgaustria.at`
+liefert HTTP 200 und zeigt das Dashboard korrekt an.
+
 ## Mailversand (`dashboard@wgaustria.at`, Edge Function `dashboard-mailer`)
 
 [`supabase/functions/dashboard-mailer/index.ts`](supabase/functions/dashboard-mailer/index.ts)
@@ -170,16 +173,19 @@ Tool dafür in dieser Session verfügbar):
 
 | Secret | Wert |
 |---|---|
-| `SMTP_HOST` | *(Easyname-Postfach-Server, z. B. `web8.wh20.easyname.systems` – im Easyname-Webmail-Postfach von `dashboard@wgaustria.at` unter „E-Mail-Programm einrichten" nachsehen)* |
+| `SMTP_HOST` | `web8.wh20.easyname.systems` |
 | `SMTP_PORT` | `465` |
 | `SMTP_USERNAME` | `dashboard@wgaustria.at` |
-| `SMTP_PASSWORD` | *(Postfach-Passwort)* |
+| `SMTP_PASSWORD` | *(Postfach-Passwort, wie bei Easyname vergeben)* |
 | `SMTP_FROM_EMAIL` | `dashboard@wgaustria.at` |
 | `SMTP_FROM_NAME` | z. B. `Wertgarantie Dashboard` |
 | `CRON_SECRET` | `wjRIsCww0sGxg9Hf6V45-j02penc_-hZ9azxv6blcVU` |
 
-Voraussetzung: Postfach `dashboard@wgaustria.at` existiert bereits bei
-Easyname (falls nicht: CloudPit → E-Mail → Postfach anlegen).
+Postfach `dashboard@wgaustria.at` existiert bereits bei Easyname
+(Server `web8.wh20.easyname.systems`, Verschlüsselung SSL/TLS, Port 465
+laut Easyname-Postfachdaten). Nur `SMTP_PASSWORD` muss noch als Secret
+gesetzt werden – das Passwort selbst ist nirgends hinterlegt und mir nicht
+bekannt.
 
 Test nach Einrichtung:
 ```bash
@@ -223,21 +229,18 @@ potenziell abweichende Parser-Logik auf Server und Client.
 
 1. Postfach `input@wgaustria.at` bei Easyname anlegen, falls noch nicht
    vorhanden (CloudPit → E-Mail → Postfach anlegen).
-2. IMAP-Zugangsdaten des neuen Postfachs im Easyname-Webmail unter
-   „E-Mail-Programm einrichten" nachsehen (Host i. d. R. derselbe wie beim
-   SMTP-Postfach, z. B. `web8.wh20.easyname.systems`, Port `993`).
-3. Secrets im Supabase-Dashboard des Projekts `gfyjftwlombhmwirbyse` →
+2. Secrets im Supabase-Dashboard des Projekts `gfyjftwlombhmwirbyse` →
    *Project Settings → Edge Functions → Secrets* hinterlegen:
 
    | Secret | Wert |
    |---|---|
-   | `IMAP_HOST` | *(z. B. `web8.wh20.easyname.systems`)* |
+   | `IMAP_HOST` | `web8.wh20.easyname.systems` |
    | `IMAP_PORT` | `993` |
    | `IMAP_USERNAME` | `input@wgaustria.at` |
-   | `IMAP_PASSWORD` | *(Postfach-Passwort)* |
+   | `IMAP_PASSWORD` | *(Postfach-Passwort, wie bei Easyname vergeben)* |
    | `CRON_SECRET` | `wjRIsCww0sGxg9Hf6V45-j02penc_-hZ9azxv6blcVU` *(identischer Wert wie beim Mailversand oben)* |
 
-4. Danach läuft der Import vollautomatisch: Mail an `input@wgaustria.at`
+3. Danach läuft der Import vollautomatisch: Mail an `input@wgaustria.at`
    schicken (Anhang `.xlsx`, egal ob Auswertung_TAG oder Akquisestaffeln –
    `parseAuswertung` erkennt das Format automatisch), spätestens 15 Minuten
    später ist sie abgeholt, und beim nächsten Login/„Aktualisieren" eines
