@@ -246,6 +246,23 @@ potenziell abweichende Parser-Logik auf Server und Client.
    später ist sie abgeholt, und beim nächsten Login/„Aktualisieren" eines
    beliebigen Nutzers wird sie automatisch eingespielt.
 
+✅ **Erledigt und live getestet** (Stand 14.08.2026): eine an
+`input@wgaustria.at` weitergeleitete `Auswertung_TAG.xlsx` wurde erfolgreich
+abgeholt und lag danach korrekt in `pending_imports`
+(`storage_path`/`source_subject`/`source_from` gesetzt, ~280 KB Anhang).
+Dabei wurde ein Bug behoben: die Bibliothek `imapflow` hängt sich beim
+eigentlichen Byte-Transfer eines Anhangs unter der Deno-Laufzeitumgebung von
+Supabase Edge Functions auf (getestet über drei verschiedene imapflow-APIs -
+`fetchOne({source:true})`, `client.download()` und
+`fetchOne({bodyParts:[...]})` - alle drei hängen identisch). Login, Suche und
+`bodyStructure`-Abfrage über imapflow funktionieren dagegen zuverlässig.
+Behoben durch eine minimale, eigene IMAP-Rohimplementierung
+(`rawFetchLiteral` in `dashboard-mail-poller/index.ts`) direkt über
+`Deno.connectTls`, ausschließlich für den Anhang-Download. Außerdem war der
+`pg_net`-Standard-Timeout (5 s) für einen echten IMAP-Abruf zu kurz - im
+`pg_cron`-Job und bei manuellen Testaufrufen jetzt `timeout_milliseconds :=
+55000` gesetzt.
+
 Manueller Test-Aufruf (holt sofort ab, statt auf den nächsten
 15-Minuten-Takt zu warten):
 ```bash

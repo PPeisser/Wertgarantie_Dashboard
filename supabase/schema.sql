@@ -392,6 +392,9 @@ create policy "Authenticated read mail-imports"
 -- pg_cron-Job: ruft die Edge Function dashboard-mail-poller alle 15 Minuten
 -- auf. <CRON_SECRET> durch denselben Wert ersetzen, der auch als
 -- Edge-Function-Secret CRON_SECRET hinterlegt ist (siehe README).
+-- timeout_milliseconds bewusst hoch (der pg_net-Default von 5s reicht nicht -
+-- IMAP-Abruf + Literal-Transfer eines echten Anhangs dauert real eher
+-- 10-20s, siehe Testlauf 14.08.2026).
 create extension if not exists pg_cron;
 create extension if not exists pg_net;
 
@@ -402,7 +405,8 @@ select cron.schedule(
   select net.http_post(
     url := '<SUPABASE_PROJECT_URL>/functions/v1/dashboard-mail-poller',
     headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'),
-    body := jsonb_build_object('trigger','cron')
+    body := jsonb_build_object('trigger','cron'),
+    timeout_milliseconds := 55000
   );
   $$
 );
