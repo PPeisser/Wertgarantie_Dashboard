@@ -302,9 +302,12 @@ create table if not exists public.user_settings (
   updated_at timestamptz not null default now()
 );
 
+-- "own" (eigener, zuordenbarer Mitarbeiterbereich), "all" (Österreich
+-- gesamt) oder - v.a. für Admins ohne eigenen Vertriebsbereich - ein
+-- konkreter Mitarbeitername (frei wählbar im Einstellungen-PopUp).
 alter table public.user_settings drop constraint if exists user_settings_scope_check;
 alter table public.user_settings add constraint user_settings_scope_check
-  check (notif_scope in ('own','all'));
+  check (notif_scope in ('own','all','Klaus Witting','Florian Hasibeder','Dominik Szendi','Helmut Otto','Peter Peißer','Thomas Eitzinger'));
 
 alter table public.user_settings drop constraint if exists user_settings_akp_days_check;
 alter table public.user_settings add constraint user_settings_akp_days_check

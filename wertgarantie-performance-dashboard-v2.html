@@ -603,10 +603,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div style="display:flex;flex-direction:column;gap:13px">
       <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;flex-wrap:wrap">
         Bereich für Benachrichtigungen:
-        <select id="setScope" style="border:2px solid var(--line);border-radius:8px;padding:6px 10px;font:inherit;font-weight:600">
-          <option value="own">Mein Bereich</option>
-          <option value="all">Österreich gesamt</option>
-        </select>
+        <select id="setScope" style="border:2px solid var(--line);border-radius:8px;padding:6px 10px;font:inherit;font-weight:600"></select>
       </label>
 
       <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;flex-wrap:wrap">
@@ -1136,15 +1133,38 @@ async function createAdminUser(){
 function openAdminModal(){ $("adminModal").classList.remove("hidden"); loadAdminUsers(); }
 
 /* ---------- Einstellungen (pro Nutzer: Passwort, Rolle, Benachrichtigungen) ---------- */
+// Admins dürfen den Benachrichtigungs-Bereich frei auf jeden einzelnen
+// Mitarbeiter setzen (nicht nur "eigener Bereich"/"gesamt"), da ihnen
+// selbst i.d.R. kein eigener Vertriebsbereich zugeordnet ist. Andere
+// Rollen sehen weiterhin nur "Mein Bereich" (falls zutreffend) und
+// "Österreich gesamt".
+function buildScopeOptions(){
+  const sel=$("setScope");
+  sel.innerHTML="";
+  const addOpt=(value,label,disabled)=>{
+    const o=document.createElement("option");
+    o.value=value; o.textContent=label; if(disabled) o.disabled=true;
+    sel.appendChild(o);
+  };
+  if(myRole==="admin"){
+    addOpt("all","Österreich gesamt");
+    for(const emp of EMPLOYEES) addOpt(emp,emp);
+  }else{
+    const ownAvailable=EMPLOYEES.includes(myName);
+    addOpt("own","Mein Bereich",!ownAvailable);
+    addOpt("all","Österreich gesamt");
+  }
+}
 function showSettingsModal(){
   $("setName").textContent=myName||"–";
   $("setEmail").textContent=(supaUser&&supaUser.email)||"–";
   $("setRole").textContent=(myRole&&ROLE_LABEL[myRole])||"–";
   $("setPwNew").value=""; $("setPwNew2").value=""; $("setPwHint").textContent="";
   $("setHint").textContent="";
-  const ownAvailable=EMPLOYEES.includes(myName);
-  $("setScope").querySelector('option[value="own"]').disabled=!ownAvailable;
-  $("setScope").value=ownAvailable?(userSettings.notif_scope||"own"):"all";
+  buildScopeOptions();
+  const sel=$("setScope");
+  const wanted=userSettings.notif_scope||(myRole==="admin"?"all":"own");
+  sel.value=[...sel.options].some(o=>o.value===wanted&&!o.disabled)?wanted:(myRole==="admin"?"all":(EMPLOYEES.includes(myName)?"own":"all"));
   $("setAkpEnabled").checked=!!userSettings.notif_akp_enabled;
   $("setAkpDays").value=String(userSettings.notif_akp_days||30);
   $("setFhEnabled").checked=!!userSettings.notif_fh_enabled;
@@ -1234,12 +1254,22 @@ function periodSum(pm,jahr,monat,k){
   }
   return sum;
 }
+// Löst den gespeicherten notif_scope in einen konkreten Mitarbeiter-Filter
+// auf: "all" -> null (kein Filter = ganz Österreich), "own" -> eigener
+// Mitarbeitername (falls zuordenbar), ein konkreter Mitarbeitername (von
+// Admins frei wählbar) -> genau dieser.
+function resolveNotifScope(){
+  const v=userSettings.notif_scope;
+  if(v==="all") return null;
+  if(v==="own") return EMPLOYEES.includes(myName)?myName:null;
+  if(EMPLOYEES.includes(v)) return v;
+  return null;
+}
 async function computeNotifications(){
   const s=state.latest;
   const result={akp:[],fh:[]};
   if(!s) return result;
-  const ownAvailable=EMPLOYEES.includes(myName);
-  const scope=(ownAvailable&&userSettings.notif_scope==="own")?myName:null; // null = Österreich gesamt
+  const scope=resolveNotifScope(); // null = Österreich gesamt
   const today=parseISO(s.vortag);
 
   if(userSettings.notif_akp_enabled&&akpContactsIndex){
@@ -1288,7 +1318,7 @@ async function computeNotifications(){
   return result;
 }
 function renderNotifResults(res){
-  const scopeLabel=(EMPLOYEES.includes(myName)&&userSettings.notif_scope==="own")?myName:AT_GESAMT;
+  const scopeLabel=resolveNotifScope()||AT_GESAMT;
   const parts=[`<div class="hint" style="margin-bottom:14px">Bereich: <b>${escapeHtml(scopeLabel)}</b></div>`];
 
   if(userSettings.notif_akp_enabled){
