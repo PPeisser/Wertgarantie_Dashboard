@@ -1162,6 +1162,7 @@ async function doSettingsPasswordChange(){
   $("setPwBtn").disabled=false;
   if(error){ $("setPwHint").textContent="Fehler: "+error.message; return; }
   try{ await sb.rpc("mark_password_changed"); }catch(e){}
+  callAdminFn("syncMyPassword",{newPassword:pw1}).catch(()=>{});
   $("setPwNew").value=""; $("setPwNew2").value=""; $("setPwHint").textContent="";
   toast("Passwort geändert.");
 }
