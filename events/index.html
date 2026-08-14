@@ -154,7 +154,8 @@ Minimum version required to store current data is: `+i+`.
 </div>
 
 <div id="qrModal" class="modal-overlay">
-  <div class="modal" style="max-width:340px;text-align:center">
+  <div class="modal" style="max-width:340px;text-align:center;position:relative">
+    <button type="button" id="qrCloseX" aria-label="Schließen" title="Schließen" style="position:absolute;top:12px;right:14px;border:none;background:none;font-size:22px;line-height:1;color:var(--muted);cursor:pointer;padding:4px">×</button>
     <h2 style="margin-bottom:2px">QR-Code</h2>
     <p class="sub" id="qrModalSub"></p>
     <div id="qrModalBox" style="background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:16px">
@@ -162,7 +163,7 @@ Minimum version required to store current data is: `+i+`.
       <p id="qrModalError" class="sub" style="color:var(--bad);display:none;margin:0"></p>
     </div>
     <button class="btn btn-primary" id="qrDownloadBtn" style="width:100%;margin-bottom:8px">Als PNG herunterladen</button>
-    <button class="btn btn-ghost" id="qrCloseBtn" style="width:100%">Schließen</button>
+    <button class="btn btn-ghost" id="qrCloseBtn" style="width:100%;color:var(--wg-blue);background:#E0F4FC">Schließen</button>
   </div>
 </div>
 
@@ -222,7 +223,7 @@ Minimum version required to store current data is: `+i+`.
         </div>
         <p class="sub" style="margin:8px 0 0;word-break:break-all" id="evLinkPreview"></p>
         <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-          <button type="button" class="btn btn-ghost btn-sm" id="copyEvLinkBtn">Link kopieren</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="copyEvLinkBtn" style="color:var(--wg-blue);background:#E0F4FC">Link kopieren</button>
           <button type="button" class="btn btn-ghost btn-sm" id="showEvQrBtn" style="color:var(--wg-blue);background:#E0F4FC">QR-Code anzeigen</button>
         </div>
       </div>
@@ -834,6 +835,7 @@ function showQrModal(url, label){
   }
 }
 $("qrCloseBtn").addEventListener("click", () => $("qrModal").classList.remove("show"));
+$("qrCloseX").addEventListener("click", () => $("qrModal").classList.remove("show"));
 $("qrDownloadBtn").addEventListener("click", () => {
   if (!currentQrDataUrl) return;
   const safeLabel = String(currentQrLabel || "").replace(/[^a-zA-Z0-9_-]+/g,"-").replace(/^-+|-+$/g,"");
