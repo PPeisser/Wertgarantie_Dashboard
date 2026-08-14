@@ -167,21 +167,12 @@ Minimum version required to store current data is: `+i+`.
 </div>
 
 <main id="app" style="display:none">
-  <div class="tabs">
-    <button class="tab-btn active" data-tab="events">Veranstaltungen</button>
-    <button class="tab-btn" data-tab="event">Details</button>
-    <button class="tab-btn" data-tab="dates">Termine</button>
-    <button class="tab-btn" data-tab="fields">Formularfelder</button>
-    <button class="tab-btn" data-tab="recipients">E-Mail-Empfänger</button>
-    <button class="tab-btn" data-tab="registrations">Anmeldungen</button>
-  </div>
-  <p class="sub" id="currentEventLabel" style="margin:-14px 0 22px;font-weight:700;color:var(--wg-navy)"></p>
 
   <!-- ---------- Veranstaltungen (Übersicht + Anlegen) ---------- -->
-  <div class="panel active" id="panel-events">
+  <div id="eventsHome">
     <div class="card">
       <h2>Veranstaltungen</h2>
-      <p class="sub">Jede Veranstaltung hat einen eigenen Anmelde-Link &amp; QR-Code zum Verschicken. Es gibt keine öffentliche Übersicht – nur wer den Link/QR-Code bekommt, kommt zur Anmeldeseite.</p>
+      <p class="sub">Jede Veranstaltung hat einen eigenen Anmelde-Link &amp; QR-Code zum Verschicken. Es gibt keine öffentliche Übersicht – nur wer den Link/QR-Code bekommt, kommt zur Anmeldeseite. Zum Bearbeiten von Terminen, Formularfeldern, Anmeldungen und E-Mail-Empfängern eine Veranstaltung öffnen.</p>
       <div id="eventsMsg" class="msg"></div>
       <div style="overflow-x:auto">
         <table>
@@ -201,8 +192,22 @@ Minimum version required to store current data is: `+i+`.
     </div>
   </div>
 
+  <!-- ---------- Workspace einer geöffneten Veranstaltung ---------- -->
+  <div id="eventWorkspace" style="display:none">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap">
+      <button class="btn btn-ghost btn-sm" id="backToEventsBtn">‹ Alle Veranstaltungen</button>
+      <h1 id="workspaceTitle" style="font-size:19px;margin:0;font-weight:800;color:var(--wg-navy)"></h1>
+    </div>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="event">Details</button>
+      <button class="tab-btn" data-tab="dates">Termine</button>
+      <button class="tab-btn" data-tab="fields">Formularfelder</button>
+      <button class="tab-btn" data-tab="recipients">E-Mail-Empfänger</button>
+      <button class="tab-btn" data-tab="registrations">Anmeldungen</button>
+    </div>
+
   <!-- ---------- Veranstaltung: Details ---------- -->
-  <div class="panel" id="panel-event">
+  <div class="panel active" id="panel-event">
     <div class="card">
       <h2>Details</h2>
       <p class="sub">Titel, Kurzlink, Beschreibung und Datenschutzhinweise, die auf der Anmeldeseite dieser Veranstaltung angezeigt werden.</p>
@@ -331,6 +336,7 @@ Minimum version required to store current data is: `+i+`.
       </div>
       <div class="empty" id="regEmpty" style="display:none">Noch keine Anmeldungen.</div>
     </div>
+  </div>
   </div>
 </main>
 
@@ -504,8 +510,19 @@ function slugify(s){
 }
 
 /* ---------- Load everything ---------- */
+function showEventsHome(){
+  activeEvent = null;
+  $("eventWorkspace").style.display = "none";
+  $("eventsHome").style.display = "";
+}
+function showWorkspace(){
+  $("eventsHome").style.display = "none";
+  $("eventWorkspace").style.display = "";
+}
+
 async function loadAll(){
   await loadEventsList();
+  showEventsHome();
 }
 
 async function loadEventsList(){
@@ -521,10 +538,6 @@ async function loadEventsList(){
   }
 
   renderEventsList();
-
-  const lastId = localStorage.getItem("lastEventId");
-  const toSelect = allEvents.find(e => e.id === lastId) || allEvents[0];
-  if (toSelect) await selectEvent(toSelect, { silent:true });
 }
 
 function renderEventsList(){
@@ -538,7 +551,7 @@ function renderEventsList(){
       </td>
       <td class="muted">${new Date(ev.created_at).toLocaleDateString('de-AT')}</td>
       <td style="white-space:nowrap">
-        <button class="btn btn-primary btn-sm ev-open">${activeEvent && activeEvent.id===ev.id ? "Geöffnet" : "Öffnen"}</button>
+        <button class="btn btn-primary btn-sm ev-open">Öffnen</button>
         <button class="btn btn-ghost btn-sm ev-qr" style="color:var(--wg-blue);background:#E0F4FC">QR-Code</button>
         <button class="btn btn-danger btn-sm ev-del" title="Veranstaltung löschen" aria-label="Veranstaltung löschen" style="padding:6px 10px;font-size:16px;line-height:1">🗑️</button>
       </td>
@@ -578,29 +591,26 @@ function renderEventsList(){
       const { error } = await sb.from("events").delete().eq("id", ev.id);
       if (error){ flash("eventsMsg","Fehler: "+error.message, false); return; }
       flash("eventsMsg","Veranstaltung gelöscht.", true);
-      if (activeEvent && activeEvent.id === ev.id){
-        activeEvent = null;
-        localStorage.removeItem("lastEventId");
-      }
       await loadEventsList();
     });
   });
 }
 
-async function selectEvent(ev, opts){
+async function selectEvent(ev){
   activeEvent = ev;
-  localStorage.setItem("lastEventId", ev.id);
-  $("currentEventLabel").textContent = "Aktuelle Veranstaltung: " + (ev.title || "–");
-  renderEventsList();
+  $("workspaceTitle").textContent = ev.title || "–";
+  document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
+  document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
+  document.querySelector('.tab-btn[data-tab="event"]').classList.add("active");
+  $("panel-event").classList.add("active");
+  showWorkspace();
   renderEvent();
   await Promise.all([loadDates(), loadFields(), loadRecipients(), loadRegistrations()]);
-  if (!(opts && opts.silent)){
-    document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
-    document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
-    document.querySelector('.tab-btn[data-tab="event"]').classList.add("active");
-    $("panel-event").classList.add("active");
-  }
 }
+$("backToEventsBtn").addEventListener("click", async ()=>{
+  showEventsHome();
+  await loadEventsList();
+});
 
 $("addEventBtn").addEventListener("click", async ()=>{
   const title = $("newEvTitle").value.trim();
@@ -715,7 +725,7 @@ $("saveEventBtn").addEventListener("click", async ()=>{
   const idx = allEvents.findIndex(e=>e.id===activeEvent.id);
   if (idx>=0) Object.assign(allEvents[idx], patch);
   renderEvLinkPreview();
-  $("currentEventLabel").textContent = "Aktuelle Veranstaltung: " + (activeEvent.title || "–");
+  $("workspaceTitle").textContent = activeEvent.title || "–";
   flash("eventMsg","Gespeichert.", true);
 });
 
@@ -905,7 +915,7 @@ $("saveFieldsBtn").addEventListener("click", async ()=>{
 
 /* ---------- E-Mail-Empfänger ---------- */
 async function loadRecipients(){
-  const { data } = await sb.from("email_recipients").select("*").order("frequency").order("email");
+  const { data } = await sb.from("email_recipients").select("*").eq("event_id", activeEvent.id).order("frequency").order("email");
   const rows = data || [];
   $("recipientsEmpty").style.display = rows.length ? "none" : "block";
   $("recipientsBody").innerHTML = rows.map(r => `
@@ -939,7 +949,7 @@ $("addRecipientBtn").addEventListener("click", async ()=>{
   const email = $("newRecipientEmail").value.trim();
   const frequency = $("newRecipientFreq").value;
   if (!email){ flash("recipientsMsg","Bitte E-Mail-Adresse angeben.", false); return; }
-  const { error } = await sb.from("email_recipients").insert({ email, frequency, active:true });
+  const { error } = await sb.from("email_recipients").insert({ event_id: activeEvent.id, email, frequency, active:true });
   if (error){ flash("recipientsMsg","Fehler: "+error.message, false); return; }
   $("newRecipientEmail").value = "";
   flash("recipientsMsg","Empfänger hinzugefügt.", true);

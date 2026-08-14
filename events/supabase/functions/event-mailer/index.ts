@@ -39,6 +39,11 @@ function fmtDate(d: string) {
     weekday: "long", day: "2-digit", month: "2-digit", year: "numeric",
   });
 }
+function fmtDateShort(d: string) {
+  return new Date(d + "T00:00:00").toLocaleDateString("de-AT", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+  });
+}
 function fmtTime(t: string | null) {
   return t ? t.slice(0, 5) : "";
 }
@@ -141,92 +146,116 @@ const REPORT_PERSON_FIELDS: [string, string][] = [
   ["email", "E-Mail"], ["plz", "PLZ"], ["ort", "Ort"],
 ];
 
+// Betreff-Format: "<Veranstaltung> // Anmeldezahlen // <Termin-Info>", z.B.
+// "Wertgarantie KickOff // Anmeldezahlen // 30.09.2026 // Wolfsberg". Bei
+// mehreren Terminen einer Veranstaltung lässt sich kein einzelnes
+// Datum/Ort sinnvoll in den Betreff packen, daher dort "X Termine".
+function reportSubject(event: { title: string }, dates: { event_date: string; location: string }[]) {
+  let terminPart: string;
+  if (dates.length === 1) {
+    terminPart = `${fmtDateShort(dates[0].event_date)} // ${dates[0].location}`;
+  } else if (dates.length > 1) {
+    terminPart = `${dates.length} Termine`;
+  } else {
+    terminPart = "keine Termine";
+  }
+  return `${event.title} // Anmeldezahlen // ${terminPart}`;
+}
+
+// Ein Report je aktiver Veranstaltung (mehrere können gleichzeitig laufen),
+// nur an die für GENAU diese Veranstaltung hinterlegten Empfänger.
 async function handleReport(admin: ReturnType<typeof createClient>, frequency: "daily" | "weekly" | "monthly") {
-  const { data: recipients } = await admin
-    .from("email_recipients").select("*").eq("frequency", frequency).eq("active", true);
-  if (!recipients || !recipients.length) return json({ ok: true, skipped: "no_recipients" });
+  const { data: events } = await admin.from("events").select("*").eq("is_active", true).order("created_at");
+  if (!events || !events.length) return json({ ok: true, skipped: "no_active_events" });
 
-  const { data: events } = await admin.from("events").select("*").eq("is_active", true).limit(1);
-  const event = events && events[0];
-  if (!event) return json({ ok: true, skipped: "no_active_event" });
-
-  const { data: dates } = await admin
-    .from("event_dates").select("*").eq("event_id", event.id).order("sort_order").order("event_date");
-  const { data: regs } = await admin
-    .from("registrations").select("event_date_id, data, created_at").eq("event_id", event.id)
-    .order("created_at");
-
-  const byDate: Record<string, typeof regs> = {};
-  (regs || []).forEach((r) => {
-    (byDate[r.event_date_id] ||= []).push(r);
-  });
-  const total = (regs || []).length;
-
-  const summaryRows = (dates || []).map((d) => `
-    <tr>
-      <td style="padding:6px 14px 6px 0">${escapeHtml(fmtDate(d.event_date))}</td>
-      <td style="padding:6px 14px 6px 0">${escapeHtml(fmtTime(d.start_time))}${d.end_time ? "–" + escapeHtml(fmtTime(d.end_time)) : ""} Uhr</td>
-      <td style="padding:6px 14px 6px 0">${escapeHtml(d.location)}</td>
-      <td style="padding:6px 0;font-weight:800;text-align:right">${(byDate[d.id] || []).length}</td>
-    </tr>`).join("");
-
+  const freqLabel = FREQ_LABEL[frequency] || "Aktueller";
   const personHeaderCells = REPORT_PERSON_FIELDS
     .map(([, label]) => `<th style="padding:4px 12px 4px 0">${escapeHtml(label)}</th>`).join("");
 
-  const dateSections = (dates || []).map((d) => {
-    const people = byDate[d.id] || [];
-    const personRows = people.map((r) => {
-      const cells = REPORT_PERSON_FIELDS
-        .map(([key]) => `<td style="padding:4px 12px 4px 0">${escapeHtml(r.data?.[key] ?? "")}</td>`).join("");
-      return `<tr>${cells}</tr>`;
+  const results: { event: string; sent: number }[] = [];
+
+  for (const event of events) {
+    const { data: recipients } = await admin
+      .from("email_recipients").select("*").eq("event_id", event.id).eq("frequency", frequency).eq("active", true);
+    if (!recipients || !recipients.length) continue;
+
+    const { data: dates } = await admin
+      .from("event_dates").select("*").eq("event_id", event.id).order("sort_order").order("event_date");
+    const { data: regs } = await admin
+      .from("registrations").select("event_date_id, data, created_at").eq("event_id", event.id)
+      .order("created_at");
+
+    const byDate: Record<string, typeof regs> = {};
+    (regs || []).forEach((r) => {
+      (byDate[r.event_date_id] ||= []).push(r);
+    });
+    const total = (regs || []).length;
+
+    const summaryRows = (dates || []).map((d) => `
+      <tr>
+        <td style="padding:6px 14px 6px 0">${escapeHtml(fmtDate(d.event_date))}</td>
+        <td style="padding:6px 14px 6px 0">${escapeHtml(fmtTime(d.start_time))}${d.end_time ? "–" + escapeHtml(fmtTime(d.end_time)) : ""} Uhr</td>
+        <td style="padding:6px 14px 6px 0">${escapeHtml(d.location)}</td>
+        <td style="padding:6px 0;font-weight:800;text-align:right">${(byDate[d.id] || []).length}</td>
+      </tr>`).join("");
+
+    const dateSections = (dates || []).map((d) => {
+      const people = byDate[d.id] || [];
+      const personRows = people.map((r) => {
+        const cells = REPORT_PERSON_FIELDS
+          .map(([key]) => `<td style="padding:4px 12px 4px 0">${escapeHtml(r.data?.[key] ?? "")}</td>`).join("");
+        return `<tr>${cells}</tr>`;
+      }).join("");
+      return `
+        <div style="margin:22px 0 8px;font-weight:800;color:#062A3F">
+          ${escapeHtml(fmtDate(d.event_date))} · ${escapeHtml(fmtTime(d.start_time))} Uhr · ${escapeHtml(d.location)}${fullAddress(d) ? " · " + escapeHtml(fullAddress(d)) : ""}
+          <span style="font-weight:600;color:#5D7284">(${people.length})</span>
+          <a href="${mapsUrl(d)}" style="color:#009FE3;font-weight:700;text-decoration:none;margin-left:6px">📍</a>
+        </div>
+        ${people.length
+          ? `<table style="width:100%;border-collapse:collapse;font-size:13px">
+              <thead><tr style="color:#5D7284;font-size:11px;text-transform:uppercase;text-align:left">${personHeaderCells}</tr></thead>
+              <tbody>${personRows}</tbody>
+            </table>`
+          : `<div style="color:#5D7284;font-size:13px">Noch keine Anmeldungen.</div>`}
+      `;
     }).join("");
-    return `
-      <div style="margin:22px 0 8px;font-weight:800;color:#062A3F">
-        ${escapeHtml(fmtDate(d.event_date))} · ${escapeHtml(fmtTime(d.start_time))} Uhr · ${escapeHtml(d.location)}${fullAddress(d) ? " · " + escapeHtml(fullAddress(d)) : ""}
-        <span style="font-weight:600;color:#5D7284">(${people.length})</span>
-        <a href="${mapsUrl(d)}" style="color:#009FE3;font-weight:700;text-decoration:none;margin-left:6px">📍</a>
+
+    const html = `
+    <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:680px;margin:0 auto;color:#10202C">
+      <div style="background:#10202C;padding:22px 26px;border-radius:14px 14px 0 0">
+        <span style="color:#fff;font-weight:800;font-size:16px">Wertgarantie</span>
       </div>
-      ${people.length
-        ? `<table style="width:100%;border-collapse:collapse;font-size:13px">
-            <thead><tr style="color:#5D7284;font-size:11px;text-transform:uppercase;text-align:left">${personHeaderCells}</tr></thead>
-            <tbody>${personRows}</tbody>
-          </table>`
-        : `<div style="color:#5D7284;font-size:13px">Noch keine Anmeldungen.</div>`}
-    `;
-  }).join("");
+      <div style="border:1px solid #DCE7EE;border-top:none;border-radius:0 0 14px 14px;padding:26px">
+        <p style="margin-top:0">${freqLabel} Anmeldestand für <strong>${escapeHtml(event.title)}</strong>, Stand ${new Date().toLocaleString("de-AT")}.</p>
+        <div style="background:#ECF2F6;border-radius:12px;padding:14px 18px;margin:18px 0;font-weight:800;font-size:20px;color:#062A3F">
+          ${total} Anmeldung${total === 1 ? "" : "en"} gesamt
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:14px">
+          <thead><tr style="color:#5D7284;font-size:11.5px;text-transform:uppercase;text-align:left">
+            <th style="padding-bottom:6px">Datum</th><th style="padding-bottom:6px">Uhrzeit</th><th style="padding-bottom:6px">Ort</th><th style="padding-bottom:6px;text-align:right">Anmeldungen</th>
+          </tr></thead>
+          <tbody>${summaryRows}</tbody>
+        </table>
 
-  const freqLabel = FREQ_LABEL[frequency] || "Aktueller";
-  const html = `
-  <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:680px;margin:0 auto;color:#10202C">
-    <div style="background:#10202C;padding:22px 26px;border-radius:14px 14px 0 0">
-      <span style="color:#fff;font-weight:800;font-size:16px">Wertgarantie</span>
-    </div>
-    <div style="border:1px solid #DCE7EE;border-top:none;border-radius:0 0 14px 14px;padding:26px">
-      <p style="margin-top:0">${freqLabel} Anmeldestand für <strong>${escapeHtml(event.title)}</strong>, Stand ${new Date().toLocaleString("de-AT")}.</p>
-      <div style="background:#ECF2F6;border-radius:12px;padding:14px 18px;margin:18px 0;font-weight:800;font-size:20px;color:#062A3F">
-        ${total} Anmeldung${total === 1 ? "" : "en"} gesamt
+        <div style="margin-top:26px;padding-top:18px;border-top:1px solid #DCE7EE">
+          <div style="font-weight:800;color:#062A3F;margin-bottom:4px">Angemeldete Personen je Termin</div>
+          ${dateSections}
+        </div>
+
+        <p style="color:#5D7284;font-size:13px;margin-top:24px">Diese E-Mail wurde automatisch versendet.</p>
       </div>
-      <table style="width:100%;border-collapse:collapse;font-size:14px">
-        <thead><tr style="color:#5D7284;font-size:11.5px;text-transform:uppercase;text-align:left">
-          <th style="padding-bottom:6px">Datum</th><th style="padding-bottom:6px">Uhrzeit</th><th style="padding-bottom:6px">Ort</th><th style="padding-bottom:6px;text-align:right">Anmeldungen</th>
-        </tr></thead>
-        <tbody>${summaryRows}</tbody>
-      </table>
+    </div>`;
 
-      <div style="margin-top:26px;padding-top:18px;border-top:1px solid #DCE7EE">
-        <div style="font-weight:800;color:#062A3F;margin-bottom:4px">Angemeldete Personen je Termin</div>
-        ${dateSections}
-      </div>
-
-      <p style="color:#5D7284;font-size:13px;margin-top:24px">Diese E-Mail wurde automatisch versendet.</p>
-    </div>
-  </div>`;
-
-  const subject = `${freqLabel} Anmeldestand – ${event.title} (${total} gesamt)`;
-  for (const r of recipients) {
-    await sendMail(subject, r.email, html);
+    const subject = reportSubject(event, dates || []);
+    for (const r of recipients) {
+      await sendMail(subject, r.email, html);
+    }
+    results.push({ event: event.title, sent: recipients.length });
   }
-  return json({ ok: true, sent: recipients.length });
+
+  if (!results.length) return json({ ok: true, skipped: "no_recipients" });
+  return json({ ok: true, results });
 }
 
 Deno.serve(async (req) => {
