@@ -8,11 +8,12 @@
 -- registrierte Nutzer wird automatisch Admin (siehe handle_new_user unten).
 
 create table if not exists public.profiles (
-  id         uuid primary key references auth.users(id) on delete cascade,
-  email      text,
-  name       text,
-  role       text not null default 'admin' check (role in ('admin')),
-  created_at timestamptz not null default now()
+  id                    uuid primary key references auth.users(id) on delete cascade,
+  email                 text,
+  name                  text,
+  role                  text not null default 'admin' check (role in ('admin')),
+  must_change_password  boolean not null default false,
+  created_at            timestamptz not null default now()
 );
 
 alter table public.profiles enable row level security;
@@ -53,6 +54,27 @@ create trigger on_auth_user_created
   for each row execute function public.handle_new_user();
 
 revoke execute on function public.handle_new_user() from public, anon, authenticated;
+
+-- Setzt must_change_password auf false für den eigenen Account, nachdem der
+-- Nutzer im Client sein Passwort geändert hat.
+create or replace function public.mark_password_changed()
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.profiles set must_change_password = false where id = auth.uid();
+$$;
+
+revoke execute on function public.mark_password_changed() from public, anon;
+grant execute on function public.mark_password_changed() to authenticated;
+
+-- ---------- Nutzer-Synchronisation vom Performance-Dashboard-Projekt ----------
+-- Nutzer werden NICHT hier angelegt, sondern über die Edge Function
+-- supabase/functions/sync-user, die vom Dashboard-Projekt (admin-users
+-- Edge Function, siehe dortiges Repo-Verzeichnis) aufgerufen wird, wenn im
+-- Dashboard ein Nutzer angelegt/gelöscht wird. Sync-Nutzer bekommen das
+-- Erstpasswort "WertGARANTIE" und must_change_password = true.
 
 -- ---------- Events (fachlich: es gibt jeweils genau EIN aktives Event) ----------
 

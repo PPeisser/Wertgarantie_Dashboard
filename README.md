@@ -182,13 +182,59 @@ Region `eu-central-1`, Free Tier). Schema: [`events/supabase/schema.sql`](events
 - `email_recipients` ist ausschließlich für Admins sichtbar/änderbar.
 - Storage-Bucket `event-photos` (öffentlich lesbar, Upload nur für Admins).
 
-### Ersten Admin-Nutzer anlegen
+### Nutzer-Synchronisation mit dem Dashboard
 
-Dieses Projekt hat noch keinen Nutzer. Im Supabase-Dashboard des Projekts
-`wgaustria-events` → **Authentication → Users → Add user** einen Nutzer mit
-E-Mail + Passwort anlegen (z.B. `peter@peisser.com`) – er wird durch den
-`handle_new_user`-Trigger automatisch als Admin angelegt und kann sich danach
-in `events/admin.html` einloggen.
+Das Event-Panel hat **keine eigene Nutzerverwaltung** – jeder Nutzer, der im
+Performance-Dashboard angelegt oder gelöscht wird, wird automatisch auch hier
+angelegt/gelöscht (alle Dashboard-Nutzer, unabhängig von ihrer Dashboard-Rolle,
+bekommen vollen Admin-Zugriff auf das Event-Panel inkl. Teilnehmerdaten).
+
+Das läuft über zwei Edge Functions:
+- **[`events/supabase/functions/sync-user/index.ts`](events/supabase/functions/sync-user/index.ts)**
+  (im Projekt `wgaustria-events`, bereits deployt): nimmt `create`/`delete`/
+  `bulk_create`-Aufrufe entgegen, geschützt durch das Secret `SYNC_SECRET`.
+  Neu synchronisierte Nutzer bekommen das Erstpasswort `WertGARANTIE` und
+  müssen es beim ersten Login im Admin-Panel ändern (`must_change_password`).
+- **[`supabase/functions/admin-users/index.ts`](supabase/functions/admin-users/index.ts)**
+  (im Dashboard-Projekt `gfyjftwlombhmwirbyse`, bereits neu deployt): ruft nach
+  jedem Anlegen/Löschen eines Dashboard-Nutzers `sync-user` auf. Best-effort –
+  schlägt der Sync fehl (z.B. weil die Secrets unten noch fehlen), wird die
+  Dashboard-Aktion trotzdem ausgeführt, nur `eventsSync` in der Antwort zeigt
+  `"not_configured"`/`"failed"` statt `"created"`/`"deleted"`.
+
+**Einmalig einzurichtende Secrets** (Supabase-Dashboard → Project Settings →
+Edge Functions → Secrets, kein Tool dafür in dieser Session verfügbar):
+
+| Projekt | Secret | Wert |
+|---|---|---|
+| `wgaustria-events` | `SYNC_SECRET` | *(separat mitgeteilt)* |
+| `gfyjftwlombhmwirbyse` (Dashboard) | `EVENTS_SYNC_URL` | `https://jtgoytbcqkqopdpjlozq.supabase.co/functions/v1/sync-user` |
+| `gfyjftwlombhmwirbyse` (Dashboard) | `EVENTS_SYNC_SECRET` | *(identischer Wert wie `SYNC_SECRET` oben)* |
+
+**Einmaliger Bulk-Import der bereits bestehenden Dashboard-Nutzer:** Sobald
+`SYNC_SECRET` im Projekt `wgaustria-events` gesetzt ist, per `curl` (oder
+gleichwertig) einmalig ausführen, um die 9 aktuellen Dashboard-Nutzer ins
+Event-Panel zu übernehmen:
+
+```bash
+curl -X POST https://jtgoytbcqkqopdpjlozq.supabase.co/functions/v1/sync-user \
+  -H "Content-Type: application/json" \
+  -H "x-sync-secret: <SYNC_SECRET>" \
+  -d '{"action":"bulk_create","users":[
+    {"email":"d.szendi@wertgarantie.com","name":"Dominik Szendi"},
+    {"email":"f.hasibeder@wertgarantie.com","name":"Florian Hasibeder"},
+    {"email":"h.otto@wertgarantie.com","name":"Helmut Otto"},
+    {"email":"k.scheiermann@wertgarantie.com","name":"Konstantin Scheiermann"},
+    {"email":"k.witting@wertgarantie.com","name":"Klaus Witting"},
+    {"email":"p.peisser@wertgarantie.com","name":"Peter Peißer"},
+    {"email":"peter@peisser.com","name":"Peter Peißer (ADMIN)"},
+    {"email":"s.eigenseer@wertgarantie.com","name":"Sergej Eigenseer"},
+    {"email":"t.eitzinger@wertgarantie.com","name":"Thomas Eitzinger"}
+  ]}'
+```
+
+Danach hat jeder dieser Nutzer im Event-Panel das Erstpasswort `WertGARANTIE`
+und wird beim ersten Login zur Passwortänderung aufgefordert.
 
 ## Mailversand (Edge Function `event-mailer`)
 
