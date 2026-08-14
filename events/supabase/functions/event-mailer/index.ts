@@ -47,6 +47,14 @@ function escapeHtml(s: unknown) {
     { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string
   ));
 }
+function fullAddress(d: { street?: string | null; zip?: string | null; city?: string | null }) {
+  const parts = [d.street, [d.zip, d.city].filter(Boolean).join(" ")].filter(Boolean);
+  return parts.join(", ");
+}
+function mapsUrl(d: { location?: string | null; street?: string | null; zip?: string | null; city?: string | null }) {
+  const query = [d.location, d.street, [d.zip, d.city].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(query);
+}
 
 function getSmtpClient() {
   const hostname = Deno.env.get("SMTP_HOST")!;
@@ -109,6 +117,8 @@ async function handleConfirmation(admin: ReturnType<typeof createClient>, regist
         <div>${escapeHtml(fmtDate(eventDate.event_date))}</div>
         <div>${escapeHtml(fmtTime(eventDate.start_time))}${eventDate.end_time ? "–" + escapeHtml(fmtTime(eventDate.end_time)) : ""} Uhr</div>
         <div>${escapeHtml(eventDate.location)}</div>
+        ${fullAddress(eventDate) ? `<div>${escapeHtml(fullAddress(eventDate))}</div>` : ""}
+        <div style="margin-top:8px"><a href="${mapsUrl(eventDate)}" style="color:#009FE3;font-weight:700;text-decoration:none">📍 Route planen ›</a></div>
       </div>
       ${detailRows ? `<div style="margin:18px 0"><div style="font-weight:800;color:#062A3F;margin-bottom:6px">Deine Angaben</div><table>${detailRows}</table></div>` : ""}
       <p>Wir freuen uns auf dich!</p>
@@ -172,8 +182,9 @@ async function handleReport(admin: ReturnType<typeof createClient>, frequency: "
     }).join("");
     return `
       <div style="margin:22px 0 8px;font-weight:800;color:#062A3F">
-        ${escapeHtml(fmtDate(d.event_date))} · ${escapeHtml(fmtTime(d.start_time))} Uhr · ${escapeHtml(d.location)}
+        ${escapeHtml(fmtDate(d.event_date))} · ${escapeHtml(fmtTime(d.start_time))} Uhr · ${escapeHtml(d.location)}${fullAddress(d) ? " · " + escapeHtml(fullAddress(d)) : ""}
         <span style="font-weight:600;color:#5D7284">(${people.length})</span>
+        <a href="${mapsUrl(d)}" style="color:#009FE3;font-weight:700;text-decoration:none;margin-left:6px">📍</a>
       </div>
       ${people.length
         ? `<table style="width:100%;border-collapse:collapse;font-size:13px">

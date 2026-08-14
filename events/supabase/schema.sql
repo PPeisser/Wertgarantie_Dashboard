@@ -115,6 +115,9 @@ create table if not exists public.event_dates (
   start_time  time not null,
   end_time    time,
   location    text not null default '',
+  street      text not null default '',
+  zip         text not null default '',
+  city        text not null default '',
   sort_order  int not null default 0,
   created_at  timestamptz not null default now()
 );

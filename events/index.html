@@ -194,9 +194,17 @@
       <div id="formMsg" class="msg"></div>
 
       <form id="regForm">
-        <div class="termin-select">
+        <div class="termin-select" id="terminSelectBox">
           <label class="req" for="eventDateSelect">Termin &amp; Ort auswählen</label>
           <select id="eventDateSelect" required></select>
+        </div>
+        <div class="termin-select" id="terminInfoBox" style="display:none">
+          <label>Termin &amp; Ort</label>
+          <div id="terminInfoText" style="font-weight:700;color:var(--wg-deep);font-size:15px"></div>
+        </div>
+        <div id="terminAddressBox" style="display:none;margin:-16px 0 26px;padding:0 4px;font-size:13px;color:var(--muted);align-items:center;gap:8px;flex-wrap:wrap">
+          <span id="terminAddressText"></span>
+          <a id="terminMapLink" href="#" target="_blank" rel="noopener" style="color:var(--wg-blue);font-weight:700;text-decoration:none;white-space:nowrap">📍 Route planen ›</a>
         </div>
 
         <div id="dynamicFields"></div>
@@ -221,6 +229,10 @@
       <h2>Danke für Ihre Anmeldung!</h2>
       <p>Wir haben Ihre Anmeldung erhalten. Sie bekommen in Kürze eine Bestätigung per
         E-Mail mit allen Details zu Termin und Ort.</p>
+      <div id="successAddressBox" style="display:none;margin-top:6px;font-size:13px;color:var(--muted)">
+        <span id="successAddressText"></span> ·
+        <a id="successMapLink" href="#" target="_blank" rel="noopener" style="color:var(--wg-blue);font-weight:700;text-decoration:none">📍 Route planen ›</a>
+      </div>
     </div>
   </div>
 
@@ -312,6 +324,25 @@ function escapeHtml(s){
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+function fullAddress(d){
+  const parts = [d.street, [d.zip, d.city].filter(Boolean).join(' ')].filter(Boolean);
+  return parts.join(', ');
+}
+function mapsUrl(d){
+  const query = [d.location, d.street, [d.zip, d.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(query);
+}
+function updateTerminAddress(d){
+  const box = document.getElementById('terminAddressBox');
+  if (!d || (!d.street && !d.zip && !d.city)){
+    box.style.display = 'none';
+    return;
+  }
+  document.getElementById('terminAddressText').textContent = fullAddress(d);
+  document.getElementById('terminMapLink').href = mapsUrl(d);
+  box.style.display = 'flex';
+}
+
 async function loadEvent(){
   const {data: events, error: evErr} = await sb
     .from('events').select('*').eq('is_active', true).limit(1);
@@ -365,6 +396,28 @@ function renderEvent(){
       const selected = preselectValid && d.id === preselectId ? ' selected' : '';
       return `<option value="${d.id}"${selected}>${label}</option>`;
     }).join('');
+
+  // Nur ein Termin: keine Auswahl nötig, Wert direkt setzen und statt
+  // Dropdown nur die Info anzeigen. Bei mehreren Terminen bleibt die
+  // Dropdown-Auswahl wie gehabt sichtbar.
+  if (currentDates.length === 1){
+    sel.value = currentDates[0].id;
+    document.getElementById('terminSelectBox').style.display = 'none';
+    document.getElementById('terminInfoText').textContent =
+      `${fmtDate(currentDates[0].event_date)} · ${fmtTime(currentDates[0].start_time)}${currentDates[0].end_time ? '–'+fmtTime(currentDates[0].end_time) : ''} Uhr · ${currentDates[0].location}`;
+    document.getElementById('terminInfoBox').style.display = 'block';
+    updateTerminAddress(currentDates[0]);
+  } else {
+    document.getElementById('terminSelectBox').style.display = 'block';
+    document.getElementById('terminInfoBox').style.display = 'none';
+    sel.addEventListener('change', () => {
+      const d = currentDates.find(x => x.id === sel.value);
+      updateTerminAddress(d);
+    });
+    if (preselectValid){
+      updateTerminAddress(currentDates.find(d => d.id === preselectId));
+    }
+  }
 
   const container = document.getElementById('dynamicFields');
   container.innerHTML = currentFields.map(f => renderField(f)).join('');
@@ -448,6 +501,13 @@ document.getElementById('regForm').addEventListener('submit', async (e) => {
         body: JSON.stringify({ type: 'confirmation', registration_id: inserted.id })
       });
     } catch (_e) { /* Anmeldung ist trotzdem gespeichert, Mailversand best-effort */ }
+  }
+
+  const chosenDate = currentDates.find(d => d.id === dateId);
+  if (chosenDate && (chosenDate.street || chosenDate.zip || chosenDate.city)){
+    document.getElementById('successAddressText').textContent = fullAddress(chosenDate);
+    document.getElementById('successMapLink').href = mapsUrl(chosenDate);
+    document.getElementById('successAddressBox').style.display = 'block';
   }
 
   document.getElementById('formCard').style.display = 'none';
