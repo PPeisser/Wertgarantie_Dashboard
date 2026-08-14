@@ -187,7 +187,17 @@ Region `eu-central-1`, Free Tier). Schema: [`events/supabase/schema.sql`](events
 Das Event-Panel hat **keine eigene Nutzerverwaltung** – jeder Nutzer, der im
 Performance-Dashboard angelegt oder gelöscht wird, wird automatisch auch hier
 angelegt/gelöscht (alle Dashboard-Nutzer, unabhängig von ihrer Dashboard-Rolle,
-bekommen vollen Admin-Zugriff auf das Event-Panel inkl. Teilnehmerdaten).
+bekommen vollen Admin-Zugriff auf das Event-Panel inkl. Teilnehmerdaten). Auch
+**Passwörter werden synchronisiert** – aber nur in eine Richtung
+(Dashboard → Events, nicht umgekehrt):
+- Ändert ein Nutzer sein Passwort im Dashboard selbst (erzwungener
+  Passwortwechsel bei Erstlogin), wird dasselbe Passwort automatisch auch im
+  Event-Panel gesetzt (dort ohne erneuten Zwang zur Änderung).
+- Setzt ein Admin im Dashboard-Nutzerverwaltungspanel das Passwort eines
+  Nutzers zurück, wird das Übergangspasswort ebenfalls ins Event-Panel
+  übernommen (dort ebenfalls mit Zwang zur Änderung beim nächsten Login).
+- Ändert jemand sein Passwort direkt im Event-Panel, wirkt sich das **nicht**
+  auf das Dashboard aus.
 
 Das läuft über zwei Edge Functions:
 - **[`events/supabase/functions/sync-user/index.ts`](events/supabase/functions/sync-user/index.ts)**
