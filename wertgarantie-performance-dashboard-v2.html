@@ -1844,8 +1844,8 @@ function parseAuswertung(wb){
 
 /* ---------- Excel-Parsing (Akquisestaffeln-Datei, Admin-Import) ---------- */
 function normHeader(v){ return String(v??"").trim(); }
-// Liest die "Akquisen ..."-Übersicht (FH Nr, GL aktuell, Punkte <Jahr>,
-// Staffel 1-7 je als "MM/JJ"-Erreichungsdatum) - Spalten werden über den
+// Liest die "Akquisen ..."-Übersicht (FH Nr, GL aktuell, Punkte <Jahr> bis
+// VM, Staffel 1-7 je als "MM/JJ"-Erreichungsdatum) - Spalten werden über den
 // Header per Namen gesucht (robust ggü. Spaltenverschiebungen/Jahreswechsel
 // der "Punkte <Jahr>"-Spalte), nicht über feste Indizes.
 function parseAkquiseStaffeln(wb){
@@ -1863,7 +1863,14 @@ function parseAkquiseStaffeln(wb){
   // FH_Liste-Auswertung, die abweichen bzw. den Händler ganz vermissen kann.
   let idxGl=header.findIndex(h=>/^GL\s*aktuell$/i.test(h));
   if(idxGl<0) idxGl=7;
-  const idxPunkte=header.findIndex(h=>/^Punkte\s+\d{4}$/.test(h)&&!/bis VM/i.test(h));
+  // "Punkte <Jahr> bis VM" (in der Praxis Spalte N) ist die maßgebliche
+  // Punktezahl - die Datei wird immer erst im Folgemonat eingespielt (siehe
+  // akqStaffelnStandLabel), die einfache "Punkte <Jahr>"-Spalte (ohne "bis
+  // VM") kann für manche Händler abweichen/veraltet bzw. 0 sein. Fallback
+  // auf die einfache Spalte, falls "bis VM" in einem künftigen Dateiformat
+  // fehlen sollte.
+  let idxPunkte=header.findIndex(h=>/^Punkte\s+\d{4}\s+bis\s+VM$/i.test(h));
+  if(idxPunkte<0) idxPunkte=header.findIndex(h=>/^Punkte\s+\d{4}$/.test(h));
   const staffelIdx=AKQ_STAFFEL_THRESHOLDS.map((_,i)=>header.findIndex(h=>h==="Staffel "+(i+1)));
   if(idxFh<0||staffelIdx.some(i=>i<0)) return null;
   const out=[];
