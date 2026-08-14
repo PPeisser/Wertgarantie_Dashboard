@@ -8,5 +8,8 @@
         { "key": "Expires", "value": "0" }
       ]
     }
+  ],
+  "rewrites": [
+    { "source": "/:slug", "destination": "/register.html?event=:slug" }
   ]
 }
