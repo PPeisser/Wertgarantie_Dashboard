@@ -2478,6 +2478,7 @@ const OBS_CATEGORIES=[
   {cat:"einbruch",label:()=>"Jahresproduktion bricht ein"},
   {cat:"ueberschnitt",label:()=>"deutlich über dem Monatsschnitt"},
   {cat:"tagesabweichung",label:()=>"Veränderung zu Schnitt pro Tag"},
+  {cat:"akqohnezuordnung",label:()=>"AKQ ohne Zuordnung"},
 ];
 function renderObs(){
   const s=state.latest, showGL=currentEmp===AT_GESAMT;
@@ -2500,6 +2501,20 @@ function renderObs(){
     .forEach(a=>items.push({f:{name:a.name,nr:a.nr,ort:a.ort,emp:a.emp,gl:a.glRaw},type:"down",prio:2,cat:"akqbesuch",sev:a.p2026,ic:"📞",layout:"akq",
       sub:`${a.emp||a.glRaw||"– ohne Betreuer –"} · AKQ ohne Besuch ${s.jahr}`,
       txt:`Jahresproduktion: <b>${fmt(a.p2026)}</b> Verträge`}));
+  // Fachhändler aus der Akquisestaffelliste ohne Zuordnung zu einem der
+  // Mitarbeiter (z.B. "Technischer GL", "ohne Zuordnung", "Akquise") mit
+  // mind. 10 Punkten - nur in "Österreich gesamt" relevant, da diese Händler
+  // per Definition keinem Mitarbeiter zugeordnet sind.
+  if(currentEmp===AT_GESAMT){
+    Object.entries(fhAkqIndex).forEach(([fhNr,rec])=>{
+      if((rec.punkte||0)<10) return;
+      const fh=s.fh[fhNr];
+      if(!fh||fh.emp) return;
+      items.push({f:{name:fh.name||fhNr,nr:fhNr,ort:fh.ort,emp:null,gl:fh.gl},type:"down",prio:2,cat:"akqohnezuordnung",sev:rec.punkte,ic:"🧭",layout:"akq",
+        sub:`${fh.gl||"ohne Zuordnung"} · AKQ ohne Zuordnung`,
+        txt:`Akquisestaffel-Punkte: <b>${fmt(rec.punkte)}</b>`});
+    });
+  }
   // Zuerst nach Priorität (Stufe), innerhalb einer Stufe nach Auffälligkeit
   // (Schweregrad) reihen, statt nach Einfüge-Reihenfolge – damit bei der
   // Druck-Kappung auf 16 die wichtigsten Fälle zuerst stehen.
@@ -3218,8 +3233,12 @@ document.addEventListener("click",e=>{
   if(fhBtn){ openFhModal(fhBtn.dataset.fhNr); return; }
   const obsFilterBtn=e.target.closest("#obsFilters button");
   if(obsFilterBtn){
+    // Exklusiv: immer nur ein Filter aktiv - erneutes Klicken des aktiven
+    // Filters schaltet ihn ab (dann werden wieder alle Kategorien gezeigt).
     const cat=obsFilterBtn.dataset.cat;
-    if(obsActiveFilters.has(cat)) obsActiveFilters.delete(cat); else obsActiveFilters.add(cat);
+    const wasOn=obsActiveFilters.has(cat);
+    obsActiveFilters.clear();
+    if(!wasOn) obsActiveFilters.add(cat);
     renderObs();
   }
 });
