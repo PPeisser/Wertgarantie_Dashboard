@@ -1851,6 +1851,13 @@ function parseAkquiseStaffeln(wb){
   if(!rows.length) return null;
   const header=rows[0].map(normHeader);
   const idxFh=header.findIndex(h=>h==="FH Nr");
+  // Mitarbeiter-Zuordnung (in der Praxis Spalte H): per Headername gesucht
+  // ("GL aktuell" laut Dateiformat), mit Fallback auf die feste Spalte H
+  // (Index 7), falls der Header abweicht - Quelle der Wahrheit für "AKQ ohne
+  // Zuordnung" (siehe renderObs), NICHT die GL-Zuordnung aus der täglichen
+  // FH_Liste-Auswertung, die abweichen bzw. den Händler ganz vermissen kann.
+  let idxGl=header.findIndex(h=>/^GL\s*aktuell$/i.test(h));
+  if(idxGl<0) idxGl=7;
   const idxPunkte=header.findIndex(h=>/^Punkte\s+\d{4}$/.test(h)&&!/bis VM/i.test(h));
   const staffelIdx=AKQ_STAFFEL_THRESHOLDS.map((_,i)=>header.findIndex(h=>h==="Staffel "+(i+1)));
   if(idxFh<0||staffelIdx.some(i=>i<0)) return null;
@@ -1858,12 +1865,13 @@ function parseAkquiseStaffeln(wb){
   for(let i=1;i<rows.length;i++){
     const r=rows[i]; if(!r) continue;
     const fhNr=r[idxFh]; if(fhNr==null||fhNr==="") continue;
+    const gl=idxGl>-1?String(r[idxGl]??"").trim()||null:null;
     const punkte=idxPunkte>-1?num(r[idxPunkte]):null;
     const staffeln=staffelIdx.map(idx=>{
       const v=r[idx];
       return (v==null||v==="")?null:String(v).trim();
     });
-    out.push({ fh_nr:String(fhNr).trim(), punkte, staffeln });
+    out.push({ fh_nr:String(fhNr).trim(), gl, punkte, staffeln });
   }
   return out.length?out:null;
 }
@@ -1953,7 +1961,7 @@ async function handleAkqStaffelFile(files){
     const CHUNK=500;
     for(let i=0;i<rows.length;i+=CHUNK){
       const chunk=rows.slice(i,i+CHUNK).map(r=>({
-        fh_nr:r.fh_nr, akq_punkte:r.punkte, akq_staffeln:r.staffeln,
+        fh_nr:r.fh_nr, akq_punkte:r.punkte, akq_staffeln:r.staffeln, akq_gl:r.gl,
         updated_by:supaUser.id, updated_at:new Date().toISOString()
       }));
       const { error }=await sb.from("fh_contacts").upsert(chunk,{onConflict:"fh_nr"});
@@ -2055,11 +2063,11 @@ async function loadFhAkqIndex(){
     for(;;){
       guard++;
       const {data,error}=await sb.from("fh_contacts")
-        .select("fh_nr,akq_punkte,akq_staffeln")
+        .select("fh_nr,akq_punkte,akq_staffeln,akq_gl")
         .range(from,from+999);
       if(error){ console.error("loadFhAkqIndex:",error.message||error); break; }
       if(!data||!data.length) break;
-      for(const r of data) if(r.fh_nr&&(r.akq_punkte!=null||(r.akq_staffeln&&r.akq_staffeln.length))) idx[r.fh_nr]={punkte:r.akq_punkte,staffeln:r.akq_staffeln||[]};
+      for(const r of data) if(r.fh_nr&&(r.akq_punkte!=null||(r.akq_staffeln&&r.akq_staffeln.length))) idx[r.fh_nr]={punkte:r.akq_punkte,staffeln:r.akq_staffeln||[],gl:r.akq_gl||null};
       from+=data.length;
       if(guard>50) break;
     }
@@ -2504,14 +2512,18 @@ function renderObs(){
   // Fachhändler aus der Akquisestaffelliste ohne Zuordnung zu einem der
   // Mitarbeiter (z.B. "Technischer GL", "ohne Zuordnung", "Akquise") mit
   // mind. 10 Punkten - nur in "Österreich gesamt" relevant, da diese Händler
-  // per Definition keinem Mitarbeiter zugeordnet sind.
+  // per Definition keinem Mitarbeiter zugeordnet sind. Quelle der Zuordnung
+  // ist bewusst die Mitarbeiter-Spalte (Spalte H) der Akquisestaffel-Datei
+  // selbst (fhAkqIndex[].gl), NICHT die GL-Zuordnung aus der täglichen
+  // FH_Liste-Auswertung - die kann abweichen oder den Händler ganz vermissen
+  // lassen (Händler ohne aktuelle Tagesproduktion tauchen dort nicht auf).
   if(currentEmp===AT_GESAMT){
     Object.entries(fhAkqIndex).forEach(([fhNr,rec])=>{
       if((rec.punkte||0)<10) return;
+      if(matchEmployee(rec.gl)) return;
       const fh=s.fh[fhNr];
-      if(!fh||fh.emp) return;
-      items.push({f:{name:fh.name||fhNr,nr:fhNr,ort:fh.ort,emp:null,gl:fh.gl},type:"down",prio:2,cat:"akqohnezuordnung",sev:rec.punkte,ic:"🧭",layout:"akq",
-        sub:`${fh.gl||"ohne Zuordnung"} · AKQ ohne Zuordnung`,
+      items.push({f:{name:(fh&&fh.name)||fhNr,nr:fhNr,ort:fh&&fh.ort,emp:null,gl:rec.gl},type:"down",prio:2,cat:"akqohnezuordnung",sev:rec.punkte,ic:"🧭",layout:"akq",
+        sub:`${rec.gl||"ohne Zuordnung"} · AKQ ohne Zuordnung`,
         txt:`Akquisestaffel-Punkte: <b>${fmt(rec.punkte)}</b>`});
     });
   }

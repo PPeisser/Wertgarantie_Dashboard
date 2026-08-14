@@ -244,6 +244,11 @@ alter table public.fh_contacts add column if not exists beitragsfrei_yearly json
 -- der monatlichen Akquisestaffeln-Datei komplett überschrieben (Snapshot).
 alter table public.fh_contacts add column if not exists akq_punkte numeric;
 alter table public.fh_contacts add column if not exists akq_staffeln jsonb not null default '[]'::jsonb;
+-- Mitarbeiter-Zuordnung laut Akquisestaffel-Datei selbst (Spalte "GL
+-- aktuell", in der Praxis Spalte H) - Quelle der Wahrheit für "AKQ ohne
+-- Zuordnung" (siehe renderObs in index.html), unabhängig von der
+-- GL-Zuordnung aus der täglichen FH_Liste-Auswertung.
+alter table public.fh_contacts add column if not exists akq_gl text;
 
 alter table public.fh_contacts drop constraint if exists fh_contacts_segmentierung_check;
 alter table public.fh_contacts add constraint fh_contacts_segmentierung_check
