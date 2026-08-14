@@ -867,6 +867,37 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div class="actions">
       <button class="btn btn-blue" id="authLoginBtn" style="width:100%">Anmelden</button>
     </div>
+    <div style="text-align:center;margin-top:10px">
+      <button type="button" class="edit" id="forgotPasswordLink" style="font-size:12.5px">Passwort vergessen?</button>
+    </div>
+  </div>
+</div>
+
+<!-- Passwort vergessen: Link per Mail anfordern -->
+<div class="modal-bg hidden" id="forgotPasswordModal">
+  <div class="modal">
+    <h3>Passwort vergessen</h3>
+    <p>Bitte E-Mail-Adresse eingeben. Falls sie bei uns hinterlegt ist, senden wir einen Link zum Zurücksetzen des Passworts.</p>
+    <input type="email" id="fpEmail" placeholder="E-Mail" autocomplete="username">
+    <div class="error" id="fpEmailHint"></div>
+    <div class="actions">
+      <button class="btn btn-ghost" id="fpEmailCancelBtn">Abbrechen</button>
+      <button class="btn btn-blue" id="fpEmailSendBtn">Link senden</button>
+    </div>
+  </div>
+</div>
+
+<!-- Passwort zurücksetzen (nach Klick auf den Mail-Link) -->
+<div class="modal-bg hidden" id="resetPasswordModal">
+  <div class="modal">
+    <h3>Neues Passwort festlegen</h3>
+    <p>Bitte ein neues Passwort für dein Konto vergeben.</p>
+    <input type="password" id="rpNew" placeholder="Neues Passwort" autocomplete="new-password">
+    <input type="password" id="rpNew2" placeholder="Neues Passwort bestätigen" autocomplete="new-password">
+    <div class="error" id="rpHint"></div>
+    <div class="actions">
+      <button class="btn btn-blue" id="rpSaveBtn" style="width:100%">Passwort speichern</button>
+    </div>
   </div>
 </div>
 
@@ -963,6 +994,11 @@ let supaUser = null;
 let myRole = null;
 let myName = null;
 const ROLE_LABEL = { admin:"Admin", aussendienst:"Außendienst" };
+// Reagiert auf den Klick im "Passwort vergessen"-Mail-Link: Supabase parst
+// den Recovery-Token aus der URL beim Laden der Seite und feuert dieses
+// Event, sobald die temporäre Recovery-Session steht - unabhängig davon,
+// wann/ob initAuth() bereits eine "normale" Session gefunden hat.
+if(sb) sb.auth.onAuthStateChange((event)=>{ if(event==="PASSWORD_RECOVERY") showResetPasswordModal(); });
 async function fetchProfile(){
   try{
     if(sb && supaUser){
@@ -1071,6 +1107,52 @@ function showForcePasswordModal(){
   $("forcePasswordModal").classList.remove("hidden");
 }
 function hideForcePasswordModal(){ $("forcePasswordModal").classList.add("hidden"); }
+/* ---------- Passwort vergessen (Mail-Link zum Zurücksetzen) ---------- */
+function showForgotPasswordModal(){
+  $("fpEmail").value=$("authEmail").value.trim();
+  $("fpEmailHint").textContent="";
+  $("forgotPasswordModal").classList.remove("hidden");
+}
+function hideForgotPasswordModal(){ $("forgotPasswordModal").classList.add("hidden"); }
+async function doSendPasswordReset(){
+  const email=$("fpEmail").value.trim();
+  if(!email){ $("fpEmailHint").textContent="Bitte E-Mail-Adresse eingeben."; return; }
+  $("fpEmailSendBtn").disabled=true;
+  const redirectTo=window.location.origin+window.location.pathname;
+  const { error } = await sb.auth.resetPasswordForEmail(email,{redirectTo});
+  $("fpEmailSendBtn").disabled=false;
+  if(error){ $("fpEmailHint").textContent="Fehler: "+error.message; return; }
+  hideForgotPasswordModal();
+  toast("Falls diese E-Mail-Adresse hinterlegt ist, wurde ein Link zum Zurücksetzen verschickt.");
+}
+function showResetPasswordModal(){
+  hideAuthModal(); hideForgotPasswordModal();
+  $("rpNew").value=""; $("rpNew2").value=""; $("rpHint").textContent="";
+  $("resetPasswordModal").classList.remove("hidden");
+}
+function hideResetPasswordModal(){ $("resetPasswordModal").classList.add("hidden"); }
+async function doSetNewPassword(){
+  const pw1=$("rpNew").value, pw2=$("rpNew2").value;
+  if(!pw1||pw1.length<8){ $("rpHint").textContent="Mindestens 8 Zeichen."; return; }
+  if(pw1!==pw2){ $("rpHint").textContent="Passwörter stimmen nicht überein."; return; }
+  $("rpSaveBtn").disabled=true;
+  const { error } = await sb.auth.updateUser({ password: pw1 });
+  if(error){ $("rpSaveBtn").disabled=false; $("rpHint").textContent="Fehler: "+error.message; return; }
+  try{ await sb.rpc("mark_password_changed"); }catch(e){}
+  callAdminFn("syncMyPassword",{newPassword:pw1}).catch(()=>{});
+  $("rpSaveBtn").disabled=false;
+  hideResetPasswordModal();
+  toast("Passwort geändert. Du bist jetzt angemeldet.");
+  const { data:{ session } } = await sb.auth.getSession();
+  if(session){
+    supaUser=session.user;
+    $("logoutBtn").classList.remove("hidden");
+    const p = await fetchProfile(); myRole = p && p.role; myName = p && p.name; showRoleBadge();
+    await loadUserSettings();
+    await loadAll(); render();
+    maybeAutoShowNotifications();
+  }
+}
 async function doForcePasswordChange(){
   const pw1=$("fpNew").value, pw2=$("fpNew2").value;
   if(!pw1||pw1.length<8){ $("fpHint").textContent="Mindestens 8 Zeichen."; return; }
@@ -2264,9 +2346,9 @@ function renderGoals(){
   const persJZ=PERS_JAHRESZIELE[currentEmp]||0;
   const cards=[
     goalCard("🇦🇹 Jahresziel "+s.jahr, ZIEL_AT, at.jahr, ZIEL_AT*share, `Soll & Hochrechnung saisonal (${Math.round(Q4_ANTEIL*100)} % in Q4)`, false,
-      {val:hrJahr,lbl:"Jahresende (saisonal)",stand:standJ,target:ZIEL_FIRMA,vsLbl:"vom Plan"}),
+      {val:hrJahr,lbl:"Jahresende (saisonal)",stand:standJ}),
     goalCard("🏢 PLAN Jahr "+s.jahr, ZIEL_FIRMA, at.jahr, ZIEL_FIRMA*share, `Soll & Hochrechnung saisonal (${Math.round(Q4_ANTEIL*100)} % in Q4)`, false,
-      {val:hrJahr,lbl:"Jahresende (saisonal)",stand:standJ,vsLbl:"vom Plan"}),
+      {val:hrJahr,lbl:"Jahresende (saisonal)",stand:standJ}),
     card3,
     goalCard("🎯 Persönliches Monatsziel · "+MONATE[s.monat-1]+"<br><span style='font-weight:600;font-size:11px;color:var(--muted)'>"+currentEmp+(isATv?" · fest hinterlegt":"")+"</span>",
       g, me.monat, g*mfrac,
@@ -3411,6 +3493,12 @@ $("authLoginBtn").onclick=doLogin;
 $("fpSaveBtn").onclick=doForcePasswordChange;
 $("authPassword").addEventListener("keydown",e=>{ if(e.key==="Enter") doLogin(); });
 $("fpNew2").addEventListener("keydown",e=>{ if(e.key==="Enter") doForcePasswordChange(); });
+$("forgotPasswordLink").onclick=showForgotPasswordModal;
+$("fpEmailCancelBtn").onclick=hideForgotPasswordModal;
+$("fpEmailSendBtn").onclick=doSendPasswordReset;
+$("fpEmail").addEventListener("keydown",e=>{ if(e.key==="Enter") doSendPasswordReset(); });
+$("rpSaveBtn").onclick=doSetNewPassword;
+$("rpNew2").addEventListener("keydown",e=>{ if(e.key==="Enter") doSetNewPassword(); });
 $("logoutBtn").onclick=doLogout;
 $("adminBtn").onclick=openAdminModal;
 $("adminClose").onclick=()=>$("adminModal").classList.add("hidden");
