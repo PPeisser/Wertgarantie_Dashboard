@@ -65,6 +65,20 @@ Deno.serve(async (req) => {
     return { email, status: "deleted" };
   }
 
+  // mustChange=false: Nutzer hat das Passwort selbst gewählt (Dashboard
+  // Self-Service). mustChange=true: Admin hat im Dashboard zurückgesetzt,
+  // der übernommene Wert ist ein Übergangspasswort.
+  async function setPassword(email: string, password: string, mustChange: boolean) {
+    const { data: profile } = await admin.from("profiles").select("id").eq("email", email).maybeSingle();
+    if (!profile) return { email, status: "not_found" };
+
+    const { error } = await admin.auth.admin.updateUserById(profile.id, { password });
+    if (error) return { email, status: "error", message: error.message };
+
+    await admin.from("profiles").update({ must_change_password: mustChange }).eq("id", profile.id);
+    return { email, status: "password_updated" };
+  }
+
   if (body.action === "create") {
     const email = String(body.email || "").trim();
     if (!email) return json({ error: "email erforderlich" }, 400);
@@ -75,6 +89,16 @@ Deno.serve(async (req) => {
     const email = String(body.email || "").trim();
     if (!email) return json({ error: "email erforderlich" }, 400);
     return json(await deleteOne(email));
+  }
+
+  // Passwort-Synchronisation vom Dashboard-Projekt (siehe supabase/functions/
+  // admin-users): "set_password" bei Selbstbedienung, "reset_password" bei
+  // Admin-Reset im Dashboard.
+  if (body.action === "set_password" || body.action === "reset_password") {
+    const email = String(body.email || "").trim();
+    const password = String(body.password || "");
+    if (!email || !password) return json({ error: "email und password erforderlich" }, 400);
+    return json(await setPassword(email, password, body.action === "reset_password"));
   }
 
   // Einmaliger Bulk-Import bestehender Dashboard-Nutzer.
