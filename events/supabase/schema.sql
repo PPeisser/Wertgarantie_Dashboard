@@ -212,16 +212,19 @@ create policy "Admins delete registrations"
 
 create index if not exists registrations_event_idx on public.registrations (event_id, event_date_id);
 
--- ---------- E-Mail-Empfänger für Status-Reports (täglich/wöchentlich) ----------
+-- ---------- E-Mail-Empfänger für Status-Reports (je Veranstaltung) ----------
 
 create table if not exists public.email_recipients (
   id         uuid primary key default gen_random_uuid(),
+  event_id   uuid not null references public.events(id) on delete cascade,
   email      text not null,
-  frequency  text not null check (frequency in ('daily','weekly')),
+  frequency  text not null check (frequency in ('daily','weekly','monthly')),
   active     boolean not null default true,
   created_at timestamptz not null default now(),
-  unique (email, frequency)
+  unique (event_id, email, frequency)
 );
+
+create index if not exists email_recipients_event_idx on public.email_recipients (event_id);
 
 alter table public.email_recipients enable row level security;
 

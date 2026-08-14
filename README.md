@@ -470,9 +470,13 @@ Edge Functions → Secrets):
    Formulars – persönlich in Du-Form ("Hallo Vorname, ... Dein Wertgarantie
    Österreich Team").
 2. **Status-Report** (Anmeldestand je Termin/Ort **inkl. Liste der
-   angemeldeten Personen**) an alle im Admin-Panel hinterlegten Empfänger –
-   täglich, wöchentlich oder monatlich, ausgelöst über `pg_cron` + `pg_net`
-   (siehe unten). Bereits im Projekt deployt.
+   angemeldeten Personen**) – **je aktiver Veranstaltung ein eigener Report**
+   an genau die für diese Veranstaltung im Admin-Panel (Tab „E-Mail-Empfänger“)
+   hinterlegten Empfänger, täglich, wöchentlich oder monatlich, ausgelöst über
+   `pg_cron` + `pg_net` (siehe unten). Betreff-Format:
+   `<Veranstaltung> // Anmeldezahlen // <Datum> // <Ort>` (bei mehreren
+   Terminen einer Veranstaltung z.B. `// 3 Termine` statt einem einzelnen
+   Datum/Ort). Bereits im Projekt deployt.
 3. **SMTP-Test** (`{"type":"test","to":"..."}`, mit `x-cron-secret`-Header):
    verschickt eine einzelne Testmail, um die SMTP-Verbindung zu prüfen.
 
