@@ -2805,6 +2805,16 @@ function akqNextStaffelInfo(rec){
   const punkte=(rec&&rec.punkte!=null)?rec.punkte:0;
   return { nextIdx, threshold, missing:Math.max(0,threshold-punkte) };
 }
+// Die Akquisestaffeln-Datei wird immer erst im Folgemonat für den
+// abgeschlossenen Vormonat eingespielt (z.B. Anfang/Mitte August für Juli) -
+// "Stand" zeigt deshalb immer den Monat vor dem aktuellen Auswertungsmonat,
+// nicht das tatsächliche Einspieldatum.
+function akqStaffelnStandLabel(){
+  const s=state.latest; if(!s) return "";
+  let vm=s.monat-1, vy=s.jahr;
+  if(vm<1){ vm=12; vy--; }
+  return MONATE[vm-1]+" "+vy;
+}
 function renderFhAkqStaffel(fhNr){
   const box=$("fhAkqStaffelBlock"); if(!box) return;
   const rec=fhAkqIndex[fhNr];
@@ -2820,7 +2830,7 @@ function renderFhAkqStaffel(fhNr){
   }).join("");
   box.innerHTML=`<h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:13px">Akquisestaffeln</h4>
     <div class="akq-fh-block">
-      <div class="akq-fh-punkte">Aktuelle Punkte (laufendes Jahr): <b>${rec.punkte!=null?fmt(rec.punkte):"–"}</b>
+      <div class="akq-fh-punkte">Aktuelle Punkte (laufendes Jahr): <b>${rec.punkte!=null?fmt(rec.punkte):"–"}</b> <span style="color:var(--muted);font-weight:600">(Stand: ${akqStaffelnStandLabel()})</span>
         ${next?` · noch <b>${fmt(next.missing)}</b> Punkte bis Staffel ${next.nextIdx+1} (${next.threshold})`:` · <span class="pos-t">alle 7 Staffeln erreicht 🏆</span>`}</div>
       <div class="akq-steps">${steps}</div>
     </div>`;
