@@ -283,6 +283,7 @@ Minimum version required to store current data is: `+i+`.
         </div>
         <button class="btn btn-primary btn-sm" id="exportCsvBtn">Als CSV exportieren</button>
       </div>
+      <div id="regMsg" class="msg"></div>
       <div style="overflow-x:auto;margin-top:14px">
         <table id="regTable">
           <thead><tr id="regHead"></tr></thead>
@@ -784,7 +785,7 @@ async function loadRegistrations(){
   $("regCountLabel").textContent = regCache.length + " Anmeldung(en) gesamt";
   $("regEmpty").style.display = regCache.length ? "none" : "block";
 
-  const headCols = ["Termin","Ort"].concat(activeFields.map(f=>f.label||FIELD_META[f.field_key].label)).concat(["DB-Abgleich","Angemeldet am"]);
+  const headCols = ["Termin","Ort"].concat(activeFields.map(f=>f.label||FIELD_META[f.field_key].label)).concat(["DB-Abgleich","Angemeldet am",""]);
   $("regHead").innerHTML = headCols.map(h=>`<th>${escapeHtml(h)}</th>`).join("");
 
   $("regBody").innerHTML = regCache.map(r => {
@@ -792,8 +793,18 @@ async function loadRegistrations(){
     const terminStr = d ? (d.event_date + " " + fmtTime(d.start_time)) : "–";
     const ortStr = d ? d.location : "–";
     const fieldCells = activeFields.map(f => `<td>${escapeHtml(r.data?.[f.field_key] ?? "")}</td>`).join("");
-    return `<tr><td>${escapeHtml(terminStr)}</td><td>${escapeHtml(ortStr)}</td>${fieldCells}<td>${matchSummary(r)}</td><td class="muted">${new Date(r.created_at).toLocaleString('de-AT')}</td></tr>`;
+    return `<tr data-id="${r.id}"><td>${escapeHtml(terminStr)}</td><td>${escapeHtml(ortStr)}</td>${fieldCells}<td>${matchSummary(r)}</td><td class="muted">${new Date(r.created_at).toLocaleString('de-AT')}</td><td><button class="btn btn-danger btn-sm reg-del" title="Anmeldung löschen" aria-label="Anmeldung löschen" style="padding:6px 10px;font-size:16px;line-height:1">🗑️</button></td></tr>`;
   }).join("");
+
+  $("regBody").querySelectorAll(".reg-del").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const tr = btn.closest("tr");
+      if (!confirm("Diese Anmeldung wirklich löschen?")) return;
+      const { error } = await sb.from("registrations").delete().eq("id", tr.dataset.id);
+      flash("regMsg", error ? ("Fehler: "+error.message) : "Anmeldung gelöscht.", !error);
+      if (!error) loadRegistrations();
+    });
+  });
 
   window._exportFields = activeFields;
 }

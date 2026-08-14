@@ -44,8 +44,12 @@ Deno.serve(async (req) => {
   if (!reg) return json({ error: "Anmeldung nicht gefunden" }, 404);
 
   const regData = (reg.data as Record<string, unknown>) || {};
-  const akpNr = String(regData.akp_nummer || "").trim();
-  const fhNr = String(regData.fh_nummer || "").trim();
+  // "0" ist die Konvention im Anmeldeformular für "AKP-/FH-Nummer nicht
+  // bekannt" und wird wie eine leere Angabe behandelt (kein Lookup-Versuch).
+  let akpNr = String(regData.akp_nummer || "").trim();
+  if (akpNr === "0") akpNr = "";
+  let fhNr = String(regData.fh_nummer || "").trim();
+  if (fhNr === "0") fhNr = "";
   if (!akpNr && !fhNr) return json({ ok: true, skipped: "keine AKP-/FH-Nummer angegeben" });
 
   const lookupUrl = Deno.env.get("DASHBOARD_LOOKUP_URL");

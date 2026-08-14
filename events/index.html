@@ -89,6 +89,7 @@
   input:focus,select:focus,textarea:focus{border-color:var(--wg-blue);background:#fff;box-shadow:0 0 0 4px rgba(0,159,227,.12)}
   textarea{resize:vertical;min-height:84px}
   .field{margin-bottom:18px}
+  .field-hint{margin:6px 0 0;font-size:12.5px;color:var(--muted)}
 
   select{
     appearance:none;-webkit-appearance:none;
@@ -306,7 +307,7 @@ const FIELD_META = {
   plz:          {label:"PLZ",                type:"text"},
   ort:          {label:"Ort",                type:"text"},
   geburtsdatum: {label:"Geburtsdatum",       type:"date"},
-  akp_nummer:   {label:"AKP-Nummer",         type:"text"},
+  akp_nummer:   {label:"AKP-Nummer",         type:"text", hint:"Falls nicht bekannt, bitte 0 eintragen.", placeholder:"z.B. 1234567 – falls nicht bekannt: 0"},
   fh_nummer:    {label:"FH-Nummer",          type:"text"},
   fachhaendler: {label:"Fachhändler",        type:"text"},
   telefon:      {label:"Telefonnummer",      type:"tel"},
@@ -448,10 +449,12 @@ function renderField(f){
   } else if (meta.type === 'textarea'){
     control = `<textarea id="${id}" name="${f.field_key}" ${req}></textarea>`;
   } else {
-    control = `<input type="${meta.type}" id="${id}" name="${f.field_key}" ${req}>`;
+    const placeholder = meta.placeholder ? ` placeholder="${escapeHtml(meta.placeholder)}"` : '';
+    control = `<input type="${meta.type}" id="${id}" name="${f.field_key}" ${req}${placeholder}>`;
   }
 
-  return `<div class="field"><label class="${reqClass}" for="${id}">${label}</label>${control}</div>`;
+  const hint = meta.hint ? `<p class="field-hint">${escapeHtml(meta.hint)}</p>` : '';
+  return `<div class="field"><label class="${reqClass}" for="${id}">${label}</label>${control}${hint}</div>`;
 }
 
 document.getElementById('regForm').addEventListener('submit', async (e) => {
