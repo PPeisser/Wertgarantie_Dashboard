@@ -357,10 +357,13 @@ function renderEvent(){
   renderPrivacyText();
 
   const sel = document.getElementById('eventDateSelect');
-  sel.innerHTML = '<option value="" disabled selected>Bitte wählen …</option>' +
+  const preselectId = new URLSearchParams(location.search).get('termin');
+  const preselectValid = preselectId && currentDates.some(d => d.id === preselectId);
+  sel.innerHTML = (preselectValid ? '' : '<option value="" disabled selected>Bitte wählen …</option>') +
     currentDates.map(d => {
       const label = `${fmtDate(d.event_date)} · ${fmtTime(d.start_time)}${d.end_time ? '–'+fmtTime(d.end_time) : ''} Uhr · ${escapeHtml(d.location)}`;
-      return `<option value="${d.id}">${label}</option>`;
+      const selected = preselectValid && d.id === preselectId ? ' selected' : '';
+      return `<option value="${d.id}"${selected}>${label}</option>`;
     }).join('');
 
   const container = document.getElementById('dynamicFields');

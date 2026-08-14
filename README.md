@@ -160,7 +160,12 @@ nichts wird zwischen den beiden Anwendungen geteilt.
   Hier werden verwaltet:
   - **Veranstaltung**: Titel, Foto (Upload), frei editierbare Beschreibung,
     Datenschutzhinweise (Standardtext per Klick einfügbar, überschreibbar)
-  - **Termine**: Datum, Uhrzeit (von/bis), Ort – hinzufügen, bearbeiten, löschen
+  - **Termine**: Datum, Uhrzeit (von/bis), Ort – hinzufügen, bearbeiten,
+    löschen; zu jedem Termin lässt sich ein **QR-Code** herunterladen (Button
+    „QR-Code" in der Termin-Zeile, zusätzlich automatischer Download direkt
+    nach dem Anlegen eines neuen Termins). Der QR-Code verlinkt auf die
+    Anmeldeseite mit bereits vorausgewähltem Termin (`?termin=<id>`), sodass
+    er z.B. am Veranstaltungsort ausgehängt werden kann.
   - **Formularfelder**: Auswahl aus dem festen Katalog (Vorname, Name, PLZ,
     Ort, Geburtsdatum, AKP-Nummer, FH-Nummer, Fachhändler, Telefonnummer,
     E-Mail-Adresse, Anreise mit Auto, sonstige Bemerkungen) inkl.
@@ -188,29 +193,39 @@ Das Event-Panel hat **keine eigene Nutzerverwaltung** – jeder Nutzer, der im
 Performance-Dashboard angelegt oder gelöscht wird, wird automatisch auch hier
 angelegt/gelöscht (alle Dashboard-Nutzer, unabhängig von ihrer Dashboard-Rolle,
 bekommen vollen Admin-Zugriff auf das Event-Panel inkl. Teilnehmerdaten). Auch
-**Passwörter werden synchronisiert** – aber nur in eine Richtung
-(Dashboard → Events, nicht umgekehrt):
+**Passwörter werden in beide Richtungen synchronisiert**:
 - Ändert ein Nutzer sein Passwort im Dashboard selbst (erzwungener
   Passwortwechsel bei Erstlogin), wird dasselbe Passwort automatisch auch im
   Event-Panel gesetzt (dort ohne erneuten Zwang zur Änderung).
 - Setzt ein Admin im Dashboard-Nutzerverwaltungspanel das Passwort eines
   Nutzers zurück, wird das Übergangspasswort ebenfalls ins Event-Panel
   übernommen (dort ebenfalls mit Zwang zur Änderung beim nächsten Login).
-- Ändert jemand sein Passwort direkt im Event-Panel, wirkt sich das **nicht**
-  auf das Dashboard aus.
+- Ändert ein Nutzer sein Passwort umgekehrt im Event-Panel selbst (erzwungener
+  Passwortwechsel bei Erstlogin nach Sync), wird dasselbe Passwort automatisch
+  auch im Dashboard gesetzt.
 
-Das läuft über zwei Edge Functions:
+Das läuft über vier Edge Functions:
 - **[`events/supabase/functions/sync-user/index.ts`](events/supabase/functions/sync-user/index.ts)**
   (im Projekt `wgaustria-events`, bereits deployt): nimmt `create`/`delete`/
-  `bulk_create`-Aufrufe entgegen, geschützt durch das Secret `SYNC_SECRET`.
-  Neu synchronisierte Nutzer bekommen das Erstpasswort `WertGARANTIE` und
-  müssen es beim ersten Login im Admin-Panel ändern (`must_change_password`).
+  `set_password`/`reset_password`/`bulk_create`-Aufrufe vom Dashboard entgegen
+  (geschützt durch das Secret `SYNC_SECRET`), sowie die Selbstbedienungs-Aktion
+  `syncMyPasswordToDashboard` direkt vom eingeloggten Event-Nutzer (über dessen
+  eigenes Auth-Token, kein Secret). Neu synchronisierte Nutzer bekommen das
+  Erstpasswort `WertGARANTIE` und müssen es beim ersten Login im Admin-Panel
+  ändern (`must_change_password`).
 - **[`supabase/functions/admin-users/index.ts`](supabase/functions/admin-users/index.ts)**
   (im Dashboard-Projekt `gfyjftwlombhmwirbyse`, bereits neu deployt): ruft nach
-  jedem Anlegen/Löschen eines Dashboard-Nutzers `sync-user` auf. Best-effort –
-  schlägt der Sync fehl (z.B. weil die Secrets unten noch fehlen), wird die
-  Dashboard-Aktion trotzdem ausgeführt, nur `eventsSync` in der Antwort zeigt
-  `"not_configured"`/`"failed"` statt `"created"`/`"deleted"`.
+  jedem Anlegen/Löschen/Passwort-Reset eines Dashboard-Nutzers `sync-user` auf,
+  sowie über die Selbstbedienungs-Aktion `syncMyPassword` (jeder eingeloggte
+  Nutzer für sich selbst) nach eigener Passwortänderung.
+- **[`supabase/functions/sync-from-events/index.ts`](supabase/functions/sync-from-events/index.ts)**
+  (im Dashboard-Projekt, neu, bereits deployt): Gegenstück zu `sync-user` –
+  nimmt Passwort-Updates vom Events-Projekt entgegen, geschützt durch
+  `FROM_EVENTS_SYNC_SECRET`.
+- Best-effort überall: schlägt ein Sync fehl (z.B. weil ein Secret unten noch
+  fehlt), wird die eigentliche Aktion trotzdem ausgeführt, nur der
+  `eventsSync`/`dashboardSync`-Status in der Antwort zeigt
+  `"not_configured"`/`"failed"` statt `"ok"`.
 
 **Einmalig einzurichtende Secrets** (Supabase-Dashboard → Project Settings →
 Edge Functions → Secrets, kein Tool dafür in dieser Session verfügbar):
@@ -218,8 +233,11 @@ Edge Functions → Secrets, kein Tool dafür in dieser Session verfügbar):
 | Projekt | Secret | Wert |
 |---|---|---|
 | `wgaustria-events` | `SYNC_SECRET` | *(separat mitgeteilt)* |
+| `wgaustria-events` | `DASHBOARD_SYNC_URL` | `https://gfyjftwlombhmwirbyse.supabase.co/functions/v1/sync-from-events` |
+| `wgaustria-events` | `DASHBOARD_SYNC_SECRET` | *(separat mitgeteilt)* |
 | `gfyjftwlombhmwirbyse` (Dashboard) | `EVENTS_SYNC_URL` | `https://jtgoytbcqkqopdpjlozq.supabase.co/functions/v1/sync-user` |
 | `gfyjftwlombhmwirbyse` (Dashboard) | `EVENTS_SYNC_SECRET` | *(identischer Wert wie `SYNC_SECRET` oben)* |
+| `gfyjftwlombhmwirbyse` (Dashboard) | `FROM_EVENTS_SYNC_SECRET` | *(identischer Wert wie `DASHBOARD_SYNC_SECRET` oben)* |
 
 **Einmaliger Bulk-Import der bereits bestehenden Dashboard-Nutzer:** Sobald
 `SYNC_SECRET` im Projekt `wgaustria-events` gesetzt ist, per `curl` (oder

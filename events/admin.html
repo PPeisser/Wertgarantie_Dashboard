@@ -6,6 +6,7 @@
 <title>Wertgarantie Event-Admin</title>
 <meta name="robots" content="noindex">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <style>
   :root{
     --wg-blue:#009FE3;--wg-blue-deep:#0077AC;--wg-navy:#10202C;--wg-deep:#062A3F;
@@ -386,8 +387,20 @@ async function doForcePasswordChange(){
     return;
   }
   await sb.rpc("mark_password_changed");
+  syncPasswordToDashboard(pw1);
   $("fpSaveBtn").disabled = false;
   hideForcePasswordModal();
+}
+async function syncPasswordToDashboard(newPassword){
+  try{
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) return;
+    await fetch(SUPABASE_URL + "/functions/v1/sync-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + session.access_token },
+      body: JSON.stringify({ action: "syncMyPasswordToDashboard", newPassword })
+    });
+  }catch(_e){ /* best-effort */ }
 }
 $("fpSaveBtn").addEventListener("click", doForcePasswordChange);
 $("fpNew2").addEventListener("keydown", e => { if (e.key==="Enter") doForcePasswordChange(); });
@@ -496,6 +509,7 @@ async function loadDates(){
       <td style="max-width:90px"><input type="number" class="dt-sort" value="${d.sort_order}"></td>
       <td style="white-space:nowrap">
         <button class="btn btn-primary btn-sm dt-save">Speichern</button>
+        <button class="btn btn-ghost btn-sm dt-qr" style="color:var(--wg-blue);background:#E0F4FC">QR-Code</button>
         <button class="btn btn-danger btn-sm dt-del">Löschen</button>
       </td>
     </tr>`).join("");
@@ -524,6 +538,31 @@ async function loadDates(){
       if (!error) loadDates();
     });
   });
+  $("datesBody").querySelectorAll(".dt-qr").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const tr = btn.closest("tr");
+      const label = `${tr.querySelector(".dt-date").value}_${tr.querySelector(".dt-loc").value}`;
+      downloadQrForDate(tr.dataset.id, label);
+    });
+  });
+}
+
+/* Registrierungslink für einen Termin (nutzt die aktuelle Domain, egal ob
+   Vercel-Vorschau-URL oder events.wgaustria.at) + QR-Code als PNG-Download. */
+function registrationUrlForDate(dateId){
+  const base = location.origin + location.pathname.replace(/admin\.html$/, "index.html");
+  return `${base}?termin=${dateId}`;
+}
+function downloadQrForDate(dateId, label){
+  const url = registrationUrlForDate(dateId);
+  QRCode.toDataURL(url, { width: 640, margin: 2 }, (err, dataUrl) => {
+    if (err){ flash("datesMsg","QR-Code konnte nicht erstellt werden: "+err.message, false); return; }
+    const safeLabel = String(label).replace(/[^a-zA-Z0-9_-]+/g,"-").replace(/^-+|-+$/g,"");
+    const a = document.createElement("a");
+    a.href = dataUrl;
+    a.download = `QR-${safeLabel || dateId}.png`;
+    a.click();
+  });
 }
 $("addDateBtn").addEventListener("click", async ()=>{
   const event_date = $("newDate").value;
@@ -539,10 +578,11 @@ $("addDateBtn").addEventListener("click", async ()=>{
     location,
     sort_order: parseInt($("newSort").value,10) || 0
   };
-  const { error } = await sb.from("event_dates").insert(payload);
+  const { data: inserted, error } = await sb.from("event_dates").insert(payload).select("id").single();
   if (error){ flash("datesMsg","Fehler: "+error.message, false); return; }
   $("newDate").value=""; $("newStart").value=""; $("newEnd").value=""; $("newLocation").value=""; $("newSort").value="0";
-  flash("datesMsg","Termin hinzugefügt.", true);
+  flash("datesMsg","Termin hinzugefügt. QR-Code wird heruntergeladen …", true);
+  if (inserted) downloadQrForDate(inserted.id, `${event_date}_${location}`);
   loadDates();
 });
 

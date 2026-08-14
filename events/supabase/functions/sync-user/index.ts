@@ -1,17 +1,24 @@
-// Nutzer-Synchronisation vom Performance-Dashboard-Projekt in dieses
-// Events-Projekt: Wenn im Dashboard ein Nutzer angelegt oder gelöscht wird,
-// ruft dessen admin-users Edge Function diese Function hier auf, damit
-// derselbe Nutzer auch Zugriff auf das Event-Admin-Panel hat/verliert.
+// Nutzer-Synchronisation zwischen dem Performance-Dashboard-Projekt und
+// diesem Events-Projekt.
 //
-// Läuft serverseitig, nutzt den service_role Key (nur hier, nie im
-// Browser-Code) und ist über SYNC_SECRET geschützt (Edge-Function-Secret,
-// identisch zu EVENTS_SYNC_SECRET im Dashboard-Projekt).
+// Zwei Vertrauensmodelle in einer Function:
+// - Aktionen "create"/"delete"/"set_password"/"reset_password"/"bulk_create":
+//   Server-zu-Server-Aufrufe vom Dashboard-Projekt (admin-users Edge
+//   Function), geschützt über den Header x-sync-secret (== SYNC_SECRET hier
+//   == EVENTS_SYNC_SECRET im Dashboard-Projekt).
+// - Aktion "syncMyPasswordToDashboard": Selbstbedienung direkt vom
+//   eingeloggten Event-Admin-Nutzer im Browser aufgerufen, authentifiziert
+//   über dessen eigenes Supabase-Auth-Token dieses Projekts (kein Secret –
+//   die E-Mail kommt aus der Session, nie vom Client). Spiegelt das neue
+//   Passwort zurück ins Dashboard-Projekt (sync-from-events Edge Function).
+//
+// Läuft serverseitig, nutzt den service_role Key nur hier, nie im Browser-Code.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "content-type, x-sync-secret",
+  "Access-Control-Allow-Headers": "authorization, content-type, x-sync-secret",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -26,14 +33,29 @@ function json(body: unknown, status = 200) {
   });
 }
 
+// Best-effort: schlägt der Sync zurück ins Dashboard fehl (z.B. Secrets noch
+// nicht hinterlegt), bricht die Passwortänderung hier trotzdem nicht ab.
+async function syncToDashboard(email: string, password: string) {
+  const url = Deno.env.get("DASHBOARD_SYNC_URL");
+  const secret = Deno.env.get("DASHBOARD_SYNC_SECRET");
+  if (!url || !secret) return "not_configured";
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-events-sync-secret": secret },
+      body: JSON.stringify({ action: "set_password", email, password }),
+    });
+    const j = await res.json().catch(() => ({} as Record<string, unknown>));
+    if (!res.ok) return "failed";
+    return (j.status as string) || "ok";
+  } catch {
+    return "failed";
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS_HEADERS });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
-
-  const secret = req.headers.get("x-sync-secret") || "";
-  if (!secret || secret !== Deno.env.get("SYNC_SECRET")) {
-    return json({ error: "Nicht autorisiert" }, 401);
-  }
 
   const admin = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -42,6 +64,28 @@ Deno.serve(async (req) => {
 
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return json({ error: "Ungültiger Body" }, 400); }
+
+  // Selbstbedienung: eigenes Auth-Token statt Secret, wirkt nur auf den
+  // eigenen Account (E-Mail kommt aus dem Token, nicht vom Client).
+  if (body.action === "syncMyPasswordToDashboard") {
+    const authHeader = req.headers.get("Authorization") || "";
+    const token = authHeader.replace(/^Bearer\s+/i, "");
+    if (!token) return json({ error: "Fehlender Authorization-Header" }, 401);
+
+    const { data: { user }, error: userErr } = await admin.auth.getUser(token);
+    if (userErr || !user || !user.email) return json({ error: "Ungültige Session" }, 401);
+
+    const newPassword = String(body.newPassword || "");
+    if (!newPassword) return json({ error: "newPassword erforderlich" }, 400);
+
+    const dashboardSync = await syncToDashboard(user.email, newPassword);
+    return json({ ok: true, dashboardSync });
+  }
+
+  const secret = req.headers.get("x-sync-secret") || "";
+  if (!secret || secret !== Deno.env.get("SYNC_SECRET")) {
+    return json({ error: "Nicht autorisiert" }, 401);
+  }
 
   async function createOne(email: string, name: string | null) {
     const { data: existing } = await admin.from("profiles").select("id").eq("email", email).maybeSingle();
