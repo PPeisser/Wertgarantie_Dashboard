@@ -2515,7 +2515,7 @@ function renderObs(){
       sub:`${a.emp||a.glRaw||"– ohne Betreuer –"} · AKQ ohne Besuch ${s.jahr}`,
       txt:`Jahresproduktion: <b>${fmt(a.p2026)}</b> Verträge`}));
   // Fachhändler aus der Akquisestaffelliste (AKQ_OHNE_ZUORDNUNG_GL, siehe
-  // oben) mit mehr als 10 Punkten - nur in "Österreich gesamt" relevant, da
+  // oben) mit mind. 10 Punkten - nur in "Österreich gesamt" relevant, da
   // diese Händler per Definition keinem Mitarbeiter zugeordnet sind. Quelle
   // der Zuordnung ist bewusst die Mitarbeiter-Spalte (Spalte H) der
   // Akquisestaffel-Datei selbst (fhAkqIndex[].gl, monatlicher Admin-Import),
@@ -2526,7 +2526,7 @@ function renderObs(){
   // Admin-Import), unabhängig von der täglichen Excel-Einspielung.
   if(currentEmp===AT_GESAMT){
     Object.entries(fhAkqIndex).forEach(([fhNr,rec])=>{
-      if(!(rec.punkte>10)) return;
+      if(!(rec.punkte>=10)) return;
       const gl=String(rec.gl||"").trim().toLowerCase();
       if(!AKQ_OHNE_ZUORDNUNG_GL.some(g=>g.toLowerCase()===gl)) return;
       const fh=s.fh[fhNr];
