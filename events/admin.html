@@ -75,6 +75,7 @@
   .pill.off{background:#EEF2F5;color:var(--muted)}
   .pill.daily{background:#E0F4FC;color:#0075AC}
   .pill.weekly{background:#FEF3DC;color:#B7791F}
+  .pill.monthly{background:#F0E9FC;color:#6B3FA0}
 
   .toggle{position:relative;width:38px;height:22px;flex:none}
   .toggle input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
@@ -233,6 +234,7 @@
           <select id="newRecipientFreq">
             <option value="daily">Täglich</option>
             <option value="weekly">Wöchentlich</option>
+            <option value="monthly">Monatlich</option>
           </select>
         </div>
       </div>
@@ -596,7 +598,7 @@ async function loadRecipients(){
   $("recipientsBody").innerHTML = rows.map(r => `
     <tr data-id="${r.id}">
       <td>${escapeHtml(r.email)}</td>
-      <td><span class="pill ${r.frequency}">${r.frequency==="daily"?"Täglich":"Wöchentlich"}</span></td>
+      <td><span class="pill ${r.frequency}">${r.frequency==="daily"?"Täglich":r.frequency==="weekly"?"Wöchentlich":"Monatlich"}</span></td>
       <td>
         <label class="toggle"><input type="checkbox" class="rc-active" ${r.active?"checked":""}><span class="track"></span><span class="thumb"></span></label>
       </td>

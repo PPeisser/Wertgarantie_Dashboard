@@ -103,15 +103,17 @@ async function handleConfirmation(admin: ReturnType<typeof createClient>, regist
     </div>
     <div style="border:1px solid #DCE7EE;border-top:none;border-radius:0 0 14px 14px;padding:26px">
       <p>${greeting}</p>
-      <p>vielen Dank für Ihre Anmeldung zu <strong>${escapeHtml(event.title)}</strong>. Wir haben Ihre Anmeldung erhalten.</p>
+      <p>wir freuen uns, dass du bei <strong>${escapeHtml(event.title)}</strong> dabei bist! Hier noch einmal alle Details zu deiner Anmeldung:</p>
       <div style="background:#F0FAFF;border:1px solid #009FE3;border-radius:12px;padding:16px 18px;margin:18px 0">
-        <div style="font-weight:800;color:#062A3F;margin-bottom:4px">Ihr Termin</div>
+        <div style="font-weight:800;color:#062A3F;margin-bottom:4px">Dein Termin</div>
         <div>${escapeHtml(fmtDate(eventDate.event_date))}</div>
         <div>${escapeHtml(fmtTime(eventDate.start_time))}${eventDate.end_time ? "–" + escapeHtml(fmtTime(eventDate.end_time)) : ""} Uhr</div>
         <div>${escapeHtml(eventDate.location)}</div>
       </div>
-      ${detailRows ? `<div style="margin:18px 0"><div style="font-weight:800;color:#062A3F;margin-bottom:6px">Ihre Angaben</div><table>${detailRows}</table></div>` : ""}
-      <p style="color:#5D7284;font-size:13px;margin-top:24px">Diese E-Mail wurde automatisch versendet. Bei Fragen wenden Sie sich bitte an die Kontaktperson Ihrer Veranstaltung.</p>
+      ${detailRows ? `<div style="margin:18px 0"><div style="font-weight:800;color:#062A3F;margin-bottom:6px">Deine Angaben</div><table>${detailRows}</table></div>` : ""}
+      <p>Wir freuen uns auf dich!</p>
+      <p style="margin-bottom:0">Dein Wertgarantie Österreich Team</p>
+      <p style="color:#5D7284;font-size:13px;margin-top:24px">Diese E-Mail wurde automatisch versendet. Bei Fragen wende dich bitte an die Kontaktperson deiner Veranstaltung.</p>
     </div>
   </div>`;
 
@@ -120,7 +122,16 @@ async function handleConfirmation(admin: ReturnType<typeof createClient>, regist
   return json({ ok: true });
 }
 
-async function handleReport(admin: ReturnType<typeof createClient>, frequency: "daily" | "weekly") {
+const FREQ_LABEL: Record<string, string> = { daily: "Täglicher", weekly: "Wöchentlicher", monthly: "Monatlicher" };
+
+// Für die Teilnehmerliste je Termin: kompakte, immer gleiche Spalten,
+// unabhängig davon welche Formularfelder für das Event aktiv sind.
+const REPORT_PERSON_FIELDS: [string, string][] = [
+  ["vorname", "Vorname"], ["nachname", "Name"], ["telefon", "Telefon"],
+  ["email", "E-Mail"], ["plz", "PLZ"], ["ort", "Ort"],
+];
+
+async function handleReport(admin: ReturnType<typeof createClient>, frequency: "daily" | "weekly" | "monthly") {
   const { data: recipients } = await admin
     .from("email_recipients").select("*").eq("frequency", frequency).eq("active", true);
   if (!recipients || !recipients.length) return json({ ok: true, skipped: "no_recipients" });
@@ -132,23 +143,50 @@ async function handleReport(admin: ReturnType<typeof createClient>, frequency: "
   const { data: dates } = await admin
     .from("event_dates").select("*").eq("event_id", event.id).order("sort_order").order("event_date");
   const { data: regs } = await admin
-    .from("registrations").select("event_date_id").eq("event_id", event.id);
+    .from("registrations").select("event_date_id, data, created_at").eq("event_id", event.id)
+    .order("created_at");
 
-  const counts: Record<string, number> = {};
-  (regs || []).forEach((r) => { counts[r.event_date_id] = (counts[r.event_date_id] || 0) + 1; });
+  const byDate: Record<string, typeof regs> = {};
+  (regs || []).forEach((r) => {
+    (byDate[r.event_date_id] ||= []).push(r);
+  });
   const total = (regs || []).length;
 
-  const rows = (dates || []).map((d) => `
+  const summaryRows = (dates || []).map((d) => `
     <tr>
       <td style="padding:6px 14px 6px 0">${escapeHtml(fmtDate(d.event_date))}</td>
       <td style="padding:6px 14px 6px 0">${escapeHtml(fmtTime(d.start_time))}${d.end_time ? "–" + escapeHtml(fmtTime(d.end_time)) : ""} Uhr</td>
       <td style="padding:6px 14px 6px 0">${escapeHtml(d.location)}</td>
-      <td style="padding:6px 0;font-weight:800;text-align:right">${counts[d.id] || 0}</td>
+      <td style="padding:6px 0;font-weight:800;text-align:right">${(byDate[d.id] || []).length}</td>
     </tr>`).join("");
 
-  const freqLabel = frequency === "daily" ? "Täglicher" : "Wöchentlicher";
+  const personHeaderCells = REPORT_PERSON_FIELDS
+    .map(([, label]) => `<th style="padding:4px 12px 4px 0">${escapeHtml(label)}</th>`).join("");
+
+  const dateSections = (dates || []).map((d) => {
+    const people = byDate[d.id] || [];
+    const personRows = people.map((r) => {
+      const cells = REPORT_PERSON_FIELDS
+        .map(([key]) => `<td style="padding:4px 12px 4px 0">${escapeHtml(r.data?.[key] ?? "")}</td>`).join("");
+      return `<tr>${cells}</tr>`;
+    }).join("");
+    return `
+      <div style="margin:22px 0 8px;font-weight:800;color:#062A3F">
+        ${escapeHtml(fmtDate(d.event_date))} · ${escapeHtml(fmtTime(d.start_time))} Uhr · ${escapeHtml(d.location)}
+        <span style="font-weight:600;color:#5D7284">(${people.length})</span>
+      </div>
+      ${people.length
+        ? `<table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead><tr style="color:#5D7284;font-size:11px;text-transform:uppercase;text-align:left">${personHeaderCells}</tr></thead>
+            <tbody>${personRows}</tbody>
+          </table>`
+        : `<div style="color:#5D7284;font-size:13px">Noch keine Anmeldungen.</div>`}
+    `;
+  }).join("");
+
+  const freqLabel = FREQ_LABEL[frequency] || "Aktueller";
   const html = `
-  <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:640px;margin:0 auto;color:#10202C">
+  <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:680px;margin:0 auto;color:#10202C">
     <div style="background:#10202C;padding:22px 26px;border-radius:14px 14px 0 0">
       <span style="color:#fff;font-weight:800;font-size:16px">Wertgarantie</span>
     </div>
@@ -161,8 +199,14 @@ async function handleReport(admin: ReturnType<typeof createClient>, frequency: "
         <thead><tr style="color:#5D7284;font-size:11.5px;text-transform:uppercase;text-align:left">
           <th style="padding-bottom:6px">Datum</th><th style="padding-bottom:6px">Uhrzeit</th><th style="padding-bottom:6px">Ort</th><th style="padding-bottom:6px;text-align:right">Anmeldungen</th>
         </tr></thead>
-        <tbody>${rows}</tbody>
+        <tbody>${summaryRows}</tbody>
       </table>
+
+      <div style="margin-top:26px;padding-top:18px;border-top:1px solid #DCE7EE">
+        <div style="font-weight:800;color:#062A3F;margin-bottom:4px">Angemeldete Personen je Termin</div>
+        ${dateSections}
+      </div>
+
       <p style="color:#5D7284;font-size:13px;margin-top:24px">Diese E-Mail wurde automatisch versendet.</p>
     </div>
   </div>`;
@@ -201,11 +245,31 @@ Deno.serve(async (req) => {
     if (!secret || secret !== Deno.env.get("CRON_SECRET")) {
       return json({ error: "Nicht autorisiert" }, 401);
     }
-    const frequency = body.frequency === "weekly" ? "weekly" : "daily";
+    const frequency = body.frequency === "weekly" ? "weekly" : body.frequency === "monthly" ? "monthly" : "daily";
     try {
       return await handleReport(admin, frequency);
     } catch (e) {
       return json({ error: "Mailversand fehlgeschlagen: " + String(e) }, 500);
+    }
+  }
+
+  // Manueller SMTP-Verbindungstest, geschützt wie "report".
+  if (body.type === "test") {
+    const secret = req.headers.get("x-cron-secret") || "";
+    if (!secret || secret !== Deno.env.get("CRON_SECRET")) {
+      return json({ error: "Nicht autorisiert" }, 401);
+    }
+    const to = String(body.to || "");
+    if (!to) return json({ error: "to erforderlich" }, 400);
+    try {
+      await sendMail(
+        "Wertgarantie Events – SMTP-Test",
+        to,
+        `<div style="font-family:'Segoe UI',Arial,sans-serif;color:#10202C"><p>Diese Testmail bestätigt, dass die SMTP-Verbindung des Events-Projekts funktioniert.</p><p>Gesendet: ${new Date().toLocaleString("de-AT")}</p></div>`,
+      );
+      return json({ ok: true });
+    } catch (e) {
+      return json({ error: "SMTP-Test fehlgeschlagen: " + String(e) }, 500);
     }
   }
 

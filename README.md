@@ -239,11 +239,16 @@ und wird beim ersten Login zur Passwortänderung aufgefordert.
 ## Mailversand (Edge Function `event-mailer`)
 
 [`events/supabase/functions/event-mailer/index.ts`](events/supabase/functions/event-mailer/index.ts)
-übernimmt zwei Aufgaben:
-1. **Bestätigungsmail** an den Anmelder direkt nach dem Absenden des Formulars.
-2. **Status-Report** (aktueller Gesamt-Anmeldestand je Termin/Ort) an alle im
-   Admin-Panel hinterlegten Empfänger – täglich bzw. wöchentlich, ausgelöst
-   über `pg_cron` + `pg_net` (siehe unten). Bereits im Projekt deployt.
+übernimmt drei Aufgaben:
+1. **Bestätigungsmail** an den Anmelder direkt nach dem Absenden des
+   Formulars – persönlich in Du-Form ("Hallo Vorname, ... Dein Wertgarantie
+   Österreich Team").
+2. **Status-Report** (Anmeldestand je Termin/Ort **inkl. Liste der
+   angemeldeten Personen**) an alle im Admin-Panel hinterlegten Empfänger –
+   täglich, wöchentlich oder monatlich, ausgelöst über `pg_cron` + `pg_net`
+   (siehe unten). Bereits im Projekt deployt.
+3. **SMTP-Test** (`{"type":"test","to":"..."}`, mit `x-cron-secret`-Header):
+   verschickt eine einzelne Testmail, um die SMTP-Verbindung zu prüfen.
 
 Der Mailversand läuft über **SMTP** (Easyname-Postfach `events@wgaustria.at`)
 und braucht folgende Secrets, die **einmalig manuell** im Supabase-Dashboard
@@ -259,19 +264,21 @@ Secrets-Tool in dieser Session zur Verfügung stand):
 | `SMTP_PASSWORD` | *(Postfach-Passwort, wie separat mitgeteilt)* |
 | `SMTP_FROM_EMAIL` | `events@wgaustria.at` |
 | `SMTP_FROM_NAME` | z.B. `Wertgarantie Veranstaltungen` |
-| `CRON_SECRET` | *(wurde beim Einrichten von `pg_cron` erzeugt, identischer Wert wie dort hinterlegt – separat mitgeteilt)* |
+| `CRON_SECRET` | *(separat mitgeteilt)* |
+| `SYNC_SECRET` | *(separat mitgeteilt, für die Nutzer-Synchronisation, siehe oben)* |
 
 Erneut deployen nach Code-Änderungen:
 ```bash
 supabase functions deploy event-mailer --project-ref jtgoytbcqkqopdpjlozq
 ```
 
-## Automatischer täglicher/wöchentlicher Report (`pg_cron`)
+## Automatischer Report – täglich/wöchentlich/monatlich (`pg_cron`)
 
-Zwei `pg_cron`-Jobs im Projekt `wgaustria-events` rufen `event-mailer` mit
-`{"type":"report","frequency":"daily"|"weekly"}` auf:
+Drei `pg_cron`-Jobs im Projekt `wgaustria-events` rufen `event-mailer` mit
+`{"type":"report","frequency":"daily"|"weekly"|"monthly"}` auf:
 - `event-daily-report`: täglich um 06:00 UTC
 - `event-weekly-report`: montags um 06:00 UTC
+- `event-monthly-report`: am 1. jedes Monats um 06:00 UTC
 
 Zeiten anpassen (z.B. andere Uhrzeit/Zeitzone):
 ```sql
