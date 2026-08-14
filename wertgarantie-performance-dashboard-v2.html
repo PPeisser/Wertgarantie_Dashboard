@@ -1921,8 +1921,13 @@ function parseAuswertung(wb){
       const name=String(r[0]).trim();
       // Gesamt-/Summenzeile der Pivot-Tabelle nicht als eigene "Quote"
       // aufnehmen - sonst würde sie beim Schnitt für "Österreich gesamt"
-      // (renderGW) mitgezählt und das Ergebnis verfälschen.
-      if(/^(auswertung|gesamt|summe|total)$/i.test(name)) break;
+      // (renderGW) mitgezählt und das Ergebnis verfälschen. Bewusst
+      // "continue" statt "break": anders als bei der GL-Summen-Tabelle ist
+      // hier nicht sichergestellt, dass die Gesamtzeile in dieser
+      // Pivot-Hilfstabelle immer ganz am Ende steht - ein "break" hat
+      // deshalb reihenweise Mitarbeiter komplett aus gwQuote gekippt,
+      // sobald die Gesamtzeile vor ihnen stand.
+      if(/^(auswertung|gesamt|summe|total)$/i.test(name)) continue;
       snap.gwQuote[matchEmployee(name)||("x_"+name)]={lj:num(r[q]),vj:qv>-1?num(r[qv]):0};
     }
   })();
