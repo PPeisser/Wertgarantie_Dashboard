@@ -943,14 +943,15 @@ PERS_JAHRESZIELE[AT_GESAMT]=Object.values(PERS_JAHRESZIELE).reduce((a,b)=>a+b,0)
 // jährlich am 1.1. auf 0 zurückgesetzt; einmal erreichte Stufen bleiben aber
 // dauerhaft mit ihrem Erreichungsdatum erhalten (siehe akqNextStaffelInfo).
 const AKQ_STAFFEL_THRESHOLDS=[20,50,100,150,200,250,300];
-// Ziel 2026 = Anzahl "Erststaffeln" (Staffel 1 = FH erstmals aktiv/akquiriert)
-// pro Mitarbeiter in diesem Jahr - nur die 1. Staffel zählt hierfür, siehe
-// Erklärung des Nutzers vom 14.08.2026.
-const AKQ_ERSTSTAFFEL_ZIEL = {
+// Ziel 2026 = Anzahl erreichter Staffeln (alle 7 Stufen zählen) pro
+// Mitarbeiter in diesem Jahr. "Erststaffeln" (Staffel 1 = FH erstmals aktiv/
+// akquiriert) werden zusätzlich als Teilmenge ausgewiesen, zählen aber mit
+// in dieses Gesamtziel - siehe Erklärung des Nutzers vom 14.08.2026.
+const AKQ_STAFFEL_ZIEL = {
   "Klaus Witting":30,"Florian Hasibeder":30,"Thomas Eitzinger":0,
   "Dominik Szendi":0,"Helmut Otto":30,"Peter Peißer":30
 };
-AKQ_ERSTSTAFFEL_ZIEL[AT_GESAMT]=Object.values(AKQ_ERSTSTAFFEL_ZIEL).reduce((a,b)=>a+b,0);
+AKQ_STAFFEL_ZIEL[AT_GESAMT]=Object.values(AKQ_STAFFEL_ZIEL).reduce((a,b)=>a+b,0);
 
 /* ---------- Supabase Konfiguration ---------- */
 const SUPABASE_URL = "https://gfyjftwlombhmwirbyse.supabase.co";
@@ -2240,31 +2241,34 @@ function renderGoals(){
   $("goalCards").classList.toggle("cols4",isATv);
   $("goalCards").innerHTML=cards.join("");
 }
-// Zählt Fachhändler (skaliert auf currentEmp), deren "Staffel 1" (Erststaffel
-// - erstmals als Akquise-Fachhändler aktiv geworden) im aktuell gezeigten
-// Jahr erreicht wurde. Nur Staffel 1 zählt hierfür - siehe AKQ_ERSTSTAFFEL_ZIEL.
-function akqErststaffelnInJahr(){
-  const s=state.latest; if(!s) return 0;
+// Zählt Staffel-Erreichungen (skaliert auf currentEmp) im aktuell gezeigten
+// Jahr - "alle" zählt jede der 7 Stufen, "erst" nur Staffel 1 (Erststaffel,
+// FH erstmals als Akquise-Fachhändler aktiv geworden) als Teilmenge davon.
+function akqStaffelnInJahr(){
+  const s=state.latest; if(!s) return {alle:0,erst:0};
   const yy=String(s.jahr).slice(2);
-  let count=0;
+  let alle=0, erst=0;
   for(const [fhNr,rec] of Object.entries(fhAkqIndex)){
-    const d=(rec.staffeln||[])[0];
-    if(!d||String(d).slice(3,5)!==yy) continue;
     const fh=s.fh[fhNr];
     if(currentEmp!==AT_GESAMT&&(!fh||fh.emp!==currentEmp)) continue;
-    count++;
+    const staffeln=rec.staffeln||[];
+    staffeln.forEach((d,i)=>{
+      if(!d||String(d).slice(3,5)!==yy) return;
+      alle++;
+      if(i===0) erst++;
+    });
   }
-  return count;
+  return {alle,erst};
 }
 function renderAkqStaffelBar(){
   const box=$("akqStaffelBar"); if(!box) return;
   const s=state.latest; if(!s){ box.innerHTML=""; return; }
-  const ziel=AKQ_ERSTSTAFFEL_ZIEL[currentEmp]||0;
-  const reached=akqErststaffelnInJahr();
+  const ziel=AKQ_STAFFEL_ZIEL[currentEmp]||0;
+  const {alle:reached,erst:erststaffeln}=akqStaffelnInJahr();
   const pct=ziel>0?reached/ziel*100:null;
   const good=pct!=null?pct>=100:true;
   box.innerHTML=`<div class="akq-bar">
-    <div class="akq-bar-label">🏅 Akquise-Erststaffeln ${s.jahr}<br><span class="akq-bar-sub">${escapeHtml(currentEmp)} · neu aktivierte Fachhändler (Staffel 1) in diesem Jahr</span></div>
+    <div class="akq-bar-label">🏅 Akquisestaffeln ${s.jahr}<br><span class="akq-bar-sub">${escapeHtml(currentEmp)} · erreichte Staffeln (alle Stufen) in diesem Jahr · davon <b>${fmt(erststaffeln)}</b> Erststaffeln</span></div>
     <div class="akq-bar-num"><b>${fmt(reached)}</b><span class="akq-bar-of"> / ${ziel>0?fmt(ziel):"–"}</span>
       ${pct!=null?`<span class="akq-bar-pct" style="color:${good?"var(--pos)":"var(--neg)"}">${pct.toFixed(0)} %</span>`:""}</div>
     <div class="akq-bar-track"><div class="akq-bar-fill" style="width:${pct!=null?Math.min(pct,100):0}%;background:${good?"var(--pos)":"var(--neg)"}"></div></div>
