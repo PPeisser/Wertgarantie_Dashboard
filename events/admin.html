@@ -745,6 +745,27 @@ $("addRecipientBtn").addEventListener("click", async ()=>{
 });
 
 /* ---------- Anmeldungen ---------- */
+const DB_MATCH_HEADERS = [
+  "AKP-Nr (DB)","AKP Vorname (DB)","AKP Nachname (DB)","AKP Firma (DB)","AKP Straße (DB)","AKP PLZ (DB)","AKP Ort (DB)","AKP Telefon (DB)","AKP E-Mail (DB)",
+  "FH-Nr (DB)","FH Ansprechpartner (DB)","FH Ort (DB)","FH PLZ (DB)","FH Straße (DB)","FH Telefon (DB)","FH E-Mail (DB)","FH Segment (DB)"
+];
+function dbMatchRow(r){
+  const akp = r.matched_akp?.akp || {};
+  const fh = r.matched_akp?.fh || {};
+  return [
+    akp.nr||"", akp.vorname||"", akp.nachname||"", akp.firma||"", akp.strasse||"", akp.plz||"", akp.ort||"", akp.telefon||"", akp.email||"",
+    fh.fh_nr||"", fh.ansprechpartner||"", fh.ort||"", fh.plz||"", fh.strasse||"", fh.telefon||"", fh.email||"", fh.segmentierung||""
+  ];
+}
+function matchSummary(r){
+  const akp = r.matched_akp?.akp;
+  const fh = r.matched_akp?.fh;
+  if (!akp && !fh) return '<span class="muted">–</span>';
+  const parts = [];
+  if (akp) parts.push('AKP: ' + escapeHtml(akp.firma || [akp.vorname, akp.nachname].filter(Boolean).join(' ') || akp.nr));
+  if (fh) parts.push('FH: ' + escapeHtml(fh.ansprechpartner || fh.fh_nr));
+  return parts.join('<br>');
+}
 let regCache = [];
 let dateCache = {};
 async function loadRegistrations(){
@@ -758,7 +779,7 @@ async function loadRegistrations(){
   $("regCountLabel").textContent = regCache.length + " Anmeldung(en) gesamt";
   $("regEmpty").style.display = regCache.length ? "none" : "block";
 
-  const headCols = ["Termin","Ort"].concat(activeFields.map(f=>f.label||FIELD_META[f.field_key].label)).concat(["Angemeldet am"]);
+  const headCols = ["Termin","Ort"].concat(activeFields.map(f=>f.label||FIELD_META[f.field_key].label)).concat(["DB-Abgleich","Angemeldet am"]);
   $("regHead").innerHTML = headCols.map(h=>`<th>${escapeHtml(h)}</th>`).join("");
 
   $("regBody").innerHTML = regCache.map(r => {
@@ -766,21 +787,22 @@ async function loadRegistrations(){
     const terminStr = d ? (d.event_date + " " + fmtTime(d.start_time)) : "–";
     const ortStr = d ? d.location : "–";
     const fieldCells = activeFields.map(f => `<td>${escapeHtml(r.data?.[f.field_key] ?? "")}</td>`).join("");
-    return `<tr><td>${escapeHtml(terminStr)}</td><td>${escapeHtml(ortStr)}</td>${fieldCells}<td class="muted">${new Date(r.created_at).toLocaleString('de-AT')}</td></tr>`;
+    return `<tr><td>${escapeHtml(terminStr)}</td><td>${escapeHtml(ortStr)}</td>${fieldCells}<td>${matchSummary(r)}</td><td class="muted">${new Date(r.created_at).toLocaleString('de-AT')}</td></tr>`;
   }).join("");
 
   window._exportFields = activeFields;
 }
 $("exportCsvBtn").addEventListener("click", ()=>{
   const activeFields = window._exportFields || [];
-  const headers = ["Termin","Ort"].concat(activeFields.map(f=>f.label||FIELD_META[f.field_key].label)).concat(["Angemeldet am"]);
+  const headers = ["Termin","Ort"].concat(activeFields.map(f=>f.label||FIELD_META[f.field_key].label)).concat(["Angemeldet am"]).concat(DB_MATCH_HEADERS);
   const csvRows = [headers];
   regCache.forEach(r=>{
     const d = dateCache[r.event_date_id];
     const row = [
       d ? d.event_date : "", d ? d.location : "",
       ...activeFields.map(f => r.data?.[f.field_key] ?? ""),
-      new Date(r.created_at).toLocaleString('de-AT')
+      new Date(r.created_at).toLocaleString('de-AT'),
+      ...dbMatchRow(r)
     ];
     csvRows.push(row);
   });
