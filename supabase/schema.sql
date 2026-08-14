@@ -360,9 +360,13 @@ create table if not exists public.pending_imports (
   error text
 );
 
+-- "processing" ist der kurze Zwischenstatus, den processPendingImports()
+-- beim optimistischen "Claimen" einer Zeile setzt (verhindert doppelte
+-- Verarbeitung durch zwei gleichzeitig offene Tabs) - fehlte ursprünglich in
+-- der Constraint, wodurch jeder Import-Versuch mit HTTP 400 fehlschlug.
 alter table public.pending_imports drop constraint if exists pending_imports_status_check;
 alter table public.pending_imports add constraint pending_imports_status_check
-  check (status in ('pending','processed','failed'));
+  check (status in ('pending','processing','processed','failed'));
 
 alter table public.pending_imports enable row level security;
 
