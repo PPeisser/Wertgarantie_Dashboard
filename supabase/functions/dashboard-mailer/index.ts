@@ -48,17 +48,31 @@ interface Attachment {
   contentType?: string;
 }
 
+// denomailer 1.6.0 schreibt den Dateinamen in Content-Type/Content-Disposition
+// OHNE Anführungszeichen (z.B. "filename=Anhang.pdf" statt korrekt
+// "filename=\"Anhang.pdf\""). Viele Mail-Clients (u.a. Gmail/Outlook)
+// erkennen so einen Anhang gar nicht erst als Anhang - die Mail kommt an,
+// aber ohne sichtbaren Anhang. Da die Bibliothek den Namen nur roh
+// aneinanderhängt (`"name=" + attachment.filename`), reicht es, die
+// Anführungszeichen hier schon im übergebenen filename mitzuliefern.
+function quoteFilename(name: string): string {
+  return `"${name.replace(/"/g, "")}"`;
+}
+
 async function sendMail(subject: string, to: string, html: string, attachments?: Attachment[]) {
   const fromEmail = Deno.env.get("SMTP_FROM_EMAIL")!;
   const fromName = Deno.env.get("SMTP_FROM_NAME") || "Wertgarantie Dashboard";
   const client = getSmtpClient();
   try {
+    // NICHT gleichzeitig "content" UND "html" setzen - denomailer 1.6.0 baut
+    // dabei eine korrupte MIME-Nachricht (kaputter Absender/Betreff, Rohtext/
+    // Base64 statt Inhalt, Anhang verschwindet), siehe
+    // https://github.com/EC-Nordbund/denomailer/issues/74. Nur "html".
     await client.send({
       from: `${fromName} <${fromEmail}>`,
       to,
       subject,
       html,
-      content: "Bitte verwenden Sie einen E-Mail-Client mit HTML-Unterstützung.",
       ...(attachments && attachments.length ? { attachments } : {}),
     });
   } finally {
@@ -97,7 +111,7 @@ Deno.serve(async (req) => {
     }
     try {
       await sendMail(subject, to, html, [{
-        filename: attachmentFilename,
+        filename: quoteFilename(attachmentFilename),
         content: attachmentBase64,
         encoding: "base64",
         contentType: "application/pdf",
@@ -133,8 +147,15 @@ Deno.serve(async (req) => {
     const subject = String(body.subject || "");
     const html = String(body.html || "");
     if (!to || !subject || !html) return json({ error: "to, subject, html erforderlich" }, 400);
+    const attachmentBase64 = String(body.attachmentBase64 || "");
+    const attachments = attachmentBase64 ? [{
+      filename: quoteFilename(String(body.attachmentFilename || "Anhang.pdf")),
+      content: attachmentBase64,
+      encoding: "base64" as const,
+      contentType: String(body.attachmentContentType || "application/pdf"),
+    }] : undefined;
     try {
-      await sendMail(subject, to, html);
+      await sendMail(subject, to, html, attachments);
       return json({ ok: true });
     } catch (e) {
       return json({ error: "Mailversand fehlgeschlagen: " + String(e) }, 500);
