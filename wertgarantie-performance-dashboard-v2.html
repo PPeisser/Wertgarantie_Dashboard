@@ -213,8 +213,8 @@ td .rank{
   background:#EAF3F9;color:var(--wg-navy);margin-right:3px;
 }
 tr.top1 .rank{background:var(--wg-blue);color:#fff}
-td .hname{font-weight:700;color:var(--ink);max-width:130px;overflow:hidden;text-overflow:ellipsis;display:inline-block;vertical-align:middle;white-space:nowrap}
-td .betr{font-size:10.5px;color:var(--muted);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+td .hname{font-weight:700;color:var(--ink);max-width:210px;overflow:hidden;text-overflow:ellipsis;display:inline-block;vertical-align:middle;white-space:nowrap}
+td .betr{font-size:11px;color:var(--muted)}
 .chg{font-weight:800}
 .chg.pos{color:var(--pos)} .chg.neg{color:var(--neg)} .chg.neu{color:var(--muted)}
 .pill{display:inline-block;font-size:10px;font-weight:800;border-radius:99px;padding:2px 5px}
@@ -2566,6 +2566,10 @@ function renderTopFlop(){
   const showGL=currentEmp===AT_GESAMT;
   const p=currentPeriod;
   const labels={tag:["Vortag "+fmtDate(s.vortag),"Tag davor"],woche:["Woche","Vorwoche"],monat:[MONATE[s.monat-1],"Ø-Monat (LJ)"],jahr:["Jahr "+s.jahr,"Vorjahr"]};
+  // Kurze Varianten nur für die Tabellen-Spaltenköpfe (schmal, damit die
+  // Händlername-Spalte ihre volle Breite behält) - die Unterzeile über der
+  // Tabelle (topRange/printPeriod) zeigt weiterhin den vollen Zeitraum.
+  const headLabels={tag:["Prod.","Vortag"],woche:["Woche","Vorwoche"],monat:[MONATE[s.monat-1],"Ø-Monat"],jahr:["Jahr","Vorjahr"]};
   const monateBisher=(s.monat-1)+((s.tageIst&&s.tageSoll)?s.tageIst/s.tageSoll:1);
   $("topRange").textContent=" · "+labels[p][0];
   $("printPeriod").textContent="Zeitraum Händler-Auswertung: "+labels[p][0];
@@ -2604,8 +2608,8 @@ function renderTopFlop(){
       .map(f=>({...f,cur:0,avg:f.monat/s.tageIst}))
       .sort((a,b)=>b.avg-a.avg).slice(0,10);
   }
-  $("topTable").innerHTML=tbl(top,showGL,p,labels,"top");
-  $("flopTable").innerHTML=flop.length?tbl(flop,showGL,p,labels,"flop"):`<div class="empty-note">Kein Händler mit Rückgang – stark! 💪</div>`;
+  $("topTable").innerHTML=tbl(top,showGL,p,headLabels,"top");
+  $("flopTable").innerHTML=flop.length?tbl(flop,showGL,p,headLabels,"flop"):`<div class="empty-note">Kein Händler mit Rückgang – stark! 💪</div>`;
 }
 function tbl(rows,showGL,p,labels,kind){
   if(!rows.length) return `<div class="empty-note">Keine Daten im Zeitraum.</div>`;
