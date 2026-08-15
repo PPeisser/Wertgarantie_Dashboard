@@ -3499,10 +3499,10 @@ function renderGW(){
   const good=lj>=GW_ZIEL, col=good?"var(--pos)":"var(--neg)";
   const d=(lj-vj)*100;
   $("gwBody").innerHTML=`
-    <div class="big" style="display:flex;align-items:baseline;gap:10px;margin:2px 0 8px;flex-wrap:wrap">
+    <div class="big" style="display:flex;align-items:baseline;gap:10px;margin:2px 0 4px;flex-wrap:wrap">
       <span class="pct" style="font-size:30px;font-weight:900;color:${col};white-space:nowrap">${(lj*100).toFixed(1).replace(".",",")} %</span>
-      <span class="stk" style="color:var(--muted);font-weight:600">Ziel: ${(GW_ZIEL*100).toFixed(0)} %${lblExtra}</span>
     </div>
+    ${lblExtra?`<div style="color:var(--muted);font-size:10.5px;font-weight:400;margin:0 0 8px">${lblExtra.replace(/^ · /,"")}</div>`:""}
     <div class="bar" style="height:14px"><div class="fill" style="width:${Math.min(lj*100,100)}%;background:${col}"></div>
       <div class="soll" style="left:${GW_ZIEL*100}%" title="Ziel 40 %"></div></div>
     <div class="delta" style="margin-top:9px">
