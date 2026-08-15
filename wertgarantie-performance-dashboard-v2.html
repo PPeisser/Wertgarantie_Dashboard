@@ -44,7 +44,7 @@ header{
   border-radius:var(--radius);
   box-shadow:var(--shadow);
   padding:14px 20px;
-  display:flex;align-items:flex-start;column-gap:18px;row-gap:6px;flex-wrap:wrap;
+  display:flex;align-items:center;gap:18px;flex-wrap:wrap;
   border-top:5px solid var(--wg-blue);
 }
 header img.logo{height:52px;width:auto}
@@ -2004,7 +2004,20 @@ function mergeSnapshot(snap){
     const k=a.nr||a.name+"@"+a.firma;
     if(a.vt>0){ if(!state.dailyAKP) state.dailyAKP={}; if(!state.dailyAKP[k]) state.dailyAKP[k]={}; state.dailyAKP[k][snap.vortag]=a.vt; }
   });
-  if(!state.latest || snap.date>=state.latest.date) state.latest=snap;
+  if(!state.latest || snap.date>=state.latest.date){
+    // Manche Quellen (z.B. die automatische Tages-Mail "ZE+Produktion_Vortag...")
+    // enthalten nicht alle optionalen Pivot-Blätter der vollständigen
+    // "Auswertung_TAG"-Datei (GW-Quote, KS/GS-Mix, Sparten). state.latest wird
+    // hier komplett durch den neuen snap ersetzt - ohne Übernahme würde ein
+    // solcher Automatik-Import diese Werte täglich auf "nicht enthalten"
+    // zurücksetzen, obwohl sie aus einem früheren (vollständigen) Import
+    // bereits bekannt waren. Deshalb: fehlt ein Feld im neuen snap, vom
+    // bisherigen Stand übernehmen.
+    if(!snap.gwQuote && state.latest?.gwQuote) snap.gwQuote=state.latest.gwQuote;
+    if(!snap.ks && state.latest?.ks) snap.ks=state.latest.ks;
+    if(!snap.sparten && state.latest?.sparten) snap.sparten=state.latest.sparten;
+    state.latest=snap;
+  }
 }
 
 async function handleFiles(files){
