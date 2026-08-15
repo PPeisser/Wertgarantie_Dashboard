@@ -1696,6 +1696,26 @@ function sheetByName(wb, part){
   return null;
 }
 function toRows(ws){ return ws?XLSX.utils.sheet_to_json(ws,{header:1,defval:null,raw:true}):[]; }
+// Manche Pivot-Hilfsblätter (z.B. "data_Region_nach_GL_4") haben ein
+// fehlerhaftes "!ref"-Dimensionsattribut, das den tatsächlich befüllten
+// Zellbereich nicht abdeckt (z.B. "!ref":"C54:C80", obwohl die echten Daten
+// in A1:C9 stehen). XLSX.utils.sheet_to_json (toRows) begrenzt sich auf
+// "!ref" und übersieht solche Zellen komplett - deshalb hier stattdessen
+// über die tatsächlich vorhandenen Zell-Adressen iterieren.
+function toRowsIgnoringRef(ws){
+  if(!ws) return [];
+  const byRow=[]; let maxR=0;
+  for(const addr in ws){
+    if(addr[0]==="!") continue;
+    const pos=XLSX.utils.decode_cell(addr);
+    if(!byRow[pos.r]) byRow[pos.r]=[];
+    byRow[pos.r][pos.c]=ws[addr].v;
+    if(pos.r>maxR) maxR=pos.r;
+  }
+  const rows=[];
+  for(let r=0;r<=maxR;r++) rows.push(byRow[r]||[]);
+  return rows;
+}
 function num(v){ if(v==null||v==="") return 0; if(typeof v==="number") return v; const n=parseFloat(String(v).replace(/\./g,"").replace(",",".")); return isNaN(n)?0:n; }
 function cellDate(v){
   if(v instanceof Date) return iso(new Date(Date.UTC(v.getFullYear(),v.getMonth(),v.getDate())));
@@ -1899,12 +1919,14 @@ function parseAuswertung(wb){
      data_-Blatt das genau ist (z. B. "_3" vs. "_4"), verschiebt sich je nach
      Anzahl der Pivot-Tabellen in der Exportvorlage - deshalb nicht mehr auf
      einen festen Suffix verlassen, sondern alle data_-Blätter nach der
-     Kopfzeile "Quote Gebrauchtgeräte" durchsuchen. */
+     Kopfzeile "Quote Gebrauchtgeräte" durchsuchen. Bewusst toRowsIgnoringRef
+     statt toRows: diese data_-Blätter haben teils ein fehlerhaftes "!ref", das
+     die echten Daten (z. B. A1:C9) nicht abdeckt (siehe toRowsIgnoringRef). */
   (function(){
     let hi=-1,q=-1,qv=-1,foundRows=null;
     for(const n of wb.SheetNames){
       if(!n.toLowerCase().startsWith("data_")) continue;
-      const rows=toRows(wb.Sheets[n]);
+      const rows=toRowsIgnoringRef(wb.Sheets[n]);
       hi=-1; q=-1; qv=-1;
       for(let i=0;i<rows.length;i++){
         const r=rows[i]; if(!r) continue;
