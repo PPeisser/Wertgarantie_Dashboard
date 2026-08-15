@@ -3471,14 +3471,26 @@ function renderGW(){
   if(!s.gwQuote){ $("gwBody").innerHTML=`<div class="empty-note">GW-Quoten in dieser Einspielung nicht enthalten – bitte Auswertung mit dieser Version neu einspielen.</div>`; return; }
   let lj,vj,lblExtra="";
   if(currentEmp===AT_GESAMT){
-    // Einfacher Schnitt über ALLE in der Tabelle aufgeführten Quoten (alle
-    // Mitarbeiter + "Technischer GL CE DE" + "Ohne Zuordnung RB" usw.) -
-    // bewusst NICHT nach Monatsproduktion gewichtet.
-    const vals=Object.values(s.gwQuote);
-    const n=vals.length;
-    lj=n>0?vals.reduce((a,q)=>a+q.lj,0)/n:0;
-    vj=n>0?vals.reduce((a,q)=>a+q.vj,0)/n:0;
-    lblExtra=" · Schnitt aller "+fmt(n)+" Quoten der Tabelle";
+    // Nach Jahresproduktion gewichteter Schnitt (KEIN einfacher Durchschnitt):
+    // ein ungewichteter Schnitt über die Quoten aller GL verzerrt das
+    // Ergebnis, weil ein GL mit wenig Produktion genauso stark zählt wie ein
+    // GL mit sehr viel Produktion. Gewicht = Jahresproduktion je GL aus
+    // s.gl (dieselben Schlüssel wie s.gwQuote, beide aus Region_nach_GL) -
+    // LJ-Quote gewichtet mit Jahresproduktion LJ, VJ-Quote mit der von VJ.
+    let wSum=0,wSumVJ=0,ljSum=0,vjSum=0,n=0;
+    for(const [key,q] of Object.entries(s.gwQuote)){
+      n++;
+      const g=s.gl&&s.gl[key];
+      const w=g?g.jahr:0, wVJ=g?g.jahrVJ:0;
+      ljSum+=q.lj*w; wSum+=w;
+      vjSum+=q.vj*wVJ; wSumVJ+=wVJ;
+    }
+    if(wSum<=0||wSumVJ<=0){
+      $("gwBody").innerHTML=`<div class="empty-note">GW-Quote für Österreich gesamt kann ohne Produktionszahlen je Mitarbeiter nicht korrekt gewichtet berechnet werden – bitte einzelne Mitarbeiter auswählen.</div>`;
+      return;
+    }
+    lj=ljSum/wSum; vj=vjSum/wSumVJ;
+    lblExtra=" · gewichtet nach Jahresproduktion aller "+fmt(n)+" Quoten";
   } else {
     const q=s.gwQuote[currentEmp];
     if(!q){ $("gwBody").innerHTML=`<div class="empty-note">Keine GW-Quote für ${currentEmp} in der Auswertung.</div>`; return; }
