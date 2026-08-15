@@ -48,6 +48,17 @@ interface Attachment {
   contentType?: string;
 }
 
+// denomailer 1.6.0 schreibt den Dateinamen in Content-Type/Content-Disposition
+// OHNE Anführungszeichen (z.B. "filename=Anhang.pdf" statt korrekt
+// "filename=\"Anhang.pdf\""). Viele Mail-Clients (u.a. Gmail/Outlook)
+// erkennen so einen Anhang gar nicht erst als Anhang - die Mail kommt an,
+// aber ohne sichtbaren Anhang. Da die Bibliothek den Namen nur roh
+// aneinanderhängt (`"name=" + attachment.filename`), reicht es, die
+// Anführungszeichen hier schon im übergebenen filename mitzuliefern.
+function quoteFilename(name: string): string {
+  return `"${name.replace(/"/g, "")}"`;
+}
+
 async function sendMail(subject: string, to: string, html: string, attachments?: Attachment[]) {
   const fromEmail = Deno.env.get("SMTP_FROM_EMAIL")!;
   const fromName = Deno.env.get("SMTP_FROM_NAME") || "Wertgarantie Dashboard";
@@ -100,7 +111,7 @@ Deno.serve(async (req) => {
     }
     try {
       await sendMail(subject, to, html, [{
-        filename: attachmentFilename,
+        filename: quoteFilename(attachmentFilename),
         content: attachmentBase64,
         encoding: "base64",
         contentType: "application/pdf",
@@ -138,7 +149,7 @@ Deno.serve(async (req) => {
     if (!to || !subject || !html) return json({ error: "to, subject, html erforderlich" }, 400);
     const attachmentBase64 = String(body.attachmentBase64 || "");
     const attachments = attachmentBase64 ? [{
-      filename: String(body.attachmentFilename || "Anhang.pdf"),
+      filename: quoteFilename(String(body.attachmentFilename || "Anhang.pdf")),
       content: attachmentBase64,
       encoding: "base64" as const,
       contentType: String(body.attachmentContentType || "application/pdf"),
