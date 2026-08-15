@@ -198,26 +198,26 @@ h2.sec small{font-weight:600;text-transform:none;color:var(--muted);letter-spaci
 .panel{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 16px;overflow:hidden}
 .panel h3{font-size:13.5px;font-weight:800;margin-bottom:8px;display:flex;align-items:center;gap:8px}
 .panel h3 .dot{width:9px;height:9px;border-radius:99px;flex:none}
-table{width:100%;border-collapse:collapse;font-size:12.5px}
+table{width:100%;border-collapse:collapse;font-size:11.5px}
 th{
-  text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;
-  color:var(--muted);font-weight:800;padding:6px 8px;border-bottom:2px solid var(--line);
+  text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.3px;
+  color:var(--muted);font-weight:800;padding:6px 5px;border-bottom:2px solid var(--line);
   white-space:nowrap;
 }
-td{padding:6.5px 8px;border-bottom:1px solid #ECF2F6;vertical-align:middle;white-space:nowrap}
+td{padding:6px 5px;border-bottom:1px solid #ECF2F6;vertical-align:middle;white-space:nowrap}
 tr:last-child td{border-bottom:none}
 td.r,th.r{text-align:right}
 td .rank{
   display:inline-flex;align-items:center;justify-content:center;
-  width:22px;height:22px;border-radius:8px;font-weight:800;font-size:11px;
-  background:#EAF3F9;color:var(--wg-navy);margin-right:4px;
+  width:19px;height:19px;border-radius:7px;font-weight:800;font-size:10px;
+  background:#EAF3F9;color:var(--wg-navy);margin-right:3px;
 }
 tr.top1 .rank{background:var(--wg-blue);color:#fff}
-td .hname{font-weight:700;color:var(--ink);max-width:210px;overflow:hidden;text-overflow:ellipsis;display:inline-block;vertical-align:middle;white-space:nowrap}
-td .betr{font-size:11px;color:var(--muted)}
+td .hname{font-weight:700;color:var(--ink);max-width:130px;overflow:hidden;text-overflow:ellipsis;display:inline-block;vertical-align:middle;white-space:nowrap}
+td .betr{font-size:10.5px;color:var(--muted);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
 .chg{font-weight:800}
 .chg.pos{color:var(--pos)} .chg.neg{color:var(--neg)} .chg.neu{color:var(--muted)}
-.pill{display:inline-block;font-size:10.5px;font-weight:800;border-radius:99px;padding:2px 8px}
+.pill{display:inline-block;font-size:10px;font-weight:800;border-radius:99px;padding:2px 5px}
 .pill.pos{background:var(--pos-bg);color:var(--pos)}
 .pill.neg{background:var(--neg-bg);color:var(--neg)}
 .pill.neu{background:#EDF2F6;color:var(--muted)}
@@ -2613,7 +2613,7 @@ function tbl(rows,showGL,p,labels,kind){
   let head;
   if(flopNoHist) head=`<th class="r">Vortag</th><th class="r">Ø/Tag Monat</th><th class="r">Monat</th><th class="r"></th>`;
   else head=`<th class="r">${labels[p][0]}</th><th class="r">${labels[p][1]}</th><th class="r">+/− Stk.</th><th class="r">+/− %</th>`;
-  return `<table><thead><tr><th></th><th>Händler${showGL?" / Betreuer":""}</th>${head}<th class="r">VT</th></tr></thead><tbody>`+rows.map((r,i)=>{
+  return `<table><thead><tr><th></th><th>Händler</th>${head}<th class="r">VT</th></tr></thead><tbody>`+rows.map((r,i)=>{
     let c1,c2,c3,c4;
     if(flopNoHist){ c1=`<b>0</b>`; c2=r.avg.toFixed(1).replace(".",","); c3=fmt(r.monat); c4=`<span class="pill neg">gestern 0</span>`; }
     else {
@@ -3483,8 +3483,8 @@ function renderGW(){
   const good=lj>=GW_ZIEL, col=good?"var(--pos)":"var(--neg)";
   const d=(lj-vj)*100;
   $("gwBody").innerHTML=`
-    <div class="big" style="display:flex;align-items:baseline;gap:10px;margin:2px 0 8px">
-      <span class="pct" style="font-size:30px;font-weight:900;color:${col}">${(lj*100).toFixed(1).replace(".",",")} %</span>
+    <div class="big" style="display:flex;align-items:baseline;gap:10px;margin:2px 0 8px;flex-wrap:wrap">
+      <span class="pct" style="font-size:30px;font-weight:900;color:${col};white-space:nowrap">${(lj*100).toFixed(1).replace(".",",")} %</span>
       <span class="stk" style="color:var(--muted);font-weight:600">Ziel: ${(GW_ZIEL*100).toFixed(0)} %${lblExtra}</span>
     </div>
     <div class="bar" style="height:14px"><div class="fill" style="width:${Math.min(lj*100,100)}%;background:${col}"></div>
