@@ -53,7 +53,6 @@ header img.logo{height:52px;width:auto}
 .title-block .sub{font-size:12.5px;color:var(--muted);margin-top:2px}
 .controls{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
 .controls-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.controls-row2{gap:8px}
 select#mitarbeiter{
   appearance:none;-webkit-appearance:none;
   font:inherit;font-weight:700;font-size:15px;color:#fff;
@@ -358,7 +357,7 @@ td .betr{font-size:11px;color:var(--muted)}
   header img.logo{height:30px}
   .title-block h1{font-size:15px}
   .title-block .sub{font-size:9.5px}
-  #roleBadge,#welcomeMsg{display:none !important}
+  #welcomeMsg{display:none !important}
   header,.kpi,.goal,.panel{box-shadow:none;border:1px solid var(--line)}
   h2.sec{margin:6px 2px 3px;font-size:11.5px;break-after:avoid}
   h2.sec .arr{display:none}
@@ -411,7 +410,7 @@ body.pdf-mode header{padding:7px 12px;gap:10px}
 body.pdf-mode header img.logo{height:30px}
 body.pdf-mode .title-block h1{font-size:15px}
 body.pdf-mode .title-block .sub{font-size:9.5px}
-body.pdf-mode #roleBadge,body.pdf-mode #welcomeMsg{display:none !important}
+body.pdf-mode #welcomeMsg{display:none !important}
 body.pdf-mode header,body.pdf-mode .kpi,body.pdf-mode .goal,body.pdf-mode .panel{box-shadow:none;border:1px solid var(--line)}
 body.pdf-mode h2.sec{margin:6px 2px 3px;font-size:11.5px}
 body.pdf-mode h2.sec .arr{display:none}
@@ -478,19 +477,16 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
      <div class="controls-row">
       <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" class="hidden" multiple>
       <select id="mitarbeiter" title="Mitarbeiter wählen"></select>
-      <button class="btn btn-ghost" id="refreshBtn" title="Aktuellen Datenstand neu laden" style="padding:11px 13px">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
-      </button>
-      <button class="btn btn-ghost hidden" id="logoutBtn" title="Abmelden">Abmelden</button>
       <button class="btn btn-ghost" id="pdfBtn" title="Als PDF drucken / speichern">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
         PDF
       </button>
-     </div>
-     <div class="controls-row controls-row2">
-      <span class="hidden" id="roleBadge" style="background:var(--wg-navy);color:#fff;font-weight:800;font-size:10px;border-radius:99px;padding:4px 10px;white-space:nowrap"></span>
+      <button class="btn btn-ghost" id="refreshBtn" title="Aktuellen Datenstand neu laden" style="padding:11px 13px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+      </button>
       <button class="btn btn-ghost hidden" id="settingsBtn" title="Einstellungen">⚙ Einstellungen</button>
       <button class="btn btn-ghost hidden" id="adminBtn" title="Admin-Panel">⚙ Admin</button>
+      <button class="btn btn-ghost hidden" id="logoutBtn" title="Abmelden" style="margin-left:18px">Abmelden</button>
      </div>
     </div>
     <div class="datenstand" id="datenstand"></div>
@@ -1076,14 +1072,14 @@ async function saveUserSettings(){
   if(error) throw error;
 }
 function showRoleBadge(){
-  const b=$("roleBadge");
-  if(myRole && ROLE_LABEL[myRole]){ b.textContent=ROLE_LABEL[myRole]; b.classList.remove("hidden"); }
-  else b.classList.add("hidden");
   $("adminBtn").classList.toggle("hidden", myRole!=="admin");
   $("settingsBtn").classList.toggle("hidden", !supaUser);
   const w=$("welcomeMsg");
-  if(myName){ w.textContent="Herzlich Willkommen, "+myName; w.classList.remove("hidden"); }
-  else w.classList.add("hidden");
+  if(myName){
+    const roleTxt=(myRole&&ROLE_LABEL[myRole])?" · "+ROLE_LABEL[myRole]:"";
+    w.textContent="Herzlich Willkommen, "+myName+roleTxt;
+    w.classList.remove("hidden");
+  }else w.classList.add("hidden");
 }
 
 /* ---------- Persistenz (Supabase, window.storage/Memory als Fallback) ---------- */
