@@ -348,8 +348,23 @@ function updateTerminAddress(d){
   box.style.display = 'flex';
 }
 
+/* Der Kurzlink /<slug> wird von Vercel serverseitig auf
+   /register.html?event=<slug> umgeschrieben (siehe vercel.json) - das ist
+   eine Rewrite, KEINE Weiterleitung, d.h. im Browser selbst bleibt die
+   Adresszeile bei /<slug> und location.search enthält dieses ?event=
+   NICHT (das sieht nur der Server). Der Slug muss daher aus dem Pfad
+   gelesen werden; ?event=... bleibt als Fallback für direkte Aufrufe von
+   register.html erhalten. */
+function getEventSlugFromUrl(){
+  const fromQuery = new URLSearchParams(location.search).get('event');
+  if (fromQuery) return fromQuery;
+  const path = location.pathname.replace(/^\/+|\/+$/g, '');
+  if (path && path !== 'register.html' && path !== 'index.html') return path;
+  return null;
+}
+
 async function loadEvent(){
-  const eventSlug = new URLSearchParams(location.search).get('event');
+  const eventSlug = getEventSlugFromUrl();
   if (!eventSlug) { showError(); return; }
   const {data: ev, error: evErr} = await sb
     .from('events').select('*').eq('slug', eventSlug).eq('is_active', true).maybeSingle();
