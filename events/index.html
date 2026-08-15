@@ -553,6 +553,7 @@ function renderEventsList(){
       <td class="muted">${new Date(ev.created_at).toLocaleDateString('de-AT')}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-primary btn-sm ev-open">Öffnen</button>
+        <button class="btn btn-ghost btn-sm ev-view" style="color:var(--wg-blue);background:#E0F4FC">Veranstaltungsseite öffnen</button>
         <button class="btn btn-ghost btn-sm ev-qr" style="color:var(--wg-blue);background:#E0F4FC">QR-Code</button>
         <button class="btn btn-danger btn-sm ev-del" title="Veranstaltung löschen" aria-label="Veranstaltung löschen" style="padding:6px 10px;font-size:16px;line-height:1">🗑️</button>
       </td>
@@ -574,6 +575,13 @@ function renderEventsList(){
       const tr = btn.closest("tr");
       const ev = allEvents.find(e=>e.id===tr.dataset.id);
       if (ev) selectEvent(ev);
+    });
+  });
+  $("eventsBody").querySelectorAll(".ev-view").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const tr = btn.closest("tr");
+      const ev = allEvents.find(e=>e.id===tr.dataset.id);
+      if (ev) window.open(registrationUrlForEvent(ev.slug), "_blank");
     });
   });
   $("eventsBody").querySelectorAll(".ev-qr").forEach(btn=>{
