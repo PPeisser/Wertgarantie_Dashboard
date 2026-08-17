@@ -695,8 +695,9 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <div class="ac-grid">
         <div><span class="ac-lbl">Adresse</span><div class="ac-val" id="fhAddrView">–</div></div>
         <div><span class="ac-lbl">Telefon</span><div class="ac-val" id="fhTelefonView">–</div></div>
-        <div><span class="ac-lbl">E-Mail</span><div class="ac-val" id="fhEmailView">–</div></div>
+        <div><span class="ac-lbl">E-Mail Geschäft</span><div class="ac-val" id="fhEmailView">–</div></div>
         <div><span class="ac-lbl">Ansprechpartner</span><div class="ac-val" id="fhAnsprechpartnerView">–</div></div>
+        <div><span class="ac-lbl">E-Mail Ansprechpartner</span><div class="ac-val" id="fhEmailApView">–</div></div>
         <div><span class="ac-lbl">Homepage</span><div class="ac-val" id="fhHomepageView">–</div></div>
         <div><span class="ac-lbl">Händlersegmentierung</span><div class="ac-val" id="fhSegmentView">–</div></div>
         <div><span class="ac-lbl">Letzter Besuch</span><div class="ac-val" id="fhBesuchView">–</div></div>
@@ -712,8 +713,9 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div><label class="ac-lbl" for="fhPlzEdit">PLZ</label><input id="fhPlzEdit" autocomplete="off"></div>
         <div><label class="ac-lbl" for="fhOrtEdit">Ort</label><input id="fhOrtEdit" autocomplete="off"></div>
         <div><label class="ac-lbl" for="fhTelefonEdit">Telefon</label><input id="fhTelefonEdit" autocomplete="off"></div>
-        <div><label class="ac-lbl" for="fhEmailEdit">E-Mail</label><input id="fhEmailEdit" type="email" autocomplete="off"></div>
+        <div><label class="ac-lbl" for="fhEmailEdit">E-Mail Geschäft</label><input id="fhEmailEdit" type="email" autocomplete="off"></div>
         <div><label class="ac-lbl" for="fhAnsprechpartnerEdit">Ansprechpartner</label><input id="fhAnsprechpartnerEdit" autocomplete="off"></div>
+        <div><label class="ac-lbl" for="fhEmailApEdit">E-Mail Ansprechpartner</label><input id="fhEmailApEdit" type="email" autocomplete="off"></div>
         <div><label class="ac-lbl" for="fhHomepageEdit">Homepage</label><input id="fhHomepageEdit" autocomplete="off" placeholder="https://…"></div>
         <div><label class="ac-lbl" for="fhSegmentEdit">Händlersegmentierung</label>
           <select id="fhSegmentEdit"><option value="">–</option><option value="A+">A+</option><option value="A">A</option><option value="B">B</option><option value="C">C</option></select>
@@ -912,6 +914,14 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <label style="display:flex;align-items:flex-start;gap:8px;font-weight:700;font-size:13.5px;margin:14px 0 4px;cursor:pointer">
       <input type="radio" name="pdfSendTarget" id="pdfSendOwnRadio" checked style="width:auto;margin-top:3px;flex-shrink:0">
       <span>An meine E-Mail-Adresse (<span id="pdfSendOwnEmail" style="white-space:nowrap">–</span>)</span>
+    </label>
+    <label id="pdfSendGeschaeftRow" class="hidden" style="display:flex;align-items:flex-start;gap:8px;font-weight:700;font-size:13.5px;margin:10px 0 4px;cursor:pointer">
+      <input type="radio" name="pdfSendTarget" id="pdfSendGeschaeftRadio" style="width:auto;margin-top:3px;flex-shrink:0">
+      <span>E-Mail Geschäft (<span id="pdfSendGeschaeftEmail" style="white-space:nowrap">–</span>)</span>
+    </label>
+    <label id="pdfSendApRow" class="hidden" style="display:flex;align-items:flex-start;gap:8px;font-weight:700;font-size:13.5px;margin:10px 0 4px;cursor:pointer">
+      <input type="radio" name="pdfSendTarget" id="pdfSendApRadio" style="width:auto;margin-top:3px;flex-shrink:0">
+      <span>E-Mail Ansprechpartner (<span id="pdfSendApEmail" style="white-space:nowrap">–</span>)</span>
     </label>
     <label style="display:flex;align-items:flex-start;gap:8px;font-weight:700;font-size:13.5px;margin:10px 0 4px;cursor:pointer">
       <input type="radio" name="pdfSendTarget" id="pdfSendCustomRadio" style="width:auto;margin-top:3px;flex-shrink:0">
@@ -1308,9 +1318,19 @@ async function sendPdfByMail({to,subject,html,pdfDataUri,filename}){
    dann statt Download/neuem Tab den Mailversand auslöst. */
 let pdfSendTarget=null;
 let pendingPdfAction=null;
-function openPdfTargetChoice(fn){
+// Nur beim FH-PDF gesetzt (siehe fhPdfSendExtra) - blendet im Versenden-
+// Dialog zwei zusätzliche Ziel-Optionen ein (E-Mail Geschäft/Ansprechpartner
+// aus den Stammdaten dieses Händlers), sonst bleiben nur "eigene"/"andere"
+// E-Mail-Adresse wie bisher.
+let pdfSendExtra=null;
+function openPdfTargetChoice(fn,extra){
   pendingPdfAction=fn;
+  pdfSendExtra=extra||null;
   $("pdfTargetModal").classList.remove("hidden");
+}
+function fhPdfSendExtra(){
+  const c=fhContactCurrent||{};
+  return { geschaeft:c.email||null, ansprechpartner:c.ansprechpartner_email||null, ansprechpartnerName:c.ansprechpartner||null };
 }
 // Event-Bindings für die Modals siehe unten bei den übrigen $("...").onclick-
 // Zuweisungen ("---------- Events ----------") - $ ist an dieser Stelle im
@@ -3050,7 +3070,7 @@ function fhHasRecentAkqBeginn(fhNr){
   return (s.akq||[]).some(a=>a.nr===fhNr&&a.beginn&&a.beginn>=grenze);
 }
 async function loadFhContact(fhNr){
-  fhContactCurrent={fh_nr:fhNr,strasse:null,plz:null,ort:null,telefon:null,email:null,ansprechpartner:null,homepage:null,segmentierung:null,letzter_besuch:null,sonstige_infos:null,neunwochen_erledigt:false};
+  fhContactCurrent={fh_nr:fhNr,strasse:null,plz:null,ort:null,telefon:null,email:null,ansprechpartner:null,ansprechpartner_email:null,homepage:null,segmentierung:null,letzter_besuch:null,sonstige_infos:null,neunwochen_erledigt:false};
   try{
     const {data,error}=await sb.from("fh_contacts").select("*").eq("fh_nr",fhNr).maybeSingle();
     if(!error&&data) fhContactCurrent=data;
@@ -3072,6 +3092,7 @@ function renderFhContactView(){
   $("fhTelefonView").textContent=c.telefon||"–";
   $("fhEmailView").textContent=c.email||"–";
   $("fhAnsprechpartnerView").textContent=c.ansprechpartner||"–";
+  $("fhEmailApView").textContent=c.ansprechpartner_email||"–";
   $("fhHomepageView").innerHTML=c.homepage?`<a href="${escapeHtml(urlHref(c.homepage))}" target="_blank" rel="noopener">${escapeHtml(c.homepage)}</a>`:"–";
   $("fhSegmentView").textContent=c.segmentierung?(FH_SEGMENT_LBL[c.segmentierung]||c.segmentierung):"–";
   $("fhBesuchView").textContent=c.letzter_besuch?fmtDate(c.letzter_besuch):"–";
@@ -3200,6 +3221,7 @@ function toggleFhEdit(on){
     $("fhTelefonEdit").value=c.telefon||"";
     $("fhEmailEdit").value=c.email||"";
     $("fhAnsprechpartnerEdit").value=c.ansprechpartner||"";
+    $("fhEmailApEdit").value=c.ansprechpartner_email||"";
     $("fhHomepageEdit").value=c.homepage||"";
     $("fhSegmentEdit").value=c.segmentierung||"";
     $("fhBesuchEdit").value=c.letzter_besuch||"";
@@ -3215,6 +3237,7 @@ async function saveFhContact(){
   const telefon=$("fhTelefonEdit").value.trim()||null;
   const email=$("fhEmailEdit").value.trim()||null;
   const ansprechpartner=$("fhAnsprechpartnerEdit").value.trim()||null;
+  const ansprechpartner_email=$("fhEmailApEdit").value.trim()||null;
   const homepage=$("fhHomepageEdit").value.trim()||null;
   const segSel=$("fhSegmentEdit").value;
   const segmentierung=segSel===""?null:segSel;
@@ -3223,7 +3246,7 @@ async function saveFhContact(){
   const sonstige_infos=$("fhInfosEdit").value.trim()||null;
   $("fhSaveBtn").disabled=true;
   const {error}=await sb.from("fh_contacts").upsert({
-    fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,homepage,segmentierung,letzter_besuch,neunwochen_erledigt,sonstige_infos,
+    fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,letzter_besuch,neunwochen_erledigt,sonstige_infos,
     updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()
   },{onConflict:"fh_nr"});
   $("fhSaveBtn").disabled=false;
@@ -3295,8 +3318,9 @@ async function exportFhPdf(includeAkp){
       <div class="pdf-block" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px;margin-bottom:18px">
         ${field("Adresse",escapeHtml(addr))}
         ${field("Telefon",escapeHtml(c.telefon||"–"))}
-        ${field("E-Mail",escapeHtml(c.email||"–"))}
+        ${field("E-Mail Geschäft",escapeHtml(c.email||"–"))}
         ${field("Ansprechpartner",escapeHtml(c.ansprechpartner||"–"))}
+        ${field("E-Mail Ansprechpartner",escapeHtml(c.ansprechpartner_email||"–"))}
         ${field("Homepage",escapeHtml(c.homepage||"–"))}
         ${field("Händlersegmentierung",c.segmentierung?escapeHtml(FH_SEGMENT_LBL[c.segmentierung]||c.segmentierung):"–")}
         ${field("Letzter Besuch",c.letzter_besuch?fmtDate(c.letzter_besuch):"–")}
@@ -3876,16 +3900,25 @@ $("pdfTargetSend").onclick=()=>{
   $("pdfSendOwnRadio").checked=true;
   $("pdfSendCustomEmail").value="";
   $("pdfSendHint").textContent="";
+  const hasGeschaeft=!!(pdfSendExtra&&pdfSendExtra.geschaeft);
+  const hasAp=!!(pdfSendExtra&&pdfSendExtra.ansprechpartner);
+  $("pdfSendGeschaeftRow").classList.toggle("hidden",!hasGeschaeft);
+  $("pdfSendGeschaeftEmail").textContent=hasGeschaeft?pdfSendExtra.geschaeft:"–";
+  $("pdfSendApRow").classList.toggle("hidden",!hasAp);
+  $("pdfSendApEmail").textContent=hasAp?(pdfSendExtra.ansprechpartner+(pdfSendExtra.ansprechpartnerName?" · "+pdfSendExtra.ansprechpartnerName:"")):"–";
   $("pdfSendModal").classList.remove("hidden");
 };
 $("pdfSendCancel").onclick=()=>{ $("pdfSendModal").classList.add("hidden"); pendingPdfAction=null; };
 $("pdfSendCustomEmail").addEventListener("focus",()=>{ $("pdfSendCustomRadio").checked=true; });
 $("pdfSendCustomEmail").addEventListener("input",()=>{ $("pdfSendCustomRadio").checked=true; });
 $("pdfSendConfirm").onclick=()=>{
-  const useOwn=$("pdfSendOwnRadio").checked;
-  const to=(useOwn?(supaUser&&supaUser.email):$("pdfSendCustomEmail").value.trim())||"";
+  let to="",isOwn=false;
+  if($("pdfSendOwnRadio").checked){ to=(supaUser&&supaUser.email)||""; isOwn=true; }
+  else if($("pdfSendGeschaeftRadio").checked){ to=(pdfSendExtra&&pdfSendExtra.geschaeft)||""; }
+  else if($("pdfSendApRadio").checked){ to=(pdfSendExtra&&pdfSendExtra.ansprechpartner)||""; }
+  else { to=$("pdfSendCustomEmail").value.trim(); }
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)){ $("pdfSendHint").textContent="Bitte eine gültige E-Mail-Adresse angeben."; return; }
-  pdfSendTarget={ to, isOwn:useOwn };
+  pdfSendTarget={ to, isOwn };
   $("pdfSendModal").classList.add("hidden");
   const fn=pendingPdfAction; pendingPdfAction=null;
   if(fn) fn(); else pdfSendTarget=null;
@@ -4000,8 +4033,8 @@ $("fhCancelBtn").onclick=()=>toggleFhEdit(false);
 $("fhSaveBtn").onclick=saveFhContact;
 $("fhPdfBtn").onclick=()=>$("fhPdfChoiceModal").classList.remove("hidden");
 $("fhPdfChoiceCancel").onclick=()=>$("fhPdfChoiceModal").classList.add("hidden");
-$("fhPdfWithAkp").onclick=()=>{ $("fhPdfChoiceModal").classList.add("hidden"); openPdfTargetChoice(()=>exportFhPdf(true)); };
-$("fhPdfWithoutAkp").onclick=()=>{ $("fhPdfChoiceModal").classList.add("hidden"); openPdfTargetChoice(()=>exportFhPdf(false)); };
+$("fhPdfWithAkp").onclick=()=>{ $("fhPdfChoiceModal").classList.add("hidden"); openPdfTargetChoice(()=>exportFhPdf(true),fhPdfSendExtra()); };
+$("fhPdfWithoutAkp").onclick=()=>{ $("fhPdfChoiceModal").classList.add("hidden"); openPdfTargetChoice(()=>exportFhPdf(false),fhPdfSendExtra()); };
 document.querySelectorAll("#akpNBtns button").forEach(b=>{
   b.onclick=()=>{ akpN=+b.dataset.n; openAkpModal(); };
 });

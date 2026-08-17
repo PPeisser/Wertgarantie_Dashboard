@@ -210,8 +210,9 @@ create table if not exists public.fh_contacts (
   plz              text,
   ort              text,
   telefon          text,
-  email            text,
+  email            text, -- "E-Mail Geschäft"
   ansprechpartner  text,
+  ansprechpartner_email text, -- getrennt von der geschäftlichen E-Mail-Adresse
   homepage         text,
   -- Feste Segmentierung A+/A/B/C (Händlerpotenzial).
   segmentierung    text check (segmentierung is null or segmentierung in ('A+','A','B','C')),
