@@ -727,7 +727,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div><label class="ac-lbl" for="fhEmailApEdit">E-Mail Ansprechpartner</label><input id="fhEmailApEdit" type="email" autocomplete="off"></div>
         <div><label class="ac-lbl" for="fhHomepageEdit">Homepage</label><input id="fhHomepageEdit" autocomplete="off" placeholder="https://…"></div>
         <div><label class="ac-lbl" for="fhSegmentEdit">Händlersegmentierung</label>
-          <select id="fhSegmentEdit"><option value="">–</option><option value="A+">A+</option><option value="A">A</option><option value="B">B</option><option value="C">C</option></select>
+          <select id="fhSegmentEdit"><option value="">–</option><option value="A+">A+</option><option value="A">A</option><option value="B">B</option><option value="C+">C+</option><option value="C">C</option><option value="D">D</option></select>
         </div>
         <div><label class="ac-lbl" for="fhBesuchEdit">Letzter Besuch</label><input id="fhBesuchEdit" type="date"></div>
         <div><span class="ac-lbl">9-Wochen-Plan</span>
@@ -1052,6 +1052,9 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <input type="file" id="akqFileInput" accept=".xlsx,.xls" class="hidden">
     <button class="btn btn-blue" id="adminAkqUploadBtn" style="margin-left:8px">📊 Akquisestaffeln einspielen</button>
     <div class="hint">Ersetzt den kompletten Akquisestaffel-Stand (Punkte &amp; erreichte Stufen je Fachhändler) mit dem Inhalt der eingespielten Datei.</div>
+    <input type="file" id="fhSegmentFileInput" accept=".xlsx,.xls" class="hidden">
+    <button class="btn btn-blue" id="adminFhSegmentUploadBtn" style="margin-left:8px">🗂️ Händlersegmentierung einspielen</button>
+    <div class="hint">Ersetzt die Segmentierungs-Kategorie (A+/A/B/C+/C/D) je Fachhändler mit dem Inhalt der eingespielten Datei. Kann auch per Mail an input@wgaustria.at eingespielt werden.</div>
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -2126,6 +2129,73 @@ function parseAkquiseStaffeln(wb){
   return out.length?out:null;
 }
 
+// Liest die "Händlersegmentierung ..."-Datei (Blatt "FH Daten", Spalten "FH
+// Nr" und "Kat. Seg. <Jahr>") und liefert je Fachhändler dessen aktuelle
+// Segmentierungs-Kategorie (A+/A/B/C+/C/D). Es gibt mehrere "Kat. Seg.
+// <Jahr>"-Spalten (aktuelles Jahr + Vorjahre, für die Zu-/Abwanderungs-
+// Auswertung in der Datei) - maßgeblich ist die mit dem höchsten Jahr, nicht
+// eine feste Spaltenposition. "Null" (Nullproduzent laut Datei) wird als
+// fehlende Segmentierung übernommen (Anzeige "–"), nicht als Kategorie "Null".
+function parseFhSegmentierung(wb){
+  let ws=null;
+  for(const n of wb.SheetNames){ if(/^fh\s*daten$/i.test(n.trim())){ ws=wb.Sheets[n]; break; } }
+  if(!ws) return null;
+  const rows=toRows(ws);
+  if(!rows.length) return null;
+  let hi=-1,header=null;
+  for(let i=0;i<Math.min(rows.length,10);i++){
+    const r=rows[i]; if(!r) continue;
+    if(r.some(v=>normHeader(v)==="FH Nr")){ hi=i; header=r.map(normHeader); break; }
+  }
+  if(hi<0) return null;
+  const idxFh=header.findIndex(h=>h==="FH Nr");
+  let idxSeg=-1,segYear=-1;
+  header.forEach((h,j)=>{ const m=/^Kat\.\s*Seg\.\s*(\d{4})$/i.exec(h); if(m&&+m[1]>segYear){ segYear=+m[1]; idxSeg=j; } });
+  if(idxFh<0||idxSeg<0) return null;
+  const VALID=new Set(["A+","A","B","C+","C","D"]);
+  const out=[];
+  for(let i=hi+1;i<rows.length;i++){
+    const r=rows[i]; if(!r||r[idxFh]==null||r[idxFh]==="") continue;
+    const fhNr=String(r[idxFh]).trim(); if(!fhNr) continue;
+    const seg=String(r[idxSeg]??"").trim();
+    out.push({ fh_nr:fhNr, segmentierung:VALID.has(seg)?seg:null });
+  }
+  return out.length?out:null;
+}
+// Schreibt eine Liste {fh_nr,segmentierung} per Upsert in fh_contacts
+// (gemeinsam von Admin-Upload und automatischem Mail-Import genutzt).
+async function upsertFhSegmentierung(rows){
+  const CHUNK=500;
+  for(let i=0;i<rows.length;i+=CHUNK){
+    const chunk=rows.slice(i,i+CHUNK).map(r=>({
+      fh_nr:r.fh_nr, segmentierung:r.segmentierung,
+      updated_by:supaUser.id, updated_at:new Date().toISOString()
+    }));
+    const { error }=await sb.from("fh_contacts").upsert(chunk,{onConflict:"fh_nr"});
+    if(error) throw error;
+  }
+}
+// Händlersegmentierung-Import (Admin-Panel): ersetzt die Segmentierungs-
+// Kategorie je Fachhändler komplett mit dem Inhalt der eingespielten Datei
+// (siehe parseFhSegmentierung) - analog zu handleAkqStaffelFile.
+async function handleFhSegmentFile(files){
+  if(!files||!files.length) return;
+  if(!(sb&&supaUser)){ toast("Nicht angemeldet."); return; }
+  toast("Händlersegmentierung wird verarbeitet …");
+  try{
+    const buf=await files[0].arrayBuffer();
+    const wb=XLSX.read(buf,{type:"array",cellDates:true});
+    const rows=parseFhSegmentierung(wb);
+    if(!rows){ toast('Format nicht erkannt – bitte die Händlersegmentierungs-Datei mit dem Blatt "FH Daten" einspielen.'); return; }
+    await upsertFhSegmentierung(rows);
+    if(fhModalCurrent){ await loadFhContact(fhModalCurrent); renderFhContactView(); }
+    toast(`Händlersegmentierung eingespielt ✓ ${fmt(rows.length)} Fachhändler aktualisiert`);
+  }catch(e){
+    console.error("handleFhSegmentFile failed:",e);
+    toast("Händlersegmentierung-Import fehlgeschlagen: "+(e.message||e));
+  }
+}
+
 function mergeSnapshot(snap){
   // Tageshistorie fortschreiben (Prod. Vortag → unter Vortagsdatum ablegen)
   for(const [k,g] of Object.entries(snap.gl)){
@@ -2181,7 +2251,7 @@ async function processPendingImports(){
     const { data:rows, error } = await sb.from("pending_imports")
       .select("*").eq("status","pending").order("received_at",{ascending:true});
     if(error||!rows||!rows.length) return;
-    let okCount=0;
+    let snapCount=0,segCount=0,segFhCount=0;
     for(const row of rows){
       // Optimistisches "Claimen" (bedingtes Update) - verhindert, dass zwei
       // gleichzeitig geöffnete Tabs dieselbe Mail doppelt verarbeiten.
@@ -2194,18 +2264,30 @@ async function processPendingImports(){
         const buf=await blob.arrayBuffer();
         const wb=XLSX.read(buf,{type:"array",cellDates:true});
         const snap=parseAuswertung(wb);
-        if(!snap) throw new Error("Format nicht erkannt");
-        mergeSnapshot(snap); syncAkpContacts(snap); syncFhContacts(snap);
-        okCount++;
+        if(snap){
+          mergeSnapshot(snap); syncAkpContacts(snap); syncFhContacts(snap);
+          snapCount++;
+        }else{
+          // Kein Auswertung_TAG-Format - könnte die "Händlersegmentierung
+          // ..."-Datei sein (auch per Mail an input@wgaustria.at zulässig).
+          const segRows=parseFhSegmentierung(wb);
+          if(!segRows) throw new Error("Format nicht erkannt");
+          await upsertFhSegmentierung(segRows);
+          segCount++; segFhCount+=segRows.length;
+        }
         await sb.from("pending_imports").update({status:"processed",processed_at:new Date().toISOString()}).eq("id",row.id);
       }catch(e){
         await sb.from("pending_imports").update({status:"failed",error:String((e&&e.message)||e),processed_at:new Date().toISOString()}).eq("id",row.id);
       }
     }
-    if(okCount){
+    if(snapCount){
       await saveData();
       const s=state.latest;
-      toast(`📧 ${okCount} Mail-Import${okCount===1?"":"e"} automatisch eingespielt ✓ Stand ${fmtDate(s.vortag)}`);
+      toast(`📧 ${snapCount} Mail-Import${snapCount===1?"":"e"} automatisch eingespielt ✓ Stand ${fmtDate(s.vortag)}`);
+    }
+    if(segCount){
+      if(fhModalCurrent){ await loadFhContact(fhModalCurrent); renderFhContactView(); }
+      toast(`📧 Händlersegmentierung automatisch eingespielt ✓ ${fmt(segFhCount)} Fachhändler aktualisiert`);
     }
   }catch(e){ console.error("processPendingImports failed:",e); }
 }
@@ -3145,7 +3227,7 @@ async function openFhModal(fhNr){
 
 /* ---------- Fachhändler-Stammdaten (Adresse, Kontakt, Ansprechpartner, Segmentierung, Besuch, Notizen) ---------- */
 let fhContactCurrent=null;
-const FH_SEGMENT_LBL={"A+":"A+",A:"A",B:"B",C:"C"};
+const FH_SEGMENT_LBL={"A+":"A+",A:"A",B:"B","C+":"C+",C:"C",D:"D"};
 function urlHref(u){ return /^https?:\/\//i.test(u)?u:"https://"+u; }
 // Hat dieser Händler einen AKQ-Eintrag mit Beginn der Zusammenarbeit
 // innerhalb der letzten 9 Wochen (63 Tage)? Nur dann gilt er als "neu" und
@@ -4270,6 +4352,8 @@ $("adminClose").onclick=()=>$("adminModal").classList.add("hidden");
 $("adminUploadBtn").onclick=pickFiles;
 $("adminAkqUploadBtn").onclick=()=>$("akqFileInput").click();
 $("akqFileInput").onchange=async e=>{ if(e.target.files.length){ await handleAkqStaffelFile([...e.target.files]); e.target.value=""; } };
+$("adminFhSegmentUploadBtn").onclick=()=>$("fhSegmentFileInput").click();
+$("fhSegmentFileInput").onchange=async e=>{ if(e.target.files.length){ await handleFhSegmentFile([...e.target.files]); e.target.value=""; } };
 $("adCreateBtn").onclick=createAdminUser;
 $("settingsBtn").onclick=showSettingsModal;
 $("settingsClose").onclick=hideSettingsModal;
