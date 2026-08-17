@@ -2541,7 +2541,7 @@ function yearFrac(){
   const total=workdaysBetween(new Date(Date.UTC(y,0,1)),new Date(Date.UTC(y,11,31)));
   return {done,total,f:done/total};
 }
-function goalCard(name,target,ist,soll,extra,editable,hr,lbls){
+function goalCard(name,target,ist,soll,extra,editable,hr,lbls,hr2){
   lbls=lbls||{}; lbls.ahead=lbls.ahead||"▲ vor Soll"; lbls.behind=lbls.behind||"▼ hinter Soll"; lbls.target=lbls.target||"Ziel";
   const pct=target>0?ist/target*100:0;
   const diff=Math.round(ist-soll), dp=soll>0?(ist-soll)/soll*100:0;
@@ -2561,6 +2561,10 @@ function goalCard(name,target,ist,soll,extra,editable,hr,lbls){
     </div>`;
     smallLine=`<div class="hr"><span class="hr-ic">📌</span> Ist-Stand: <b>${target>0?pct.toFixed(1).replace(".",",")+" %":"–"}</b>
       <span class="stk">${fmt(ist)} / ${target>0?fmt(target):"?"} Stk.</span><span class="hr-stand">Stand: ${hr.stand}</span></div>`;
+    // Zusätzliche, rein informative Zeile: die separate Monats-Hochrechnung
+    // lt. Auswertung (EWR) - keine eigene Jahresrechnung, da EWR in der
+    // Auswertung nur als Monatswert (Österreich gesamt) vorliegt.
+    if(hr2&&hr2.val>0) smallLine+=`<div class="hr"><span class="hr-ic">📈</span> Hochrechnung Monat lt. Auswertung (EWR): <b>${fmt(hr2.val)}</b> Stk.</div>`;
   } else {
     bigBlock=`<div class="big">
       <span class="pct" style="color:${col}">${target>0?pct.toFixed(1).replace(".",",")+" %":"–"}</span>
@@ -2614,9 +2618,9 @@ function renderGoals(){
   const persJZ=PERS_JAHRESZIELE[currentEmp]||0;
   const cards=[
     goalCard("🇦🇹 Jahresziel "+s.jahr, ZIEL_AT, at.jahr, ZIEL_AT*share, `Soll & Hochrechnung saisonal (${Math.round(Q4_ANTEIL*100)} % in Q4)`, false,
-      {val:hrJahr,lbl:"Jahresende (saisonal)",stand:standJ}),
+      {val:hrJahr,lbl:"Jahresende (saisonal)",stand:standJ}, null, {val:s.ewrMonat}),
     goalCard("🏢 PLAN Jahr "+s.jahr, ZIEL_FIRMA, at.jahr, ZIEL_FIRMA*share, `Soll & Hochrechnung saisonal (${Math.round(Q4_ANTEIL*100)} % in Q4)`, false,
-      {val:hrJahr,lbl:"Jahresende (saisonal)",stand:standJ}),
+      {val:hrJahr,lbl:"Jahresende (saisonal)",stand:standJ}, null, {val:s.ewrMonat}),
     card3,
     goalCard("🎯 Persönliches Monatsziel · "+MONATE[s.monat-1]+"<br><span style='font-weight:600;font-size:11px;color:var(--muted)'>"+currentEmp+(isATv?" · fest hinterlegt":"")+"</span>",
       g, me.monat, g*mfrac,
