@@ -3356,6 +3356,14 @@ function renderFhMonthly(){
 // verifiziert, u.a. FH 2259462: Staffel 6 (250 Pkt.) im Juli 2026 mit
 // Jahrespunkten=251 gerade erreicht, Staffel 7 (300 Pkt.) mit 251 noch
 // offen - 49 fehlend, nicht 300-250-251=-1.
+// "punkte" wird HIER schon gerundet (nicht erst beim Anzeigen über fmt()) -
+// die Akquisestaffel-Datei liefert teils nicht-ganzzahlige Punkte (z.B. 1,5).
+// Würde man threshold-punkte mit dem rohen Wert bilden und erst missing beim
+// Rendern separat runden, rundet Math.round() Anzeige-Punkte und Restbetrag
+// bei einer .5-Kommastelle JEWEILS nach oben auf - die beiden gerundeten
+// Zahlen ergeben dann in Summe einen Punkt mehr als den Schwellenwert (z.B.
+// 2 Punkte + "noch 19" bei Staffel 20, statt 2 + 18). Durch das Runden von
+// punkte an dieser einen Stelle bleiben Anzeige und Restbetrag konsistent.
 function akqNextStaffelInfo(rec){
   const staffeln=(rec&&rec.staffeln)||[];
   let lastIdx=-1;
@@ -3363,7 +3371,7 @@ function akqNextStaffelInfo(rec){
   if(lastIdx>=AKQ_STAFFEL_THRESHOLDS.length-1) return null; // alle 7 Stufen erreicht
   const nextIdx=lastIdx+1;
   const threshold=AKQ_STAFFEL_THRESHOLDS[nextIdx];
-  const punkte=(rec&&rec.punkte!=null)?rec.punkte:0;
+  const punkte=(rec&&rec.punkte!=null)?Math.round(rec.punkte):0;
   return { nextIdx, threshold, missing:Math.max(0,threshold-punkte) };
 }
 // Die Akquisestaffeln-Datei wird immer erst im Folgemonat für den
