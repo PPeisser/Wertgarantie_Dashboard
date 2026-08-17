@@ -1048,13 +1048,13 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     </div>
 
     <h4 style="margin:16px 0 8px;color:var(--wg-navy);font-size:14px">Daten</h4>
-    <button class="btn btn-blue" id="adminUploadBtn">📤 Excel einspielen</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-blue" id="adminUploadBtn">📤 Excel einspielen</button>
+      <button class="btn btn-blue" id="adminAkqUploadBtn">📊 Akquisestaffeln einspielen</button>
+      <button class="btn btn-blue" id="adminFhSegmentUploadBtn">🗂️ Händlersegmentierung einspielen</button>
+    </div>
     <input type="file" id="akqFileInput" accept=".xlsx,.xls" class="hidden">
-    <button class="btn btn-blue" id="adminAkqUploadBtn" style="margin-left:8px">📊 Akquisestaffeln einspielen</button>
-    <div class="hint">Ersetzt den kompletten Akquisestaffel-Stand (Punkte &amp; erreichte Stufen je Fachhändler) mit dem Inhalt der eingespielten Datei.</div>
     <input type="file" id="fhSegmentFileInput" accept=".xlsx,.xls" class="hidden">
-    <button class="btn btn-blue" id="adminFhSegmentUploadBtn" style="margin-left:8px">🗂️ Händlersegmentierung einspielen</button>
-    <div class="hint">Ersetzt die Segmentierungs-Kategorie (A+/A/B/C+/C/D) je Fachhändler mit dem Inhalt der eingespielten Datei. Kann auch per Mail an input@wgaustria.at eingespielt werden.</div>
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">

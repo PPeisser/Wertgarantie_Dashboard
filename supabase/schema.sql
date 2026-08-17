@@ -214,8 +214,8 @@ create table if not exists public.fh_contacts (
   ansprechpartner  text,
   ansprechpartner_email text, -- getrennt von der geschäftlichen E-Mail-Adresse
   homepage         text,
-  -- Feste Segmentierung A+/A/B/C (Händlerpotenzial).
-  segmentierung    text check (segmentierung is null or segmentierung in ('A+','A','B','C')),
+  -- Feste Segmentierung A+/A/B/C+/C/D (Händlerpotenzial).
+  segmentierung    text check (segmentierung is null or segmentierung in ('A+','A','B','C+','C','D')),
   letzter_besuch   date,
   sonstige_infos   text,
   -- Monatsproduktion je Fachhändler (analog zu akp_contacts.prod_monthly),
@@ -258,7 +258,7 @@ alter table public.fh_contacts add column if not exists akq_name text;
 
 alter table public.fh_contacts drop constraint if exists fh_contacts_segmentierung_check;
 alter table public.fh_contacts add constraint fh_contacts_segmentierung_check
-  check (segmentierung is null or segmentierung in ('A+','A','B','C'));
+  check (segmentierung is null or segmentierung in ('A+','A','B','C+','C','D'));
 
 alter table public.fh_contacts enable row level security;
 
