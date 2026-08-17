@@ -696,6 +696,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <button class="btn btn-ghost" id="fhClose" style="padding:7px 12px">✕ Schließen</button>
     </div>
     <div id="fhMeta" style="font-size:12.5px;color:var(--muted);margin-bottom:14px"></div>
+    <div id="fhStammdatenDiff" class="hidden"></div>
 
     <div id="fhViewMode">
       <div class="ac-grid">
@@ -3108,6 +3109,8 @@ async function openFhModal(fhNr){
   $("fhTopFlopBtn").dataset.fhNr=fhNr;
   toggleFhEdit(false);
   fhContactCurrent=null;
+  $("fhStammdatenDiff").classList.add("hidden");
+  $("fhStammdatenDiff").innerHTML="";
   ["fhAddrView","fhTelefonView","fhEmailView","fhAnsprechpartnerView","fhHomepageView","fhSegmentView","fhBesuchView","fhInfosView"]
     .forEach(id=>$(id).textContent="lädt …");
   $("fhMonthly").innerHTML="";
@@ -3131,7 +3134,7 @@ async function openFhModal(fhNr){
   }
   $("fhModal").classList.remove("hidden");
   await loadFhContact(fhNr);
-  if(fhModalCurrent===fhNr){ renderFhContactView(); renderFhMonthly(); renderFhYearlyTrend(); }
+  if(fhModalCurrent===fhNr){ renderFhContactView(); renderFhMonthly(); renderFhYearlyTrend(); renderFhStammdatenDiff(); }
 }
 
 /* ---------- Fachhändler-Stammdaten (Adresse, Kontakt, Ansprechpartner, Segmentierung, Besuch, Notizen) ---------- */
@@ -3175,6 +3178,42 @@ function renderFhContactView(){
   $("fhBesuchView").textContent=c.letzter_besuch?fmtDate(c.letzter_besuch):"–";
   $("fhNwView").textContent=c.neunwochen_erledigt?"✓ erledigt":"– offen";
   $("fhInfosView").textContent=c.sonstige_infos||"–";
+}
+// Stammdaten-Änderungsworkflow: PLZ/Ort sind die einzigen Stammdaten-Felder,
+// die auch aus der täglichen Einspielung (FH_Liste) kommen - weicht der
+// eingespielte Wert vom gespeicherten Stammdatensatz ab, NIE automatisch
+// übernehmen (das würde manuell erfasste Daten überschreiben), sondern nur
+// im PopUp anzeigen und per Klick auf "Übernehmen" bestätigen lassen.
+function fhStammdatenDiff(fhNr){
+  const f=state.latest&&state.latest.fh&&state.latest.fh[fhNr];
+  const c=fhContactCurrent;
+  if(!f||!c) return null;
+  const diffs=[];
+  if(f.plz&&f.plz!==(c.plz||"")) diffs.push({field:"plz",label:"PLZ",alt:c.plz||"–",neu:f.plz});
+  if(f.ort&&f.ort!==(c.ort||"")) diffs.push({field:"ort",label:"Ort",alt:c.ort||"–",neu:f.ort});
+  return diffs.length?diffs:null;
+}
+function renderFhStammdatenDiff(){
+  const box=$("fhStammdatenDiff"); if(!box) return;
+  const diffs=fhStammdatenDiff(fhModalCurrent);
+  if(!diffs){ box.classList.add("hidden"); box.innerHTML=""; return; }
+  box.classList.remove("hidden");
+  box.innerHTML=`<div style="background:#FFF7E6;border:1px solid #F0C36D;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12.5px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span>ℹ️ <b>Datenänderung aus der aktuellen Einspielung verfügbar:</b> ${diffs.map(d=>`${d.label} <s style="color:var(--muted)">${escapeHtml(d.alt)}</s> → <b>${escapeHtml(d.neu)}</b>`).join(" · ")}</span>
+    <button type="button" class="btn btn-blue no-print" id="fhStammdatenDiffApply" style="padding:5px 12px;font-size:11.5px;white-space:nowrap">Übernehmen</button>
+  </div>`;
+}
+async function applyFhStammdatenDiff(){
+  const fhNr=fhModalCurrent;
+  const diffs=fhStammdatenDiff(fhNr); if(!diffs) return;
+  const patch={fh_nr:fhNr};
+  diffs.forEach(d=>patch[d.field]=d.neu);
+  const {error}=await sb.from("fh_contacts").upsert(patch,{onConflict:"fh_nr"});
+  if(error){ toast("Fehler beim Übernehmen: "+error.message); return; }
+  Object.assign(fhContactCurrent,patch);
+  toast("Übernommen ✓");
+  renderFhContactView();
+  renderFhStammdatenDiff();
 }
 // Monatsproduktion je Fachhändler: bevorzugt aus fh_contacts.prod_monthly
 // (künftiger Bulk-Import, echte Monatssummen), ergänzt um Monate, die dort
@@ -3328,9 +3367,10 @@ async function saveFhContact(){
   },{onConflict:"fh_nr"});
   $("fhSaveBtn").disabled=false;
   if(error){ $("fhSaveHint").textContent="Fehler: "+error.message; return; }
-  fhContactCurrent={...fhContactCurrent,fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,homepage,segmentierung,letzter_besuch,neunwochen_erledigt,sonstige_infos};
+  fhContactCurrent={...fhContactCurrent,fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,letzter_besuch,neunwochen_erledigt,sonstige_infos};
   if(neunwochen_erledigt) fhErledigtSet.add(fhNr); else fhErledigtSet.delete(fhNr);
   renderFhContactView();
+  renderFhStammdatenDiff();
   toggleFhEdit(false);
   toast("Händlerdaten gespeichert ✓");
 }
@@ -3825,6 +3865,7 @@ document.addEventListener("click",e=>{
   const fhBtn=e.target.closest(".fh-name-link");
   if(fhBtn){ openFhModal(fhBtn.dataset.fhNr); return; }
   if(e.target.closest("#akqStaffelnDetailBtn")){ openAkqStaffelnModal(); return; }
+  if(e.target.closest("#fhStammdatenDiffApply")){ applyFhStammdatenDiff(); return; }
   const obsFilterBtn=e.target.closest("#obsFilters button");
   if(obsFilterBtn){
     // Exklusiv: immer nur ein Filter aktiv - erneutes Klicken des aktiven
