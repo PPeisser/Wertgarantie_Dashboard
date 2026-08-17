@@ -160,16 +160,18 @@ h2.sec small{font-weight:600;text-transform:none;color:var(--muted);letter-spaci
 .akq-bar{
   background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
   padding:12px 18px;margin-top:10px;
-  display:flex;align-items:center;gap:16px;flex-wrap:wrap;
 }
-.akq-bar-label{font-size:12.5px;font-weight:800;color:var(--wg-navy);flex:1;min-width:220px}
-.akq-bar-sub{font-weight:600;font-size:11px;color:var(--muted)}
+.akq-bar-top{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.akq-bar-title{background:none;border:none;padding:0;margin:0;font:inherit;font-size:12.5px;font-weight:800;color:var(--wg-navy);cursor:pointer;text-align:left;text-decoration:underline;text-decoration-color:transparent;transition:text-decoration-color .15s}
+.akq-bar-title:hover{text-decoration-color:currentColor}
+.akq-bar-label{font-size:12.5px;font-weight:800;color:var(--wg-navy)}
+.akq-bar-sub{display:block;font-weight:600;font-size:11px;color:var(--muted);margin-top:2px}
 .akq-bar-num{font-size:18px;font-weight:900;white-space:nowrap}
 .akq-bar-of{font-size:13px;font-weight:700;color:var(--muted)}
 .akq-bar-pct{font-size:14px;font-weight:800;margin-left:8px}
-.akq-bar-track{height:9px;background:#E4EDF3;border-radius:99px;overflow:hidden;flex:1;min-width:120px}
+.akq-bar-track{height:9px;background:#E4EDF3;border-radius:99px;overflow:hidden;width:100%;margin-top:10px}
 .akq-bar-fill{height:100%;border-radius:99px;transition:width .6s ease}
-@media (max-width:1150px){.akq-bar{padding:10px 14px}.akq-bar-track{min-width:80px}}
+@media (max-width:1150px){.akq-bar{padding:10px 14px}}
 
 .akq-fh-block{margin-top:4px}
 .akq-fh-punkte{font-size:12.5px;color:var(--muted);font-weight:600;margin-bottom:10px}
@@ -2668,11 +2670,13 @@ function renderAkqStaffelBar(){
   // zeigt er in diesem Fall stattdessen einen vollen grünen Balken.
   const width=pct!=null?Math.min(pct,100):(reached>0?100:0);
   box.innerHTML=`<div class="akq-bar">
-    <div class="akq-bar-label">🏅 Akquisestaffeln ${s.jahr}<br><span class="akq-bar-sub">${escapeHtml(currentEmp)} · erreichte Staffeln (alle Stufen) in diesem Jahr · davon <b>${fmt(erststaffeln)}</b> Erststaffeln · Stand: ${escapeHtml(akqStaffelnStandLabel())}</span></div>
-    <div class="akq-bar-num"><b>${fmt(reached)}</b><span class="akq-bar-of"> / ${ziel>0?fmt(ziel):"–"}</span>
-      ${pct!=null?`<span class="akq-bar-pct" style="color:${good?"var(--pos)":"var(--neg)"}">${pct.toFixed(0)} %</span>`:""}</div>
+    <div class="akq-bar-top">
+      <button type="button" class="akq-bar-title" id="akqStaffelnDetailBtn" title="Gesamtliste öffnen">🏅 Akquisestaffeln ${s.jahr}</button>
+      <div class="akq-bar-num"><b>${fmt(reached)}</b><span class="akq-bar-of"> / ${ziel>0?fmt(ziel):"–"}</span>
+        ${pct!=null?`<span class="akq-bar-pct" style="color:${good?"var(--pos)":"var(--neg)"}">${pct.toFixed(0)} %</span>`:""}</div>
+    </div>
+    <span class="akq-bar-sub">${escapeHtml(currentEmp)} · erreichte Staffeln (alle Stufen) in diesem Jahr · davon <b>${fmt(erststaffeln)}</b> Erststaffeln · Stand: ${escapeHtml(akqStaffelnStandLabel())}</span>
     <div class="akq-bar-track"><div class="akq-bar-fill" style="width:${width}%;background:${good?"var(--pos)":"var(--neg)"}"></div></div>
-    <button type="button" class="btn btn-ghost no-print" id="akqStaffelnDetailBtn" style="padding:6px 12px;font-size:11px;border-radius:9px;white-space:nowrap">Gesamtliste ⤢</button>
   </div>`;
 }
 // Gesamtauflistung hinter der Akquisestaffeln-Kachel (PopUp + PDF) - dieselbe
