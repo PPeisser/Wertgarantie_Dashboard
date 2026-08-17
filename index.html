@@ -526,8 +526,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <h2 class="sec"><svg class="arr" viewBox="0 0 60 30"><path d="M4 22 C 20 10, 35 8, 48 12" fill="none" stroke="#009FE3" stroke-width="6" stroke-linecap="round"/><path d="M39 4 L 56 13 L 37 20 Z" fill="#009FE3"/></svg> Meine Produktion <small id="secKpiWho"></small></h2>
     <div class="kpis" id="kpiCards"></div>
 
-    <h2 class="sec" style="justify-content:space-between">
-      <span style="display:flex;align-items:center;gap:10px"><svg class="arr" viewBox="0 0 60 30"><path d="M4 22 C 20 10, 35 8, 48 12" fill="none" stroke="#009FE3" stroke-width="6" stroke-linecap="round"/><path d="M39 4 L 56 13 L 37 20 Z" fill="#009FE3"/></svg> Händler Top &amp; Flop 10</span>
+    <h2 class="sec" style="justify-content:space-between;flex-wrap:wrap;row-gap:8px">
+      <span style="display:flex;align-items:center;gap:10px"><svg class="arr" viewBox="0 0 60 30"><path d="M4 22 C 20 10, 35 8, 48 12" fill="none" stroke="#009FE3" stroke-width="6" stroke-linecap="round"/><path d="M39 4 L 56 13 L 37 20 Z" fill="#009FE3"/></svg> Händler Top &amp; Flop 10
+        <button type="button" class="btn btn-ghost no-print" id="fhTopFlopMoreBtn" style="padding:5px 10px;font-size:11px;border-radius:9px" title="Top/Flop 10, 20 oder 30 Händler anzeigen">Top/Flop 10–30 ⤢</button>
+      </span>
       <span class="tabs no-print" id="periodTabs">
         <button data-p="tag" class="on">Tag</button>
         <button data-p="woche">Woche</button>
@@ -753,6 +755,51 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     </div>
     <h4 style="margin:0 0 8px;color:var(--wg-navy);font-size:13px">Ansprechpartner (AKP)</h4>
     <div id="fhBody" style="overflow-x:auto"></div>
+  </div>
+</div>
+
+<!-- Händler Top/Flop 10·20·30 PopUp -->
+<div class="modal-bg hidden" id="fhTopFlopModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
+      <h3 id="ftfTitle" style="margin:0">Top &amp; Flop Händler</h3>
+      <button class="btn btn-ghost" id="ftfClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:10px;flex-wrap:wrap">
+      <span style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:var(--muted);font-weight:700">Zeitraum:</span>
+        <span class="tabs mini no-print" id="ftfPeriodTabs">
+          <button data-p="tag">Tag</button>
+          <button data-p="woche">Woche</button>
+          <button data-p="monat">Monat</button>
+          <button data-p="jahr">Jahr</button>
+        </span>
+      </span>
+      <span style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:var(--muted);font-weight:700">Anzahl:</span>
+        <span class="tabs mini" id="ftfNBtns">
+          <button data-n="10" class="on">10</button>
+          <button data-n="20">20</button>
+          <button data-n="30">30</button>
+        </span>
+      </span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px">
+      <b class="pos-t" id="ftfTopLbl">TOP</b>
+      <span class="tabs mini no-print" id="ftfTopSortTabs">
+        <button data-sort="absolut">Absolut</button>
+        <button data-sort="steigerung">Steigerung</button>
+      </span>
+    </div>
+    <div id="ftfTopTable" style="overflow-x:auto"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:14px 0 4px">
+      <b class="neg-t" id="ftfFlopLbl">FLOP</b>
+      <span class="tabs mini no-print" id="ftfFlopSortTabs">
+        <button data-sort="absolut">Absolut</button>
+        <button data-sort="steigerung">Steigerung</button>
+      </span>
+    </div>
+    <div id="ftfFlopTable" style="overflow-x:auto"></div>
   </div>
 </div>
 
@@ -2576,26 +2623,14 @@ function renderAkqStaffelBar(){
 // "Steigerung" reiht stattdessen nach Prozent (TOP: größte %-Steigerung,
 // FLOP: größter %-Rückgang).
 let topSortMode="absolut", flopSortMode="absolut";
-function renderTopFlop(){
+// Von renderTopFlop() (fixe TOP/FLOP 10 im Dashboard) UND vom Popup
+// fhTopFlopModal (variable Anzahl 10/20/30) gemeinsam genutzt, damit keine
+// zweite Berechnungslogik gepflegt werden muss.
+function fhTopFlopRows(p){
   const s=state.latest;
-  const showGL=currentEmp===AT_GESAMT;
-  const p=currentPeriod;
-  const labels={tag:["Vortag "+fmtDate(s.vortag),"Tag davor"],woche:["Woche","Vorwoche"],monat:[MONATE[s.monat-1],"Ø-Monat (LJ)"],jahr:["Jahr "+s.jahr,"Vorjahr"]};
-  // Kurze Varianten nur für die Tabellen-Spaltenköpfe (schmal, damit die
-  // Händlername-Spalte ihre volle Breite behält) - die Unterzeile über der
-  // Tabelle (topRange/printPeriod) zeigt weiterhin den vollen Zeitraum.
-  const headLabels={tag:["Prod.","Vortag"],woche:["Woche","Vorwoche"],monat:[MONATE[s.monat-1],"Ø-Monat"],jahr:["Jahr","Vorjahr"]};
   const monateBisher=(s.monat-1)+((s.tageIst&&s.tageSoll)?s.tageIst/s.tageSoll:1);
-  $("topRange").textContent=" · "+labels[p][0];
-  $("printPeriod").textContent="Zeitraum Händler-Auswertung: "+labels[p][0];
-
-  if(p==="woche"&&historyDays().length<2){
-    const hint=`<div class="empty-note">Die Wochenansicht baut sich aus den täglichen Einspielungen auf – ab der 2. Einspielung siehst du hier die Wochensummen je Händler (aktuelle Woche vs. Vorwoche).</div>`;
-    $("topTable").innerHTML=hint; $("flopTable").innerHTML=hint; return;
-  }
-
-  const rows=fhFor(currentEmp).map(f=>{
-    let cur,prev,diff,pct,extra=null;
+  return fhFor(currentEmp).map(f=>{
+    let cur,prev;
     if(p==="tag"){
       cur=f.vt;
       const pv=prevStored(state.dailyFH[f.nr]||{}, s.vortag);
@@ -2607,22 +2642,53 @@ function renderTopFlop(){
     } else if(p==="monat"){
       cur=f.monat; prev=monateBisher>0?Math.round(f.lj/monateBisher*10)/10:null; // eigener Ø-Monat
     } else { cur=f.lj; prev=f.vj; }
-    diff=prev==null?null:cur-prev;
-    pct=prev==null?null:pctOf(cur,prev);
-    return {...f,cur,prev,diff,pct,extra};
+    const diff=prev==null?null:cur-prev;
+    const pct=prev==null?null:pctOf(cur,prev);
+    return {...f,cur,prev,diff,pct};
   }).filter(r=>r.cur>0||(r.prev||0)>0||r.vt>0);
+}
+// TOP: "Absolut" reiht nach Produktion (Standard, unabhängig von Zugewinnen/
+// Verlusten ggü. VJ/Vorwoche), "Steigerung" nach größter %-Steigerung. FLOP
+// analog mit absolutem bzw. prozentualem Rückgang. Gibt bei FLOP ohne jede
+// Historie (Tag, 1. Einspielung) null zurück - der Aufrufer zeigt dann den
+// "gestern 0 trotz Monatsschnitt"-Fallback.
+function fhTopFlopSorted(rows,n,sortMode,kind){
+  if(kind==="top"){
+    return sortMode==="steigerung"
+      ? [...rows].filter(r=>r.pct!=null&&r.pct>0).sort((a,b)=>b.pct-a.pct).slice(0,n)
+      : [...rows].sort((a,b)=>b.cur-a.cur).slice(0,n);
+  }
+  if(!rows.some(r=>r.diff!=null)) return null;
+  return sortMode==="steigerung"
+    ? [...rows].filter(r=>r.pct!=null&&r.pct<0).sort((a,b)=>a.pct-b.pct).slice(0,n)
+    : [...rows].filter(r=>r.diff!=null&&r.diff<0).sort((a,b)=>a.diff-b.diff).slice(0,n);
+}
+function fhTopFlopHeadLabels(s){
+  return {tag:["Prod.","Vortag"],woche:["Woche","Vorwoche"],monat:[MONATE[s.monat-1],"Ø-Monat"],jahr:["Jahr","Vorjahr"]};
+}
+function renderTopFlop(){
+  const s=state.latest;
+  const showGL=currentEmp===AT_GESAMT;
+  const p=currentPeriod;
+  const labels={tag:["Vortag "+fmtDate(s.vortag),"Tag davor"],woche:["Woche","Vorwoche"],monat:[MONATE[s.monat-1],"Ø-Monat (LJ)"],jahr:["Jahr "+s.jahr,"Vorjahr"]};
+  // Kurze Varianten nur für die Tabellen-Spaltenköpfe (schmal, damit die
+  // Händlername-Spalte ihre volle Breite behält) - die Unterzeile über der
+  // Tabelle (topRange/printPeriod) zeigt weiterhin den vollen Zeitraum.
+  const headLabels=fhTopFlopHeadLabels(s);
+  $("topRange").textContent=" · "+labels[p][0];
+  $("printPeriod").textContent="Zeitraum Händler-Auswertung: "+labels[p][0];
 
-  // TOP: "Absolut" reiht nach Produktion (Standard, unabhängig von Zugewinnen/
-  // Verlusten ggü. VJ/Vorwoche), "Steigerung" nach größter %-Steigerung.
-  const top=topSortMode==="steigerung"
-    ? [...rows].filter(r=>r.pct!=null&&r.pct>0).sort((a,b)=>b.pct-a.pct).slice(0,10)
-    : [...rows].sort((a,b)=>b.cur-a.cur).slice(0,10);
-  let flop;
-  if(rows.some(r=>r.diff!=null)){
-    flop=flopSortMode==="steigerung"
-      ? [...rows].filter(r=>r.pct!=null&&r.pct<0).sort((a,b)=>a.pct-b.pct).slice(0,10)
-      : [...rows].filter(r=>r.diff!=null&&r.diff<0).sort((a,b)=>a.diff-b.diff).slice(0,10);
-  } else {
+  if(p==="woche"&&historyDays().length<2){
+    const hint=`<div class="empty-note">Die Wochenansicht baut sich aus den täglichen Einspielungen auf – ab der 2. Einspielung siehst du hier die Wochensummen je Händler (aktuelle Woche vs. Vorwoche).</div>`;
+    $("topTable").innerHTML=hint; $("flopTable").innerHTML=hint;
+    if(!$("fhTopFlopModal").classList.contains("hidden")) openFhTopFlopModal();
+    return;
+  }
+
+  const rows=fhTopFlopRows(p);
+  const top=fhTopFlopSorted(rows,10,topSortMode,"top");
+  let flop=fhTopFlopSorted(rows,10,flopSortMode,"flop");
+  if(flop===null){
     // Tag ohne Historie: gestern 0 trotz hohem Monatsschnitt (aus der vollen Händlerliste)
     flop=fhFor(currentEmp).filter(f=>f.vt===0&&f.monat>0&&s.tageIst)
       .map(f=>({...f,cur:0,avg:f.monat/s.tageIst}))
@@ -2630,6 +2696,41 @@ function renderTopFlop(){
   }
   $("topTable").innerHTML=tbl(top,showGL,p,headLabels,"top");
   $("flopTable").innerHTML=flop.length?tbl(flop,showGL,p,headLabels,"flop"):`<div class="empty-note">Kein Händler mit Rückgang – stark! 💪</div>`;
+  if(!$("fhTopFlopModal").classList.contains("hidden")) openFhTopFlopModal();
+}
+// PopUp: Top/Flop 10·20·30 Händler (analog zum AKP-PopUp) - eigener
+// Zeitraum (ftfPeriod) und eigene Anzahl (ftfN), Sortierung teilt sich
+// topSortMode/flopSortMode mit den Dashboard-Panels (eine Quelle der
+// Wahrheit statt doppeltem Zustand).
+let ftfPeriod="tag", ftfN=10;
+function openFhTopFlopModal(){
+  const s=state.latest; if(!s) return;
+  const showGL=currentEmp===AT_GESAMT;
+  document.querySelectorAll("#ftfPeriodTabs button").forEach(b=>b.classList.toggle("on",b.dataset.p===ftfPeriod));
+  document.querySelectorAll("#ftfNBtns button").forEach(b=>b.classList.toggle("on",+b.dataset.n===ftfN));
+  document.querySelectorAll("#ftfTopSortTabs button").forEach(b=>b.classList.toggle("on",b.dataset.sort===topSortMode));
+  document.querySelectorAll("#ftfFlopSortTabs button").forEach(b=>b.classList.toggle("on",b.dataset.sort===flopSortMode));
+  $("ftfTitle").textContent=`Top & Flop ${ftfN} Händler · ${currentEmp}`;
+  if(ftfPeriod==="woche"&&historyDays().length<2){
+    const hint=`<div class="empty-note">Die Wochenansicht baut sich aus den täglichen Einspielungen auf – ab der 2. Einspielung siehst du hier die Wochensummen je Händler (aktuelle Woche vs. Vorwoche).</div>`;
+    $("ftfTopTable").innerHTML=hint; $("ftfFlopTable").innerHTML=hint;
+    $("fhTopFlopModal").classList.remove("hidden");
+    return;
+  }
+  const headLabels=fhTopFlopHeadLabels(s);
+  const rows=fhTopFlopRows(ftfPeriod);
+  const top=fhTopFlopSorted(rows,ftfN,topSortMode,"top");
+  let flop=fhTopFlopSorted(rows,ftfN,flopSortMode,"flop");
+  if(flop===null){
+    flop=fhFor(currentEmp).filter(f=>f.vt===0&&f.monat>0&&s.tageIst)
+      .map(f=>({...f,cur:0,avg:f.monat/s.tageIst}))
+      .sort((a,b)=>b.avg-a.avg).slice(0,ftfN);
+  }
+  $("ftfTopLbl").textContent="TOP "+ftfN;
+  $("ftfFlopLbl").textContent="FLOP "+ftfN;
+  $("ftfTopTable").innerHTML=tbl(top,showGL,ftfPeriod,headLabels,"top");
+  $("ftfFlopTable").innerHTML=flop.length?tbl(flop,showGL,ftfPeriod,headLabels,"flop"):`<div class="empty-note">Kein Händler mit Rückgang – stark! 💪</div>`;
+  $("fhTopFlopModal").classList.remove("hidden");
 }
 function tbl(rows,showGL,p,labels,kind){
   if(!rows.length) return `<div class="empty-note">Keine Daten im Zeitraum.</div>`;
@@ -3852,6 +3953,20 @@ document.querySelectorAll("#topSortTabs button").forEach(b=>{
 });
 document.querySelectorAll("#flopSortTabs button").forEach(b=>{
   b.onclick=()=>{ document.querySelectorAll("#flopSortTabs button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); flopSortMode=b.dataset.sort; renderTopFlop(); };
+});
+$("fhTopFlopMoreBtn").onclick=()=>{ ftfPeriod=currentPeriod; openFhTopFlopModal(); };
+$("ftfClose").onclick=()=>$("fhTopFlopModal").classList.add("hidden");
+document.querySelectorAll("#ftfPeriodTabs button").forEach(b=>{
+  b.onclick=()=>{ ftfPeriod=b.dataset.p; openFhTopFlopModal(); };
+});
+document.querySelectorAll("#ftfNBtns button").forEach(b=>{
+  b.onclick=()=>{ ftfN=+b.dataset.n; openFhTopFlopModal(); };
+});
+document.querySelectorAll("#ftfTopSortTabs button").forEach(b=>{
+  b.onclick=()=>{ topSortMode=b.dataset.sort; document.querySelectorAll("#topSortTabs button").forEach(x=>x.classList.toggle("on",x.dataset.sort===topSortMode)); renderTopFlop(); };
+});
+document.querySelectorAll("#ftfFlopSortTabs button").forEach(b=>{
+  b.onclick=()=>{ flopSortMode=b.dataset.sort; document.querySelectorAll("#flopSortTabs button").forEach(x=>x.classList.toggle("on",x.dataset.sort===flopSortMode)); renderTopFlop(); };
 });
 document.querySelectorAll("#akpTabs button").forEach(b=>{
   b.onclick=()=>{ document.querySelectorAll("#akpTabs button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); akpPeriod=b.dataset.p; renderAKP(); };
