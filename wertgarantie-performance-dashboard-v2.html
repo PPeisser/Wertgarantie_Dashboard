@@ -538,11 +538,21 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div class="print-only" id="printPeriod"></div>
     <div class="duo">
       <div class="panel">
-        <h3><span class="dot" style="background:var(--pos)"></span>TOP 10 Händler <small id="topRange" style="color:var(--muted);font-weight:600"></small></h3>
+        <h3 style="justify-content:space-between;flex-wrap:wrap;row-gap:6px"><span style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--pos)"></span>TOP 10 Händler <small id="topRange" style="color:var(--muted);font-weight:600"></small></span>
+          <span class="tabs mini no-print" id="topSortTabs">
+            <button data-sort="absolut" class="on">Absolut</button>
+            <button data-sort="steigerung">Steigerung</button>
+          </span>
+        </h3>
         <div id="topTable" style="overflow-x:auto"></div>
       </div>
       <div class="panel">
-        <h3><span class="dot" style="background:var(--neg)"></span>FLOP 10 Händler <small style="color:var(--muted);font-weight:600">größter Rückgang</small></h3>
+        <h3 style="justify-content:space-between;flex-wrap:wrap;row-gap:6px"><span style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--neg)"></span>FLOP 10 Händler <small style="color:var(--muted);font-weight:600">größter Rückgang</small></span>
+          <span class="tabs mini no-print" id="flopSortTabs">
+            <button data-sort="absolut" class="on">Absolut</button>
+            <button data-sort="steigerung">Steigerung</button>
+          </span>
+        </h3>
         <div id="flopTable" style="overflow-x:auto"></div>
       </div>
     </div>
@@ -2561,6 +2571,11 @@ function renderAkqStaffelBar(){
 }
 
 /* Top/Flop Händler */
+// "Absolut" = bisheriges Verhalten (TOP nach Stückzahl, FLOP nach absolutem
+// Rückgang) - Standard, damit sich an der bestehenden Ansicht nichts ändert.
+// "Steigerung" reiht stattdessen nach Prozent (TOP: größte %-Steigerung,
+// FLOP: größter %-Rückgang).
+let topSortMode="absolut", flopSortMode="absolut";
 function renderTopFlop(){
   const s=state.latest;
   const showGL=currentEmp===AT_GESAMT;
@@ -2597,11 +2612,16 @@ function renderTopFlop(){
     return {...f,cur,prev,diff,pct,extra};
   }).filter(r=>r.cur>0||(r.prev||0)>0||r.vt>0);
 
-  // TOP reiht ausschließlich nach Produktion – unabhängig von Zugewinnen/Verlusten ggü. VJ/Vorwoche
-  const top=[...rows].sort((a,b)=>b.cur-a.cur).slice(0,10);
+  // TOP: "Absolut" reiht nach Produktion (Standard, unabhängig von Zugewinnen/
+  // Verlusten ggü. VJ/Vorwoche), "Steigerung" nach größter %-Steigerung.
+  const top=topSortMode==="steigerung"
+    ? [...rows].filter(r=>r.pct!=null&&r.pct>0).sort((a,b)=>b.pct-a.pct).slice(0,10)
+    : [...rows].sort((a,b)=>b.cur-a.cur).slice(0,10);
   let flop;
   if(rows.some(r=>r.diff!=null)){
-    flop=[...rows].filter(r=>r.diff!=null&&r.diff<0).sort((a,b)=>a.diff-b.diff).slice(0,10);
+    flop=flopSortMode==="steigerung"
+      ? [...rows].filter(r=>r.pct!=null&&r.pct<0).sort((a,b)=>a.pct-b.pct).slice(0,10)
+      : [...rows].filter(r=>r.diff!=null&&r.diff<0).sort((a,b)=>a.diff-b.diff).slice(0,10);
   } else {
     // Tag ohne Historie: gestern 0 trotz hohem Monatsschnitt (aus der vollen Händlerliste)
     flop=fhFor(currentEmp).filter(f=>f.vt===0&&f.monat>0&&s.tageIst)
@@ -3826,6 +3846,12 @@ $("mitarbeiter").onchange=e=>{ currentEmp=e.target.value; refreshData(true); };
 $("refreshBtn").onclick=()=>refreshData(false);
 document.querySelectorAll("#periodTabs button").forEach(b=>{
   b.onclick=()=>{ document.querySelectorAll("#periodTabs button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); currentPeriod=b.dataset.p; renderTopFlop(); };
+});
+document.querySelectorAll("#topSortTabs button").forEach(b=>{
+  b.onclick=()=>{ document.querySelectorAll("#topSortTabs button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); topSortMode=b.dataset.sort; renderTopFlop(); };
+});
+document.querySelectorAll("#flopSortTabs button").forEach(b=>{
+  b.onclick=()=>{ document.querySelectorAll("#flopSortTabs button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); flopSortMode=b.dataset.sort; renderTopFlop(); };
 });
 document.querySelectorAll("#akpTabs button").forEach(b=>{
   b.onclick=()=>{ document.querySelectorAll("#akpTabs button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); akpPeriod=b.dataset.p; renderAKP(); };
