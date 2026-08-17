@@ -225,6 +225,8 @@ td .betr{font-size:11px;color:var(--muted)}
 
 /* ---------- Beobachtung / AKP ---------- */
 .trio{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:14px}
+.quad{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+@media (max-width:1150px){.quad{grid-template-columns:repeat(2,1fr)}}
 .obs-item{
   display:flex;gap:10px;align-items:flex-start;
   padding:9px 10px;border-radius:12px;margin-bottom:7px;
@@ -508,7 +510,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div id="akqStaffelBar"></div>
 
     <h2 class="sec"><svg class="arr" viewBox="0 0 60 30"><path d="M4 22 C 20 10, 35 8, 48 12" fill="none" stroke="#009FE3" stroke-width="6" stroke-linecap="round"/><path d="M39 4 L 56 13 L 37 20 Z" fill="#009FE3"/></svg> Produktmix &amp; Sparten</h2>
-    <div class="trio">
+    <div class="quad">
       <div class="panel">
         <h3><span class="dot" style="background:var(--wg-navy)"></span>Komplettschutz vs. Geräteschutz <small style="color:var(--muted);font-weight:600">Österreich · ZE_Region</small></h3>
         <div id="mixBody"></div>
@@ -516,6 +518,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <div class="panel">
         <h3><span class="dot" style="background:var(--pos)"></span>Gebrauchtgeräte-Quote <small style="color:var(--muted);font-weight:600">Ziel 40 % · LJ vs. VJ</small></h3>
         <div id="gwBody"></div>
+      </div>
+      <div class="panel">
+        <h3><span class="dot" style="background:var(--amber)"></span>Premium Option Quote <small style="color:var(--muted);font-weight:600">laufendes Jahr</small></h3>
+        <div id="poBody"></div>
       </div>
       <div class="panel">
         <h3><span class="dot" style="background:var(--wg-blue)"></span>Sparten lfd. Monat <small style="color:var(--muted);font-weight:600">Optik · Akustik · Uhren · Küchen</small></h3>
@@ -866,6 +872,8 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div><span class="ac-lbl">Aktionsteilnahme</span><div class="ac-val" id="acAktView">–</div></div>
         <div><span class="ac-lbl">Profi-Training</span><div class="ac-val" id="acTrainView">–</div></div>
         <div><span class="ac-lbl">Letzte Produktion</span><div class="ac-val" id="acLastProdView">–</div></div>
+        <div><span class="ac-lbl">PO-Quote (LJ)</span><div class="ac-val" id="acPoQuoteView">–</div></div>
+        <div><span class="ac-lbl">3-für-2-Quote (LJ)</span><div class="ac-val" id="ac3f2QuoteView">–</div></div>
       </div>
       <button class="btn btn-blue" id="acEditBtn" style="margin-top:14px">✎ Kontaktdaten bearbeiten</button>
     </div>
@@ -1919,7 +1927,12 @@ function parseAuswertung(wb){
       const glRaw=String(r[5]||"").trim();
       snap.fh[nr]={ name:String(r[1]||"").trim(), plz:String(r[2]||""), ort:String(r[3]||"").trim(),
         gl:glRaw, emp:matchEmployee(glRaw),
-        vt:num(r[6]), monat:num(r[7]), lj:num(r[8]), vj:num(r[9]), plan:num(r[13]) };
+        vt:num(r[6]), monat:num(r[7]), lj:num(r[8]), vj:num(r[9]), plan:num(r[13]),
+        // Spalte L "Anteil PO in % LJ" / M "Anteil 3für2 in % LJ" - als Bruch
+        // wie bei GW-Quote (0,483 statt 48,3), keine GL-Pivot-Tabelle dafür
+        // vorhanden, deshalb hier je FH erfasst und in renderMix() nach
+        // Jahresproduktion gewichtet aggregiert (analog zur GW-Quote).
+        poQuote:num(r[11]), q3fuer2:num(r[12]) };
     }
     // Jahrespläne aus der FH-Liste je Betreuer aufsummieren
     snap.glPlan={}; snap.glPlan[AT_KEY]=0;
@@ -1938,7 +1951,9 @@ function parseAuswertung(wb){
       const r=ak[i]; if(!r||r[1]==null) continue;
       const glRaw=String(r[7]||"").trim();
       snap.akp.push({ nr:String(r[0]||""), name:String(r[1]).trim(), fhNr:String(r[2]||"").trim(), firma:String(r[3]||"").trim(), ort:String(r[5]||"").trim(),
-        glRaw, emp:matchEmployee(glRaw), vt:num(r[8]), monat:num(r[9]), lj:num(r[10]), vj:num(r[11]) });
+        glRaw, emp:matchEmployee(glRaw), vt:num(r[8]), monat:num(r[9]), lj:num(r[10]), vj:num(r[11]),
+        // Spalte N "Anteil PO in % LJ" / O "Anteil 3für2 in % LJ" (als Bruch).
+        poQuote:num(r[13]), q3fuer2:num(r[14]) });
     }
   }
 
@@ -2476,7 +2491,7 @@ function render(){
   const s=state.latest;
   $("datenstand").innerHTML=`Auswertung vom <b>${fmtDate(s.date)}</b> · Produktionsstand (Vortag): <b>${fmtDate(s.vortag)}</b> · Ansicht: <b>${currentEmp}</b>`;
   $("secKpiWho").textContent="– "+currentEmp;
-  renderGoals(); renderAkqStaffelBar(); renderMix(); renderGW(); renderSparten();
+  renderGoals(); renderAkqStaffelBar(); renderMix(); renderGW(); renderPO(); renderSparten();
   renderKPIs(); renderTopFlop(); renderObs(); renderAKP(); renderAKQ();
   renderAkqOhneProd(); renderNeunWochen();
   if($("akpSearchInput")) renderAkpSearch();
@@ -3477,6 +3492,11 @@ function renderAkpContactView(){
   $("acTrainView").textContent=c.profi_training?(TRAIN_LBL[c.profi_training]||c.profi_training):"Keines";
   const lastDay=akpLastProdDay(c.nr);
   $("acLastProdView").textContent=lastDay?fmtDate(lastDay):"Noch keine Tagesdaten erfasst";
+  // PO-/3-für-2-Quote kommen aus der heutigen Einspielung (state.latest.akp),
+  // nicht aus den persistierten Stammdaten - analog zu "Letzte Produktion".
+  const snapAkp=(state.latest&&state.latest.akp||[]).find(a=>a.nr===c.nr);
+  $("acPoQuoteView").textContent=(snapAkp&&snapAkp.poQuote!=null)?(snapAkp.poQuote*100).toFixed(1).replace(".",",")+" %":"–";
+  $("ac3f2QuoteView").textContent=(snapAkp&&snapAkp.q3fuer2!=null)?(snapAkp.q3fuer2*100).toFixed(1).replace(".",",")+" %":"–";
 }
 function renderAkpMonthly(){
   const c=akpContactCurrent;
@@ -3897,6 +3917,25 @@ function renderGW(){
       <span class="pill ${good?"pos":"neg"}">${good?"▲ Ziel erreicht":"▼ unter Ziel"}: ${((lj-GW_ZIEL)>=0?"+":"")+((lj-GW_ZIEL)*100).toFixed(1).replace(".",",")} %-Pkt.</span>
       <span style="color:var(--muted);font-size:12px">Vorjahr: ${(vj*100).toFixed(1).replace(".",",")} % → <b class="${d>=0?"pos-t":"neg-t"}">${(d>=0?"+":"")+d.toFixed(1).replace(".",",")} %-Pkt.</b></span>
     </div>`;
+}
+
+/* Premium Option Quote (PO-Quote): keine GL-Pivot-Tabelle wie bei GW-Quote/
+   3für2 vorhanden ("Anteil PO in % LJ" steht nur je Fachhändler in
+   FH_Liste, ohne VJ-Vergleichsspalte) - deshalb direkt aus den FH-Werten
+   nach Jahresproduktion gewichtet aggregiert (dieselbe Methode wie bei der
+   GW-Quote, siehe renderGW). */
+function renderPO(){
+  const rows=fhFor(currentEmp).filter(f=>f.poQuote!=null&&f.lj>0);
+  if(!rows.length){ $("poBody").innerHTML=`<div class="empty-note">PO-Quote in dieser Einspielung nicht enthalten – bitte Auswertung mit dieser Version neu einspielen.</div>`; return; }
+  let wSum=0,ljSum=0;
+  for(const f of rows){ ljSum+=f.poQuote*f.lj; wSum+=f.lj; }
+  const po=wSum>0?ljSum/wSum:0;
+  $("poBody").innerHTML=`
+    <div class="big" style="display:flex;align-items:baseline;gap:10px;margin:2px 0 4px;flex-wrap:wrap">
+      <span class="pct" style="font-size:30px;font-weight:900;color:var(--pos);white-space:nowrap">${(po*100).toFixed(1).replace(".",",")} %</span>
+    </div>
+    <div style="color:var(--muted);font-size:10.5px;font-weight:400;margin:0 0 8px">gewichtet nach Jahresproduktion aller ${fmt(rows.length)} Händler</div>
+    <div class="bar" style="height:14px"><div class="fill" style="width:${Math.min(po*100,100)}%;background:var(--pos)"></div></div>`;
 }
 
 /* Sparten lfd. Monat: Optik (Brille), Akustik (Hörgeräte), Uhren, Küchen */
