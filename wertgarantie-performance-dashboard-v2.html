@@ -743,7 +743,8 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <div class="error" id="fhSaveHint"></div>
     </div>
 
-    <h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:13px">Produktion nach Monaten</h4>
+    <h4 style="margin:18px 0 4px;color:var(--wg-navy);font-size:13px">Produktion nach Monaten</h4>
+    <div id="fhQuotesInfo" style="font-size:12px;color:var(--muted);font-weight:600;margin-bottom:8px"></div>
     <div id="fhMonthly"></div>
     <div id="fhYearlyTrend"></div>
     <div id="fhAkqStaffelBlock"></div>
@@ -3178,6 +3179,11 @@ function renderFhContactView(){
   $("fhBesuchView").textContent=c.letzter_besuch?fmtDate(c.letzter_besuch):"–";
   $("fhNwView").textContent=c.neunwochen_erledigt?"✓ erledigt":"– offen";
   $("fhInfosView").textContent=c.sonstige_infos||"–";
+  // PO-/3-für-2-Quote kommen aus der heutigen Einspielung (FH_Liste), nicht
+  // aus den Stammdaten - deshalb unten bei der Produktion, nicht editierbar.
+  const poTxt=(f&&f.poQuote!=null)?(f.poQuote*100).toFixed(1).replace(".",",")+" %":"–";
+  const f2Txt=(f&&f.q3fuer2!=null)?(f.q3fuer2*100).toFixed(1).replace(".",",")+" %":"–";
+  $("fhQuotesInfo").textContent=`PO-Quote (LJ): ${poTxt} · 3-für-2-Quote (LJ): ${f2Txt}`;
 }
 // Stammdaten-Änderungsworkflow: PLZ/Ort sind die einzigen Stammdaten-Felder,
 // die auch aus der täglichen Einspielung (FH_Liste) kommen - weicht der
