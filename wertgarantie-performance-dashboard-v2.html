@@ -872,8 +872,6 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div><span class="ac-lbl">Aktionsteilnahme</span><div class="ac-val" id="acAktView">–</div></div>
         <div><span class="ac-lbl">Profi-Training</span><div class="ac-val" id="acTrainView">–</div></div>
         <div><span class="ac-lbl">Letzte Produktion</span><div class="ac-val" id="acLastProdView">–</div></div>
-        <div><span class="ac-lbl">PO-Quote (LJ)</span><div class="ac-val" id="acPoQuoteView">–</div></div>
-        <div><span class="ac-lbl">3-für-2-Quote (LJ)</span><div class="ac-val" id="ac3f2QuoteView">–</div></div>
       </div>
       <button class="btn btn-blue" id="acEditBtn" style="margin-top:14px">✎ Kontaktdaten bearbeiten</button>
     </div>
@@ -897,7 +895,8 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <div class="error" id="acSaveHint"></div>
     </div>
 
-    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:13px">Monatsproduktion</h4>
+    <h4 style="margin:20px 0 4px;color:var(--wg-navy);font-size:13px">Monatsproduktion</h4>
+    <div id="acQuotesInfo" style="font-size:12px;color:var(--muted);font-weight:600;margin-bottom:8px"></div>
     <div id="acMonthly"></div>
     <div id="acYearlyTrend"></div>
 
@@ -3493,10 +3492,13 @@ function renderAkpContactView(){
   const lastDay=akpLastProdDay(c.nr);
   $("acLastProdView").textContent=lastDay?fmtDate(lastDay):"Noch keine Tagesdaten erfasst";
   // PO-/3-für-2-Quote kommen aus der heutigen Einspielung (state.latest.akp),
-  // nicht aus den persistierten Stammdaten - analog zu "Letzte Produktion".
+  // nicht aus den persistierten Stammdaten - deshalb bewusst unten bei der
+  // Produktion (nicht im editierbar wirkenden Stammdaten-Grid oben) und
+  // nirgends als Eingabefeld, da diese Zahl nicht bearbeitbar sein darf.
   const snapAkp=(state.latest&&state.latest.akp||[]).find(a=>a.nr===c.nr);
-  $("acPoQuoteView").textContent=(snapAkp&&snapAkp.poQuote!=null)?(snapAkp.poQuote*100).toFixed(1).replace(".",",")+" %":"–";
-  $("ac3f2QuoteView").textContent=(snapAkp&&snapAkp.q3fuer2!=null)?(snapAkp.q3fuer2*100).toFixed(1).replace(".",",")+" %":"–";
+  const poTxt=(snapAkp&&snapAkp.poQuote!=null)?(snapAkp.poQuote*100).toFixed(1).replace(".",",")+" %":"–";
+  const f2Txt=(snapAkp&&snapAkp.q3fuer2!=null)?(snapAkp.q3fuer2*100).toFixed(1).replace(".",",")+" %":"–";
+  $("acQuotesInfo").textContent=`PO-Quote (LJ): ${poTxt} · 3-für-2-Quote (LJ): ${f2Txt}`;
 }
 function renderAkpMonthly(){
   const c=akpContactCurrent;
