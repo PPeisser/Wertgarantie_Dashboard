@@ -2627,7 +2627,7 @@ function yearFrac(){
   const total=workdaysBetween(new Date(Date.UTC(y,0,1)),new Date(Date.UTC(y,11,31)));
   return {done,total,f:done/total};
 }
-function goalCard(name,target,ist,soll,extra,editable,hr,lbls,hr2){
+function goalCard(name,target,ist,soll,extra,editable,hr,lbls){
   lbls=lbls||{}; lbls.ahead=lbls.ahead||"▲ vor Soll"; lbls.behind=lbls.behind||"▼ hinter Soll"; lbls.target=lbls.target||"Ziel";
   const pct=target>0?ist/target*100:0;
   const diff=Math.round(ist-soll), dp=soll>0?(ist-soll)/soll*100:0;
@@ -2647,10 +2647,19 @@ function goalCard(name,target,ist,soll,extra,editable,hr,lbls,hr2){
     </div>`;
     smallLine=`<div class="hr"><span class="hr-ic">📌</span> Ist-Stand: <b>${target>0?pct.toFixed(1).replace(".",",")+" %":"–"}</b>
       <span class="stk">${fmt(ist)} / ${target>0?fmt(target):"?"} Stk.</span><span class="hr-stand">Stand: ${hr.stand}</span></div>`;
-    // Zusätzliche, rein informative Zeile: die separate Monats-Hochrechnung
-    // lt. Auswertung (EWR) - keine eigene Jahresrechnung, da EWR in der
-    // Auswertung nur als Monatswert (Österreich gesamt) vorliegt.
-    if(hr2&&hr2.val>0) smallLine+=`<div class="hr"><span class="hr-ic">📈</span> Hochrechnung Monat lt. Auswertung (EWR): <b>${fmt(hr2.val)}</b> Stk.</div>`;
+    // Zusätzliche Zeile (nur bei den saisonalen Jahres-Hochrechnungen, nicht
+    // bei den Monatskarten): der aktuelle Vertragsüberschuss/-fehlbetrag (Ist
+    // minus saisonal gewichtetem Soll, siehe "diff" oben) hochgerechnet auf
+    // das Jahresende - mit demselben saisonalen Gewichtungsfaktor wie das
+    // Soll selbst (hr.val ist bereits ist/share, hrT der Bezugswert, daher
+    // ist hr.val-hrT rechnerisch identisch zu diff/share). Ersetzt die
+    // vorherige, unpassende Anzeige der rohen Monats-EWR-Zahl aus der
+    // Auswertung, die nichts mit der saisonalen Gewichtung zu tun hatte.
+    if(hrT>0&&hr.lbl==="Jahresende (saisonal)"){
+      const hrDiff=Math.round(hr.val-hrT);
+      const hrGood=hrDiff>=0;
+      smallLine+=`<div class="hr"><span class="hr-ic">📈</span> Hochrechnung Vertragsplus/-minus zum Jahresende: <b style="color:${hrGood?"var(--pos)":"var(--neg)"}">${fmtSign(hrDiff)}</b> Stk.</div>`;
+    }
   } else {
     bigBlock=`<div class="big">
       <span class="pct" style="color:${col}">${target>0?pct.toFixed(1).replace(".",",")+" %":"–"}</span>
@@ -2704,9 +2713,9 @@ function renderGoals(){
   const persJZ=PERS_JAHRESZIELE[currentEmp]||0;
   const cards=[
     goalCard("🇦🇹 Jahresziel "+s.jahr, ZIEL_AT, at.jahr, ZIEL_AT*share, `Soll & Hochrechnung saisonal (${Math.round(Q4_ANTEIL*100)} % in Q4)`, false,
-      {val:hrJahr,lbl:"Jahresende (saisonal)",stand:standJ}, null, {val:s.ewrMonat}),
+      {val:hrJahr,lbl:"Jahresende (saisonal)",stand:standJ}),
     goalCard("🏢 PLAN Jahr "+s.jahr, ZIEL_FIRMA, at.jahr, ZIEL_FIRMA*share, `Soll & Hochrechnung saisonal (${Math.round(Q4_ANTEIL*100)} % in Q4)`, false,
-      {val:hrJahr,lbl:"Jahresende (saisonal)",stand:standJ}, null, {val:s.ewrMonat}),
+      {val:hrJahr,lbl:"Jahresende (saisonal)",stand:standJ}),
     card3,
     goalCard("🎯 Persönliches Monatsziel · "+MONATE[s.monat-1]+"<br><span style='font-weight:600;font-size:11px;color:var(--muted)'>"+currentEmp+(isATv?" · fest hinterlegt":"")+"</span>",
       g, me.monat, g*mfrac,
