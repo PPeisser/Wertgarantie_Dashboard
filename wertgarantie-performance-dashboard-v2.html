@@ -456,7 +456,7 @@ body.pdf-mode{margin:0}
 body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20px}
 
 @media (max-width:980px){
-  .kpis,.goals,.duo,.trio{grid-template-columns:1fr}
+  .kpis,.goals,.goals.cols4,.duo,.trio,.quad{grid-template-columns:1fr}
   .datenstand{text-align:left}
   h2.sec{flex-wrap:wrap;row-gap:8px}
   .tabs{flex-wrap:wrap}
@@ -3133,7 +3133,8 @@ async function openFhModal(fhNr){
     const list=ranked.top;
     $("fhBody").innerHTML=list.length?list.map(r=>`<div class="akp-search-row">
         <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b>
-        <span class="betr">${escapeHtml(r.firma||"")} · ${escapeHtml(r.ort||"")}</span></span>
+        <span class="betr">${escapeHtml(r.firma||"")} · ${escapeHtml(r.ort||"")}</span>
+        <span class="betr">PO-Quote (LJ): ${r.poQuote!=null?(r.poQuote*100).toFixed(1).replace(".",",")+" %":"–"} · 3-für-2-Quote (LJ): ${r.q3fuer2!=null?(r.q3fuer2*100).toFixed(1).replace(".",",")+" %":"–"}</span></span>
         <span class="val"><span class="val-num">${fmt(r.val)}<small> ${unit}</small></span>${r.pill||""}</span>
       </div>`).join(""):`<div class="empty-note">Keine AKP für diesen Händler in diesem Zeitraum gefunden.</div>`;
   }
@@ -3420,6 +3421,7 @@ async function exportFhPdf(includeAkp){
       const items=list.map(r=>`<div class="pdf-block" style="padding:6px 8px;border:1px solid #E4EDF3;border-radius:6px;font-size:10px;line-height:1.35">
         <div style="font-weight:800;color:#10202C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(r.name)}</div>
         <div style="color:#5D7284;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(r.firma||"")} · ${escapeHtml(r.ort||"")}</div>
+        <div style="color:#5D7284;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">PO ${r.poQuote!=null?(r.poQuote*100).toFixed(1).replace(".",",")+" %":"–"} · 3f2 ${r.q3fuer2!=null?(r.q3fuer2*100).toFixed(1).replace(".",",")+" %":"–"}</div>
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:3px;gap:6px">
           <span style="font-weight:900;white-space:nowrap">${fmt(r.val)} <small style="font-weight:600;color:#5D7284">${unit}</small></span>
           <span style="font-size:9px">${r.pill||""}</span>
