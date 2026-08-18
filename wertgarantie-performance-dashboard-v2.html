@@ -2936,7 +2936,7 @@ function renderPerfFinalStep(){
     <div style="color:var(--muted);margin-bottom:20px;max-width:440px;margin-left:auto;margin-right:auto">Bitte prüfe kurz, ob alles passt. Beim Absenden wird der Bericht dauerhaft gespeichert und als PDF an dich sowie an Konstantin Scheiermann (Admin) versendet.</div>
     <div class="actions" style="justify-content:center">
       <button class="btn btn-ghost" id="perfBackBtn">← Zurück</button>
-      <button class="btn btn-blue" id="perfSubmitBtn">Speichern &amp; Absenden</button>
+      <button class="btn btn-blue" id="perfSubmitBtn">Abschließen und absenden</button>
     </div>
     <div class="error" id="perfSubmitHint" style="margin-top:10px"></div>
   </div>`;
@@ -3054,12 +3054,6 @@ async function exportPerfReportPdf(employee,year,month,goalsPayload,opts){
 }
 
 /* ---------- Performance Dialog: Admin-Übersicht ---------- */
-// Ein Monat gilt erst als "fällig" (rotes Rufzeichen bei Fehlen), sobald er
-// abgeschlossen ist - der Bericht wird ja immer erst im FOLGEMONAT abgegeben.
-// Noch laufende/zukünftige Monate zeigen stattdessen neutral "–".
-function perfMonthIsDue(year,month){
-  return new Date()>=new Date(Date.UTC(year,month,1));
-}
 // Der Performance Dialog existiert erst ab diesem Monat - davor liegende
 // Monate zeigen immer "–" statt eines roten Rufzeichens, da es das Feature
 // damals noch nicht gab (lt. Nutzervorgabe 18.08.2026).
@@ -3114,8 +3108,7 @@ function renderPerfAdminGrid(){
       const rep=(perfAdminReports[emp]||{})[m];
       if(rep) return `<td class="r"><button type="button" class="perf-admin-check" data-emp="${escapeHtml(emp)}" data-m="${m}" title="PDF herunterladen" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--pos)">✓</button></td>`;
       if(perfMonthBeforeFeatureStart(perfAdminYear,m)) return `<td class="r" style="color:var(--muted)">–</td>`;
-      if(!perfMonthIsDue(perfAdminYear,m)) return `<td class="r" style="color:var(--muted)">–</td>`;
-      return `<td class="r" style="color:var(--neg);font-weight:900;font-size:15px" title="Noch nicht abgegeben">❗</td>`;
+      return `<td class="r" style="color:var(--neg);font-weight:900;font-size:15px" title="Noch nicht abgegeben">✗</td>`;
     }).join("");
     return `<tr><td><b>${escapeHtml(emp)}</b></td>${cells}</tr>`;
   }).join("");
@@ -3206,13 +3199,13 @@ async function exportPerfAllReportsPdf(){
   try{
     const {data,error}=await sb.from("performance_dialog_reports").select("*").eq("year",year).eq("month",month).order("employee");
     if(error) throw error;
-    if(!data||!data.length){ toast("Für "+MONATE[month-1]+" "+year+" liegt noch kein Protokoll vor."); return; }
+    if(!data||!data.length){ toast("Für "+MONATE[month-1]+" "+year+" liegt noch kein Protokoll vor."); pdfSendTarget=null; return; }
     const {pdf,filename}=await buildCombinedPerfReportsPdfDoc(data,year,month);
-    pdf.save(filename);
-    toast("Sammel-PDF erstellt ✓ ("+data.length+" Mitarbeiter)");
+    await finalizePdf(pdf,filename);
   }catch(e){
     console.error("exportPerfAllReportsPdf failed:",e);
     toast("Sammel-PDF fehlgeschlagen: "+(e.message||e));
+    pdfSendTarget=null;
   }
 }
 
@@ -5340,7 +5333,7 @@ $("perfDialogBtn").onclick=openPerfModal;
 $("perfClose").onclick=()=>$("perfModal").classList.add("hidden");
 $("perfDialogAdminBtn").onclick=openPerfAdminModal;
 $("perfAdminClose").onclick=()=>$("perfAdminModal").classList.add("hidden");
-$("perfAdminPdfBtn").onclick=exportPerfAllReportsPdf;
+$("perfAdminPdfBtn").onclick=()=>openPdfTargetChoice(()=>exportPerfAllReportsPdf());
 $("perfDialogEnabledChk").onchange=togglePerfDialogEnabled;
 $("adminUploadBtn").onclick=pickFiles;
 $("adminAkqUploadBtn").onclick=()=>$("akqFileInput").click();
