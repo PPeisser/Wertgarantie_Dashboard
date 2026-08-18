@@ -255,6 +255,17 @@ alter table public.fh_contacts add column if not exists akq_gl text;
 -- Händler in der aktuellen täglichen FH_Liste-Auswertung keine Zeile hat
 -- (z.B. keine Tagesproduktion) und dort daher kein Name verfügbar ist.
 alter table public.fh_contacts add column if not exists akq_name text;
+-- Miete-Report (Club Weiß, MSK_Report-Datei, Admin-Import): club_weiss_mitglied
+-- wird beim Import IMMER auf true gesetzt (jeder FH in der Datei ist Mitglied),
+-- aber nie automatisch wieder zurückgesetzt (siehe fh_sync_miete) - manuelles
+-- Zurücksetzen bleibt im FH-PopUp weiterhin möglich. miete_monthly ("YYYY-MM"
+-- -> Vertragsanzahl) und miete_sortiment (Sortiment-Name -> Anzahl) werden per
+-- JSONB-Merge aktualisiert, ältere Monate/Sortimente bleiben bei einem neuen
+-- Import erhalten, auch wenn die neue Datei sie nicht mehr enthält.
+alter table public.fh_contacts add column if not exists club_weiss_mitglied boolean not null default false;
+alter table public.fh_contacts add column if not exists club_weiss_mitgliedsnummer text;
+alter table public.fh_contacts add column if not exists miete_monthly jsonb not null default '{}'::jsonb;
+alter table public.fh_contacts add column if not exists miete_sortiment jsonb not null default '{}'::jsonb;
 
 alter table public.fh_contacts drop constraint if exists fh_contacts_segmentierung_check;
 alter table public.fh_contacts add constraint fh_contacts_segmentierung_check
@@ -304,6 +315,40 @@ $$;
 
 revoke execute on function public.fh_sync_daily(jsonb) from public;
 grant execute on function public.fh_sync_daily(jsonb) to authenticated;
+
+-- Schreibt Miete-Report-Daten (Club Weiß) je Fachhändler: monatliche
+-- Vertragsanzahl und Sortiments-Aufstellung werden per JSONB-Merge auf den
+-- bestehenden Stand aufgesetzt (analog fh_sync_daily) - ein erneuter Import
+-- überschreibt nur die im neuen Report enthaltenen Monate/Sortimente, ältere
+-- bleiben erhalten. club_weiss_mitglied wird beim Import IMMER auf true
+-- gesetzt (jeder FH in der Datei ist Mitglied), aber nie automatisch wieder
+-- auf false zurückgesetzt - ein manuelles Zurücksetzen bleibt im FH-PopUp
+-- weiterhin möglich (Stammdaten-Bearbeiten-Formular).
+create or replace function public.fh_sync_miete(rows jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  r jsonb; monthlyj jsonb; sortimentj jsonb; clubnr text;
+begin
+  for r in select * from jsonb_array_elements(rows) loop
+    if coalesce(r->>'fh_nr','') = '' then continue; end if;
+    monthlyj := coalesce(r->'monthly','{}'::jsonb);
+    sortimentj := coalesce(r->'sortiment','{}'::jsonb);
+    clubnr := r->>'club_nr';
+
+    insert into public.fh_contacts (fh_nr, miete_monthly, miete_sortiment, club_weiss_mitglied, club_weiss_mitgliedsnummer)
+    values (r->>'fh_nr', monthlyj, sortimentj, true, clubnr)
+    on conflict (fh_nr) do update set
+      miete_monthly = coalesce(fh_contacts.miete_monthly,'{}'::jsonb) || excluded.miete_monthly,
+      miete_sortiment = coalesce(fh_contacts.miete_sortiment,'{}'::jsonb) || excluded.miete_sortiment,
+      club_weiss_mitglied = true,
+      club_weiss_mitgliedsnummer = coalesce(excluded.club_weiss_mitgliedsnummer, fh_contacts.club_weiss_mitgliedsnummer),
+      updated_at = now();
+  end loop;
+end;
+$$;
+
+revoke execute on function public.fh_sync_miete(jsonb) from public;
+grant execute on function public.fh_sync_miete(jsonb) to authenticated;
 
 -- Pro-Nutzer-Einstellungen (Passwort-Bereich separat über auth.updateUser,
 -- hier nur Benachrichtigungs-Präferenzen). Anders als alle bisherigen

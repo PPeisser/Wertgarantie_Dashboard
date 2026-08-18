@@ -124,9 +124,10 @@ h2.sec small{font-weight:600;text-transform:none;color:var(--muted);letter-spaci
 .goals .goal .hr b{font-size:12px}
 .goals .goal .hr .hr-stand{width:100%;margin-left:0}
 .goals.cols4{grid-template-columns:repeat(4,1fr);gap:14px}
-.goals.cols4 .goal{padding:16px 18px}
-.goals.cols4 .goal .pct{font-size:28px}
-@media (max-width:1150px){.goals,.goals.cols4{grid-template-columns:repeat(2,1fr)}}
+.goals.cols3{grid-template-columns:repeat(3,1fr);gap:14px}
+.goals.cols4 .goal,.goals.cols3 .goal{padding:16px 18px}
+.goals.cols4 .goal .pct,.goals.cols3 .goal .pct{font-size:28px}
+@media (max-width:1150px){.goals,.goals.cols4,.goals.cols3{grid-template-columns:repeat(2,1fr)}}
 .goal .hr{
   margin-top:9px;padding-top:8px;border-top:1px dashed var(--line);
   font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:6px;flex-wrap:wrap;
@@ -165,6 +166,13 @@ h2.sec small{font-weight:600;text-transform:none;color:var(--muted);letter-spaci
 .goal .edit{margin-left:auto;background:none;border:none;color:var(--wg-blue);font-weight:700;font-size:12px;cursor:pointer;padding:2px}
 .goal .edit:hover{text-decoration:underline}
 .pos-t{color:var(--pos)} .neg-t{color:var(--neg)}
+/* Miete-Kachel (Club Weiß) - farblich abgehoben (Gelb der Mietabteilung,
+   blaue Schrift), Ziel-Balken/Pillen (pos/neg) behalten ihre eigenen Farben. */
+.goal.goal-miete{background:#FFDE59;border:1px solid #E8B900}
+.goal.goal-miete,.goal.goal-miete .name,.goal.goal-miete .target,.goal.goal-miete .target b,
+.goal.goal-miete .stk,.goal.goal-miete .delta,.goal.goal-miete .hr,.goal.goal-miete .hr b,
+.goal.goal-miete .hr .hr-stand{color:var(--wg-blue-dark)}
+.goal.goal-miete .pct{color:var(--wg-blue)}
 
 .akq-bar{
   background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
@@ -376,9 +384,9 @@ td .betr{font-size:11px;color:var(--muted)}
   h2.sec .arr{display:none}
   h2.sec small{font-size:9px}
   .duo,.trio,.kpis,.goals{gap:5px}
-  .goals.cols4{gap:5px}
-  .goal,.goals .goal,.goals.cols4 .goal{padding:6px 8px}
-  .goal .pct,.goals .goal .pct,.goals.cols4 .goal .pct{font-size:16px}
+  .goals.cols4,.goals.cols3{gap:5px}
+  .goal,.goals .goal,.goals.cols4 .goal,.goals.cols3 .goal{padding:6px 8px}
+  .goal .pct,.goals .goal .pct,.goals.cols4 .goal .pct,.goals.cols3 .goal .pct{font-size:16px}
   .goal .name{font-size:10px}
   .goal .target,.goal .stk{font-size:8.5px}
   .goal .big{margin:3px 0 3px}
@@ -436,11 +444,12 @@ body.pdf-mode .duo,body.pdf-mode .trio,body.pdf-mode .kpis,body.pdf-mode .goals{
 body.pdf-mode .kpis{grid-template-columns:repeat(3,1fr) !important}
 body.pdf-mode .goals{grid-template-columns:repeat(5,1fr) !important}
 body.pdf-mode .goals.cols4{grid-template-columns:repeat(4,1fr) !important}
+body.pdf-mode .goals.cols3{grid-template-columns:repeat(3,1fr) !important}
 body.pdf-mode .duo{grid-template-columns:1fr 1fr !important}
 body.pdf-mode .trio{grid-template-columns:1.2fr 1fr 1fr !important}
-body.pdf-mode .goals.cols4{gap:5px}
-body.pdf-mode .goal,body.pdf-mode .goals .goal,body.pdf-mode .goals.cols4 .goal{padding:6px 8px}
-body.pdf-mode .goal .pct,body.pdf-mode .goals .goal .pct,body.pdf-mode .goals.cols4 .goal .pct{font-size:16px}
+body.pdf-mode .goals.cols4,body.pdf-mode .goals.cols3{gap:5px}
+body.pdf-mode .goal,body.pdf-mode .goals .goal,body.pdf-mode .goals.cols4 .goal,body.pdf-mode .goals.cols3 .goal{padding:6px 8px}
+body.pdf-mode .goal .pct,body.pdf-mode .goals .goal .pct,body.pdf-mode .goals.cols4 .goal .pct,body.pdf-mode .goals.cols3 .goal .pct{font-size:16px}
 body.pdf-mode .bar{height:7px}
 body.pdf-mode .kpi{padding:6px 9px 6px}
 body.pdf-mode .kpi .num{font-size:19px}
@@ -465,7 +474,7 @@ body.pdf-mode{margin:0}
 body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20px}
 
 @media (max-width:980px){
-  .kpis,.goals,.goals.cols4,.duo,.trio,.quad{grid-template-columns:1fr}
+  .kpis,.goals,.goals.cols4,.goals.cols3,.duo,.trio,.quad{grid-template-columns:1fr}
   .datenstand{text-align:left}
   h2.sec{flex-wrap:wrap;row-gap:8px}
   .tabs{flex-wrap:wrap}
@@ -720,6 +729,8 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div><span class="ac-lbl">Händlersegmentierung</span><div class="ac-val" id="fhSegmentView">–</div></div>
         <div><span class="ac-lbl">Letzter Besuch</span><div class="ac-val" id="fhBesuchView">–</div></div>
         <div><span class="ac-lbl">9-Wochen-Plan</span><div class="ac-val" id="fhNwView">–</div></div>
+        <div><span class="ac-lbl">Club Weiß Mitglied</span><div class="ac-val" id="fhClubView">–</div></div>
+        <div><span class="ac-lbl">Club Weiß Mitgliedsnummer</span><div class="ac-val" id="fhClubNrView">–</div></div>
       </div>
       <div style="margin-top:14px"><span class="ac-lbl">Sonstige Infos</span><div class="ac-val" id="fhInfosView" style="font-weight:600;white-space:pre-wrap">–</div></div>
       <button class="btn btn-blue" id="fhEditBtn" style="margin-top:14px">✎ Stammdaten bearbeiten</button>
@@ -742,6 +753,9 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div><span class="ac-lbl">9-Wochen-Plan</span>
           <label class="nw-check" for="fhNwEdit"><input type="checkbox" id="fhNwEdit"> erledigt</label>
         </div>
+        <div><span class="ac-lbl">Club Weiß Mitglied</span>
+          <label class="nw-check" for="fhClubEdit"><input type="checkbox" id="fhClubEdit"> Mitglied</label>
+        </div>
       </div>
       <div style="margin-top:14px">
         <label class="ac-lbl" for="fhInfosEdit">Sonstige Infos</label>
@@ -759,6 +773,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div id="fhMonthly"></div>
     <div id="fhYearlyTrend"></div>
     <div id="fhAkqStaffelBlock"></div>
+    <div id="fhMieteSection"></div>
 
     <div class="actions" style="justify-content:flex-start;margin-top:18px;margin-bottom:10px">
       <button class="btn btn-blue" id="fhTopFlopBtn">Top &amp; Flop AKP dieses Händlers ⤢</button>
@@ -1064,9 +1079,11 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <button class="btn btn-blue" id="adminUploadBtn">📤 Excel einspielen</button>
       <button class="btn btn-blue" id="adminAkqUploadBtn">📊 Akquisestaffeln einspielen</button>
       <button class="btn btn-blue" id="adminFhSegmentUploadBtn">🗂️ Händlersegmentierung einspielen</button>
+      <button class="btn btn-blue" id="adminMieteUploadBtn">🏠 Miete einspielen</button>
     </div>
     <input type="file" id="akqFileInput" accept=".xlsx,.xls" class="hidden">
     <input type="file" id="fhSegmentFileInput" accept=".xlsx,.xls" class="hidden">
+    <input type="file" id="mieteFileInput" accept=".xlsx,.xls" class="hidden">
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -1108,6 +1125,14 @@ const PERS_JAHRESZIELE = {
   "Dominik Szendi":55000,"Helmut Otto":7000,"Peter Peißer":7000
 };
 PERS_JAHRESZIELE[AT_GESAMT]=Object.values(PERS_JAHRESZIELE).reduce((a,b)=>a+b,0); // 121.000
+// Miete-Jahresziel (Club Weiß) - Platzhalter (0 = "kein Ziel hinterlegt", die
+// Miete-Kachel zeigt dann nur die IST-Produktion ohne %-Hochrechnung, siehe
+// renderGoals). Die echten Planzahlen (Österreich gesamt + je Mitarbeiter)
+// hat der Nutzer für einen späteren Zeitpunkt angekündigt (Chat vom
+// 17.08.2026) - sobald bekannt, hier eintragen (gleiches Format wie
+// ZIEL_AT/PERS_JAHRESZIELE).
+const ZIEL_MIETE_AT = 0;
+const PERS_MIETEZIELE = {};
 // Akquisestaffeln (siehe Fachhändler-PopUp/parseAkquiseStaffeln): die 7 fixen
 // Stufen (Punkteschwellen, absolut) laut "Zielstaffel"-Tabelle. Punkte werden
 // jährlich am 1.1. auf 0 zurückgesetzt; einmal erreichte Stufen bleiben aber
@@ -2208,6 +2233,87 @@ async function handleFhSegmentFile(files){
   }
 }
 
+// Liest die Miete-Report-Datei ("MSK_Report_...", Club Weiß): ein oder
+// mehrere Blätter "AT_<Jahr>" (z.B. AT_2026, AT_2025 - je nach Jahr(en) in
+// der Datei, dynamisch statt fest, damit künftige Jahre ohne Codeänderung
+// funktionieren). Jede Zeile ist ein einzelner Mietvertrag (keine
+// Aggregation in der Quelle). Liefert je Fachhändler die monatliche
+// Vertragsanzahl ("YYYY-MM" -> Anzahl), eine Sortiments-Aufstellung
+// (Sortiment -> Anzahl, Spalte "Sortiment") sowie die Club-Weiß-
+// Mitgliedsnummer (Spalte "Händler Nr geliefert"). Als Fachhändler-Schlüssel
+// dient bewusst "Fachhändler Nr geliefert" (Spalte AA) - das ist die im
+// restlichen Dashboard bekannte FH-Nr, NICHT die separate "FH Nr"-Spalte
+// (Spalte A) am Zeilenanfang, die davon abweichen kann.
+function parseMieteReport(wb){
+  const yearSheets=wb.SheetNames.filter(n=>/^AT_\d{4}$/i.test(n.trim()));
+  if(!yearSheets.length) return null;
+  const byFh={};
+  let totalRows=0;
+  for(const sheetName of yearSheets){
+    const rows=toRows(wb.Sheets[sheetName]);
+    if(!rows.length) continue;
+    const header=rows[0].map(normHeader);
+    const idxFh=header.findIndex(h=>h==="Fachhändler Nr geliefert");
+    const idxClubNr=header.findIndex(h=>h==="Händler Nr geliefert");
+    const idxDatum=header.findIndex(h=>h==="Datum");
+    const idxSortiment=header.findIndex(h=>h==="Sortiment");
+    const idxAnzahl=header.findIndex(h=>h==="Anzahl Produktion Mietverträge");
+    if(idxFh<0||idxDatum<0) continue;
+    for(let i=1;i<rows.length;i++){
+      const r=rows[i]; if(!r||r[idxFh]==null||r[idxFh]==="") continue;
+      const fhNr=String(r[idxFh]).trim(); if(!fhNr) continue;
+      const datum=cellDate(r[idxDatum]); if(!datum) continue;
+      const ym=datum.slice(0,7);
+      const count=idxAnzahl>-1?(num(r[idxAnzahl])||1):1;
+      if(!byFh[fhNr]) byFh[fhNr]={monthly:{},sortiment:{},clubNr:null};
+      byFh[fhNr].monthly[ym]=(byFh[fhNr].monthly[ym]||0)+count;
+      const sort=idxSortiment>-1?String(r[idxSortiment]??"").trim():"";
+      if(sort) byFh[fhNr].sortiment[sort]=(byFh[fhNr].sortiment[sort]||0)+count;
+      const clubNr=idxClubNr>-1?String(r[idxClubNr]??"").trim():"";
+      if(clubNr) byFh[fhNr].clubNr=clubNr;
+      totalRows++;
+    }
+  }
+  return totalRows?{byFh,totalRows}:null;
+}
+// Schreibt die je Fachhändler aggregierten Miete-Daten per RPC (fh_sync_miete,
+// siehe schema.sql) - JSONB-Merge statt Überschreiben, damit ein Import mit
+// weniger Jahresblättern ältere Monate/Sortimente nicht löscht. Kleinere
+// Chunk-Größe als bei den übrigen Bulk-Importen, da jede Zeile hier zwei
+// verschachtelte JSON-Objekte (monthly+sortiment) mitbringt.
+async function upsertMieteData(byFh){
+  const entries=Object.entries(byFh);
+  const CHUNK=200;
+  for(let i=0;i<entries.length;i+=CHUNK){
+    const chunk=entries.slice(i,i+CHUNK).map(([fh_nr,rec])=>({
+      fh_nr, monthly:rec.monthly, sortiment:rec.sortiment, club_nr:rec.clubNr
+    }));
+    const { error }=await sb.rpc("fh_sync_miete",{rows:chunk});
+    if(error) throw error;
+  }
+}
+// Miete-Import (Admin-Panel): siehe parseMieteReport/upsertMieteData - ergänzt
+// (nicht ersetzt) den bisherigen Miete-Stand je Fachhändler.
+async function handleMieteFile(files){
+  if(!files||!files.length) return;
+  if(!(sb&&supaUser)){ toast("Nicht angemeldet."); return; }
+  toast("Miete-Daten werden verarbeitet …");
+  try{
+    const buf=await files[0].arrayBuffer();
+    const wb=XLSX.read(buf,{type:"array",cellDates:true});
+    const parsed=parseMieteReport(wb);
+    if(!parsed){ toast('Format nicht erkannt – bitte die Miete-Report-Datei mit Blatt "AT_<Jahr>" einspielen.'); return; }
+    await upsertMieteData(parsed.byFh);
+    await loadFhMieteIndex();
+    if(fhModalCurrent){ await loadFhContact(fhModalCurrent); renderFhContactView(); renderFhMieteSection(); }
+    render();
+    toast(`Miete-Daten eingespielt ✓ ${fmt(parsed.totalRows)} Vertragszeilen · ${fmt(Object.keys(parsed.byFh).length)} Fachhändler`);
+  }catch(e){
+    console.error("handleMieteFile failed:",e);
+    toast("Miete-Import fehlgeschlagen: "+(e.message||e));
+  }
+}
+
 function mergeSnapshot(snap){
   // Tageshistorie fortschreiben (Prod. Vortag → unter Vortagsdatum ablegen)
   for(const [k,g] of Object.entries(snap.gl)){
@@ -2263,7 +2369,7 @@ async function processPendingImports(){
     const { data:rows, error } = await sb.from("pending_imports")
       .select("*").eq("status","pending").order("received_at",{ascending:true});
     if(error||!rows||!rows.length) return;
-    let snapCount=0,segCount=0,segFhCount=0;
+    let snapCount=0,segCount=0,segFhCount=0,mieteCount=0,mieteFhCount=0;
     for(const row of rows){
       // Optimistisches "Claimen" (bedingtes Update) - verhindert, dass zwei
       // gleichzeitig geöffnete Tabs dieselbe Mail doppelt verarbeiten.
@@ -2283,9 +2389,18 @@ async function processPendingImports(){
           // Kein Auswertung_TAG-Format - könnte die "Händlersegmentierung
           // ..."-Datei sein (auch per Mail an input@wgaustria.at zulässig).
           const segRows=parseFhSegmentierung(wb);
-          if(!segRows) throw new Error("Format nicht erkannt");
-          await upsertFhSegmentierung(segRows);
-          segCount++; segFhCount+=segRows.length;
+          if(segRows){
+            await upsertFhSegmentierung(segRows);
+            segCount++; segFhCount+=segRows.length;
+          }else{
+            // Auch kein Segmentierungs-Format - könnte der Miete-Report
+            // (Club Weiß) sein, ebenfalls per Mail an input@wgaustria.at
+            // zulässig (siehe parseMieteReport).
+            const parsed=parseMieteReport(wb);
+            if(!parsed) throw new Error("Format nicht erkannt");
+            await upsertMieteData(parsed.byFh);
+            mieteCount++; mieteFhCount+=Object.keys(parsed.byFh).length;
+          }
         }
         await sb.from("pending_imports").update({status:"processed",processed_at:new Date().toISOString()}).eq("id",row.id);
       }catch(e){
@@ -2300,6 +2415,12 @@ async function processPendingImports(){
     if(segCount){
       if(fhModalCurrent){ await loadFhContact(fhModalCurrent); renderFhContactView(); }
       toast(`📧 Händlersegmentierung automatisch eingespielt ✓ ${fmt(segFhCount)} Fachhändler aktualisiert`);
+    }
+    if(mieteCount){
+      await loadFhMieteIndex();
+      if(fhModalCurrent){ await loadFhContact(fhModalCurrent); renderFhContactView(); renderFhMieteSection(); }
+      render();
+      toast(`📧 Miete-Daten automatisch eingespielt ✓ ${fmt(mieteFhCount)} Fachhändler aktualisiert`);
     }
   }catch(e){ console.error("processPendingImports failed:",e); }
 }
@@ -2431,6 +2552,44 @@ async function loadFhAkqIndex(){
     fhAkqIndex=idx;
     if(hasData()) render();
   }catch(e){ console.error("loadFhAkqIndex failed:",e); }
+}
+// Miete-Produktion je Fachhändler (Club Weiß, siehe parseMieteReport) -
+// komplett geladen (analog fhAkqIndex), damit die Miete-Kachel bei "Ziele &
+// Hochrechnung" ohne Einzelabfrage je Händler über alle FH aggregieren kann.
+let fhMieteIndex={};
+async function loadFhMieteIndex(){
+  if(!(sb&&supaUser)) return;
+  try{
+    const idx={}; let from=0, guard=0;
+    for(;;){
+      guard++;
+      const {data,error}=await sb.from("fh_contacts")
+        .select("fh_nr,miete_monthly,club_weiss_mitglied")
+        .range(from,from+999);
+      if(error){ console.error("loadFhMieteIndex:",error.message||error); break; }
+      if(!data||!data.length) break;
+      for(const r of data) if(r.fh_nr&&r.miete_monthly&&Object.keys(r.miete_monthly).length) idx[r.fh_nr]={monthly:r.miete_monthly};
+      from+=data.length;
+      if(guard>50) break;
+    }
+    fhMieteIndex=idx;
+    if(hasData()) render();
+  }catch(e){ console.error("loadFhMieteIndex failed:",e); }
+}
+// Miete-Jahresproduktion (laufendes Jahr) für "emp" (Mitarbeitername oder
+// AT_GESAMT) - summiert alle Monate des aktuellen Jahres über alle FH, die
+// (bei Mitarbeiter-Filter) diesem Betreuer zugeordnet sind. Nutzt dieselbe
+// FH->Mitarbeiter-Zuordnung wie die tägliche Auswertung (state.latest.fh),
+// nicht eine eigene aus der Miete-Datei - konsistent mit dem restlichen
+// Dashboard.
+function mieteJahrFor(emp){
+  const s=state.latest; if(!s) return 0;
+  let sum=0;
+  for(const [nr,rec] of Object.entries(fhMieteIndex)){
+    if(emp!==AT_GESAMT){ const fh=s.fh[nr]; if(!fh||fh.emp!==emp) continue; }
+    for(const [ym,v] of Object.entries(rec.monthly||{})) if(ym.slice(0,4)===String(s.jahr)) sum+=v;
+  }
+  return sum;
 }
 // Schreibt den "9-Wochen-Plan erledigt"-Status dauerhaft fest (rastet ein -
 // kein automatisches Zurücksetzen, auch wenn sich Termine/Produktion später
@@ -2734,12 +2893,30 @@ function renderGoals(){
       g>0?`Tag ${s.tageIst} von ${s.tageSoll} Arbeitstagen`:(isATv?"kein Monatsziel hinterlegt":`<button class="edit no-print" onclick="openGoalModal(true)" style="background:none;border:none;color:var(--wg-blue);font-weight:700;cursor:pointer;font-size:12px">Jetzt Ziel festlegen →</button>`), g>0&&!isATv,
       g>0?{val:hrMe,lbl:"Monatsende",stand:standM}:null)
   ];
+  // Miete-Kachel (Club Weiß) - reagiert wie die persönlichen Karten auf den
+  // Mitarbeiter-Filter (mieteJahrFor), nicht wie Jahresziel/PLAN Jahr immer
+  // auf Österreich gesamt. Ziel-Konstanten sind vorerst 0 ("kein Jahresziel
+  // hinterlegt", siehe ZIEL_MIETE_AT) - sobald der Nutzer echte Planzahlen
+  // liefert, zeigt dieselbe goalCard()-Logik automatisch die saisonale
+  // Hochrechnung wie bei den WG-Jahreszielen.
+  const mieteTarget=isATv?ZIEL_MIETE_AT:(PERS_MIETEZIELE[currentEmp]||0);
+  const mieteIst=mieteJahrFor(currentEmp);
+  const mieteHrJahr=share>0?mieteIst/share:0;
+  const mieteCard=goalCard("🏠 Miete-Jahresziel "+s.jahr+" (Club Weiß)", mieteTarget, mieteIst, mieteTarget*share,
+    mieteTarget>0?`Soll & Hochrechnung saisonal (${Math.round(Q4_ANTEIL*100)} % in Q4)`:"kein Jahresziel hinterlegt", false,
+    mieteTarget>0?{val:mieteHrJahr,lbl:"Jahresende (saisonal)",stand:standJ}:null
+  ).replace('class="goal"','class="goal goal-miete"');
+  cards.push(mieteCard);
   if(!isATv){
     cards.push(goalCard("🏁 Persönliches Jahresziel "+s.jahr+"<br><span style='font-weight:600;font-size:11px;color:var(--muted)'>"+currentEmp+" · fest hinterlegt</span>",
       persJZ, me.jahr, persJZ*share, `Soll & Hochrechnung saisonal (${Math.round(Q4_ANTEIL*100)} % in Q4)`, false,
       persJZ>0?{val:hrMeJahr,lbl:"Jahresende (saisonal)",stand:standJ}:null));
   }
-  $("goalCards").classList.toggle("cols4",isATv);
+  // AT-Ansicht: 4 WG-Karten + Miete = 5 Karten (passt in die normale
+  // 5-spaltige .goals-Grid, kein cols4 mehr nötig). Mitarbeiter-Ansicht: 5 +
+  // Persönliches Jahresziel + Miete = 6 Karten -> eigene 3-spaltige
+  // (2-zeilige) Variante .cols3, siehe CSS.
+  $("goalCards").classList.toggle("cols3",!isATv);
   $("goalCards").innerHTML=cards.join("");
 }
 // Zählt Staffel-Erreichungen (skaliert auf currentEmp) im aktuell gezeigten
@@ -3243,7 +3420,7 @@ async function openFhModal(fhNr){
   }
   $("fhModal").classList.remove("hidden");
   await loadFhContact(fhNr);
-  if(fhModalCurrent===fhNr){ renderFhContactView(); renderFhMonthly(); renderFhYearlyTrend(); renderFhStammdatenDiff(); }
+  if(fhModalCurrent===fhNr){ renderFhContactView(); renderFhMonthly(); renderFhYearlyTrend(); renderFhStammdatenDiff(); renderFhMieteSection(); }
 }
 
 /* ---------- Fachhändler-Stammdaten (Adresse, Kontakt, Ansprechpartner, Segmentierung, Besuch, Notizen) ---------- */
@@ -3259,7 +3436,7 @@ function fhHasRecentAkqBeginn(fhNr){
   return (s.akq||[]).some(a=>a.nr===fhNr&&a.beginn&&a.beginn>=grenze);
 }
 async function loadFhContact(fhNr){
-  fhContactCurrent={fh_nr:fhNr,strasse:null,plz:null,ort:null,telefon:null,email:null,ansprechpartner:null,ansprechpartner_email:null,homepage:null,segmentierung:null,letzter_besuch:null,sonstige_infos:null,neunwochen_erledigt:false};
+  fhContactCurrent={fh_nr:fhNr,strasse:null,plz:null,ort:null,telefon:null,email:null,ansprechpartner:null,ansprechpartner_email:null,homepage:null,segmentierung:null,letzter_besuch:null,sonstige_infos:null,neunwochen_erledigt:false,club_weiss_mitglied:false,club_weiss_mitgliedsnummer:null,miete_monthly:{},miete_sortiment:{}};
   try{
     const {data,error}=await sb.from("fh_contacts").select("*").eq("fh_nr",fhNr).maybeSingle();
     if(!error&&data) fhContactCurrent=data;
@@ -3286,6 +3463,8 @@ function renderFhContactView(){
   $("fhSegmentView").textContent=c.segmentierung?(FH_SEGMENT_LBL[c.segmentierung]||c.segmentierung):"–";
   $("fhBesuchView").textContent=c.letzter_besuch?fmtDate(c.letzter_besuch):"–";
   $("fhNwView").textContent=c.neunwochen_erledigt?"✓ erledigt":"– offen";
+  $("fhClubView").textContent=c.club_weiss_mitglied?"✓ Mitglied":"– kein Mitglied";
+  $("fhClubNrView").textContent=c.club_weiss_mitgliedsnummer||"–";
   $("fhInfosView").textContent=c.sonstige_infos||"–";
   // PO-/3-für-2-Quote kommen aus der heutigen Einspielung (FH_Liste), nicht
   // aus den Stammdaten - deshalb unten bei der Produktion, nicht editierbar.
@@ -3446,6 +3625,58 @@ function renderFhYearlyTrend(){
     <table class="ac-yearly-table"><thead><tr><th>Jahr</th><th>Erfasst</th><th>Summe</th><th>vs. Vorjahr</th><th>davon beitragsfrei</th><th>3-für-2-Quote</th></tr></thead><tbody>${rows}</tbody></table>
     <div class="ac-month-note">Jahre mit weniger als 12 erfassten Monaten sind noch nicht vollständig – der Vergleich ist dann nicht 1:1. Jeder beitragsfreie Vertrag entspricht einer 3-für-2-Aktion.</div>`;
 }
+// Miete-Produktionsübersicht (Club Weiß) - nur sichtbar, wenn der Händler als
+// Club-Weiß-Mitglied markiert ist (club_weiss_mitglied, siehe
+// parseMieteReport/Admin-Import). Gleiches Format/Rechenstil wie die
+// WG-Produktionsübersicht (renderFhMonthly/renderFhYearlyTrend), aber direkt
+// aus fh_contacts.miete_monthly (keine Tages-Historie vorhanden, die Datei
+// liefert bereits Monatsgranularität je Vertrag).
+function renderFhMieteSection(){
+  const box=$("fhMieteSection"); if(!box) return;
+  const c=fhContactCurrent;
+  if(!c||!c.club_weiss_mitglied){ box.innerHTML=""; return; }
+  const monthly=c.miete_monthly||{};
+  const sortiment=c.miete_sortiment||{};
+  const years=[...new Set(Object.keys(monthly).map(k=>k.slice(0,4)))].sort();
+  const monthlyTbl=years.length
+    ?`<div style="overflow:auto"><table class="ac-month-table"><thead><tr><th>Jahr</th>${MONTH_LABELS.map(m=>`<th>${m}</th>`).join("")}<th>Summe</th></tr></thead><tbody>`+
+      years.map(y=>{
+        let sum=0;
+        const cells=MONTH_LABELS.map((_,i)=>{
+          const k=y+"-"+String(i+1).padStart(2,"0");
+          const v=monthly[k];
+          if(v==null) return `<td class="empty">–</td>`;
+          sum+=v;
+          return `<td>${fmt(v)}</td>`;
+        }).join("");
+        return `<tr><td><b>${y}</b></td>${cells}<td><b>${fmt(sum)}</b></td></tr>`;
+      }).join("")+`</tbody></table></div>`
+    :`<div class="empty-note">Keine Miete-Monatsdaten vorhanden.</div>`;
+  let yearlyTbl="";
+  if(years.length>=2){
+    let prevSum=null;
+    const rows=years.map(y=>{
+      let sum=0;
+      for(let i=1;i<=12;i++){ const k=y+"-"+String(i).padStart(2,"0"); if(monthly[k]!=null) sum+=monthly[k]; }
+      const diff=prevSum==null?null:sum-prevSum;
+      const pct=prevSum==null?null:pctOf(sum,prevSum);
+      prevSum=sum;
+      return `<tr><td><b>${y}</b></td><td>${fmt(sum)}</td>
+        <td>${diff==null?"–":`<span class="pill ${diff>=0?"pos":"neg"}">${fmtSign(diff)} (${fmtPct(pct)})</span>`}</td></tr>`;
+    }).join("");
+    yearlyTbl=`<h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:13px">Jahresvergleich Miete</h4>
+      <table class="ac-yearly-table"><thead><tr><th>Jahr</th><th>Summe</th><th>vs. Vorjahr</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  const sortimentEntries=Object.entries(sortiment).sort((a,b)=>b[1]-a[1]);
+  const sortimentList=sortimentEntries.length
+    ?`<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px">`+sortimentEntries.map(([name,cnt])=>
+        `<span class="pill neu" style="font-size:11px;padding:4px 10px">${escapeHtml(name)}: <b>${fmt(cnt)}</b></span>`).join("")+`</div>`
+    :`<div class="empty-note">Kein Sortiment erfasst.</div>`;
+  box.innerHTML=`<h4 style="margin:18px 0 4px;color:var(--wg-navy);font-size:13px">Produktion Miete (Club Weiß)</h4>
+    ${monthlyTbl}
+    ${yearlyTbl}
+    <div style="margin-top:14px"><span class="ac-lbl">Verkauftes Sortiment</span>${sortimentList}</div>`;
+}
 function toggleFhEdit(on){
   $("fhViewMode").classList.toggle("hidden",on);
   $("fhEditMode").classList.toggle("hidden",!on);
@@ -3464,6 +3695,7 @@ function toggleFhEdit(on){
     $("fhSegmentEdit").value=c.segmentierung||"";
     $("fhBesuchEdit").value=c.letzter_besuch||"";
     $("fhNwEdit").checked=!!c.neunwochen_erledigt;
+    $("fhClubEdit").checked=!!c.club_weiss_mitglied;
     $("fhInfosEdit").value=c.sonstige_infos||"";
   }
 }
@@ -3481,18 +3713,20 @@ async function saveFhContact(){
   const segmentierung=segSel===""?null:segSel;
   const letzter_besuch=$("fhBesuchEdit").value||null;
   const neunwochen_erledigt=$("fhNwEdit").checked;
+  const club_weiss_mitglied=$("fhClubEdit").checked;
   const sonstige_infos=$("fhInfosEdit").value.trim()||null;
   $("fhSaveBtn").disabled=true;
   const {error}=await sb.from("fh_contacts").upsert({
-    fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,letzter_besuch,neunwochen_erledigt,sonstige_infos,
+    fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,sonstige_infos,
     updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()
   },{onConflict:"fh_nr"});
   $("fhSaveBtn").disabled=false;
   if(error){ $("fhSaveHint").textContent="Fehler: "+error.message; return; }
-  fhContactCurrent={...fhContactCurrent,fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,letzter_besuch,neunwochen_erledigt,sonstige_infos};
+  fhContactCurrent={...fhContactCurrent,fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,sonstige_infos};
   if(neunwochen_erledigt) fhErledigtSet.add(fhNr); else fhErledigtSet.delete(fhNr);
   renderFhContactView();
   renderFhStammdatenDiff();
+  renderFhMieteSection();
   toggleFhEdit(false);
   toast("Händlerdaten gespeichert ✓");
 }
@@ -4481,6 +4715,8 @@ $("adminAkqUploadBtn").onclick=()=>$("akqFileInput").click();
 $("akqFileInput").onchange=async e=>{ if(e.target.files.length){ await handleAkqStaffelFile([...e.target.files]); e.target.value=""; } };
 $("adminFhSegmentUploadBtn").onclick=()=>$("fhSegmentFileInput").click();
 $("fhSegmentFileInput").onchange=async e=>{ if(e.target.files.length){ await handleFhSegmentFile([...e.target.files]); e.target.value=""; } };
+$("adminMieteUploadBtn").onclick=()=>$("mieteFileInput").click();
+$("mieteFileInput").onchange=async e=>{ if(e.target.files.length){ await handleMieteFile([...e.target.files]); e.target.value=""; } };
 $("adCreateBtn").onclick=createAdminUser;
 $("settingsBtn").onclick=showSettingsModal;
 $("settingsClose").onclick=hideSettingsModal;
@@ -4600,7 +4836,7 @@ window.addEventListener("pageshow",e=>{ if(e.persisted&&hasData()) refreshData(t
   const authed = await initAuth();
   if(authed){
     await loadAll(); render();
-    await Promise.all([loadAkpContactsIndex(), loadFhErledigtSet(), loadFhAkqIndex()]);
+    await Promise.all([loadAkpContactsIndex(), loadFhErledigtSet(), loadFhAkqIndex(), loadFhMieteIndex()]);
     await processPendingImports();
     render();
     maybeAutoShowNotifications();
