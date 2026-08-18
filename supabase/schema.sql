@@ -32,13 +32,17 @@ create table if not exists public.profiles (
   id                   uuid primary key references auth.users(id) on delete cascade,
   email                text,
   name                 text,
-  role                 text not null default 'aussendienst' check (role in ('admin','aussendienst')),
+  role                 text not null default 'aussendienst' check (role in ('admin','aussendienst','trainer')),
   must_change_password boolean not null default false,
   created_at           timestamptz not null default now()
 );
 
 alter table public.profiles add column if not exists name text;
 alter table public.profiles add column if not exists must_change_password boolean not null default false;
+-- Rolle "Trainer" (wie Außendienst, aber ohne Zugriff auf den Performance
+-- Dialog - steuert der Client, siehe index.html).
+alter table public.profiles drop constraint if exists profiles_role_check;
+alter table public.profiles add constraint profiles_role_check check (role in ('admin','aussendienst','trainer'));
 
 alter table public.profiles enable row level security;
 
@@ -255,6 +259,17 @@ alter table public.fh_contacts add column if not exists akq_gl text;
 -- Händler in der aktuellen täglichen FH_Liste-Auswertung keine Zeile hat
 -- (z.B. keine Tagesproduktion) und dort daher kein Name verfügbar ist.
 alter table public.fh_contacts add column if not exists akq_name text;
+-- Miete-Report (Club Weiß, MSK_Report-Datei, Admin-Import): club_weiss_mitglied
+-- wird beim Import IMMER auf true gesetzt (jeder FH in der Datei ist Mitglied),
+-- aber nie automatisch wieder zurückgesetzt (siehe fh_sync_miete) - manuelles
+-- Zurücksetzen bleibt im FH-PopUp weiterhin möglich. miete_monthly ("YYYY-MM"
+-- -> Vertragsanzahl) und miete_sortiment (Sortiment-Name -> Anzahl) werden per
+-- JSONB-Merge aktualisiert, ältere Monate/Sortimente bleiben bei einem neuen
+-- Import erhalten, auch wenn die neue Datei sie nicht mehr enthält.
+alter table public.fh_contacts add column if not exists club_weiss_mitglied boolean not null default false;
+alter table public.fh_contacts add column if not exists club_weiss_mitgliedsnummer text;
+alter table public.fh_contacts add column if not exists miete_monthly jsonb not null default '{}'::jsonb;
+alter table public.fh_contacts add column if not exists miete_sortiment jsonb not null default '{}'::jsonb;
 
 alter table public.fh_contacts drop constraint if exists fh_contacts_segmentierung_check;
 alter table public.fh_contacts add constraint fh_contacts_segmentierung_check
@@ -304,6 +319,40 @@ $$;
 
 revoke execute on function public.fh_sync_daily(jsonb) from public;
 grant execute on function public.fh_sync_daily(jsonb) to authenticated;
+
+-- Schreibt Miete-Report-Daten (Club Weiß) je Fachhändler: monatliche
+-- Vertragsanzahl und Sortiments-Aufstellung werden per JSONB-Merge auf den
+-- bestehenden Stand aufgesetzt (analog fh_sync_daily) - ein erneuter Import
+-- überschreibt nur die im neuen Report enthaltenen Monate/Sortimente, ältere
+-- bleiben erhalten. club_weiss_mitglied wird beim Import IMMER auf true
+-- gesetzt (jeder FH in der Datei ist Mitglied), aber nie automatisch wieder
+-- auf false zurückgesetzt - ein manuelles Zurücksetzen bleibt im FH-PopUp
+-- weiterhin möglich (Stammdaten-Bearbeiten-Formular).
+create or replace function public.fh_sync_miete(rows jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  r jsonb; monthlyj jsonb; sortimentj jsonb; clubnr text;
+begin
+  for r in select * from jsonb_array_elements(rows) loop
+    if coalesce(r->>'fh_nr','') = '' then continue; end if;
+    monthlyj := coalesce(r->'monthly','{}'::jsonb);
+    sortimentj := coalesce(r->'sortiment','{}'::jsonb);
+    clubnr := r->>'club_nr';
+
+    insert into public.fh_contacts (fh_nr, miete_monthly, miete_sortiment, club_weiss_mitglied, club_weiss_mitgliedsnummer)
+    values (r->>'fh_nr', monthlyj, sortimentj, true, clubnr)
+    on conflict (fh_nr) do update set
+      miete_monthly = coalesce(fh_contacts.miete_monthly,'{}'::jsonb) || excluded.miete_monthly,
+      miete_sortiment = coalesce(fh_contacts.miete_sortiment,'{}'::jsonb) || excluded.miete_sortiment,
+      club_weiss_mitglied = true,
+      club_weiss_mitgliedsnummer = coalesce(excluded.club_weiss_mitgliedsnummer, fh_contacts.club_weiss_mitgliedsnummer),
+      updated_at = now();
+  end loop;
+end;
+$$;
+
+revoke execute on function public.fh_sync_miete(jsonb) from public;
+grant execute on function public.fh_sync_miete(jsonb) to authenticated;
 
 -- Pro-Nutzer-Einstellungen (Passwort-Bereich separat über auth.updateUser,
 -- hier nur Benachrichtigungs-Präferenzen). Anders als alle bisherigen
@@ -419,6 +468,93 @@ select cron.schedule(
   $$
   select net.http_post(
     url := '<SUPABASE_PROJECT_URL>/functions/v1/dashboard-mail-poller',
+    headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'),
+    body := jsonb_build_object('trigger','cron'),
+    timeout_milliseconds := 55000
+  );
+  $$
+);
+
+-- ---------- Performance Dialog (monatlicher Zielgespräch-Bericht je Mitarbeiter) ----------
+
+-- Monatlicher Performance-Dialog je Mitarbeiter: ein Bericht pro
+-- Mitarbeiter/Jahr/Monat (Monat = der berichtete Vormonat, nicht der
+-- Einreichungsmonat). "goals" speichert je zutreffendem Ziel sowohl den
+-- Auswertungs-Snapshot (Zahlen zum Zeitpunkt der Abgabe - bewusst
+-- eingefroren, damit der Bericht ein fixer historischer Datensatz bleibt
+-- und sich nicht rückwirkend ändert, wenn sich die Statistik später
+-- weiterentwickelt) als auch die vier Freitextantworten.
+create table if not exists public.performance_dialog_reports (
+  id           uuid primary key default gen_random_uuid(),
+  employee     text not null,
+  year         int not null,
+  month        int not null check (month between 1 and 12),
+  goals        jsonb not null default '[]'::jsonb,
+  submitted_at timestamptz not null default now(),
+  submitted_by uuid references auth.users(id),
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+  unique (employee, year, month)
+);
+
+alter table public.performance_dialog_reports enable row level security;
+
+-- Persönliche Reflexionsantworten (u.a. "Wo brauche ich Unterstützung") sind
+-- sensibler als reine Produktionszahlen - anders als bei den team-weit
+-- lesbaren Tabellen (fh_contacts, akp_contacts) darf hier jeder Mitarbeiter
+-- nur seinen eigenen Bericht sehen/schreiben, Admin sieht/schreibt alle
+-- (für die Admin-Übersicht + Sammel-PDF). Trainer hat KEINEN Sonderzugriff
+-- (steuert der Client über das Fehlen des Performance-Dialog-Buttons, aber
+-- RLS blockt zusätzlich serverseitig).
+create policy "Own or admin read performance_dialog_reports"
+  on public.performance_dialog_reports for select
+  to authenticated
+  using (
+    public.is_admin()
+    or employee = (select name from public.profiles where id = auth.uid())
+  );
+
+create policy "Own or admin insert performance_dialog_reports"
+  on public.performance_dialog_reports for insert
+  to authenticated
+  with check (
+    public.is_admin()
+    or employee = (select name from public.profiles where id = auth.uid())
+  );
+
+create policy "Own or admin update performance_dialog_reports"
+  on public.performance_dialog_reports for update
+  to authenticated
+  using (
+    public.is_admin()
+    or employee = (select name from public.profiles where id = auth.uid())
+  )
+  with check (
+    public.is_admin()
+    or employee = (select name from public.profiles where id = auth.uid())
+  );
+
+-- Nur Admin darf Berichte löschen (Performance Dialog – ADMIN PopUp,
+-- "Zurücksetzen"-Button je Mitarbeiter) - ein Mitarbeiter darf seinen
+-- eigenen abgegebenen Bericht nicht selbst wieder entfernen.
+create policy "Admin delete performance_dialog_reports"
+  on public.performance_dialog_reports for delete
+  to authenticated
+  using (public.is_admin());
+
+create index if not exists performance_dialog_reports_employee_idx
+  on public.performance_dialog_reports (employee, year, month);
+
+-- pg_cron-Job: ruft die Edge Function performance-dialog-reminder täglich um
+-- 07:00 Uhr auf (UTC - Deno.env-getriebene Datumslogik in der Function
+-- selbst entscheidet Freitag/15. anhand der Europe/Vienna-Zeitzone).
+-- <CRON_SECRET> durch denselben Wert wie oben ersetzen.
+select cron.schedule(
+  'performance-dialog-reminder-daily',
+  '0 6 * * *',
+  $$
+  select net.http_post(
+    url := '<SUPABASE_PROJECT_URL>/functions/v1/performance-dialog-reminder',
     headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'),
     body := jsonb_build_object('trigger','cron'),
     timeout_milliseconds := 55000
