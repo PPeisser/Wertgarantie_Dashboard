@@ -1163,14 +1163,23 @@ const PERS_JAHRESZIELE = {
   "Dominik Szendi":55000,"Helmut Otto":7000,"Peter Peißer":7000
 };
 PERS_JAHRESZIELE[AT_GESAMT]=Object.values(PERS_JAHRESZIELE).reduce((a,b)=>a+b,0); // 121.000
-// Miete-Jahresziel (Club.Weiss) - Platzhalter (0 = "kein Ziel hinterlegt", die
-// Miete-Kachel zeigt dann nur die IST-Produktion ohne %-Hochrechnung, siehe
-// renderGoals). Die echten Planzahlen (Österreich gesamt + je Mitarbeiter)
-// hat der Nutzer für einen späteren Zeitpunkt angekündigt (Chat vom
-// 17.08.2026) - sobald bekannt, hier eintragen (gleiches Format wie
-// ZIEL_AT/PERS_JAHRESZIELE).
-const ZIEL_MIETE_AT = 0;
-const PERS_MIETEZIELE = {};
+// Miete-Jahresziel (Club.Weiss) - lt. Nutzervorgabe 18.08.2026: Österreich
+// gesamt 3.000 Verträge/Jahr, gleichmäßig auf die 4 Mitarbeiter mit
+// Club.Weiss-Ziel verteilt (Witting, Otto, Hasibeder, Peißer - je 750,
+// deckt sich mit dem Jahresziel aus Performance-Dialog-Ziel 3 "Mieten statt
+// Kaufen"). Szendi und Eitzinger haben keine Club.Weiss-Ziele (0 = "kein
+// Jahresziel hinterlegt", siehe renderGoals).
+const ZIEL_MIETE_AT = 3000;
+const PERS_MIETEZIELE = {
+  "Klaus Witting":750, "Helmut Otto":750, "Florian Hasibeder":750, "Peter Peißer":750
+};
+// Monatsziel ist bewusst FLACH (immer 250, nicht saisonal Q4-gewichtet wie
+// ZIEL_AT) - 3.000 ÷ 12 = 250, siehe mieteShare/yearFrac() in renderGoals.
+const ZIEL_MIETE_MONAT = 250;
+// Datenherkunft der Miete-Kachel - Platzhalter bis eine automatische
+// Erfassung des Einspieldatums existiert; bei jedem neuen Freitagsreport-
+// Import hier manuell aktualisieren (lt. Nutzervorgabe 18.08.2026).
+const MIETE_REPORT_STAND = "Freitag, 14.08.2026";
 // Akquisestaffeln (siehe Fachhändler-PopUp/parseAkquiseStaffeln): die 7 fixen
 // Stufen (Punkteschwellen, absolut) laut "Zielstaffel"-Tabelle. Punkte werden
 // jährlich am 1.1. auf 0 zurückgesetzt; einmal erreichte Stufen bleiben aber
@@ -1830,6 +1839,7 @@ function fmt(n){ return n==null?"–":nf.format(Math.round(n)); }
 function fmtSign(n){ return n==null?"–":(n>0?"+":"")+fmt(n); }
 function fmtPct(n){ if(n==null||!isFinite(n)) return "–"; return (n>0?"+":"")+n.toFixed(1).replace(".",",")+" %"; }
 function fmtDate(s){ if(!s) return "–"; const d=parseISO(s); return String(d.getUTCDate()).padStart(2,"0")+"."+String(d.getUTCMonth()+1).padStart(2,"0")+"."+d.getUTCFullYear(); }
+function fmtNowDateTime(){ const d=new Date(); return String(d.getDate()).padStart(2,"0")+"."+String(d.getMonth()+1).padStart(2,"0")+"."+d.getFullYear()+", "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+" Uhr"; }
 const MONATE=["Jänner","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
 
 /* ---------- Namens-Matching GL ↔ Mitarbeiter ---------- */
@@ -2787,31 +2797,36 @@ function perfGoalSnapshot(goalId,emp,year,month){
 // Dashboard (fmt/fmtSign/fmtPct, pos/neg-Pillen).
 function perfGoalSystemHtml(goalId,snap){
   const pct=v=>v==null?"–":(v*100).toFixed(1).replace(".",",")+" %";
+  const cls=(v,ziel)=>v==null||ziel==null?"":(v>=ziel?"pos-t":"neg-t");
   if(goalId===1){
     const jp=snap.jahr_ziel>0?snap.jahr_ist/snap.jahr_ziel*100:null;
     const mp=snap.monat_ziel>0?snap.monat_ist/snap.monat_ziel*100:null;
     return `<div class="ac-grid">
-      <div><span class="ac-lbl">Jahr ${snap.year}</span><div class="ac-val"><b>${fmt(snap.jahr_ist)}</b> / ${snap.jahr_ziel>0?fmt(snap.jahr_ziel):"–"} Stk.${jp!=null?` (${jp.toFixed(1).replace(".",",")} %)`:""}</div></div>
-      <div><span class="ac-lbl">Monat ${MONATE[snap.month-1]}</span><div class="ac-val"><b>${fmt(snap.monat_ist)}</b> / ${snap.monat_ziel>0?fmt(snap.monat_ziel):"–"} Stk.${mp!=null?` (${mp.toFixed(1).replace(".",",")} %)`:""}</div></div>
+      <div><span class="ac-lbl">Jahr ${snap.year}</span><div class="ac-val"><b class="${cls(jp,100)}">${fmt(snap.jahr_ist)}</b> / ${snap.jahr_ziel>0?fmt(snap.jahr_ziel):"–"} Stk.${jp!=null?` (${jp.toFixed(1).replace(".",",")} %)`:""}</div></div>
+      <div><span class="ac-lbl">Monat ${MONATE[snap.month-1]}</span><div class="ac-val"><b class="${cls(mp,100)}">${fmt(snap.monat_ist)}</b> / ${snap.monat_ziel>0?fmt(snap.monat_ziel):"–"} Stk.${mp!=null?` (${mp.toFixed(1).replace(".",",")} %)`:""}</div></div>
     </div>`;
   }
   if(goalId===2){
     const sp=snap.staffeln_ziel>0?snap.staffeln_ist/snap.staffeln_ziel*100:null;
+    const aq=snap.aktivierung_quote==null?null:snap.aktivierung_quote*100;
     return `<div class="ac-grid">
-      <div><span class="ac-lbl">Akquisestufen ${snap.year}</span><div class="ac-val"><b>${fmt(snap.staffeln_ist)}</b> / ${snap.staffeln_ziel>0?fmt(snap.staffeln_ziel):"–"}${sp!=null?` (${sp.toFixed(1).replace(".",",")} %)`:""}</div></div>
-      <div><span class="ac-lbl">Aktivierungsquote (FH ${AKTIVIERUNGSQUOTE_JAHRE.join("/")})</span><div class="ac-val"><b>${pct(snap.aktivierung_quote)}</b> <span style="color:var(--muted);font-weight:600">(${fmt(snap.aktivierung_aktiv)} von ${fmt(snap.aktivierung_angelegt)} FH mit mind. 1 Vertrag ${snap.year})</span></div></div>
+      <div><span class="ac-lbl">Akquisestufen ${snap.year}</span><div class="ac-val"><b class="${cls(sp,100)}">${fmt(snap.staffeln_ist)}</b> / ${snap.staffeln_ziel>0?fmt(snap.staffeln_ziel):"–"}${sp!=null?` (${sp.toFixed(1).replace(".",",")} %)`:""}</div></div>
+      <div><span class="ac-lbl">Aktivierungsquote (FH ${AKTIVIERUNGSQUOTE_JAHRE.join("/")})</span><div class="ac-val"><b class="${cls(aq,80)}">${pct(snap.aktivierung_quote)}</b> <span style="color:var(--muted);font-weight:600">Ziel mind. 80 % (${fmt(snap.aktivierung_aktiv)} von ${fmt(snap.aktivierung_angelegt)} FH mit mind. 1 Vertrag ${snap.year})</span></div></div>
     </div>`;
   }
   if(goalId===3){
+    const jp=snap.jahr_ziel>0?snap.jahr_ist/snap.jahr_ziel*100:null;
+    const mp=snap.monat_ziel>0?snap.monat_ist/snap.monat_ziel*100:null;
     return `<div class="ac-grid">
       <div><span class="ac-lbl">Neu gewonnene Miet-FH ${snap.year}</span><div class="ac-val"><b>${fmt(snap.neu_fh_jahr)}</b></div></div>
       <div><span class="ac-lbl">Neu gewonnene Miet-FH Vormonat</span><div class="ac-val"><b>${fmt(snap.neu_fh_vormonat)}</b></div></div>
-      <div><span class="ac-lbl">Mietverträge Jahr</span><div class="ac-val"><b>${fmt(snap.jahr_ist)}</b> / ${fmt(snap.jahr_ziel)}</div></div>
-      <div><span class="ac-lbl">Mietverträge Vormonat</span><div class="ac-val"><b>${fmt(snap.monat_ist)}</b> / ${fmt(snap.monat_ziel)}</div></div>
+      <div><span class="ac-lbl">Mietverträge Jahr</span><div class="ac-val"><b class="${cls(jp,100)}">${fmt(snap.jahr_ist)}</b> / ${fmt(snap.jahr_ziel)}</div></div>
+      <div><span class="ac-lbl">Mietverträge Vormonat</span><div class="ac-val"><b class="${cls(mp,100)}">${fmt(snap.monat_ist)}</b> / ${fmt(snap.monat_ziel)}</div></div>
     </div>`;
   }
   if(goalId===4){
-    return `<div class="ac-grid"><div><span class="ac-lbl">PO-Quote (gewichtet)</span><div class="ac-val"><b>${pct(snap.po_quote)}</b> <span style="color:var(--muted);font-weight:600">Ziel mind. ${(snap.ziel*100).toFixed(0)} %</span></div></div></div>`;
+    const pq=snap.po_quote==null?null:snap.po_quote*100, zq=snap.ziel*100;
+    return `<div class="ac-grid"><div><span class="ac-lbl">PO-Quote (gewichtet)</span><div class="ac-val"><b class="${cls(pq,zq)}">${pct(snap.po_quote)}</b> <span style="color:var(--muted);font-weight:600">Ziel mind. ${zq.toFixed(0)} %</span></div></div></div>`;
   }
   if(goalId===5){
     const lj=snap.gw_quote_lj;
@@ -2995,7 +3010,7 @@ async function buildPerfReportPdfDoc(employee,year,month,goalsPayload){
         <div style="font-size:21px;font-weight:900;color:#062A3F">Performance Dialog</div>
         <div style="font-size:12px;color:#5D7284;margin-top:3px">${escapeHtml(employee)} · ${MONATE[month-1]} ${year}</div>
       </div>
-      <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Performance Dialog</div>
+      <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Performance Dialog<br>Erstellt am: ${fmtNowDateTime()}</div>
     </div>
     ${goalBlocks}
   `;
@@ -3160,6 +3175,7 @@ async function resetPerfEmployeeCurrentPeriod(emp){
 // aktuell fällige Berichtszeitraum), siehe perfReportPeriod().
 async function buildCombinedPerfReportsPdfDoc(reports,year,month){
   if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)) throw new Error("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals versuchen.");
+  const nowStr=fmtNowDateTime();
   const box=document.createElement("div");
   box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
   const sections=reports.map(rep=>{
@@ -3177,13 +3193,13 @@ async function buildCombinedPerfReportsPdfDoc(reports,year,month){
     }).join("");
     return `<div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:10px;margin:26px 0 16px">
       <div style="font-size:17px;font-weight:900;color:#062A3F">${escapeHtml(rep.employee)}</div>
-      <div style="font-size:10.5px;color:#5D7284">${MONATE[month-1]} ${year}</div>
+      <div style="font-size:10.5px;color:#5D7284;text-align:right">${MONATE[month-1]} ${year}<br>Erstellt am: ${nowStr}</div>
     </div>${goalBlocks}`;
   }).join("");
   box.innerHTML=`
     <div class="pdf-block" style="border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:8px">
       <div style="font-size:21px;font-weight:900;color:#062A3F">Performance Dialog – Gesamtübersicht</div>
-      <div style="font-size:12px;color:#5D7284;margin-top:3px">${MONATE[month-1]} ${year} · ${reports.length} Mitarbeiter</div>
+      <div style="font-size:12px;color:#5D7284;margin-top:3px">${MONATE[month-1]} ${year} · ${reports.length} Mitarbeiter · Erstellt am: ${nowStr}</div>
     </div>
     ${sections}
   `;
@@ -3447,7 +3463,7 @@ function yearFrac(){
   const total=workdaysBetween(new Date(Date.UTC(y,0,1)),new Date(Date.UTC(y,11,31)));
   return {done,total,f:done/total};
 }
-function goalCard(name,target,ist,soll,extra,editable,hr,lbls){
+function goalCard(name,target,ist,soll,extra,editable,hr,lbls,note){
   lbls=lbls||{}; lbls.ahead=lbls.ahead||"▲ vor Soll"; lbls.behind=lbls.behind||"▼ hinter Soll"; lbls.target=lbls.target||"Ziel";
   const pct=target>0?ist/target*100:0;
   const diff=Math.round(ist-soll), dp=soll>0?(ist-soll)/soll*100:0;
@@ -3475,7 +3491,7 @@ function goalCard(name,target,ist,soll,extra,editable,hr,lbls){
     // ist hr.val-hrT rechnerisch identisch zu diff/share). Ersetzt die
     // vorherige, unpassende Anzeige der rohen Monats-EWR-Zahl aus der
     // Auswertung, die nichts mit der saisonalen Gewichtung zu tun hatte.
-    if(hrT>0&&hr.lbl==="Jahresende (saisonal)"){
+    if(hrT>0&&hr.lbl.indexOf("Jahresende")===0){
       const hrDiff=Math.round(hr.val-hrT);
       const hrGood=hrDiff>=0;
       smallLine+=`<div class="hr"><span class="hr-ic">📈</span> Hochrechnung Vertragsplus/-minus zum Jahresende: <b style="color:${hrGood?"var(--pos)":"var(--neg)"}">${fmtSign(hrDiff)}</b> Stk.</div>`;
@@ -3497,6 +3513,7 @@ function goalCard(name,target,ist,soll,extra,editable,hr,lbls){
       <span>${extra}</span>
     </div>
     ${smallLine}
+    ${note?`<div class="hr" style="color:var(--muted);font-style:italic">${note}</div>`:""}
   </div>`;
 }
 function renderGoals(){
@@ -3507,6 +3524,7 @@ function renderGoals(){
   const mfrac=(s.tageIst&&s.tageSoll)?s.tageIst/s.tageSoll:1;
   const share=seasonShare(s.vortag,s.jahr);                                // saisonaler Jahresanteil
   const standJ=`${fmtDate(s.vortag)} · Arbeitstag ${yf.done}/${yf.total} · erwarteter Jahresanteil ${(share*100).toFixed(1).replace(".",",")} %`;
+  const standJFlat=`${fmtDate(s.vortag)} · Arbeitstag ${yf.done}/${yf.total} · erwarteter Jahresanteil ${(yf.f*100).toFixed(1).replace(".",",")} %`;
   const standM=`${fmtDate(s.vortag)} · Tag ${s.tageIst}/${s.tageSoll}`;
   // Hochrechnungen (Jahr saisonal: 40 % der Produktion in Q4)
   const hrJahr=share>0?at.jahr/share:0;
@@ -3544,16 +3562,19 @@ function renderGoals(){
   ];
   // Miete-Kachel (Club.Weiss) - reagiert wie die persönlichen Karten auf den
   // Mitarbeiter-Filter (mieteJahrFor), nicht wie Jahresziel/PLAN Jahr immer
-  // auf Österreich gesamt. Ziel-Konstanten sind vorerst 0 ("kein Jahresziel
-  // hinterlegt", siehe ZIEL_MIETE_AT) - sobald der Nutzer echte Planzahlen
-  // liefert, zeigt dieselbe goalCard()-Logik automatisch die saisonale
-  // Hochrechnung wie bei den WG-Jahreszielen.
+  // auf Österreich gesamt. Anders als die WG-Jahresziele (Q4-gewichtet über
+  // seasonShare) ist das Miete-Monatsziel bewusst FLACH (immer 250, siehe
+  // ZIEL_MIETE_MONAT) - daher hier der einfache Arbeitstagsanteil (yf.f)
+  // statt der saisonalen "share"-Gewichtung als Zeit-Pacing.
+  const mieteShare=yf.f;
   const mieteTarget=isATv?ZIEL_MIETE_AT:(PERS_MIETEZIELE[currentEmp]||0);
   const mieteIst=mieteJahrFor(currentEmp);
-  const mieteHrJahr=share>0?mieteIst/share:0;
-  const mieteCard=goalCard("🏠 Miete-Jahresziel "+s.jahr+" (Club.Weiss)", mieteTarget, mieteIst, mieteTarget*share,
-    mieteTarget>0?`Soll & Hochrechnung saisonal (${Math.round(Q4_ANTEIL*100)} % in Q4)`:"kein Jahresziel hinterlegt", false,
-    mieteTarget>0?{val:mieteHrJahr,lbl:"Jahresende (saisonal)",stand:standJ}:null
+  const mieteHrJahr=mieteShare>0?mieteIst/mieteShare:0;
+  const mieteCard=goalCard("🏠 Miete-Jahresziel "+s.jahr+" (Club.Weiss)", mieteTarget, mieteIst, mieteTarget*mieteShare,
+    mieteTarget>0?`Soll & Hochrechnung gleichmäßig (Monatsziel konstant ${fmt(ZIEL_MIETE_MONAT)})`:"kein Jahresziel hinterlegt", false,
+    mieteTarget>0?{val:mieteHrJahr,lbl:"Jahresende (gleichmäßig)",stand:standJFlat}:null,
+    null,
+    "Zahlen aus Freitagsreport, letzte Einspielung: "+MIETE_REPORT_STAND
   ).replace('class="goal"','class="goal goal-miete"');
   cards.push(mieteCard);
   if(!isATv){
