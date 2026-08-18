@@ -1496,6 +1496,19 @@ async function finalizePdf(pdf, filename, windowRef){
 function escapeHtml(s){
   return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
+// Für PDF-Dateinamen, die per Mail verschickt werden können: MIME-Header
+// (Content-Type/Content-Disposition) sind technisch ASCII-only - ein roh
+// eingebettetes UTF-8-Zeichen (z.B. "ß" in "Peißer") im Dateinamen führt bei
+// vielen Mail-Clients dazu, dass der PDF-Anhang nicht mehr erkannt wird und
+// stattdessen als Textdatei ankommt (Bug-Report 18.08.2026). Transliteriert
+// Umlaute daher lesbar (ä→ae usw.) statt sie einfach durch "_" zu ersetzen.
+function asciiFilenamePart(s){
+  return String(s??"")
+    .replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue")
+    .replace(/Ä/g,"Ae").replace(/Ö/g,"Oe").replace(/Ü/g,"Ue")
+    .replace(/ß/g,"ss")
+    .replace(/[^\w-]+/g,"_");
+}
 async function loadAdminUsers(){
   const box=$("adUserList");
   box.innerHTML="<p style='color:var(--muted)'>Lädt …</p>";
@@ -3048,7 +3061,7 @@ async function buildPerfReportPdfDoc(employee,year,month,goalsPayload){
       pdf.addImage(sliceCanvas.toDataURL("image/jpeg",0.95),"JPEG",margin,margin,imgW,sliceImgH);
       renderedPx+=sliceH; pageIdx++;
     }
-    const filename="PerformanceDialog_"+String(employee).replace(/[^\wÄÖÜäöüß-]+/g,"_")+"_"+year+"-"+String(month).padStart(2,"0")+".pdf";
+    const filename="PerformanceDialog_"+asciiFilenamePart(employee)+"_"+year+"-"+String(month).padStart(2,"0")+".pdf";
     return {pdf,filename};
   }finally{
     if(box.parentNode) box.parentNode.removeChild(box);
@@ -3584,7 +3597,11 @@ function renderGoals(){
     "Zahlen aus Freitagsreport, letzte Einspielung: "+MIETE_REPORT_STAND,
     true
   ).replace('class="goal"','class="goal goal-miete"');
-  cards.push(mieteCard);
+  // Nur für Österreich gesamt und die Mitarbeiter mit Club.Weiss-Ziel
+  // anzeigen - Szendi und Eitzinger haben keines (mieteTarget=0), bei ihnen
+  // soll die Kachel komplett ausgeblendet werden statt "kein Jahresziel
+  // hinterlegt" zu zeigen (lt. Nutzervorgabe 18.08.2026).
+  if(isATv||mieteTarget>0) cards.push(mieteCard);
   if(!isATv){
     cards.push(goalCard("🏁 Persönliches Jahresziel "+s.jahr+"<br><span style='font-weight:600;font-size:11px;color:var(--muted)'>"+currentEmp+" · fest hinterlegt</span>",
       persJZ, me.jahr, persJZ*share, `Soll & Hochrechnung saisonal (${Math.round(Q4_ANTEIL*100)} % in Q4)`, false,
@@ -4520,7 +4537,7 @@ async function exportFhPdf(includeAkp){
     // Der Nutzer will das Datenblatt sofort einsehbar haben statt nur einen
     // Download auszulösen - deshalb hier öffnen (neuer Tab, s.o.) statt
     // pdf.save() (außer beim Versenden per Mail, siehe finalizePdf).
-    const pdfFname="FH_"+fhNr+"_"+((f&&f.name)||"Datenblatt").replace(/[^\wÄÖÜäöüß-]+/g,"_")+".pdf";
+    const pdfFname="FH_"+fhNr+"_"+asciiFilenamePart((f&&f.name)||"Datenblatt")+".pdf";
     await finalizePdf(pdf,pdfFname,pdfWindow);
   }catch(e){
     console.error(e);
@@ -4680,7 +4697,7 @@ async function exportAkpPdf(){
     if(imgH>ph-2*margin){ imgH=ph-2*margin; imgW=canvas.width*imgH/canvas.height; }
     const x=(pw-imgW)/2;
     pdf.addImage(canvas.toDataURL("image/jpeg",0.95),"JPEG",x,margin,imgW,imgH);
-    const pdfFname="AKP_"+(c.nr||"Datenblatt").replace(/[^\wÄÖÜäöüß-]+/g,"_")+".pdf";
+    const pdfFname="AKP_"+asciiFilenamePart(c.nr||"Datenblatt")+".pdf";
     await finalizePdf(pdf,pdfFname);
   }catch(e){
     console.error(e);
@@ -4769,7 +4786,7 @@ async function exportAkpTopFlopPdf(){
       renderedPx+=sliceH;
       pageIdx++;
     }
-    const pdfFname="AKP_TopFlop"+akpN+"_"+(scopeLabel||"Uebersicht").replace(/[^\wÄÖÜäöüß-]+/g,"_")+".pdf";
+    const pdfFname="AKP_TopFlop"+akpN+"_"+asciiFilenamePart(scopeLabel||"Uebersicht")+".pdf";
     await finalizePdf(pdf,pdfFname,pdfWindow);
   }catch(e){
     console.error(e);
@@ -4867,7 +4884,7 @@ async function exportFhTopFlopPdf(){
       renderedPx+=sliceH;
       pageIdx++;
     }
-    const pdfFname="FH_TopFlop"+ftfN+"_"+(currentEmp||"Uebersicht").replace(/[^\wÄÖÜäöüß-]+/g,"_")+".pdf";
+    const pdfFname="FH_TopFlop"+ftfN+"_"+asciiFilenamePart(currentEmp||"Uebersicht")+".pdf";
     await finalizePdf(pdf,pdfFname,pdfWindow);
   }catch(e){
     console.error(e);
@@ -4947,7 +4964,7 @@ async function exportAkqStaffelnPdf(){
       renderedPx+=sliceH;
       pageIdx++;
     }
-    const pdfFname="Akquisestaffeln_"+s.jahr+"_"+currentEmp.replace(/[^\wÄÖÜäöüß-]+/g,"_")+".pdf";
+    const pdfFname="Akquisestaffeln_"+s.jahr+"_"+asciiFilenamePart(currentEmp)+".pdf";
     await finalizePdf(pdf,pdfFname,pdfWindow);
   }catch(e){
     console.error(e);
@@ -5288,7 +5305,7 @@ async function exportPDF(){
       y=sliceEnd; page++;
     }
     const s=state.latest;
-    const fname="Wertgarantie_Dashboard_"+currentEmp.replace(/[^\wÄÖÜäöüß]+/g,"_")+(s?"_"+s.vortag:"")+".pdf";
+    const fname="Wertgarantie_Dashboard_"+asciiFilenamePart(currentEmp)+(s?"_"+s.vortag:"")+".pdf";
     await finalizePdf(pdf,fname);
   }catch(e){
     console.error(e);
