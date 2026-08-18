@@ -1129,6 +1129,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <button class="btn btn-ghost" id="perfAdminClose" style="padding:7px 12px">✕ Schließen</button>
       </span>
     </div>
+    <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;margin-bottom:12px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+      <input type="checkbox" id="perfDialogEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+      Performance Dialog aktivieren <span style="font-weight:600;color:var(--muted);font-size:12px">(nur bei Aktivierung wird der Performance Dialog bei Mitarbeitern angefragt)</span>
+    </label>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
       <span style="font-size:12px;color:var(--muted);font-weight:700">Jahr:</span>
       <span class="tabs mini" id="perfAdminYearBtns"></span>
@@ -1201,6 +1205,10 @@ const sb = (typeof supabase!=="undefined")
 let supaUser = null;
 let myRole = null;
 let myName = null;
+// Globaler Ein/Aus-Schalter für den Performance Dialog (dashboard_kv-Key
+// "performance_dialog_enabled", per Schalter im Performance Dialog – ADMIN
+// PopUp gesetzt). Standardmäßig aus, bis Wert aus der DB geladen wurde.
+let perfDialogEnabled = false;
 const ROLE_LABEL = { admin:"Admin", aussendienst:"Außendienst", trainer:"Trainer" };
 // Reagiert auf den Klick im "Passwort vergessen"-Mail-Link: Supabase parst
 // den Recovery-Token aus der URL beim Laden der Seite und feuert dieses
@@ -1246,7 +1254,9 @@ function showRoleBadge(){
   $("settingsBtn").classList.toggle("hidden", !supaUser);
   // Performance Dialog: für Außendienst & Admin (nicht Trainer - siehe
   // Nutzerentscheidung 18.08.2026). Die Admin-Übersicht zusätzlich nur für Admin.
-  $("perfDialogBtn").classList.toggle("hidden", myRole!=="admin"&&myRole!=="aussendienst");
+  // Der Mitarbeiter-Button erscheint zudem nur, wenn der Admin das Feature im
+  // Performance Dialog – ADMIN PopUp per Schalter aktiviert hat.
+  $("perfDialogBtn").classList.toggle("hidden", !perfDialogEnabled||(myRole!=="admin"&&myRole!=="aussendienst"));
   $("perfDialogAdminBtn").classList.toggle("hidden", myRole!=="admin");
   const w=$("welcomeMsg");
   if(myName){
@@ -2755,14 +2765,14 @@ function poQuoteFor(emp){
   return wSum>0?ljSum/wSum:null;
 }
 function perfGoal4Snapshot(emp){ return {po_quote:poQuoteFor(emp),ziel:0.75}; }
-// Ziel 5 (nur Szendi): "Steigerung" der Gebrauchtgeräte-Quote um mind. 10
-// %-Punkte ggü. Vorjahr (nicht mit dem allgemeinen 40%-Ziel/GW_ZIEL zu
-// verwechseln, das eine absolute Zielquote ist - hier geht es explizit um
-// den Zuwachs).
+// Ziel 5 (nur Szendi): Gebrauchtgeräte-Quote auf mind. 10 % steigern - lt.
+// Nutzerentscheidung 18.08.2026 ist das eine ABSOLUTE Zielquote (10 %), kein
+// Zuwachs/Vergleich ggü. Vorjahr. Vorjahreswert wird nur noch als Kontext
+// mitgeführt, fließt aber nicht in die Zielerreichung ein.
 function perfGoal5Snapshot(emp){
   const q=state.latest.gwQuote&&state.latest.gwQuote[emp];
   const lj=q?q.lj:null, vj=q?q.vj:null;
-  return {gw_quote_lj:lj,gw_quote_vj:vj,steigerung_pp:(lj!=null&&vj!=null)?(lj-vj)*100:null,ziel_pp:10};
+  return {gw_quote_lj:lj,gw_quote_vj:vj,ziel:0.10};
 }
 function perfGoalSnapshot(goalId,emp,year,month){
   if(goalId===1) return perfGoal1Snapshot(emp,year,month);
@@ -2804,11 +2814,10 @@ function perfGoalSystemHtml(goalId,snap){
     return `<div class="ac-grid"><div><span class="ac-lbl">PO-Quote (gewichtet)</span><div class="ac-val"><b>${pct(snap.po_quote)}</b> <span style="color:var(--muted);font-weight:600">Ziel mind. ${(snap.ziel*100).toFixed(0)} %</span></div></div></div>`;
   }
   if(goalId===5){
-    const s=snap.steigerung_pp;
+    const lj=snap.gw_quote_lj;
     return `<div class="ac-grid">
-      <div><span class="ac-lbl">GW-Quote aktuell</span><div class="ac-val"><b>${pct(snap.gw_quote_lj)}</b></div></div>
+      <div><span class="ac-lbl">GW-Quote aktuell</span><div class="ac-val"><b class="${lj!=null&&lj>=snap.ziel?"pos-t":"neg-t"}">${pct(lj)}</b> <span style="color:var(--muted);font-weight:600">Ziel mind. ${(snap.ziel*100).toFixed(0)} %</span></div></div>
       <div><span class="ac-lbl">GW-Quote Vorjahr</span><div class="ac-val">${pct(snap.gw_quote_vj)}</div></div>
-      <div><span class="ac-lbl">Steigerung</span><div class="ac-val"><b class="${s!=null&&s>=snap.ziel_pp?"pos-t":"neg-t"}">${s==null?"–":(s>=0?"+":"")+s.toFixed(1).replace(".",",")+" %-Pkt."}</b> <span style="color:var(--muted);font-weight:600">Ziel mind. +${snap.ziel_pp} %-Pkt.</span></div></div>
     </div>`;
   }
   return "";
@@ -2835,6 +2844,7 @@ function perfReportPeriod(){
   return {year:y,month:m};
 }
 async function openPerfModal(){
+  if(!perfDialogEnabled){ toast("Der Performance Dialog ist aktuell nicht aktiviert."); return; }
   if(!myName||!PERF_GOALS_BY_EMPLOYEE[myName]){ toast("Für "+(myName||"deinen Account")+" ist kein Performance Dialog hinterlegt."); return; }
   perfEmployee=myName;
   const p=perfReportPeriod(); perfReportYear=p.year; perfReportMonth=p.month;
@@ -3050,18 +3060,38 @@ async function exportPerfReportPdf(employee,year,month,goalsPayload,opts){
 function perfMonthIsDue(year,month){
   return new Date()>=new Date(Date.UTC(year,month,1));
 }
+// Der Performance Dialog existiert erst ab diesem Monat - davor liegende
+// Monate zeigen immer "–" statt eines roten Rufzeichens, da es das Feature
+// damals noch nicht gab (lt. Nutzervorgabe 18.08.2026).
+const PERF_DIALOG_START_YEAR=2026, PERF_DIALOG_START_MONTH=8;
+function perfMonthBeforeFeatureStart(year,month){
+  return year<PERF_DIALOG_START_YEAR || (year===PERF_DIALOG_START_YEAR && month<PERF_DIALOG_START_MONTH);
+}
 let perfAdminYear=new Date().getFullYear();
 let perfAdminReports={};
 async function openPerfAdminModal(){
   perfAdminYear=new Date().getFullYear();
   $("perfAdminModal").classList.remove("hidden");
+  $("perfDialogEnabledChk").checked=perfDialogEnabled;
   renderPerfAdminYearTabs();
   await loadPerfAdminReports();
   renderPerfAdminGrid();
 }
+async function togglePerfDialogEnabled(){
+  const on=$("perfDialogEnabledChk").checked;
+  perfDialogEnabled=on;
+  showRoleBadge();
+  try{
+    await stSet("performance_dialog_enabled",on?"1":"0");
+    toast(on?"Performance Dialog aktiviert ✓":"Performance Dialog deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
 function renderPerfAdminYearTabs(){
-  const base=new Date().getFullYear();
-  const years=[base,base-1,base-2];
+  // Nur das laufende Jahr - der Performance Dialog gibt es erst seit
+  // PERF_DIALOG_START_YEAR, frühere Jahre sind daher nicht relevant.
+  const years=[new Date().getFullYear()];
   $("perfAdminYearBtns").innerHTML=years.map(y=>`<button data-y="${y}" class="${y===perfAdminYear?"on":""}">${y}</button>`).join("");
   $("perfAdminYearBtns").querySelectorAll("button").forEach(b=>{
     b.onclick=async()=>{ perfAdminYear=+b.dataset.y; renderPerfAdminYearTabs(); await loadPerfAdminReports(); renderPerfAdminGrid(); };
@@ -3083,6 +3113,7 @@ function renderPerfAdminGrid(){
       const m=i+1;
       const rep=(perfAdminReports[emp]||{})[m];
       if(rep) return `<td class="r"><button type="button" class="perf-admin-check" data-emp="${escapeHtml(emp)}" data-m="${m}" title="PDF herunterladen" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--pos)">✓</button></td>`;
+      if(perfMonthBeforeFeatureStart(perfAdminYear,m)) return `<td class="r" style="color:var(--muted)">–</td>`;
       if(!perfMonthIsDue(perfAdminYear,m)) return `<td class="r" style="color:var(--muted)">–</td>`;
       return `<td class="r" style="color:var(--neg);font-weight:900;font-size:15px" title="Noch nicht abgegeben">❗</td>`;
     }).join("");
@@ -3257,6 +3288,7 @@ async function saveData(){ try{ await stSet("wg-state",JSON.stringify(state)); }
 async function loadAll(){
   try{ const d=await stGet("wg-state"); if(d){ const p=JSON.parse(d); if(p&&p.latest) state=p; } }catch(e){}
   try{ const g=await stGet("wg-goals"); if(g) goals=JSON.parse(g); }catch(e){}
+  try{ perfDialogEnabled=(await stGet("performance_dialog_enabled"))==="1"; }catch(e){}
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
   else if(emb&&emb.latest&&state.latest){
@@ -5309,6 +5341,7 @@ $("perfClose").onclick=()=>$("perfModal").classList.add("hidden");
 $("perfDialogAdminBtn").onclick=openPerfAdminModal;
 $("perfAdminClose").onclick=()=>$("perfAdminModal").classList.add("hidden");
 $("perfAdminPdfBtn").onclick=exportPerfAllReportsPdf;
+$("perfDialogEnabledChk").onchange=togglePerfDialogEnabled;
 $("adminUploadBtn").onclick=pickFiles;
 $("adminAkqUploadBtn").onclick=()=>$("akqFileInput").click();
 $("akqFileInput").onchange=async e=>{ if(e.target.files.length){ await handleAkqStaffelFile([...e.target.files]); e.target.value=""; } };
@@ -5434,7 +5467,7 @@ window.addEventListener("pageshow",e=>{ if(e.persisted&&hasData()) refreshData(t
   [AT_GESAMT,...EMPLOYEES].forEach(n=>{ const o=document.createElement("option"); o.value=n; o.textContent=n; sel.appendChild(o); });
   const authed = await initAuth();
   if(authed){
-    await loadAll(); render();
+    await loadAll(); showRoleBadge(); render();
     await Promise.all([loadAkpContactsIndex(), loadFhErledigtSet(), loadFhAkqIndex(), loadFhMieteIndex()]);
     await processPendingImports();
     render();

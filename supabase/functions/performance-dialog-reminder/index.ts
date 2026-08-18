@@ -84,6 +84,16 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
+  // Performance Dialog kann von einem Admin im Performance Dialog – ADMIN
+  // PopUp per Schalter deaktiviert werden (dashboard_kv-Key
+  // "performance_dialog_enabled") - solange das der Fall ist, sollen auch
+  // keine Erinnerungsmails verschickt werden.
+  const { data: flagRow } = await admin
+    .from("dashboard_kv").select("value").eq("key", "performance_dialog_enabled").maybeSingle();
+  if (flagRow?.value !== "1") {
+    return json({ ok: true, skipped: "Performance Dialog ist deaktiviert" });
+  }
+
   const now = viennaNow();
   const isFriday = now.weekday === 5;
   const isFifteenth = now.day === 15;
