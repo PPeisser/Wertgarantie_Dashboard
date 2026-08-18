@@ -3550,7 +3550,7 @@ function renderGoals(){
                                 :{val:hrMe,lbl:"Monatsende",stand:standM};
   // Karte 3: Österreich = Monatsziel (Plan) · Mitarbeiter = Vergleich zum Vorjahresmonat
   const card3=isAT
-    ? goalCard("📋 PLAN Monat "+MONATE[s.monat-1]+"<br><span style='font-weight:600;font-size:11px;color:var(--muted)'>"+currentEmp+(s.planQuelle==="fallback"?" · aus FH-Plänen ÷ 12":" · aus Auswertung (ZE_Region, Plan LJ)")+"</span>",
+    ? goalCard("📋 PLAN Monat "+MONATE[s.monat-1],
         planMonat, me.monat, planMonat*mfrac,
         planMonat>0?`Tag ${s.tageIst} von ${s.tageSoll} Arbeitstagen`:"kein Plan in der Auswertung gefunden", false,
         planMonat>0?hrMonat:null)
@@ -3567,7 +3567,7 @@ function renderGoals(){
     goalCard("🏢 PLAN Jahr "+s.jahr, ZIEL_FIRMA, at.jahr, ZIEL_FIRMA*share, `Soll & Hochrechnung saisonal (${Math.round(Q4_ANTEIL*100)} % in Q4)`, false,
       {val:hrJahr,lbl:"Jahresende (saisonal)",stand:standJ}),
     card3,
-    goalCard("🎯 Persönliches Monatsziel · "+MONATE[s.monat-1]+"<br><span style='font-weight:600;font-size:11px;color:var(--muted)'>"+currentEmp+(isATv?" · fest hinterlegt":"")+"</span>",
+    goalCard("🎯 Pers. Monatsziel · "+MONATE[s.monat-1],
       g, me.monat, g*mfrac,
       g>0?`Tag ${s.tageIst} von ${s.tageSoll} Arbeitstagen`:(isATv?"kein Monatsziel hinterlegt":`<button class="edit no-print" onclick="openGoalModal(true)" style="background:none;border:none;color:var(--wg-blue);font-weight:700;cursor:pointer;font-size:12px">Jetzt Ziel festlegen →</button>`), g>0&&!isATv,
       g>0?{val:hrMe,lbl:"Monatsende",stand:standM}:null)
@@ -3585,7 +3585,7 @@ function renderGoals(){
   const mieteTarget=isATv?ZIEL_MIETE_AT:(PERS_MIETEZIELE[currentEmp]||0);
   const mieteIst=mieteJahrFor(currentEmp);
   const mieteHrJahr=mieteShare>0?mieteIst/mieteShare:0;
-  const mieteCard=goalCard("🏠 Miete-Jahresziel "+s.jahr+" (Club.Weiss)", mieteTarget, mieteIst, mieteTarget*mieteShare,
+  const mieteCard=goalCard("🏠 Miete-Jahresziel "+s.jahr, mieteTarget, mieteIst, mieteTarget*mieteShare,
     "", false,
     mieteTarget>0?{val:mieteHrJahr,lbl:"Jahresende (gleichmäßig)"}:null,
     null,
