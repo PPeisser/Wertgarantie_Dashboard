@@ -3061,6 +3061,14 @@ const PERF_DIALOG_START_YEAR=2026, PERF_DIALOG_START_MONTH=8;
 function perfMonthBeforeFeatureStart(year,month){
   return year<PERF_DIALOG_START_YEAR || (year===PERF_DIALOG_START_YEAR && month<PERF_DIALOG_START_MONTH);
 }
+// Zukünftige, noch gar nicht erreichte Monate bleiben neutral "–" - erst
+// der aktuelle Kalendermonat (und alles davor) bekommt ✓/✗, damit die
+// Übersicht nicht "vorab" Monate als negativ markiert, die noch gar nicht
+// begonnen haben (lt. Nutzervorgabe 18.08.2026).
+function perfMonthIsFuture(year,month){
+  const now=new Date();
+  return year>now.getFullYear() || (year===now.getFullYear() && month>now.getMonth()+1);
+}
 let perfAdminYear=new Date().getFullYear();
 let perfAdminReports={};
 async function openPerfAdminModal(){
@@ -3108,11 +3116,12 @@ function renderPerfAdminGrid(){
       const rep=(perfAdminReports[emp]||{})[m];
       if(rep) return `<td class="r"><button type="button" class="perf-admin-check" data-emp="${escapeHtml(emp)}" data-m="${m}" title="PDF herunterladen" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--pos)">✓</button></td>`;
       if(perfMonthBeforeFeatureStart(perfAdminYear,m)) return `<td class="r" style="color:var(--muted)">–</td>`;
+      if(perfMonthIsFuture(perfAdminYear,m)) return `<td class="r" style="color:var(--muted)">–</td>`;
       return `<td class="r" style="color:var(--neg);font-weight:900;font-size:15px" title="Noch nicht abgegeben">✗</td>`;
     }).join("");
-    return `<tr><td><b>${escapeHtml(emp)}</b></td>${cells}</tr>`;
+    return `<tr><td><b>${escapeHtml(emp)}</b></td>${cells}<td class="r"><button type="button" class="perf-admin-reset" data-emp="${escapeHtml(emp)}" title="Performance Dialog der aktuellen Periode zurücksetzen" style="background:none;border:none;cursor:pointer;font-size:12px;color:var(--muted);font-weight:700">↺ Zurücksetzen</button></td></tr>`;
   }).join("");
-  $("perfAdminBody").innerHTML=`<table><thead><tr><th>Mitarbeiter</th>${MONTH_LABELS.map(m=>`<th class="r">${m}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`;
+  $("perfAdminBody").innerHTML=`<table><thead><tr><th>Mitarbeiter</th>${MONTH_LABELS.map(m=>`<th class="r">${m}</th>`).join("")}<th></th></tr></thead><tbody>${rows}</tbody></table>`;
   $("perfAdminBody").querySelectorAll(".perf-admin-check").forEach(btn=>{
     btn.onclick=async()=>{
       const emp=btn.dataset.emp, m=+btn.dataset.m;
@@ -3123,6 +3132,27 @@ function renderPerfAdminGrid(){
       catch(e){ toast("PDF-Erstellung fehlgeschlagen: "+(e.message||e)); }
     };
   });
+  $("perfAdminBody").querySelectorAll(".perf-admin-reset").forEach(btn=>{
+    btn.onclick=async()=>{ await resetPerfEmployeeCurrentPeriod(btn.dataset.emp); };
+  });
+}
+// Setzt den Bericht der aktuell relevanten Periode (derselbe abgeschlossene
+// Vormonat wie im Mitarbeiter-Wizard/den Erinnerungsmails, siehe
+// perfReportPeriod()) für EINEN Mitarbeiter zurück - löscht den
+// gespeicherten Datensatz unwiderruflich, sodass der Mitarbeiter den
+// Performance Dialog für diesen Monat neu ausfüllen muss.
+async function resetPerfEmployeeCurrentPeriod(emp){
+  const {year,month}=perfReportPeriod();
+  if(!confirm("Performance Dialog "+MONATE[month-1]+" "+year+" für "+emp+" wirklich zurücksetzen?\n\nDer gespeicherte Bericht wird endgültig gelöscht und muss vom Mitarbeiter neu ausgefüllt werden.")) return;
+  try{
+    const {error}=await sb.from("performance_dialog_reports").delete().eq("employee",emp).eq("year",year).eq("month",month);
+    if(error) throw error;
+    toast("Zurückgesetzt ✓ "+emp+" muss "+MONATE[month-1]+" "+year+" neu ausfüllen.");
+    await loadPerfAdminReports();
+    renderPerfAdminGrid();
+  }catch(e){
+    toast("Zurücksetzen fehlgeschlagen: "+(e.message||e));
+  }
 }
 // Sammel-PDF: alle Mitarbeiter-Berichte des (relativ zu heute) abgeschlossenen
 // Vormonats in EINEM PDF, unabhängig vom gerade in der Übersicht gewählten

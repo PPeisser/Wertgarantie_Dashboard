@@ -534,6 +534,14 @@ create policy "Own or admin update performance_dialog_reports"
     or employee = (select name from public.profiles where id = auth.uid())
   );
 
+-- Nur Admin darf Berichte löschen (Performance Dialog – ADMIN PopUp,
+-- "Zurücksetzen"-Button je Mitarbeiter) - ein Mitarbeiter darf seinen
+-- eigenen abgegebenen Bericht nicht selbst wieder entfernen.
+create policy "Admin delete performance_dialog_reports"
+  on public.performance_dialog_reports for delete
+  to authenticated
+  using (public.is_admin());
+
 create index if not exists performance_dialog_reports_employee_idx
   on public.performance_dialog_reports (employee, year, month);
 
