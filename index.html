@@ -166,9 +166,9 @@ h2.sec small{font-weight:600;text-transform:none;color:var(--muted);letter-spaci
 .goal .edit{margin-left:auto;background:none;border:none;color:var(--wg-blue);font-weight:700;font-size:12px;cursor:pointer;padding:2px}
 .goal .edit:hover{text-decoration:underline}
 .pos-t{color:var(--pos)} .neg-t{color:var(--neg)}
-/* Miete-Kachel (Club Weiß) - farblich abgehoben (Gelb der Mietabteilung,
+/* Miete-Kachel (Club.Weiss) - farblich abgehoben (Gelb der Mietabteilung,
    blaue Schrift), Ziel-Balken/Pillen (pos/neg) behalten ihre eigenen Farben. */
-.goal.goal-miete{background:#FFDE59;border:1px solid #E8B900}
+.goal.goal-miete{background:rgba(255,222,89,.35);border:1px solid rgba(232,185,0,.5)}
 .goal.goal-miete,.goal.goal-miete .name,.goal.goal-miete .target,.goal.goal-miete .target b,
 .goal.goal-miete .stk,.goal.goal-miete .delta,.goal.goal-miete .hr,.goal.goal-miete .hr b,
 .goal.goal-miete .hr .hr-stand{color:var(--wg-blue-dark)}
@@ -729,8 +729,8 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div><span class="ac-lbl">Händlersegmentierung</span><div class="ac-val" id="fhSegmentView">–</div></div>
         <div><span class="ac-lbl">Letzter Besuch</span><div class="ac-val" id="fhBesuchView">–</div></div>
         <div><span class="ac-lbl">9-Wochen-Plan</span><div class="ac-val" id="fhNwView">–</div></div>
-        <div><span class="ac-lbl">Club Weiß Mitglied</span><div class="ac-val" id="fhClubView">–</div></div>
-        <div><span class="ac-lbl">Club Weiß Mitgliedsnummer</span><div class="ac-val" id="fhClubNrView">–</div></div>
+        <div><span class="ac-lbl">Club.Weiss Mitglied</span><div class="ac-val" id="fhClubView">–</div></div>
+        <div><span class="ac-lbl">Club.Weiss Mitgliedsnummer</span><div class="ac-val" id="fhClubNrView">–</div></div>
       </div>
       <div style="margin-top:14px"><span class="ac-lbl">Sonstige Infos</span><div class="ac-val" id="fhInfosView" style="font-weight:600;white-space:pre-wrap">–</div></div>
       <button class="btn btn-blue" id="fhEditBtn" style="margin-top:14px">✎ Stammdaten bearbeiten</button>
@@ -753,7 +753,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div><span class="ac-lbl">9-Wochen-Plan</span>
           <label class="nw-check" for="fhNwEdit"><input type="checkbox" id="fhNwEdit"> erledigt</label>
         </div>
-        <div><span class="ac-lbl">Club Weiß Mitglied</span>
+        <div><span class="ac-lbl">Club.Weiss Mitglied</span>
           <label class="nw-check" for="fhClubEdit"><input type="checkbox" id="fhClubEdit"> Mitglied</label>
         </div>
       </div>
@@ -1125,7 +1125,7 @@ const PERS_JAHRESZIELE = {
   "Dominik Szendi":55000,"Helmut Otto":7000,"Peter Peißer":7000
 };
 PERS_JAHRESZIELE[AT_GESAMT]=Object.values(PERS_JAHRESZIELE).reduce((a,b)=>a+b,0); // 121.000
-// Miete-Jahresziel (Club Weiß) - Platzhalter (0 = "kein Ziel hinterlegt", die
+// Miete-Jahresziel (Club.Weiss) - Platzhalter (0 = "kein Ziel hinterlegt", die
 // Miete-Kachel zeigt dann nur die IST-Produktion ohne %-Hochrechnung, siehe
 // renderGoals). Die echten Planzahlen (Österreich gesamt + je Mitarbeiter)
 // hat der Nutzer für einen späteren Zeitpunkt angekündigt (Chat vom
@@ -2233,7 +2233,7 @@ async function handleFhSegmentFile(files){
   }
 }
 
-// Liest die Miete-Report-Datei ("MSK_Report_...", Club Weiß): ein oder
+// Liest die Miete-Report-Datei ("MSK_Report_...", Club.Weiss): ein oder
 // mehrere Blätter "AT_<Jahr>" (z.B. AT_2026, AT_2025 - je nach Jahr(en) in
 // der Datei, dynamisch statt fest, damit künftige Jahre ohne Codeänderung
 // funktionieren). Jede Zeile ist ein einzelner Mietvertrag (keine
@@ -2394,7 +2394,7 @@ async function processPendingImports(){
             segCount++; segFhCount+=segRows.length;
           }else{
             // Auch kein Segmentierungs-Format - könnte der Miete-Report
-            // (Club Weiß) sein, ebenfalls per Mail an input@wgaustria.at
+            // (Club.Weiss) sein, ebenfalls per Mail an input@wgaustria.at
             // zulässig (siehe parseMieteReport).
             const parsed=parseMieteReport(wb);
             if(!parsed) throw new Error("Format nicht erkannt");
@@ -2553,7 +2553,7 @@ async function loadFhAkqIndex(){
     if(hasData()) render();
   }catch(e){ console.error("loadFhAkqIndex failed:",e); }
 }
-// Miete-Produktion je Fachhändler (Club Weiß, siehe parseMieteReport) -
+// Miete-Produktion je Fachhändler (Club.Weiss, siehe parseMieteReport) -
 // komplett geladen (analog fhAkqIndex), damit die Miete-Kachel bei "Ziele &
 // Hochrechnung" ohne Einzelabfrage je Händler über alle FH aggregieren kann.
 let fhMieteIndex={};
@@ -2893,7 +2893,7 @@ function renderGoals(){
       g>0?`Tag ${s.tageIst} von ${s.tageSoll} Arbeitstagen`:(isATv?"kein Monatsziel hinterlegt":`<button class="edit no-print" onclick="openGoalModal(true)" style="background:none;border:none;color:var(--wg-blue);font-weight:700;cursor:pointer;font-size:12px">Jetzt Ziel festlegen →</button>`), g>0&&!isATv,
       g>0?{val:hrMe,lbl:"Monatsende",stand:standM}:null)
   ];
-  // Miete-Kachel (Club Weiß) - reagiert wie die persönlichen Karten auf den
+  // Miete-Kachel (Club.Weiss) - reagiert wie die persönlichen Karten auf den
   // Mitarbeiter-Filter (mieteJahrFor), nicht wie Jahresziel/PLAN Jahr immer
   // auf Österreich gesamt. Ziel-Konstanten sind vorerst 0 ("kein Jahresziel
   // hinterlegt", siehe ZIEL_MIETE_AT) - sobald der Nutzer echte Planzahlen
@@ -2902,7 +2902,7 @@ function renderGoals(){
   const mieteTarget=isATv?ZIEL_MIETE_AT:(PERS_MIETEZIELE[currentEmp]||0);
   const mieteIst=mieteJahrFor(currentEmp);
   const mieteHrJahr=share>0?mieteIst/share:0;
-  const mieteCard=goalCard("🏠 Miete-Jahresziel "+s.jahr+" (Club Weiß)", mieteTarget, mieteIst, mieteTarget*share,
+  const mieteCard=goalCard("🏠 Miete-Jahresziel "+s.jahr+" (Club.Weiss)", mieteTarget, mieteIst, mieteTarget*share,
     mieteTarget>0?`Soll & Hochrechnung saisonal (${Math.round(Q4_ANTEIL*100)} % in Q4)`:"kein Jahresziel hinterlegt", false,
     mieteTarget>0?{val:mieteHrJahr,lbl:"Jahresende (saisonal)",stand:standJ}:null
   ).replace('class="goal"','class="goal goal-miete"');
@@ -3625,7 +3625,7 @@ function renderFhYearlyTrend(){
     <table class="ac-yearly-table"><thead><tr><th>Jahr</th><th>Erfasst</th><th>Summe</th><th>vs. Vorjahr</th><th>davon beitragsfrei</th><th>3-für-2-Quote</th></tr></thead><tbody>${rows}</tbody></table>
     <div class="ac-month-note">Jahre mit weniger als 12 erfassten Monaten sind noch nicht vollständig – der Vergleich ist dann nicht 1:1. Jeder beitragsfreie Vertrag entspricht einer 3-für-2-Aktion.</div>`;
 }
-// Miete-Produktionsübersicht (Club Weiß) - nur sichtbar, wenn der Händler als
+// Miete-Produktionsübersicht (Club.Weiss) - nur sichtbar, wenn der Händler als
 // Club-Weiß-Mitglied markiert ist (club_weiss_mitglied, siehe
 // parseMieteReport/Admin-Import). Gleiches Format/Rechenstil wie die
 // WG-Produktionsübersicht (renderFhMonthly/renderFhYearlyTrend), aber direkt
@@ -3672,7 +3672,7 @@ function renderFhMieteSection(){
     ?`<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px">`+sortimentEntries.map(([name,cnt])=>
         `<span class="pill neu" style="font-size:11px;padding:4px 10px">${escapeHtml(name)}: <b>${fmt(cnt)}</b></span>`).join("")+`</div>`
     :`<div class="empty-note">Kein Sortiment erfasst.</div>`;
-  box.innerHTML=`<h4 style="margin:18px 0 4px;color:var(--wg-navy);font-size:13px">Produktion Miete (Club Weiß)</h4>
+  box.innerHTML=`<h4 style="margin:18px 0 4px;color:var(--wg-navy);font-size:13px">Produktion Miete (Club.Weiss)</h4>
     ${monthlyTbl}
     ${yearlyTbl}
     <div style="margin-top:14px"><span class="ac-lbl">Verkauftes Sortiment</span>${sortimentList}</div>`;
