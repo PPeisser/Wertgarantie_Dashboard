@@ -1173,8 +1173,12 @@ const ZIEL_MIETE_AT = 3000;
 const PERS_MIETEZIELE = {
   "Klaus Witting":750, "Helmut Otto":750, "Florian Hasibeder":750, "Peter Peißer":750
 };
-// Monatsziel ist bewusst FLACH (immer 250, nicht saisonal Q4-gewichtet wie
-// ZIEL_AT) - 3.000 ÷ 12 = 250, siehe mieteShare/yearFrac() in renderGoals.
+// Monatsziel ist bewusst FLACH (3.000 ÷ 12 = 250, nicht saisonal Q4-
+// gewichtet wie ZIEL_AT) - da die Miete-Zahlen nur wöchentlich per
+// Freitagsreport (nicht täglich) eingespielt werden, zeigt die Miete-Kachel
+// selbst aber bewusst KEINE tagesgenaue Soll-/Hochrechnungsanzeige (siehe
+// goalCard-Aufruf mit noSoll=true in renderGoals) - dieser Wert dient nur
+// der Dokumentation der Zielherleitung.
 const ZIEL_MIETE_MONAT = 250;
 // Datenherkunft der Miete-Kachel - Platzhalter bis eine automatische
 // Erfassung des Einspieldatums existiert; bei jedem neuen Freitagsreport-
@@ -1491,6 +1495,19 @@ async function finalizePdf(pdf, filename, windowRef){
 }
 function escapeHtml(s){
   return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+// Für PDF-Dateinamen, die per Mail verschickt werden können: MIME-Header
+// (Content-Type/Content-Disposition) sind technisch ASCII-only - ein roh
+// eingebettetes UTF-8-Zeichen (z.B. "ß" in "Peißer") im Dateinamen führt bei
+// vielen Mail-Clients dazu, dass der PDF-Anhang nicht mehr erkannt wird und
+// stattdessen als Textdatei ankommt (Bug-Report 18.08.2026). Transliteriert
+// Umlaute daher lesbar (ä→ae usw.) statt sie einfach durch "_" zu ersetzen.
+function asciiFilenamePart(s){
+  return String(s??"")
+    .replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue")
+    .replace(/Ä/g,"Ae").replace(/Ö/g,"Oe").replace(/Ü/g,"Ue")
+    .replace(/ß/g,"ss")
+    .replace(/[^\w-]+/g,"_");
 }
 async function loadAdminUsers(){
   const box=$("adUserList");
@@ -3044,7 +3061,7 @@ async function buildPerfReportPdfDoc(employee,year,month,goalsPayload){
       pdf.addImage(sliceCanvas.toDataURL("image/jpeg",0.95),"JPEG",margin,margin,imgW,sliceImgH);
       renderedPx+=sliceH; pageIdx++;
     }
-    const filename="PerformanceDialog_"+String(employee).replace(/[^\wÄÖÜäöüß-]+/g,"_")+"_"+year+"-"+String(month).padStart(2,"0")+".pdf";
+    const filename="PerformanceDialog_"+asciiFilenamePart(employee)+"_"+year+"-"+String(month).padStart(2,"0")+".pdf";
     return {pdf,filename};
   }finally{
     if(box.parentNode) box.parentNode.removeChild(box);
@@ -3463,11 +3480,15 @@ function yearFrac(){
   const total=workdaysBetween(new Date(Date.UTC(y,0,1)),new Date(Date.UTC(y,11,31)));
   return {done,total,f:done/total};
 }
-function goalCard(name,target,ist,soll,extra,editable,hr,lbls,note){
+function goalCard(name,target,ist,soll,extra,editable,hr,lbls,note,noSoll){
   lbls=lbls||{}; lbls.ahead=lbls.ahead||"▲ vor Soll"; lbls.behind=lbls.behind||"▼ hinter Soll"; lbls.target=lbls.target||"Ziel";
   const pct=target>0?ist/target*100:0;
   const diff=Math.round(ist-soll), dp=soll>0?(ist-soll)/soll*100:0;
-  const good=diff>=0, col=good?"var(--pos)":"var(--neg)";
+  // Ohne Tages-/Wochen-genaue Datenanlieferung (noSoll, z.B. Miete-Kachel -
+  // nur wöchentlicher Freitagsreport) ist "vor/hinter Soll" nicht sinnvoll -
+  // die Farbe richtet sich dann nur danach, ob das Jahresziel selbst
+  // erreicht ist (Ist ≥ Ziel), statt gegen einen Tages-Pacing-Wert.
+  const good=noSoll?(target>0?ist>=target:true):diff>=0, col=good?"var(--pos)":"var(--neg)";
   const sollPct=target>0?Math.min(soll/target*100,100):0;
   const hasHr=hr&&hr.val>0;
   let bigBlock, smallLine="";
@@ -3507,9 +3528,9 @@ function goalCard(name,target,ist,soll,extra,editable,hr,lbls,note){
       <div class="target">${lbls.target}: <b>${target>0?fmt(target):"–"}</b>${editable?`<button class="edit no-print" onclick="openGoalModal(true)">✎ ändern</button>`:""}</div></div>
     ${bigBlock}
     <div class="bar"><div class="fill" style="width:${Math.min(pct,100)}%;background:${col}"></div>
-      ${target>0?`<div class="soll" style="left:${sollPct}%" title="Soll heute"></div>`:""}</div>
+      ${target>0&&!noSoll?`<div class="soll" style="left:${sollPct}%" title="Soll heute"></div>`:""}</div>
     <div class="delta">
-      ${target>0?`<span class="pill ${good?"pos":"neg"}">${good?lbls.ahead:lbls.behind}: ${fmtSign(diff)} Stk. (${fmtPct(dp)})</span>`:""}
+      ${target>0&&!noSoll?`<span class="pill ${good?"pos":"neg"}">${good?lbls.ahead:lbls.behind}: ${fmtSign(diff)} Stk. (${fmtPct(dp)})</span>`:""}
       <span>${extra}</span>
     </div>
     ${smallLine}
@@ -3524,7 +3545,6 @@ function renderGoals(){
   const mfrac=(s.tageIst&&s.tageSoll)?s.tageIst/s.tageSoll:1;
   const share=seasonShare(s.vortag,s.jahr);                                // saisonaler Jahresanteil
   const standJ=`${fmtDate(s.vortag)} · Arbeitstag ${yf.done}/${yf.total} · erwarteter Jahresanteil ${(share*100).toFixed(1).replace(".",",")} %`;
-  const standJFlat=`${fmtDate(s.vortag)} · Arbeitstag ${yf.done}/${yf.total} · erwarteter Jahresanteil ${(yf.f*100).toFixed(1).replace(".",",")} %`;
   const standM=`${fmtDate(s.vortag)} · Tag ${s.tageIst}/${s.tageSoll}`;
   // Hochrechnungen (Jahr saisonal: 40 % der Produktion in Q4)
   const hrJahr=share>0?at.jahr/share:0;
@@ -3562,21 +3582,26 @@ function renderGoals(){
   ];
   // Miete-Kachel (Club.Weiss) - reagiert wie die persönlichen Karten auf den
   // Mitarbeiter-Filter (mieteJahrFor), nicht wie Jahresziel/PLAN Jahr immer
-  // auf Österreich gesamt. Anders als die WG-Jahresziele (Q4-gewichtet über
-  // seasonShare) ist das Miete-Monatsziel bewusst FLACH (immer 250, siehe
-  // ZIEL_MIETE_MONAT) - daher hier der einfache Arbeitstagsanteil (yf.f)
-  // statt der saisonalen "share"-Gewichtung als Zeit-Pacing.
-  const mieteShare=yf.f;
+  // auf Österreich gesamt. Kein Hochrechnung/"Stand: Arbeitstag X/Y"-Block
+  // (anders als bei den WG-Jahreszielen) - die Miete-Zahlen werden nicht
+  // täglich, sondern nur wöchentlich per Freitagsreport eingespielt, daher
+  // wäre eine tagesgenaue Soll-/Hochrechnungsanzeige irreführend (lt.
+  // Nutzervorgabe 18.08.2026). Die Datenherkunft steht stattdessen in der
+  // Fußzeile (MIETE_REPORT_STAND).
   const mieteTarget=isATv?ZIEL_MIETE_AT:(PERS_MIETEZIELE[currentEmp]||0);
   const mieteIst=mieteJahrFor(currentEmp);
-  const mieteHrJahr=mieteShare>0?mieteIst/mieteShare:0;
-  const mieteCard=goalCard("🏠 Miete-Jahresziel "+s.jahr+" (Club.Weiss)", mieteTarget, mieteIst, mieteTarget*mieteShare,
-    mieteTarget>0?`Soll & Hochrechnung gleichmäßig (Monatsziel konstant ${fmt(ZIEL_MIETE_MONAT)})`:"kein Jahresziel hinterlegt", false,
-    mieteTarget>0?{val:mieteHrJahr,lbl:"Jahresende (gleichmäßig)",stand:standJFlat}:null,
+  const mieteCard=goalCard("🏠 Miete-Jahresziel "+s.jahr+" (Club.Weiss)", mieteTarget, mieteIst, 0,
+    mieteTarget>0?"":"kein Jahresziel hinterlegt", false,
     null,
-    "Zahlen aus Freitagsreport, letzte Einspielung: "+MIETE_REPORT_STAND
+    null,
+    "Zahlen aus Freitagsreport, letzte Einspielung: "+MIETE_REPORT_STAND,
+    true
   ).replace('class="goal"','class="goal goal-miete"');
-  cards.push(mieteCard);
+  // Nur für Österreich gesamt und die Mitarbeiter mit Club.Weiss-Ziel
+  // anzeigen - Szendi und Eitzinger haben keines (mieteTarget=0), bei ihnen
+  // soll die Kachel komplett ausgeblendet werden statt "kein Jahresziel
+  // hinterlegt" zu zeigen (lt. Nutzervorgabe 18.08.2026).
+  if(isATv||mieteTarget>0) cards.push(mieteCard);
   if(!isATv){
     cards.push(goalCard("🏁 Persönliches Jahresziel "+s.jahr+"<br><span style='font-weight:600;font-size:11px;color:var(--muted)'>"+currentEmp+" · fest hinterlegt</span>",
       persJZ, me.jahr, persJZ*share, `Soll & Hochrechnung saisonal (${Math.round(Q4_ANTEIL*100)} % in Q4)`, false,
@@ -4512,7 +4537,7 @@ async function exportFhPdf(includeAkp){
     // Der Nutzer will das Datenblatt sofort einsehbar haben statt nur einen
     // Download auszulösen - deshalb hier öffnen (neuer Tab, s.o.) statt
     // pdf.save() (außer beim Versenden per Mail, siehe finalizePdf).
-    const pdfFname="FH_"+fhNr+"_"+((f&&f.name)||"Datenblatt").replace(/[^\wÄÖÜäöüß-]+/g,"_")+".pdf";
+    const pdfFname="FH_"+fhNr+"_"+asciiFilenamePart((f&&f.name)||"Datenblatt")+".pdf";
     await finalizePdf(pdf,pdfFname,pdfWindow);
   }catch(e){
     console.error(e);
@@ -4672,7 +4697,7 @@ async function exportAkpPdf(){
     if(imgH>ph-2*margin){ imgH=ph-2*margin; imgW=canvas.width*imgH/canvas.height; }
     const x=(pw-imgW)/2;
     pdf.addImage(canvas.toDataURL("image/jpeg",0.95),"JPEG",x,margin,imgW,imgH);
-    const pdfFname="AKP_"+(c.nr||"Datenblatt").replace(/[^\wÄÖÜäöüß-]+/g,"_")+".pdf";
+    const pdfFname="AKP_"+asciiFilenamePart(c.nr||"Datenblatt")+".pdf";
     await finalizePdf(pdf,pdfFname);
   }catch(e){
     console.error(e);
@@ -4761,7 +4786,7 @@ async function exportAkpTopFlopPdf(){
       renderedPx+=sliceH;
       pageIdx++;
     }
-    const pdfFname="AKP_TopFlop"+akpN+"_"+(scopeLabel||"Uebersicht").replace(/[^\wÄÖÜäöüß-]+/g,"_")+".pdf";
+    const pdfFname="AKP_TopFlop"+akpN+"_"+asciiFilenamePart(scopeLabel||"Uebersicht")+".pdf";
     await finalizePdf(pdf,pdfFname,pdfWindow);
   }catch(e){
     console.error(e);
@@ -4859,7 +4884,7 @@ async function exportFhTopFlopPdf(){
       renderedPx+=sliceH;
       pageIdx++;
     }
-    const pdfFname="FH_TopFlop"+ftfN+"_"+(currentEmp||"Uebersicht").replace(/[^\wÄÖÜäöüß-]+/g,"_")+".pdf";
+    const pdfFname="FH_TopFlop"+ftfN+"_"+asciiFilenamePart(currentEmp||"Uebersicht")+".pdf";
     await finalizePdf(pdf,pdfFname,pdfWindow);
   }catch(e){
     console.error(e);
@@ -4939,7 +4964,7 @@ async function exportAkqStaffelnPdf(){
       renderedPx+=sliceH;
       pageIdx++;
     }
-    const pdfFname="Akquisestaffeln_"+s.jahr+"_"+currentEmp.replace(/[^\wÄÖÜäöüß-]+/g,"_")+".pdf";
+    const pdfFname="Akquisestaffeln_"+s.jahr+"_"+asciiFilenamePart(currentEmp)+".pdf";
     await finalizePdf(pdf,pdfFname,pdfWindow);
   }catch(e){
     console.error(e);
@@ -5280,7 +5305,7 @@ async function exportPDF(){
       y=sliceEnd; page++;
     }
     const s=state.latest;
-    const fname="Wertgarantie_Dashboard_"+currentEmp.replace(/[^\wÄÖÜäöüß]+/g,"_")+(s?"_"+s.vortag:"")+".pdf";
+    const fname="Wertgarantie_Dashboard_"+asciiFilenamePart(currentEmp)+(s?"_"+s.vortag:"")+".pdf";
     await finalizePdf(pdf,fname);
   }catch(e){
     console.error(e);
