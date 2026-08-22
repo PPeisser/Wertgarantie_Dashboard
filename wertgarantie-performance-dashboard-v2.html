@@ -3263,7 +3263,12 @@ function renderPerfAdminGrid(){
     }).join("");
     return `<tr><td><b>${escapeHtml(emp)}</b></td>${cells}<td class="r"><button type="button" class="perf-admin-reset" data-emp="${escapeHtml(emp)}" title="Performance Dialog der aktuellen Periode zurücksetzen" style="background:none;border:none;cursor:pointer;font-size:12px;color:var(--muted);font-weight:700">↺ Zurücksetzen</button></td></tr>`;
   }).join("");
-  $("perfAdminBody").innerHTML=`<table><thead><tr><th>Mitarbeiter</th>${MONTH_LABELS.map(m=>`<th class="r">${m}</th>`).join("")}<th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  // Fußzeile unter allen Mitarbeitern: ein Gesamt-PDF-Download je Monat
+  // (unabhängig vom freigeschalteten Berichtsmonat oben) - lt. Nutzervorgabe
+  // 22.08.2026, damit sich auch bereits abgeschlossene Monate gesammelt
+  // herunterladen lassen, nicht nur der gerade aktive.
+  const downloadRow=`<tr><td style="font-size:11px;color:var(--muted);font-weight:700">Gesamt-PDF</td>${MONTH_LABELS.map((lbl,i)=>`<td class="r"><button type="button" class="perf-admin-month-pdf" data-m="${i+1}" title="Gesamt-PDF ${lbl} ${perfAdminYear} herunterladen" style="background:none;border:none;cursor:pointer;font-size:15px;color:var(--wg-blue)">⬇</button></td>`).join("")}<td></td></tr>`;
+  $("perfAdminBody").innerHTML=`<table><thead><tr><th>Mitarbeiter</th>${MONTH_LABELS.map(m=>`<th class="r">${m}</th>`).join("")}<th></th></tr></thead><tbody>${rows}${downloadRow}</tbody></table>`;
   $("perfAdminBody").querySelectorAll(".perf-admin-check").forEach(btn=>{
     btn.onclick=async()=>{
       const emp=btn.dataset.emp, m=+btn.dataset.m;
@@ -3276,6 +3281,9 @@ function renderPerfAdminGrid(){
   });
   $("perfAdminBody").querySelectorAll(".perf-admin-reset").forEach(btn=>{
     btn.onclick=async()=>{ await resetPerfEmployeeCurrentPeriod(btn.dataset.emp); };
+  });
+  $("perfAdminBody").querySelectorAll(".perf-admin-month-pdf").forEach(btn=>{
+    btn.onclick=()=>{ const m=+btn.dataset.m; openPdfTargetChoice(()=>exportPerfAllReportsPdf(perfAdminYear,m)); };
   });
 }
 // Setzt den Bericht des aktuell freigeschalteten Berichtsmonats (derselbe
@@ -3365,8 +3373,13 @@ async function buildCombinedPerfReportsPdfDoc(reports,year,month){
     if(box.parentNode) box.parentNode.removeChild(box);
   }
 }
-async function exportPerfAllReportsPdf(){
-  const {year,month}=perfActivePeriod();
+// year/month optional - ohne Angabe wird der aktuell freigeschaltete
+// Berichtsmonat verwendet (Haupt-Button); die monatsweisen Download-Buttons
+// unter der Mitarbeiter-Tabelle übergeben stattdessen den jeweiligen Monat,
+// damit jeder einzelne Monat unabhängig vom freigeschalteten heruntergeladen
+// werden kann.
+async function exportPerfAllReportsPdf(year,month){
+  if(year==null||month==null){ const p=perfActivePeriod(); year=p.year; month=p.month; }
   toast("Sammel-PDF wird erstellt …");
   try{
     const {data,error}=await sb.from("performance_dialog_reports").select("*").eq("year",year).eq("month",month).order("employee");
