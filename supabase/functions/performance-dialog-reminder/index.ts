@@ -101,7 +101,28 @@ Deno.serve(async (req) => {
     return json({ ok: true, skipped: "weder Freitag noch der 15. (Wien)" });
   }
 
-  const { year, month } = prevMonth(now.year, now.month);
+  // Freigeschalteter Berichtsmonat (dashboard_kv-Key "perf_active_period",
+  // Format "YYYY-MM") - deckungsgleiche Logik wie loadPerfActivePeriod() im
+  // Client: schaltet automatisch nur dann auf den neuen Vormonat weiter,
+  // wenn seit dem letzten Abgleich ein neuer Kalendermonat begonnen hat
+  // (erkannt via "perf_active_period_synced_default") - ein Admin kann
+  // dazwischen per PopUp jederzeit einen beliebigen ANDEREN Monat
+  // freischalten (auch einen älteren), ohne dass diese Wahl beim nächsten
+  // Cron-Lauf sofort wieder überschrieben wird.
+  const defaultPeriod = prevMonth(now.year, now.month);
+  const defaultYm = `${defaultPeriod.year}-${String(defaultPeriod.month).padStart(2, "0")}`;
+  const { data: activeRow } = await admin
+    .from("dashboard_kv").select("value").eq("key", "perf_active_period").maybeSingle();
+  const { data: syncedRow } = await admin
+    .from("dashboard_kv").select("value").eq("key", "perf_active_period_synced_default").maybeSingle();
+  let activeYm = activeRow?.value;
+  if (!activeYm || syncedRow?.value !== defaultYm) {
+    activeYm = defaultYm;
+    const nowIso = new Date().toISOString();
+    await admin.from("dashboard_kv").upsert({ key: "perf_active_period", value: activeYm, updated_at: nowIso });
+    await admin.from("dashboard_kv").upsert({ key: "perf_active_period_synced_default", value: defaultYm, updated_at: nowIso });
+  }
+  const [year, month] = activeYm.split("-").map(Number);
 
   const { data: reportRows, error: repErr } = await admin
     .from("performance_dialog_reports").select("employee").eq("year", year).eq("month", month);
