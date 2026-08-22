@@ -1125,7 +1125,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
       <h3 style="margin:0">Performance Dialog – Admin-Übersicht</h3>
       <span style="display:flex;gap:8px">
-        <button class="btn btn-ghost no-print" id="perfAdminPdfBtn" style="padding:7px 12px">⬇ Gesamt-PDF Vormonat</button>
+        <button class="btn btn-ghost no-print" id="perfAdminPdfBtn" style="padding:7px 12px">⬇ Gesamt-PDF freigeschalteter Monat</button>
         <button class="btn btn-ghost" id="perfAdminClose" style="padding:7px 12px">✕ Schließen</button>
       </span>
     </div>
@@ -1133,6 +1133,14 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <input type="checkbox" id="perfDialogEnabledChk" style="width:17px;height:17px;flex-shrink:0">
       Performance Dialog aktivieren <span style="font-weight:600;color:var(--muted);font-size:12px">(nur bei Aktivierung wird der Performance Dialog bei Mitarbeitern angefragt)</span>
     </label>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-weight:700;font-size:13.5px;margin-bottom:12px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px">
+      <span>Freigeschalteter Berichtsmonat:</span>
+      <b id="perfActivePeriodLbl" style="color:var(--wg-blue)">–</b>
+      <select id="perfActivePeriodMonthSel" style="border:2px solid var(--line);border-radius:8px;padding:4px 8px;font:inherit;font-weight:600"></select>
+      <select id="perfActivePeriodYearSel" style="border:2px solid var(--line);border-radius:8px;padding:4px 8px;font:inherit;font-weight:600"></select>
+      <button class="btn btn-ghost" id="perfActivePeriodSetBtn" style="padding:6px 12px">Aktivieren</button>
+      <span style="font-weight:600;color:var(--muted);font-size:12px;flex-basis:100%">Wird am 1. jedes Monats automatisch auf den abgeschlossenen Vormonat weitergeschaltet - hier kann bei Bedarf auch ein anderer Monat (er)öffnet werden.</span>
+    </div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
       <span style="font-size:12px;color:var(--muted);font-weight:700">Jahr:</span>
       <span class="tabs mini" id="perfAdminYearBtns"></span>
@@ -2890,11 +2898,65 @@ function perfReportPeriod(){
   if(m===0){ m=12; y--; }
   return {year:y,month:m};
 }
+function ymKey(y,m){ return y+"-"+String(m).padStart(2,"0"); }
+// Freigeschalteter Berichtsmonat (dashboard_kv-Key "perf_active_period",
+// Format "YYYY-MM"): standardmäßig deckungsgleich mit perfReportPeriod()
+// (Vormonat) - lt. Nutzervorgabe 21.08.2026 soll er sich am 1. jedes Monats
+// automatisch auf den neuen Vormonat weiterschalten, ein Admin kann
+// dazwischen aber jederzeit einen beliebigen ANDEREN Monat freigeben
+// (auch einen älteren, z.B. zum Nacherfassen) und diese Wahl bleibt exakt
+// so lange bestehen, bis der NÄCHSTE Monatswechsel die automatische
+// Weiterschaltung erneut auslöst.
+//
+// Dafür wird zusätzlich der Vormonat gespeichert, der beim letzten
+// Abgleich (automatisch ODER durch die Admin-Wahl) berechnet wurde
+// (dashboard_kv-Key "perf_active_period_synced_default"). Nur wenn sich
+// der aktuell berechnete Vormonat DAVON unterscheidet (= ein neuer
+// Kalendermonat hat begonnen), wird automatisch weitergeschaltet - ein
+// simpler "stored < heutiger Vormonat"-Vergleich würde sonst jede
+// bewusste Admin-Wahl eines älteren Monats beim nächsten Laden sofort
+// wieder überschreiben.
+let perfActivePeriodYM=null;
+async function loadPerfActivePeriod(){
+  const def=perfReportPeriod(), defYm=ymKey(def.year,def.month);
+  try{
+    const [stored,lastSyncedDefault]=await Promise.all([
+      stGet("perf_active_period"), stGet("perf_active_period_synced_default")
+    ]);
+    if(!stored||lastSyncedDefault!==defYm){
+      perfActivePeriodYM=defYm;
+      try{ await stSet("perf_active_period",defYm); await stSet("perf_active_period_synced_default",defYm); }catch(e){}
+    }else{
+      perfActivePeriodYM=stored;
+    }
+  }catch(e){ perfActivePeriodYM=defYm; }
+}
+function perfActivePeriod(){
+  if(perfActivePeriodYM){ const [y,m]=perfActivePeriodYM.split("-").map(Number); return {year:y,month:m}; }
+  return perfReportPeriod();
+}
+async function setPerfActivePeriod(year,month){
+  const ym=ymKey(year,month);
+  perfActivePeriodYM=ym;
+  // "synced_default" auf den GERADE aktuellen Vormonat setzen (nicht auf
+  // den gewählten ym!) - dadurch erkennt loadPerfActivePeriod() diese
+  // Admin-Wahl beim nächsten Laden als "innerhalb desselben Monatsfensters
+  // getroffen" und überschreibt sie nicht sofort wieder automatisch.
+  const def=perfReportPeriod(), defYm=ymKey(def.year,def.month);
+  try{
+    await stSet("perf_active_period",ym);
+    await stSet("perf_active_period_synced_default",defYm);
+    toast("Freigeschalteter Berichtsmonat: "+MONATE[month-1]+" "+year+" ✓");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
 async function openPerfModal(){
   if(!perfDialogEnabled){ toast("Der Performance Dialog ist aktuell nicht aktiviert."); return; }
   if(!myName||!PERF_GOALS_BY_EMPLOYEE[myName]){ toast("Für "+(myName||"deinen Account")+" ist kein Performance Dialog hinterlegt."); return; }
   perfEmployee=myName;
-  const p=perfReportPeriod(); perfReportYear=p.year; perfReportMonth=p.month;
+  await loadPerfActivePeriod();
+  const p=perfActivePeriod(); perfReportYear=p.year; perfReportMonth=p.month;
   perfGoalIds=PERF_GOALS_BY_EMPLOYEE[myName];
   perfAnswers={}; perfGoalIds.forEach(g=>perfAnswers[g]={massnahmen:"",gut:"",nicht_mehr:"",unterstuetzung:""});
   perfSnapshots={}; perfGoalIds.forEach(g=>perfSnapshots[g]=perfGoalSnapshot(g,perfEmployee,perfReportYear,perfReportMonth));
@@ -3004,9 +3066,13 @@ async function submitPerfReport(){
     },{onConflict:"employee,year,month"});
     if(error) throw error;
     toast("Gespeichert ✓ PDF wird erstellt und versendet …");
-    await exportPerfReportPdf(perfEmployee,perfReportYear,perfReportMonth,goalsPayload,{mailToSelf:true,mailToAdmin:true});
+    const {mailFailures}=await exportPerfReportPdf(perfEmployee,perfReportYear,perfReportMonth,goalsPayload,{mailToSelf:true,mailToAdmin:true});
     $("perfModal").classList.add("hidden");
-    toast("Performance Dialog abgeschlossen ✓ PDF per Mail an dich und Konstantin Scheiermann versendet.");
+    if(mailFailures&&mailFailures.length){
+      toast("Performance Dialog gespeichert ✓ - Mailversand an "+mailFailures.join(", ")+" ist fehlgeschlagen. Bitte Admin informieren.");
+    }else{
+      toast("Performance Dialog abgeschlossen ✓ PDF per Mail an dich und Konstantin Scheiermann versendet.");
+    }
   }catch(e){
     console.error("submitPerfReport failed:",e);
     $("perfSubmitHint").textContent="Fehler: "+(e.message||e);
@@ -3090,14 +3156,21 @@ async function exportPerfReportPdf(employee,year,month,goalsPayload,opts){
   opts=opts||{};
   const {pdf,filename}=await buildPerfReportPdfDoc(employee,year,month,goalsPayload);
   if(opts.download) pdf.save(filename);
+  const mailFailures=[];
   if(opts.mailToSelf||opts.mailToAdmin){
     const dataUri=pdf.output("datauristring");
     const subject="Performance Dialog – "+employee+" – "+MONATE[month-1]+" "+year;
     const html=`<div style="font-family:'Segoe UI',Arial,sans-serif;color:#10202C"><p>Anbei der Performance-Dialog-Bericht von ${escapeHtml(employee)} für ${MONATE[month-1]} ${year}.</p></div>`;
-    if(opts.mailToSelf&&supaUser&&supaUser.email) await sendPdfByMail({to:supaUser.email,subject,html,pdfDataUri:dataUri,filename});
-    if(opts.mailToAdmin) await sendPdfByMail({to:PERF_ADMIN_EMAIL,subject,html,pdfDataUri:dataUri,filename});
+    if(opts.mailToSelf&&supaUser&&supaUser.email){
+      const res=await sendPdfByMail({to:supaUser.email,subject,html,pdfDataUri:dataUri,filename});
+      if(!res||res.error||res.ok===false) mailFailures.push(supaUser.email);
+    }
+    if(opts.mailToAdmin){
+      const res=await sendPdfByMail({to:PERF_ADMIN_EMAIL,subject,html,pdfDataUri:dataUri,filename});
+      if(!res||res.error||res.ok===false) mailFailures.push(PERF_ADMIN_EMAIL);
+    }
   }
-  return {pdf,filename};
+  return {pdf,filename,mailFailures};
 }
 
 /* ---------- Performance Dialog: Admin-Übersicht ---------- */
@@ -3122,9 +3195,22 @@ async function openPerfAdminModal(){
   perfAdminYear=new Date().getFullYear();
   $("perfAdminModal").classList.remove("hidden");
   $("perfDialogEnabledChk").checked=perfDialogEnabled;
+  await loadPerfActivePeriod();
+  renderPerfActivePeriodUI();
   renderPerfAdminYearTabs();
   await loadPerfAdminReports();
   renderPerfAdminGrid();
+}
+// Befüllt die Jahr/Monat-Auswahl für den freigeschalteten Berichtsmonat und
+// zeigt den aktuell aktiven Monat als Text an (siehe perfActivePeriod()).
+function renderPerfActivePeriodUI(){
+  const active=perfActivePeriod();
+  $("perfActivePeriodLbl").textContent=MONATE[active.month-1]+" "+active.year;
+  const curYear=new Date().getFullYear();
+  const years=[];
+  for(let y=PERF_DIALOG_START_YEAR;y<=curYear+1;y++) years.push(y);
+  $("perfActivePeriodYearSel").innerHTML=years.map(y=>`<option value="${y}"${y===active.year?" selected":""}>${y}</option>`).join("");
+  $("perfActivePeriodMonthSel").innerHTML=MONATE.map((m,i)=>`<option value="${i+1}"${i+1===active.month?" selected":""}>${m}</option>`).join("");
 }
 async function togglePerfDialogEnabled(){
   const on=$("perfDialogEnabledChk").checked;
@@ -3183,13 +3269,13 @@ function renderPerfAdminGrid(){
     btn.onclick=async()=>{ await resetPerfEmployeeCurrentPeriod(btn.dataset.emp); };
   });
 }
-// Setzt den Bericht der aktuell relevanten Periode (derselbe abgeschlossene
-// Vormonat wie im Mitarbeiter-Wizard/den Erinnerungsmails, siehe
-// perfReportPeriod()) für EINEN Mitarbeiter zurück - löscht den
-// gespeicherten Datensatz unwiderruflich, sodass der Mitarbeiter den
-// Performance Dialog für diesen Monat neu ausfüllen muss.
+// Setzt den Bericht des aktuell freigeschalteten Berichtsmonats (derselbe
+// wie im Mitarbeiter-Wizard/den Erinnerungsmails, siehe perfActivePeriod())
+// für EINEN Mitarbeiter zurück - löscht den gespeicherten Datensatz
+// unwiderruflich, sodass der Mitarbeiter den Performance Dialog für diesen
+// Monat neu ausfüllen muss.
 async function resetPerfEmployeeCurrentPeriod(emp){
-  const {year,month}=perfReportPeriod();
+  const {year,month}=perfActivePeriod();
   if(!confirm("Performance Dialog "+MONATE[month-1]+" "+year+" für "+emp+" wirklich zurücksetzen?\n\nDer gespeicherte Bericht wird endgültig gelöscht und muss vom Mitarbeiter neu ausgefüllt werden.")) return;
   try{
     const {error}=await sb.from("performance_dialog_reports").delete().eq("employee",emp).eq("year",year).eq("month",month);
@@ -3201,10 +3287,9 @@ async function resetPerfEmployeeCurrentPeriod(emp){
     toast("Zurücksetzen fehlgeschlagen: "+(e.message||e));
   }
 }
-// Sammel-PDF: alle Mitarbeiter-Berichte des (relativ zu heute) abgeschlossenen
-// Vormonats in EINEM PDF, unabhängig vom gerade in der Übersicht gewählten
-// Jahr - "Vormonat" ist hier bewusst immer relativ zu heute gemeint (der
-// aktuell fällige Berichtszeitraum), siehe perfReportPeriod().
+// Sammel-PDF: alle Mitarbeiter-Berichte des aktuell freigeschalteten
+// Berichtsmonats in EINEM PDF, unabhängig vom gerade in der Übersicht
+// gewählten Jahr - siehe perfActivePeriod().
 async function buildCombinedPerfReportsPdfDoc(reports,year,month){
   if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)) throw new Error("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals versuchen.");
   const nowStr=fmtNowDateTime();
@@ -3272,7 +3357,7 @@ async function buildCombinedPerfReportsPdfDoc(reports,year,month){
   }
 }
 async function exportPerfAllReportsPdf(){
-  const {year,month}=perfReportPeriod();
+  const {year,month}=perfActivePeriod();
   toast("Sammel-PDF wird erstellt …");
   try{
     const {data,error}=await sb.from("performance_dialog_reports").select("*").eq("year",year).eq("month",month).order("employee");
@@ -5425,6 +5510,11 @@ $("perfDialogAdminBtn").onclick=openPerfAdminModal;
 $("perfAdminClose").onclick=()=>$("perfAdminModal").classList.add("hidden");
 $("perfAdminPdfBtn").onclick=()=>openPdfTargetChoice(()=>exportPerfAllReportsPdf());
 $("perfDialogEnabledChk").onchange=togglePerfDialogEnabled;
+$("perfActivePeriodSetBtn").onclick=async()=>{
+  const year=+$("perfActivePeriodYearSel").value, month=+$("perfActivePeriodMonthSel").value;
+  await setPerfActivePeriod(year,month);
+  renderPerfActivePeriodUI();
+};
 $("adminUploadBtn").onclick=pickFiles;
 $("adminAkqUploadBtn").onclick=()=>$("akqFileInput").click();
 $("akqFileInput").onchange=async e=>{ if(e.target.files.length){ await handleAkqStaffelFile([...e.target.files]); e.target.value=""; } };
