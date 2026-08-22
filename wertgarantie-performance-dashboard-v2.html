@@ -303,6 +303,15 @@ td .betr{font-size:11px;color:var(--muted)}
   position:fixed;inset:0;background:rgba(6,42,63,.55);
   display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;
 }
+/* FH- und AKP-Detail-PopUps werden von .fh-name-link/.akp-name-link aus
+   praktisch JEDER Listen-/Übersichts-Kachel heraus geöffnet (Akquiseliste,
+   Top/Flop, Besondere Beobachtung, AKP-Popup selbst, ...) - bei gleichem
+   z-index entscheidet sonst die zufällige HTML-Reihenfolge, welches PopUp
+   vorne liegt (Bug-Report 22.08.2026: FH-PopUp öffnete sich HINTER der
+   Akquiseliste, weil #fhModal im HTML vor #akqStaffelnModal steht). Höherer
+   z-index stellt sicher, dass diese beiden Detail-PopUps immer VOR jedem
+   anderen PopUp liegen, unabhängig von der Öffnungsreihenfolge. */
+#fhModal,#akpContactModal{z-index:60}
 .modal{
   background:#fff;border-radius:20px;max-width:430px;width:100%;
   padding:26px 26px 22px;box-shadow:0 20px 60px rgba(0,0,0,.25);
