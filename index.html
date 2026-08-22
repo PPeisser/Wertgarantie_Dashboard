@@ -1176,10 +1176,11 @@ const PERS_MIETEZIELE = {
 // Monatsziel ist bewusst FLACH (3.000 ÷ 12 = 250, nicht saisonal Q4-
 // gewichtet wie ZIEL_AT) - siehe mieteShare/yearFrac() in renderGoals.
 const ZIEL_MIETE_MONAT = 250;
-// Datenherkunft der Miete-Kachel - Platzhalter bis eine automatische
-// Erfassung des Einspieldatums existiert; bei jedem neuen Freitagsreport-
-// Import hier manuell aktualisieren (lt. Nutzervorgabe 18.08.2026).
-const MIETE_REPORT_STAND = "Freitag, 14.08.2026";
+// Datenherkunft der Miete-Kachel: Fallback-Text, falls noch nie ein Import
+// stattgefunden hat (mieteLastImport leer) - im Normalfall zeigt die Kachel
+// stattdessen das echte Einspieldatum an (siehe fmtWeekdayDate/
+// mieteLastImport, gesetzt in upsertMieteData()).
+const MIETE_REPORT_STAND_FALLBACK = "noch keine Einspielung erfasst";
 // Akquisestaffeln (siehe Fachhändler-PopUp/parseAkquiseStaffeln): die 7 fixen
 // Stufen (Punkteschwellen, absolut) laut "Zielstaffel"-Tabelle. Punkte werden
 // jährlich am 1.1. auf 0 zurückgesetzt; einmal erreichte Stufen bleiben aber
@@ -1218,6 +1219,12 @@ let myName = null;
 // "performance_dialog_enabled", per Schalter im Performance Dialog – ADMIN
 // PopUp gesetzt). Standardmäßig aus, bis Wert aus der DB geladen wurde.
 let perfDialogEnabled = false;
+// Zeitpunkt der letzten Miete-Report-Einspielung (dashboard_kv-Key
+// "miete_last_import", von upsertMieteData() bei jedem Import gesetzt -
+// deckt sowohl den Admin-Panel-Upload als auch den automatischen
+// Mail-Import an input@wgaustria.at ab). Zeigt die Miete-Kachel
+// dynamisch an, statt eines händisch zu pflegenden Fixdatums.
+let mieteLastImport = null;
 const ROLE_LABEL = { admin:"Admin", aussendienst:"Außendienst", trainer:"Trainer" };
 // Reagiert auf den Klick im "Passwort vergessen"-Mail-Link: Supabase parst
 // den Recovery-Token aus der URL beim Laden der Seite und feuert dieses
@@ -1853,6 +1860,13 @@ function fmtSign(n){ return n==null?"–":(n>0?"+":"")+fmt(n); }
 function fmtPct(n){ if(n==null||!isFinite(n)) return "–"; return (n>0?"+":"")+n.toFixed(1).replace(".",",")+" %"; }
 function fmtDate(s){ if(!s) return "–"; const d=parseISO(s); return String(d.getUTCDate()).padStart(2,"0")+"."+String(d.getUTCMonth()+1).padStart(2,"0")+"."+d.getUTCFullYear(); }
 function fmtNowDateTime(){ const d=new Date(); return String(d.getDate()).padStart(2,"0")+"."+String(d.getMonth()+1).padStart(2,"0")+"."+d.getFullYear()+", "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+" Uhr"; }
+const WOCHENTAGE=["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
+// Für die Miete-Kachel: "Freitag, 21.08.2026" aus einem ISO-Zeitstempel.
+function fmtWeekdayDate(iso){
+  if(!iso) return null;
+  const d=new Date(iso); if(isNaN(d)) return null;
+  return WOCHENTAGE[d.getDay()]+", "+String(d.getDate()).padStart(2,"0")+"."+String(d.getMonth()+1).padStart(2,"0")+"."+d.getFullYear();
+}
 const MONATE=["Jänner","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
 
 /* ---------- Namens-Matching GL ↔ Mitarbeiter ---------- */
@@ -2363,6 +2377,11 @@ async function upsertMieteData(byFh){
     const { error }=await sb.rpc("fh_sync_miete",{rows:chunk});
     if(error) throw error;
   }
+  // Zeitpunkt für die "Zahlen aus Freitagsreport, letzte Einspielung: ..."-
+  // Anzeige in der Miete-Kachel (renderGoals) - deckt Admin-Panel-Upload UND
+  // automatischen Mail-Import ab, da beide Wege hier durchlaufen.
+  mieteLastImport=new Date().toISOString();
+  try{ await stSet("miete_last_import",mieteLastImport); }catch(e){}
 }
 // Miete-Import (Admin-Panel): siehe parseMieteReport/upsertMieteData - ergänzt
 // (nicht ersetzt) den bisherigen Miete-Stand je Fachhändler.
@@ -3341,6 +3360,7 @@ async function loadAll(){
   try{ const d=await stGet("wg-state"); if(d){ const p=JSON.parse(d); if(p&&p.latest) state=p; } }catch(e){}
   try{ const g=await stGet("wg-goals"); if(g) goals=JSON.parse(g); }catch(e){}
   try{ perfDialogEnabled=(await stGet("performance_dialog_enabled"))==="1"; }catch(e){}
+  try{ mieteLastImport=await stGet("miete_last_import"); }catch(e){}
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
   else if(emb&&emb.latest&&state.latest){
@@ -3589,7 +3609,7 @@ function renderGoals(){
     "", false,
     mieteTarget>0?{val:mieteHrJahr,lbl:"Jahresende (gleichmäßig)"}:null,
     null,
-    "Zahlen aus Freitagsreport, letzte Einspielung: "+MIETE_REPORT_STAND
+    "Zahlen aus Freitagsreport, letzte Einspielung: "+(fmtWeekdayDate(mieteLastImport)||MIETE_REPORT_STAND_FALLBACK)
   ).replace('class="goal"','class="goal goal-miete"');
   // Nur für Österreich gesamt und die Mitarbeiter mit Club.Weiss-Ziel
   // anzeigen - Szendi und Eitzinger haben keines (mieteTarget=0), bei ihnen
