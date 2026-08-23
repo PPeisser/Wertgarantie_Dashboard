@@ -278,6 +278,12 @@ alter table public.fh_contacts add column if not exists miete_sortiment jsonb no
 -- Hauptzweig ist dagegen eine bewusst feste, kleine Liste.
 alter table public.fh_contacts add column if not exists kooperation text;
 alter table public.fh_contacts add column if not exists hauptzweig text;
+-- "Weitere Zuordnung" (Nutzervorgabe 23.08.2026) - optionales, per Haken
+-- aktivierbares Zusatzfeld. Bewusst freier Text ohne CHECK: der Client baut
+-- das Dropdown aus den bereits verwendeten DISTINCT-Werten dieser Spalte
+-- (+ dem fixen Basiswert "A1 Shop") - ein neuer Freitext-Wert wird dadurch
+-- automatisch zur Dropdown-Option für alle anderen Händler.
+alter table public.fh_contacts add column if not exists weitere_zuordnung text;
 
 alter table public.fh_contacts drop constraint if exists fh_contacts_segmentierung_check;
 alter table public.fh_contacts add constraint fh_contacts_segmentierung_check

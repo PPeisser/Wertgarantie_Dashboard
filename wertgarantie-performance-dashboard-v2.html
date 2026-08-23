@@ -756,6 +756,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div><span class="ac-lbl">9-Wochen-Plan</span><div class="ac-val" id="fhNwView">–</div></div>
         <div><span class="ac-lbl">Club.Weiss Mitglied</span><div class="ac-val" id="fhClubView">–</div></div>
         <div><span class="ac-lbl">Club.Weiss Mitgliedsnummer</span><div class="ac-val" id="fhClubNrView">–</div></div>
+        <div><span class="ac-lbl">Weitere Zuordnung</span><div class="ac-val" id="fhWeitereZuordnungView">–</div></div>
       </div>
       <div style="margin-top:14px"><span class="ac-lbl">Sonstige Infos</span><div class="ac-val" id="fhInfosView" style="font-weight:600;white-space:pre-wrap">–</div></div>
       <button class="btn btn-blue" id="fhEditBtn" style="margin-top:14px">✎ Stammdaten bearbeiten</button>
@@ -786,6 +787,19 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         </div>
         <div><span class="ac-lbl">Club.Weiss Mitglied</span>
           <label class="nw-check" for="fhClubEdit"><input type="checkbox" id="fhClubEdit"> Mitglied</label>
+        </div>
+      </div>
+      <div style="margin-top:14px">
+        <label class="nw-check" for="fhWeitereZuordnungChk"><input type="checkbox" id="fhWeitereZuordnungChk"> Weitere Zuordnung aktivieren</label>
+        <div id="fhWeitereZuordnungFields" class="hidden" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+          <div style="flex:1;min-width:160px">
+            <label class="ac-lbl" for="fhWeitereZuordnungSelect">Auswahl</label>
+            <select id="fhWeitereZuordnungSelect"></select>
+          </div>
+          <div style="flex:1;min-width:160px">
+            <label class="ac-lbl" for="fhWeitereZuordnungNeu">oder neuer Wert (wird für alle als Auswahl übernommen)</label>
+            <input id="fhWeitereZuordnungNeu" autocomplete="off" placeholder="z.B. A1 Shop">
+          </div>
         </div>
       </div>
       <div style="margin-top:14px">
@@ -4429,6 +4443,30 @@ function populateFhKooperationSelect(current){
   KOOPERATION_OPTIONS.forEach(k=>opts.push(`<option value="${escapeHtml(k)}">${escapeHtml(k)}</option>`));
   $("fhKooperationEdit").innerHTML=opts.join("");
 }
+// "Weitere Zuordnung" (Nutzervorgabe 23.08.2026): optionales Zusatzfeld je
+// Händler mit einem einzigen fixen Basiswert ("A1 Shop") - alle weiteren
+// Optionen entstehen dynamisch aus den bereits vergebenen DISTINCT-Werten
+// von fh_contacts.weitere_zuordnung. Gibt ein Admin/Mitarbeiter im Freifeld
+// einen neuen Wert ein, taucht dieser danach automatisch im Dropdown aller
+// anderen Händler auf - ganz ohne eigene Options-Tabelle.
+const WEITERE_ZUORDNUNG_BASE=["A1 Shop"];
+let weitereZuordnungOptionsCache=null;
+async function loadWeitereZuordnungOptions(){
+  const set=new Set(WEITERE_ZUORDNUNG_BASE);
+  try{
+    const {data,error}=await sb.from("fh_contacts").select("weitere_zuordnung").not("weitere_zuordnung","is",null);
+    if(!error&&data) data.forEach(r=>{ if(r.weitere_zuordnung) set.add(r.weitere_zuordnung); });
+  }catch(e){}
+  weitereZuordnungOptionsCache=[...set].sort((a,b)=>a.localeCompare(b,"de"));
+  return weitereZuordnungOptionsCache;
+}
+function populateWeitereZuordnungSelect(current){
+  const opts=(weitereZuordnungOptionsCache||WEITERE_ZUORDNUNG_BASE).slice();
+  if(current&&!opts.includes(current)) opts.push(current);
+  opts.sort((a,b)=>a.localeCompare(b,"de"));
+  $("fhWeitereZuordnungSelect").innerHTML=["<option value=\"\">–</option>",...opts.map(o=>`<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`)].join("");
+  $("fhWeitereZuordnungSelect").value=current||"";
+}
 function urlHref(u){ return /^https?:\/\//i.test(u)?u:"https://"+u; }
 // Hat dieser Händler einen AKQ-Eintrag mit Beginn der Zusammenarbeit
 // innerhalb der letzten 9 Wochen (63 Tage)? Nur dann gilt er als "neu" und
@@ -4470,6 +4508,7 @@ function renderFhContactView(){
   $("fhNwView").textContent=c.neunwochen_erledigt?"✓ erledigt":"– offen";
   $("fhClubView").textContent=c.club_weiss_mitglied?"✓ Mitglied":"– kein Mitglied";
   $("fhClubNrView").textContent=c.club_weiss_mitgliedsnummer||"–";
+  $("fhWeitereZuordnungView").textContent=c.weitere_zuordnung||"–";
   $("fhInfosView").textContent=c.sonstige_infos||"–";
   // PO-/3-für-2-Quote kommen aus der heutigen Einspielung (FH_Liste), nicht
   // aus den Stammdaten - deshalb unten bei der Produktion, nicht editierbar.
@@ -5051,7 +5090,7 @@ function renderFhMieteSection(){
     ${yearlyTbl}
     <div style="margin-top:14px"><span class="ac-lbl">Verkauftes Sortiment</span>${sortimentList}</div>`;
 }
-function toggleFhEdit(on){
+async function toggleFhEdit(on){
   $("fhViewMode").classList.toggle("hidden",on);
   $("fhEditMode").classList.toggle("hidden",!on);
   $("fhSaveHint").textContent="";
@@ -5074,6 +5113,12 @@ function toggleFhEdit(on){
     $("fhNwEdit").checked=!!c.neunwochen_erledigt;
     $("fhClubEdit").checked=!!c.club_weiss_mitglied;
     $("fhInfosEdit").value=c.sonstige_infos||"";
+    $("fhWeitereZuordnungChk").checked=!!c.weitere_zuordnung;
+    $("fhWeitereZuordnungFields").classList.toggle("hidden",!c.weitere_zuordnung);
+    $("fhWeitereZuordnungNeu").value="";
+    populateWeitereZuordnungSelect(c.weitere_zuordnung);
+    await loadWeitereZuordnungOptions();
+    populateWeitereZuordnungSelect(c.weitere_zuordnung);
   }
 }
 async function saveFhContact(){
@@ -5094,14 +5139,17 @@ async function saveFhContact(){
   const neunwochen_erledigt=$("fhNwEdit").checked;
   const club_weiss_mitglied=$("fhClubEdit").checked;
   const sonstige_infos=$("fhInfosEdit").value.trim()||null;
+  const wzNeu=$("fhWeitereZuordnungNeu").value.trim();
+  const wzSel=$("fhWeitereZuordnungSelect").value;
+  const weitere_zuordnung=$("fhWeitereZuordnungChk").checked?(wzNeu||wzSel||null):null;
   $("fhSaveBtn").disabled=true;
   const {error}=await sb.from("fh_contacts").upsert({
-    fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,sonstige_infos,
+    fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,sonstige_infos,weitere_zuordnung,
     updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()
   },{onConflict:"fh_nr"});
   $("fhSaveBtn").disabled=false;
   if(error){ $("fhSaveHint").textContent="Fehler: "+error.message; return; }
-  fhContactCurrent={...fhContactCurrent,fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,sonstige_infos};
+  fhContactCurrent={...fhContactCurrent,fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,sonstige_infos,weitere_zuordnung};
   if(neunwochen_erledigt) fhErledigtSet.add(fhNr); else fhErledigtSet.delete(fhNr);
   renderFhContactView();
   renderFhStammdatenDiff();
@@ -5178,6 +5226,7 @@ async function exportFhPdf(includeAkp){
         ${field("Händlersegmentierung",c.segmentierung?escapeHtml(FH_SEGMENT_LBL[c.segmentierung]||c.segmentierung):"–")}
         ${field("Kooperation",escapeHtml(c.kooperation||"–"))}
         ${field("Hauptzweig",escapeHtml(c.hauptzweig||"–"))}
+        ${field("Weitere Zuordnung",escapeHtml(c.weitere_zuordnung||"–"))}
         ${field("Letzter Besuch",c.letzter_besuch?fmtDate(c.letzter_besuch):"–")}
       </div>
       ${c.sonstige_infos?`<div class="pdf-block" style="margin-bottom:18px"><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#5D7284;margin-bottom:4px">Sonstige Infos</div><div style="font-size:12.5px;color:#10202C;white-space:pre-wrap;line-height:1.5">${escapeHtml(c.sonstige_infos)}</div></div>`:""}
@@ -6227,6 +6276,15 @@ $("acPdfBtn").onclick=()=>openPdfTargetChoice(()=>exportAkpPdf());
 $("fhEditBtn").onclick=()=>toggleFhEdit(true);
 $("fhCancelBtn").onclick=()=>toggleFhEdit(false);
 $("fhSaveBtn").onclick=saveFhContact;
+$("fhWeitereZuordnungChk").onchange=()=>{
+  $("fhWeitereZuordnungFields").classList.toggle("hidden",!$("fhWeitereZuordnungChk").checked);
+};
+$("fhWeitereZuordnungNeu").addEventListener("input",()=>{
+  if($("fhWeitereZuordnungNeu").value.trim()) $("fhWeitereZuordnungSelect").value="";
+});
+$("fhWeitereZuordnungSelect").addEventListener("change",()=>{
+  if($("fhWeitereZuordnungSelect").value) $("fhWeitereZuordnungNeu").value="";
+});
 $("fhPdfBtn").onclick=()=>$("fhPdfChoiceModal").classList.remove("hidden");
 $("fhPdfChoiceCancel").onclick=()=>$("fhPdfChoiceModal").classList.add("hidden");
 $("fhPdfWithAkp").onclick=()=>{ $("fhPdfChoiceModal").classList.add("hidden"); openPdfTargetChoice(()=>exportFhPdf(true),fhPdfSendExtra()); };
