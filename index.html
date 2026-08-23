@@ -755,9 +755,9 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div><span class="ac-lbl">Hauptzweig</span><div class="ac-val" id="fhHauptzweigView">–</div></div>
         <div><span class="ac-lbl">Letzter Besuch</span><div class="ac-val" id="fhBesuchView">–</div></div>
         <div><span class="ac-lbl">9-Wochen-Plan</span><div class="ac-val" id="fhNwView">–</div></div>
-        <div><span class="ac-lbl">Club.Weiss Mitglied</span><div class="ac-val" id="fhClubView">–</div></div>
-        <div><span class="ac-lbl">Club.Weiss Mitgliedsnummer</span><div class="ac-val" id="fhClubNrView">–</div></div>
-        <div><span class="ac-lbl">Weitere Zuordnung</span><div class="ac-val" id="fhWeitereZuordnungView">–</div></div>
+        <div id="fhClubViewRow" class="hidden"><span class="ac-lbl">Club.Weiss Mitglied</span><div class="ac-val" id="fhClubView">–</div></div>
+        <div id="fhClubNrViewRow" class="hidden"><span class="ac-lbl">Club.Weiss Mitgliedsnummer</span><div class="ac-val" id="fhClubNrView">–</div></div>
+        <div id="fhWeitereZuordnungViewRow" class="hidden"><span class="ac-lbl">Weitere Zuordnung</span><div class="ac-val" id="fhWeitereZuordnungView">–</div></div>
       </div>
       <div style="margin-top:14px"><span class="ac-lbl">Sonstige Infos</span><div class="ac-val" id="fhInfosView" style="font-weight:600;white-space:pre-wrap">–</div></div>
       <button class="btn btn-blue" id="fhEditBtn" style="margin-top:14px">✎ Stammdaten bearbeiten</button>
@@ -786,8 +786,12 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div><span class="ac-lbl">9-Wochen-Plan</span>
           <label class="nw-check" for="fhNwEdit"><input type="checkbox" id="fhNwEdit"> erledigt</label>
         </div>
-        <div><span class="ac-lbl">Club.Weiss Mitglied</span>
-          <label class="nw-check" for="fhClubEdit"><input type="checkbox" id="fhClubEdit"> Mitglied</label>
+      </div>
+      <div style="margin-top:14px">
+        <label class="nw-check" for="fhClubEdit"><input type="checkbox" id="fhClubEdit"> Club.Weiss Mitglied</label>
+        <div id="fhClubNrFields" class="hidden" style="margin-top:8px;max-width:260px">
+          <label class="ac-lbl" for="fhClubNrEdit">Mitgliedsnummer</label>
+          <input id="fhClubNrEdit" autocomplete="off" placeholder="Mitgliedsnummer">
         </div>
       </div>
       <div style="margin-top:14px">
@@ -4573,8 +4577,14 @@ function renderFhContactView(){
   $("fhHauptzweigView").textContent=c.hauptzweig||"–";
   $("fhBesuchView").textContent=c.letzter_besuch?fmtDate(c.letzter_besuch):"–";
   $("fhNwView").textContent=c.neunwochen_erledigt?"✓ erledigt":"– offen";
-  $("fhClubView").textContent=c.club_weiss_mitglied?"✓ Mitglied":"– kein Mitglied";
+  // Club.Weiss- und Weitere-Zuordnung-Zeilen nur anzeigen, wenn zutreffend
+  // (Nutzervorgabe: die meisten FH sind weder Club.Weiss-Mitglied noch haben
+  // eine weitere Zuordnung - unnötige "–"-Zeilen sollen entfallen).
+  $("fhClubViewRow").classList.toggle("hidden",!c.club_weiss_mitglied);
+  $("fhClubView").textContent="✓ Mitglied";
+  $("fhClubNrViewRow").classList.toggle("hidden",!c.club_weiss_mitglied);
   $("fhClubNrView").textContent=c.club_weiss_mitgliedsnummer||"–";
+  $("fhWeitereZuordnungViewRow").classList.toggle("hidden",!c.weitere_zuordnung);
   $("fhWeitereZuordnungView").textContent=c.weitere_zuordnung||"–";
   $("fhInfosView").textContent=c.sonstige_infos||"–";
   // PO-/3-für-2-Quote kommen aus der heutigen Einspielung (FH_Liste), nicht
@@ -4698,7 +4708,11 @@ function svgBarChart(labels,series,opts){
       const x=groupX+si*(barW+barGap);
       const y=yFor(v);
       const bh=padT+plotH-y;
-      bars+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(0,bh).toFixed(1)}" fill="${s.color}" rx="1.5"/>
+      // opts.colors erlaubt eine abweichende Farbe je Balken (statt je Serie) -
+      // damit lässt sich z.B. "dieser Händler" farblich vom Vergleichswert
+      // absetzen, auch wenn beide zur selben Serie gehören.
+      const fill=(opts.colors&&opts.colors[i])||s.color;
+      bars+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(0,bh).toFixed(1)}" fill="${fill}" rx="1.5"/>
         <text x="${(x+barW/2).toFixed(1)}" y="${(y-4).toFixed(1)}" font-size="9.5" fill="#062A3F" text-anchor="middle" font-weight="700">${v}</text>`;
     });
     bars+=`<text x="${(groupX+(barW+barGap)*series.length/2-barGap/2).toFixed(1)}" y="${(padT+plotH+16).toFixed(1)}" font-size="10" fill="#5D7284" text-anchor="middle">${escapeHtml(lbl)}</text>`;
@@ -4730,6 +4744,17 @@ function svgPieChart(segments,opts){
     return `<div style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:#10202C;margin-top:3px"><span style="width:9px;height:9px;background:${s.color};display:inline-block;border-radius:2px;flex-shrink:0"></span>${escapeHtml(s.label)}: <b>${s.value}</b> (${pct} %)</div>`;
   }).join("");
   return `<div style="display:flex;align-items:center;gap:16px"><svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">${paths}</svg><div>${legend}</div></div>`;
+}
+// Farbige Pill-Badges für Status-/Kategoriewerte (Segmentierung, Kooperation,
+// Club Weiss, ...) in den Chefgespräch-/Kooperationsgespräch-PDFs - optische
+// Auflockerung ggü. reinem Fließtext. tone: "good"|"muted"|"info".
+function pdfBadge(label,tone){
+  const palette={
+    good:{bg:"#E4F5EA",fg:"#1E7A46"},
+    muted:{bg:"#EEF2F5",fg:"#5D7284"},
+    info:{bg:"#E3F1FA",fg:"#0B5A8A"},
+  }[tone||"info"];
+  return `<span style="display:inline-block;background:${palette.bg};color:${palette.fg};font-size:10.5px;font-weight:800;padding:3px 10px;border-radius:99px">${escapeHtml(label)}</span>`;
 }
 // Gemeinsame Paginierung für box->PDF (Chefgespräch/KI): schneidet nicht mitten
 // durch ein Element mit class="pdf-block", damit Tabellen/Charts nicht zerrissen werden.
@@ -4840,6 +4865,7 @@ async function chefgespraechUnterlagenSectionHtml(fhNr,idx,total){
   const akqStaffelHtml=akqStaffelInner?`<div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:16px">${akqStaffelInner}</div>`:"";
 
   const kennzahl=(lbl,val)=>`<div style="text-align:center"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284">${lbl}</div><div style="font-size:18px;font-weight:900;color:#062A3F;margin-top:2px">${val}</div></div>`;
+  const kennzahlBadge=(lbl,badgeHtml)=>`<div style="text-align:center;max-width:160px"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284;margin-bottom:5px">${lbl}</div>${badgeHtml}</div>`;
   const filialeLabel=total>1?`<div class="pdf-block" style="font-size:11px;font-weight:800;color:#009FE3;text-transform:uppercase;letter-spacing:.4px;margin:${idx>0?"22px":"0"} 0 6px">Filiale ${idx+1} von ${total}</div>`:"";
   return `
     ${filialeLabel}
@@ -4850,12 +4876,13 @@ async function chefgespraechUnterlagenSectionHtml(fhNr,idx,total){
       </div>
       ${idx===0?`<div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Chefgesprächsunterlagen · Erstellt am: ${nowStr}</div>`:""}
     </div>
-    <div class="pdf-block" style="display:flex;justify-content:space-around;border:1px solid #E4EDF3;border-radius:8px;padding:14px 10px;margin-bottom:18px;background:#F5F9FC">
-      ${kennzahl("Segmentierung",c.segmentierung?(FH_SEGMENT_LBL[c.segmentierung]||c.segmentierung):"–")}
-      ${kennzahl("Kooperation",c.kooperation||"–")}
+    <div class="pdf-block" style="display:flex;justify-content:space-around;flex-wrap:wrap;gap:12px;border:1px solid #E4EDF3;border-radius:8px;padding:14px 10px;margin-bottom:18px;background:#F5F9FC">
+      ${kennzahlBadge("Segmentierung",c.segmentierung?pdfBadge(FH_SEGMENT_LBL[c.segmentierung]||c.segmentierung,"info"):pdfBadge("–","muted"))}
+      ${kennzahlBadge("Kooperation",c.kooperation&&c.kooperation!=="ohne Kooperation"?pdfBadge(c.kooperation,"info"):pdfBadge("ohne Kooperation","muted"))}
       ${kennzahl("PO-Quote (LJ)",f.poQuote!=null?(f.poQuote*100).toFixed(1).replace(".",",")+" %":"–")}
       ${kennzahl("3-für-2-Quote (LJ)",f.q3fuer2!=null?(f.q3fuer2*100).toFixed(1).replace(".",",")+" %":"–")}
       ${kennzahl("Akquisepunkte",c.akq_punkte!=null?fmt(Math.round(c.akq_punkte)):"–")}
+      ${kennzahlBadge("Club Weiss",c.club_weiss_mitglied?pdfBadge("✓ Mitglied"+(c.club_weiss_mitgliedsnummer?" · Nr. "+c.club_weiss_mitgliedsnummer:""),"good"):pdfBadge("Kein Mitglied","muted"))}
     </div>
     ${prodChart?`<div class="pdf-block" style="margin-bottom:18px">
       <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:6px">Produktion nach Jahren</div>
@@ -4876,7 +4903,6 @@ async function chefgespraechUnterlagenSectionHtml(fhNr,idx,total){
         </table>
       </div>
     </div>`:""}
-    ${c.club_weiss_mitglied?`<div class="pdf-block" style="margin-bottom:18px;font-size:11px;color:#10202C"><b>Club Weiss:</b> Mitglied${c.club_weiss_mitgliedsnummer?" (Mitgliedsnr. "+escapeHtml(c.club_weiss_mitgliedsnummer)+")":""}</div>`:""}
     ${idx===total-1?`<div class="pdf-block" style="margin-top:24px;padding-top:10px;border-top:1px solid #E4EDF3;font-size:9.5px;color:#8CA0AF">Weitere Kennzahlen (Bestand, Storno-Quote, Provisionen, VIP-Bonus, Schadenaufwand, monetärer Zufluss) werden ergänzt, sobald diese Daten im Dashboard verfügbar sind.</div>`:""}
   `;
 }
@@ -4936,11 +4962,24 @@ function chefgespraechKiSectionHtml(fhNr,data,idx,total){
       ${svgBarChart(["Dieser Händler","Median Vergleichsgruppe","Top 25% Vergleichsgruppe"],[{name:title,color,values:vals}],{width:420,height:160})}
     </div>`;
   };
+  // Club-Weiss-Vergleich: eigener 2-Balken-Chart (dieser Händler 0/100 % vs.
+  // Mitgliedschaftsquote der Vergleichsgruppe), der Balken des Händlers wird
+  // farblich hervorgehoben (grün = Mitglied, grau = kein Mitglied).
+  const clubWeissChart=(()=>{
+    if(target.clubWeiss==null||peers.clubWeissRate==null) return "";
+    const tv=target.clubWeiss?100:0;
+    const peerPct=Math.round(peers.clubWeissRate*1000)/10;
+    return `<div style="margin-bottom:18px">
+      <div style="font-size:12px;font-weight:800;color:#062A3F;margin-bottom:4px">Club Weiss Mitgliedschaft (%)</div>
+      ${svgBarChart(["Dieser Händler","Vergleichsgruppe (Anteil Mitglieder)"],[{name:"Club Weiss",color:"#0B5A8A",values:[tv,peerPct]}],{width:420,height:160,maxVal:100,colors:[target.clubWeiss?"#1E7A46":"#8CA0AF","#9FCBE8"]})}
+    </div>`;
+  })();
   const charts=[
     chartFor("Jahresproduktion "+(target.curYear||""),"Verträge",target.curProd,peers.curProd&&peers.curProd.median,peers.curProd&&peers.curProd.p75,"#0B5A8A"),
     chartFor("Wachstum ggü. Vorjahr","%",pctVal(target.yoy),peers.yoy&&pctVal(peers.yoy.median),peers.yoy&&pctVal(peers.yoy.p75),"#2E9E5B"),
     chartFor("3-für-2-Quote","%",pctVal(target.q3f2),peers.q3f2&&pctVal(peers.q3f2.median),peers.q3f2&&pctVal(peers.q3f2.p75),"#D9A400"),
     chartFor("Akquisepunkte","Punkte",target.akqPunkte,peers.akqPunkte&&peers.akqPunkte.median,peers.akqPunkte&&peers.akqPunkte.p75,"#6B4FA0"),
+    clubWeissChart,
   ].filter(Boolean).join("");
 
   const comparisons=(rep.comparisons||[]).map(c=>`<div class="pdf-block" style="margin-bottom:10px"><b style="color:#062A3F">${escapeHtml(c.metric)}:</b> <span style="color:#10202C">${escapeHtml(c.assessment)}</span></div>`).join("");
@@ -4952,7 +4991,7 @@ function chefgespraechKiSectionHtml(fhNr,data,idx,total){
     <div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:18px">
       <div>
         <div style="font-size:21px;font-weight:900;color:#062A3F">${escapeHtml(fName)}</div>
-        <div style="font-size:12px;color:#5D7284;margin-top:3px">FH-Nr. ${escapeHtml(fhNr)}${f.ort?" · "+escapeHtml(f.ort):""}</div>
+        <div style="font-size:12px;color:#5D7284;margin-top:3px">FH-Nr. ${escapeHtml(fhNr)}${f.ort?" · "+escapeHtml(f.ort):""}${target.clubWeiss?" &nbsp;·&nbsp; ":""}${target.clubWeiss?pdfBadge("✓ Club Weiss","good"):""}</div>
       </div>
       ${idx===0?`<div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Chefgespräch – KI-Unterstützt · Erstellt am: ${fmtNowDateTime()}</div>`:""}
     </div>
@@ -5041,7 +5080,7 @@ function selectKooperationsgespraechKoop(koop){
 // kooperationsgespraech-ai-comparison, damit Unterlagen- und KI-PDF
 // konsistente Zahlen zeigen.
 async function loadKooperationAggregate(koop){
-  const {data,error}=await sb.from("fh_contacts").select("fh_nr,prod_monthly,beitragsfrei_yearly,akq_punkte").eq("kooperation",koop);
+  const {data,error}=await sb.from("fh_contacts").select("fh_nr,prod_monthly,beitragsfrei_yearly,akq_punkte,club_weiss_mitglied,club_weiss_mitgliedsnummer").eq("kooperation",koop);
   if(error) throw new Error(error.message||String(error));
   const rows=data||[];
   const byYear={};
@@ -5053,7 +5092,7 @@ async function loadKooperationAggregate(koop){
       fhByYear[y]=(fhByYear[y]||0)+(Number(v)||0);
       byYear[y]=(byYear[y]||0)+(Number(v)||0);
     }
-    return {fh_nr:r.fh_nr,byYear:fhByYear,akq_punkte:r.akq_punkte,beitragsfrei_yearly:r.beitragsfrei_yearly||{}};
+    return {fh_nr:r.fh_nr,byYear:fhByYear,akq_punkte:r.akq_punkte,beitragsfrei_yearly:r.beitragsfrei_yearly||{},club_weiss_mitglied:!!r.club_weiss_mitglied};
   });
   const years=Object.keys(byYear).sort();
   const curYear=years.length?years[years.length-1]:null;
@@ -5066,7 +5105,9 @@ async function loadKooperationAggregate(koop){
   const q3f2=(curYear&&curProd>0)?bf/curProd:null;
   const akqVals=rows.map(r=>r.akq_punkte).filter(v=>v!=null).map(Number);
   const akqPunkte=akqVals.length?akqVals.reduce((a,b)=>a+b,0)/akqVals.length:null;
-  return {rows,perFh,byYear,years,curYear,prevYear,curProd,prevProd,yoy,q3f2,akqPunkte,fhCount:rows.length};
+  const clubWeissCount=rows.filter(r=>r.club_weiss_mitglied).length;
+  const clubWeissRate=rows.length?clubWeissCount/rows.length:null;
+  return {rows,perFh,byYear,years,curYear,prevYear,curProd,prevProd,yoy,q3f2,akqPunkte,fhCount:rows.length,clubWeissCount,clubWeissRate};
 }
 function kooperationsgespraechPdfFilename(prefix,koop){
   return prefix+"_"+asciiFilenamePart(koop)+".pdf";
@@ -5088,10 +5129,11 @@ async function buildKooperationsgespraechUnterlagenPdfDoc(koop){
 
   const memberRows=[...agg.perFh].sort((a,b)=>(b.byYear[agg.curYear]||0)-(a.byYear[agg.curYear]||0)).map(m=>{
     const f=fhMap[m.fh_nr]||{};
-    return `<tr><td>${escapeHtml(f.name||m.fh_nr)}</td><td>${escapeHtml(f.ort||"–")}</td><td>${escapeHtml(m.fh_nr)}</td><td class="r">${fmt(m.byYear[agg.curYear]||0)}</td><td class="r">${m.akq_punkte!=null?fmt(Math.round(m.akq_punkte)):"–"}</td></tr>`;
+    return `<tr><td>${escapeHtml(f.name||m.fh_nr)}</td><td>${escapeHtml(f.ort||"–")}</td><td>${escapeHtml(m.fh_nr)}</td><td class="r">${fmt(m.byYear[agg.curYear]||0)}</td><td class="r">${m.akq_punkte!=null?fmt(Math.round(m.akq_punkte)):"–"}</td><td style="text-align:center">${m.club_weiss_mitglied?"✓":"–"}</td></tr>`;
   }).join("");
 
   const kennzahl=(lbl,val)=>`<div style="text-align:center"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284">${lbl}</div><div style="font-size:18px;font-weight:900;color:#062A3F;margin-top:2px">${val}</div></div>`;
+  const kennzahlBadge=(lbl,badgeHtml)=>`<div style="text-align:center;max-width:180px"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284;margin-bottom:5px">${lbl}</div>${badgeHtml}</div>`;
   const box=document.createElement("div");
   box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
   box.innerHTML=`
@@ -5102,12 +5144,13 @@ async function buildKooperationsgespraechUnterlagenPdfDoc(koop){
       </div>
       <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Kooperationsgesprächsunterlagen · Erstellt am: ${nowStr}</div>
     </div>
-    <div class="pdf-block" style="display:flex;justify-content:space-around;border:1px solid #E4EDF3;border-radius:8px;padding:14px 10px;margin-bottom:18px;background:#F5F9FC">
+    <div class="pdf-block" style="display:flex;justify-content:space-around;flex-wrap:wrap;gap:12px;border:1px solid #E4EDF3;border-radius:8px;padding:14px 10px;margin-bottom:18px;background:#F5F9FC">
       ${kennzahl("Fachhändler",fmt(agg.fhCount))}
       ${kennzahl("Jahresproduktion"+(agg.curYear?" "+agg.curYear:""),fmt(agg.curProd))}
       ${kennzahl("Wachstum ggü. Vorjahr",agg.yoy!=null?(agg.yoy*100).toFixed(1).replace(".",",")+" %":"–")}
       ${kennzahl("3-für-2-Quote",agg.q3f2!=null?(agg.q3f2*100).toFixed(1).replace(".",",")+" %":"–")}
       ${kennzahl("Ø Akquisepunkte je FH",agg.akqPunkte!=null?fmt(Math.round(agg.akqPunkte)):"–")}
+      ${kennzahlBadge("Club Weiss Mitglieder",pdfBadge(agg.clubWeissCount+" von "+agg.fhCount+" FH"+(agg.clubWeissRate!=null?" ("+(agg.clubWeissRate*100).toFixed(0)+" %)":""),agg.clubWeissCount>0?"good":"muted"))}
     </div>
     ${prodChart?`<div class="pdf-block" style="margin-bottom:18px">
       <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:6px">Produktion nach Jahren (gesamte Kooperation)</div>
@@ -5120,7 +5163,7 @@ async function buildKooperationsgespraechUnterlagenPdfDoc(koop){
     <div class="pdf-block" style="margin-bottom:18px">
       <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:10px">Mitglieds-Fachhändler${agg.curYear?" (sortiert nach Jahresproduktion "+agg.curYear+")":""}</div>
       <table style="width:100%;border-collapse:collapse;font-size:9.5px">
-        <thead><tr style="color:#5D7284;text-align:left"><th>Name</th><th>Ort</th><th>FH-Nr.</th><th class="r">Jahresproduktion</th><th class="r">Akquisepunkte</th></tr></thead>
+        <thead><tr style="color:#5D7284;text-align:left"><th>Name</th><th>Ort</th><th>FH-Nr.</th><th class="r">Jahresproduktion</th><th class="r">Akquisepunkte</th><th style="text-align:center">Club Weiss</th></tr></thead>
         <tbody>${memberRows}</tbody>
       </table>
     </div>
@@ -5177,6 +5220,7 @@ async function buildKooperationsgespraechKiPdfDoc(koop,data){
     chartFor("Wachstum ggü. Vorjahr","%",pctVal(target.yoy),peers.yoy&&pctVal(peers.yoy.median),peers.yoy&&pctVal(peers.yoy.p75),"#2E9E5B"),
     chartFor("3-für-2-Quote","%",pctVal(target.q3f2),peers.q3f2&&pctVal(peers.q3f2.median),peers.q3f2&&pctVal(peers.q3f2.p75),"#D9A400"),
     chartFor("Ø Akquisepunkte je FH","Punkte",target.akqPunkte,peers.akqPunkte&&peers.akqPunkte.median,peers.akqPunkte&&peers.akqPunkte.p75,"#6B4FA0"),
+    chartFor("Club Weiss Mitgliedschaftsquote","%",pctVal(target.clubWeissRate),peers.clubWeissRate&&pctVal(peers.clubWeissRate.median),peers.clubWeissRate&&pctVal(peers.clubWeissRate.p75),"#1E7A46"),
   ].filter(Boolean).join("");
 
   const comparisons=(rep.comparisons||[]).map(c=>`<div class="pdf-block" style="margin-bottom:10px"><b style="color:#062A3F">${escapeHtml(c.metric)}:</b> <span style="color:#10202C">${escapeHtml(c.assessment)}</span></div>`).join("");
@@ -5188,7 +5232,7 @@ async function buildKooperationsgespraechKiPdfDoc(koop,data){
     <div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:18px">
       <div>
         <div style="font-size:21px;font-weight:900;color:#062A3F">${escapeHtml(koop)}</div>
-        <div style="font-size:12px;color:#5D7284;margin-top:3px">${target.fhCount!=null?target.fhCount+" Mitglieds-Fachhändler":""}</div>
+        <div style="font-size:12px;color:#5D7284;margin-top:3px">${target.fhCount!=null?target.fhCount+" Mitglieds-Fachhändler":""}${target.clubWeissRate!=null?" &nbsp;·&nbsp; "+Math.round(target.clubWeissRate*100)+" % Club Weiss":""}</div>
       </div>
       <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Kooperationsgespräch – KI-Unterstützt · Erstellt am: ${nowStr}</div>
     </div>
@@ -5454,6 +5498,8 @@ async function toggleFhEdit(on){
     $("fhBesuchEdit").value=c.letzter_besuch||"";
     $("fhNwEdit").checked=!!c.neunwochen_erledigt;
     $("fhClubEdit").checked=!!c.club_weiss_mitglied;
+    $("fhClubNrEdit").value=c.club_weiss_mitgliedsnummer||"";
+    $("fhClubNrFields").classList.toggle("hidden",!c.club_weiss_mitglied);
     $("fhInfosEdit").value=c.sonstige_infos||"";
     $("fhWeitereZuordnungChk").checked=!!c.weitere_zuordnung;
     $("fhWeitereZuordnungFields").classList.toggle("hidden",!c.weitere_zuordnung);
@@ -5480,18 +5526,19 @@ async function saveFhContact(){
   const letzter_besuch=$("fhBesuchEdit").value||null;
   const neunwochen_erledigt=$("fhNwEdit").checked;
   const club_weiss_mitglied=$("fhClubEdit").checked;
+  const club_weiss_mitgliedsnummer=club_weiss_mitglied?($("fhClubNrEdit").value.trim()||null):null;
   const sonstige_infos=$("fhInfosEdit").value.trim()||null;
   const wzNeu=$("fhWeitereZuordnungNeu").value.trim();
   const wzSel=$("fhWeitereZuordnungSelect").value;
   const weitere_zuordnung=$("fhWeitereZuordnungChk").checked?(wzNeu||wzSel||null):null;
   $("fhSaveBtn").disabled=true;
   const {error}=await sb.from("fh_contacts").upsert({
-    fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,sonstige_infos,weitere_zuordnung,
+    fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung,
     updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()
   },{onConflict:"fh_nr"});
   $("fhSaveBtn").disabled=false;
   if(error){ $("fhSaveHint").textContent="Fehler: "+error.message; return; }
-  fhContactCurrent={...fhContactCurrent,fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,sonstige_infos,weitere_zuordnung};
+  fhContactCurrent={...fhContactCurrent,fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung};
   if(neunwochen_erledigt) fhErledigtSet.add(fhNr); else fhErledigtSet.delete(fhNr);
   renderFhContactView();
   renderFhStammdatenDiff();
@@ -6653,6 +6700,9 @@ $("fhCancelBtn").onclick=()=>toggleFhEdit(false);
 $("fhSaveBtn").onclick=saveFhContact;
 $("fhWeitereZuordnungChk").onchange=()=>{
   $("fhWeitereZuordnungFields").classList.toggle("hidden",!$("fhWeitereZuordnungChk").checked);
+};
+$("fhClubEdit").onchange=()=>{
+  $("fhClubNrFields").classList.toggle("hidden",!$("fhClubEdit").checked);
 };
 $("fhWeitereZuordnungNeu").addEventListener("input",()=>{
   if($("fhWeitereZuordnungNeu").value.trim()) $("fhWeitereZuordnungSelect").value="";

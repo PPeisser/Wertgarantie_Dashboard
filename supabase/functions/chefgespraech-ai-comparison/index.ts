@@ -54,6 +54,7 @@ interface Metrics {
   yoy: number | null;
   q3f2: number | null;
   akqPunkte: number | null;
+  clubWeiss: boolean;
 }
 
 function metricsForFh(row: FhRow): Metrics {
@@ -67,7 +68,8 @@ function metricsForFh(row: FhRow): Metrics {
   const bf = curYear ? (row.beitragsfrei_yearly || {})[curYear] : null;
   const q3f2 = (bf != null && curProd > 0) ? bf / curProd : null;
   const akqPunkte = row.akq_punkte != null ? Number(row.akq_punkte) : null;
-  return { curYear, curProd, yoy, q3f2, akqPunkte };
+  const clubWeiss = !!row.club_weiss_mitglied;
+  return { curYear, curProd, yoy, q3f2, akqPunkte, clubWeiss };
 }
 
 function median(arr: number[]): number | null {
@@ -95,7 +97,7 @@ function rankPercentile(arr: number[], value: number): number | null {
   return below / s.length;
 }
 
-const PEER_SELECT_COLS = "fh_nr,prod_monthly,beitragsfrei_yearly,akq_punkte";
+const PEER_SELECT_COLS = "fh_nr,prod_monthly,beitragsfrei_yearly,akq_punkte,club_weiss_mitglied";
 
 // Vier Modi: "region" (Default, erste PLZ-Ziffer), "kooperation",
 // "hauptzweig", "weitere_zuordnung" (jeweils: gleicher Wert wie der
@@ -233,6 +235,7 @@ Deno.serve(async (req) => {
       p75: percentile(peerMetrics.map((m) => m.akqPunkte).filter((v): v is number => v != null), 75),
       rank: targetMetrics.akqPunkte != null ? rankPercentile(peerMetrics.map((m) => m.akqPunkte).filter((v): v is number => v != null), targetMetrics.akqPunkte) : null,
     },
+    clubWeissRate: peerMetrics.length ? peerMetrics.filter((m) => m.clubWeiss).length / peerMetrics.length : null,
   };
 
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
@@ -245,12 +248,14 @@ Deno.serve(async (req) => {
     `- Jahresproduktion: ${targetMetrics.curProd} Verträge\n` +
     `- Wachstum ggü. Vorjahr: ${fmtPct(targetMetrics.yoy)}\n` +
     `- 3-für-2-Quote: ${fmtPct(targetMetrics.q3f2)}\n` +
-    `- Akquisepunkte (lebenslang-kumulativ): ${targetMetrics.akqPunkte ?? "–"}\n\n` +
+    `- Akquisepunkte (lebenslang-kumulativ): ${targetMetrics.akqPunkte ?? "–"}\n` +
+    `- Club Weiss Mitglied: ${targetMetrics.clubWeiss ? "Ja" : "Nein"}\n\n` +
     `Vergleichsgruppe (${groupLabel}), jeweils Median / oberes Quartil (75%) / Perzentil-Rang dieses Händlers:\n` +
     `- Jahresproduktion: Median ${peerStats.curProd.median ?? "–"} / oberes Quartil ${peerStats.curProd.p75 ?? "–"} / dieser Händler liegt im ${peerStats.curProd.rank != null ? Math.round(peerStats.curProd.rank * 100) : "–"}. Perzentil\n` +
     `- Wachstum ggü. Vorjahr: Median ${fmtPct(peerStats.yoy.median)} / oberes Quartil ${fmtPct(peerStats.yoy.p75)} / Perzentil ${peerStats.yoy.rank != null ? Math.round(peerStats.yoy.rank * 100) : "–"}\n` +
     `- 3-für-2-Quote: Median ${fmtPct(peerStats.q3f2.median)} / oberes Quartil ${fmtPct(peerStats.q3f2.p75)} / Perzentil ${peerStats.q3f2.rank != null ? Math.round(peerStats.q3f2.rank * 100) : "–"}\n` +
-    `- Akquisepunkte: Median ${peerStats.akqPunkte.median ?? "–"} / oberes Quartil ${peerStats.akqPunkte.p75 ?? "–"} / Perzentil ${peerStats.akqPunkte.rank != null ? Math.round(peerStats.akqPunkte.rank * 100) : "–"}\n`;
+    `- Akquisepunkte: Median ${peerStats.akqPunkte.median ?? "–"} / oberes Quartil ${peerStats.akqPunkte.p75 ?? "–"} / Perzentil ${peerStats.akqPunkte.rank != null ? Math.round(peerStats.akqPunkte.rank * 100) : "–"}\n` +
+    `- Club Weiss Mitgliedschaftsquote in der Vergleichsgruppe: ${fmtPct(peerStats.clubWeissRate)}\n`;
 
   const systemPrompt =
     `Du bereitest ein "Chefgespräch" vor - ein internes Beratungsgespräch eines Wertgarantie-Vertriebsmitarbeiters ` +
@@ -258,7 +263,10 @@ Deno.serve(async (req) => {
     `ANONYME Aggregatwerte (Median, oberes Quartil, Perzentil-Rang) einer Vergleichsgruppe von ` +
     `${MODE_DESCRIPTION[mode]} (nie Einzeldaten anderer Händler). Ordne die Zahlen sachlich ein, zeige wo der ` +
     `Händler im Vergleich gut dasteht und wo Potenzial liegt, und leite daraus konkrete, umsetzbare ` +
-    `Gesprächsansätze/Empfehlungen ab. Schreibe auf Deutsch, professionell, prägnant, ohne Floskeln. Antworte ` +
+    `Gesprächsansätze/Empfehlungen ab. Berücksichtige dabei auch die Club-Weiss-Mitgliedschaft: ist der Händler ` +
+    `noch KEIN Mitglied, obwohl die Vergleichsgruppe eine hohe Mitgliedschaftsquote hat, ist das ein konkreter ` +
+    `Gesprächsansatz (Empfehlung zum Beitritt); ist er Mitglied, kann das als Stärke hervorgehoben werden. ` +
+    `Schreibe auf Deutsch, professionell, prägnant, ohne Floskeln. Antworte ` +
     `ausschließlich über das Tool "generate_chefgespraech_comparison".`;
 
   let aiRes: Response;

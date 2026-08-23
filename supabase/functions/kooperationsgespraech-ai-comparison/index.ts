@@ -50,6 +50,7 @@ interface KoopMetrics {
   q3f2: number | null;
   akqPunkte: number | null;
   fhCount: number;
+  clubWeissRate: number | null;
 }
 
 // Aggregiert eine Gruppe von Fachhändler-Zeilen (eine Kooperation) zu den
@@ -57,18 +58,20 @@ interface KoopMetrics {
 // (curYear) - damit sind Kooperationen untereinander vergleichbar, auch wenn
 // einzelne Mitglieds-Händler unterschiedliche Datenstände haben.
 function aggregateGroup(rows: FhRow[], curYear: string, prevYear: string): KoopMetrics {
-  let curProd = 0, prevProd = 0, bf = 0, akqSum = 0, akqCount = 0;
+  let curProd = 0, prevProd = 0, bf = 0, akqSum = 0, akqCount = 0, clubWeissCount = 0;
   for (const r of rows) {
     const byYear = yearlyProd(r);
     curProd += byYear[curYear] || 0;
     prevProd += byYear[prevYear] || 0;
     bf += Number((r.beitragsfrei_yearly || {})[curYear]) || 0;
     if (r.akq_punkte != null) { akqSum += Number(r.akq_punkte) || 0; akqCount++; }
+    if (r.club_weiss_mitglied) clubWeissCount++;
   }
   const yoy = prevProd > 0 ? (curProd - prevProd) / prevProd : null;
   const q3f2 = curProd > 0 ? bf / curProd : null;
   const akqPunkte = akqCount > 0 ? akqSum / akqCount : null;
-  return { curYear, curProd, yoy, q3f2, akqPunkte, fhCount: rows.length };
+  const clubWeissRate = rows.length ? clubWeissCount / rows.length : null;
+  return { curYear, curProd, yoy, q3f2, akqPunkte, fhCount: rows.length, clubWeissRate };
 }
 
 function median(arr: number[]): number | null {
@@ -153,7 +156,7 @@ Deno.serve(async (req) => {
   }
 
   const { data: allRows, error: allErr } = await admin
-    .from("fh_contacts").select("fh_nr,kooperation,prod_monthly,beitragsfrei_yearly,akq_punkte")
+    .from("fh_contacts").select("fh_nr,kooperation,prod_monthly,beitragsfrei_yearly,akq_punkte,club_weiss_mitglied")
     .not("kooperation", "is", null)
     .neq("kooperation", "ohne Kooperation");
   if (allErr) return json({ error: allErr.message }, 500);
@@ -208,6 +211,11 @@ Deno.serve(async (req) => {
       p75: percentile(peerGroups.map((m) => m.akqPunkte).filter((v): v is number => v != null), 75),
       rank: targetMetrics.akqPunkte != null ? rankPercentile(peerGroups.map((m) => m.akqPunkte).filter((v): v is number => v != null), targetMetrics.akqPunkte) : null,
     },
+    clubWeissRate: {
+      median: median(peerGroups.map((m) => m.clubWeissRate).filter((v): v is number => v != null)),
+      p75: percentile(peerGroups.map((m) => m.clubWeissRate).filter((v): v is number => v != null), 75),
+      rank: targetMetrics.clubWeissRate != null ? rankPercentile(peerGroups.map((m) => m.clubWeissRate).filter((v): v is number => v != null), targetMetrics.clubWeissRate) : null,
+    },
   };
 
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
@@ -221,12 +229,14 @@ Deno.serve(async (req) => {
     `- Jahresproduktion: ${targetMetrics.curProd} Verträge\n` +
     `- Wachstum ggü. Vorjahr: ${fmtPct(targetMetrics.yoy)}\n` +
     `- 3-für-2-Quote: ${fmtPct(targetMetrics.q3f2)}\n` +
-    `- Ø Akquisepunkte je Fachhändler: ${targetMetrics.akqPunkte != null ? Math.round(targetMetrics.akqPunkte) : "–"}\n\n` +
+    `- Ø Akquisepunkte je Fachhändler: ${targetMetrics.akqPunkte != null ? Math.round(targetMetrics.akqPunkte) : "–"}\n` +
+    `- Club Weiss Mitgliedschaftsquote (Anteil Club-Weiss-Mitglieder unter den Mitglieds-Fachhändlern): ${fmtPct(targetMetrics.clubWeissRate)}\n\n` +
     `Andere Einkaufskooperationen, jeweils Median / oberes Quartil (75%) / Perzentil-Rang dieser Kooperation:\n` +
     `- Jahresproduktion: Median ${peerStats.curProd.median != null ? Math.round(peerStats.curProd.median) : "–"} / oberes Quartil ${peerStats.curProd.p75 != null ? Math.round(peerStats.curProd.p75) : "–"} / diese Kooperation liegt im ${peerStats.curProd.rank != null ? Math.round(peerStats.curProd.rank * 100) : "–"}. Perzentil\n` +
     `- Wachstum ggü. Vorjahr: Median ${fmtPct(peerStats.yoy.median)} / oberes Quartil ${fmtPct(peerStats.yoy.p75)} / Perzentil ${peerStats.yoy.rank != null ? Math.round(peerStats.yoy.rank * 100) : "–"}\n` +
     `- 3-für-2-Quote: Median ${fmtPct(peerStats.q3f2.median)} / oberes Quartil ${fmtPct(peerStats.q3f2.p75)} / Perzentil ${peerStats.q3f2.rank != null ? Math.round(peerStats.q3f2.rank * 100) : "–"}\n` +
-    `- Ø Akquisepunkte je Fachhändler: Median ${peerStats.akqPunkte.median != null ? Math.round(peerStats.akqPunkte.median) : "–"} / oberes Quartil ${peerStats.akqPunkte.p75 != null ? Math.round(peerStats.akqPunkte.p75) : "–"} / Perzentil ${peerStats.akqPunkte.rank != null ? Math.round(peerStats.akqPunkte.rank * 100) : "–"}\n`;
+    `- Ø Akquisepunkte je Fachhändler: Median ${peerStats.akqPunkte.median != null ? Math.round(peerStats.akqPunkte.median) : "–"} / oberes Quartil ${peerStats.akqPunkte.p75 != null ? Math.round(peerStats.akqPunkte.p75) : "–"} / Perzentil ${peerStats.akqPunkte.rank != null ? Math.round(peerStats.akqPunkte.rank * 100) : "–"}\n` +
+    `- Club Weiss Mitgliedschaftsquote: Median ${fmtPct(peerStats.clubWeissRate.median)} / oberes Quartil ${fmtPct(peerStats.clubWeissRate.p75)} / Perzentil ${peerStats.clubWeissRate.rank != null ? Math.round(peerStats.clubWeissRate.rank * 100) : "–"}\n`;
 
   const systemPrompt =
     `Du bereitest ein "Kooperationsgespräch" vor - ein internes Beratungsgespräch eines Wertgarantie-Vertriebsmitarbeiters ` +
@@ -234,8 +244,10 @@ Deno.serve(async (req) => {
     `Kennzahlen dieser einen Kooperation sowie ANONYME Aggregatwerte (Median, oberes Quartil, Perzentil-Rang) einer ` +
     `Vergleichsgruppe aller anderen Einkaufskooperationen (nie Einzeldaten anderer Kooperationen oder einzelner ` +
     `Fachhändler). Ordne die Zahlen sachlich ein, zeige wo die Kooperation im Vergleich gut dasteht und wo Potenzial ` +
-    `liegt, und leite daraus konkrete, umsetzbare Gesprächsansätze/Empfehlungen ab. Schreibe auf Deutsch, ` +
-    `professionell, prägnant, ohne Floskeln. Antworte ausschließlich über das Tool ` +
+    `liegt, und leite daraus konkrete, umsetzbare Gesprächsansätze/Empfehlungen ab. Berücksichtige dabei auch die ` +
+    `Club-Weiss-Mitgliedschaftsquote: liegt sie unter dem Vergleichswert, ist das ein konkreter Gesprächsansatz ` +
+    `(mehr Mitglieds-Fachhändler für Club Weiss gewinnen); liegt sie darüber, ist das eine Stärke. Schreibe auf ` +
+    `Deutsch, professionell, prägnant, ohne Floskeln. Antworte ausschließlich über das Tool ` +
     `"generate_kooperationsgespraech_comparison".`;
 
   let aiRes: Response;
