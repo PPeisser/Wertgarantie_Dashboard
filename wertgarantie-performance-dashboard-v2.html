@@ -783,7 +783,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div id="fhClubViewRow" class="hidden"><span class="ac-lbl">Club.Weiss Mitglied</span><div class="ac-val" id="fhClubView">–</div></div>
         <div id="fhClubNrViewRow" class="hidden"><span class="ac-lbl">Club.Weiss Mitgliedsnummer</span><div class="ac-val" id="fhClubNrView">–</div></div>
         <div id="fhWeitereZuordnungViewRow" class="hidden"><span class="ac-lbl">Weitere Zuordnung</span><div class="ac-val" id="fhWeitereZuordnungView">–</div></div>
-        <div id="fhZielViewRow" class="hidden"><span class="ac-lbl">Ziel (Jahr, Stk.)</span><div class="ac-val" id="fhZielView">–</div></div>
+        <div id="fhZielViewRow" class="hidden"><span class="ac-lbl">Ziel | Hochrechnung</span><div class="ac-val" id="fhZielView">–</div></div>
       </div>
       <div style="margin-top:14px"><span class="ac-lbl">Sonstige Infos</span><div class="ac-val" id="fhInfosView" style="font-weight:600;white-space:pre-wrap">–</div></div>
       <button class="btn btn-blue" id="fhEditBtn" style="margin-top:14px">✎ Stammdaten bearbeiten</button>
@@ -4058,18 +4058,19 @@ function fhZielHochrechnungFor(fhNr,c){
 function fhZielHochrechnung(fhNr){
   return fhZielHochrechnungFor(fhNr,fhContactCurrent);
 }
-// Gemeinsames Rendering der Ziel-Hochrechnung (Nutzervorgabe 24.08.2026):
-// fett in Grün/Rot die erwartete Gesamtzahl zum Jahresende, daneben kleiner
-// und nicht fett (aber ebenfalls Grün/Rot) die +/- Zahl und die Prozent-
+// Gemeinsames Rendering der Ziel-Hochrechnung (Nutzervorgabe 24.08.2026,
+// überarbeitet): fett in Schwarz das Ziel, daneben fett in Grün/Rot die
+// erwartete Gesamtzahl zum Jahresende (Hochrechnung), daneben unverändert
+// klein/dünn (aber ebenfalls Grün/Rot) die +/- Zahl und die Prozent-
 // Abweichung vom Ziel. posColor/negColor als Parameter, da die FH-Popup-
 // Ansicht CSS-Variablen nutzt, PDF-Dokumente aber feste Hex-Farben brauchen.
 // Wird an allen Stellen verwendet, die das Ziel anzeigen (FH-Popup UND beide
-// Chefgespräch-Protokolle).
+// Chefgespräch-Protokolle) - Zeilen-Label dort jeweils "Ziel | Hochrechnung".
 function fhZielHochrechnungHtml(hr,posColor,negColor){
   if(!hr) return null;
   const col=hr.diff>=0?posColor:negColor;
   const pct=hr.ziel>0?(hr.diff/hr.ziel*100):null;
-  return `<b style="color:${col};font-weight:900">${fmt(Math.round(hr.hrJahr))}</b> <span style="color:${col};font-weight:600;font-size:.78em">${fmtSign(Math.round(hr.diff))} Stk. · ${fmtPct(pct)}</span>`;
+  return `<b style="font-weight:900">${fmt(Math.round(hr.ziel))}</b> <b style="color:${col};font-weight:900">${fmt(Math.round(hr.hrJahr))}</b> <span style="color:${col};font-weight:600;font-size:.78em">${fmtSign(Math.round(hr.diff))} Stk. · ${fmtPct(pct)}</span>`;
 }
 function goalCard(name,target,ist,soll,extra,editable,hr,lbls,note){
   lbls=lbls||{}; lbls.ahead=lbls.ahead||"▲ vor Soll"; lbls.behind=lbls.behind||"▼ hinter Soll"; lbls.target=lbls.target||"Ziel";
@@ -5075,7 +5076,7 @@ function chefgespraechStammdatenCardHtml(fhNr,f,c){
   if(fhZielEnabled&&c.ziel>0){
     const hr=fhZielHochrechnungFor(fhNr,c);
     const zielVal=fhZielHochrechnungHtml(hr,"#12A150","#E0234E")||(fmt(c.ziel)+" Stk.");
-    zielRow=stamRow("Ziel (Jahr)",zielVal);
+    zielRow=stamRow("Ziel | Hochrechnung",zielVal);
   }
   return `<div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:18px;background:#F5F9FC">
     <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:10px">Händlerdaten</div>
