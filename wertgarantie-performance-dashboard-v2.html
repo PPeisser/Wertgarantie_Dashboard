@@ -6626,7 +6626,7 @@ async function refreshData(silent){
   refreshBusy=true;
   const btn=$("refreshBtn"); if(btn) btn.disabled=true;
   try{
-    await Promise.all([loadAll(), loadAkpContactsIndex(), loadFhErledigtSet(), loadFhAkqIndex()]);
+    await Promise.all([loadAll(), loadAkpContactsIndex(), loadFhErledigtSet(), loadFhAkqIndex(), loadFhMieteIndex()]);
     await processPendingImports();
     render();
     if(!silent) toast("Aktualisiert ✓");
