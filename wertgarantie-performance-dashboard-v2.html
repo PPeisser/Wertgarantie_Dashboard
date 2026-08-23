@@ -4070,7 +4070,7 @@ function fhZielHochrechnungHtml(hr,posColor,negColor){
   if(!hr) return null;
   const col=hr.diff>=0?posColor:negColor;
   const pct=hr.ziel>0?(hr.diff/hr.ziel*100):null;
-  return `<b style="font-weight:900">${fmt(Math.round(hr.ziel))}</b> <b style="color:${col};font-weight:900">${fmt(Math.round(hr.hrJahr))}</b> <span style="color:${col};font-weight:600;font-size:.78em">${fmtSign(Math.round(hr.diff))} Stk. · ${fmtPct(pct)}</span>`;
+  return `<b style="font-weight:900">${fmt(Math.round(hr.ziel))}</b> <b style="font-weight:900">|</b> <b style="color:${col};font-weight:900">${fmt(Math.round(hr.hrJahr))}</b> <span style="color:${col};font-weight:600;font-size:.78em">${fmtSign(Math.round(hr.diff))} Stk. · ${fmtPct(pct)}</span>`;
 }
 function goalCard(name,target,ist,soll,extra,editable,hr,lbls,note){
   lbls=lbls||{}; lbls.ahead=lbls.ahead||"▲ vor Soll"; lbls.behind=lbls.behind||"▼ hinter Soll"; lbls.target=lbls.target||"Ziel";
