@@ -533,6 +533,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <button class="btn btn-ghost hidden" id="perfDialogAdminBtn" title="Performance Dialog – Admin-Übersicht">📋 Performance Dialog – ADMIN</button>
       <button class="btn btn-ghost hidden" id="chefgespraechBtn" title="Chefgespräch-Unterlagen für einen Fachhändler zusammenstellen">🤝 Chefgespräch</button>
       <button class="btn btn-ghost hidden" id="kooperationsgespraechBtn" title="Kooperationsgesprächsunterlagen für eine Einkaufskooperation zusammenstellen">🏢 Kooperationsgespräch</button>
+      <button class="btn btn-ghost hidden" id="auswertungBtn" title="Produktionsauswertung nach Kooperation, Weiterer Zuordnung, Fachhändler oder AKP erfassen">📊 Auswertung erfassen</button>
      </div>
     </div>
     <div class="datenstand" id="datenstand"></div>
@@ -1144,6 +1145,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <input type="checkbox" id="kooperationsgespraechEnabledChk" style="width:17px;height:17px;flex-shrink:0">
       Kooperationsgespräch-Button aktivieren <span style="font-weight:600;color:var(--muted);font-size:12px">(Außendienst-Mitarbeiter können dann Kooperationsgesprächsunterlagen für eine Einkaufskooperation zusammenstellen)</span>
     </label>
+    <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;margin-bottom:12px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+      <input type="checkbox" id="auswertungEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+      "Auswertung erfassen"-Button aktivieren <span style="font-weight:600;color:var(--muted);font-size:12px">(Außendienst-Mitarbeiter können dann Produktionsauswertungen nach Kooperation, Weiterer Zuordnung, Fachhändler oder AKP über einen frei wählbaren Zeitraum erstellen)</span>
+    </label>
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -1268,6 +1273,64 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
   </div>
 </div>
 
+<!-- Auswertung erfassen: Typ wählen -> Auswahl (Kooperation/Weitere Zuordnung/Fachhändler/AKP) -> Zeitraum -> PDF -->
+<div class="modal-bg hidden" id="auswertungModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">
+      <h3 style="margin:0">📊 Auswertung erfassen</h3>
+      <button class="btn btn-ghost" id="auswertungClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+    <div id="auswertungTypeStep">
+      <div class="hint" style="margin:0 0 14px">Wonach soll die Auswertung erstellt werden?</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <button class="btn btn-ghost auswertung-type-btn" data-typ="kooperation" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>🤝 Kooperation</span><small style="font-weight:600;opacity:.75">eine Einkaufskooperation</small></span></button>
+        <button class="btn btn-ghost auswertung-type-btn" data-typ="weitere_zuordnung" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>➕ Weitere Zuordnung</span><small style="font-weight:600;opacity:.75">ein Zusatzwert</small></span></button>
+        <button class="btn btn-ghost auswertung-type-btn" data-typ="fachhaendler" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>🏬 Fachhändler</span><small style="font-weight:600;opacity:.75">ein oder mehrere FH</small></span></button>
+        <button class="btn btn-ghost auswertung-type-btn" data-typ="akp" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>🧑‍💼 AKP (Aktivpartner)</span><small style="font-weight:600;opacity:.75">ein oder mehrere AKP</small></span></button>
+      </div>
+    </div>
+    <div id="auswertungSelectStep" class="hidden">
+      <button class="btn btn-ghost" id="auswertungSelectBack" style="padding:6px 12px;margin-bottom:14px">← Anderer Typ</button>
+      <div id="auswertungSelectHint" class="hint" style="margin:0 0 10px"></div>
+      <div id="auswertungSingleSearchBox">
+        <input type="text" id="auswertungSingleSearchInput" placeholder="Suchen …" autocomplete="off" style="width:100%;padding:10px 14px;border:2px solid var(--line);border-radius:10px;font-size:14px;font-family:inherit;background:var(--paper);color:var(--ink)">
+        <div id="auswertungSingleSearchResults" style="max-height:320px;overflow:auto;margin-top:10px"></div>
+      </div>
+      <div id="auswertungMultiSearchBox" class="hidden">
+        <div id="auswertungChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
+        <input type="text" id="auswertungMultiSearchInput" placeholder="Suchen …" autocomplete="off" style="width:100%;padding:10px 14px;border:2px solid var(--line);border-radius:10px;font-size:14px;font-family:inherit;background:var(--paper);color:var(--ink)">
+        <div id="auswertungMultiSearchResults" style="max-height:320px;overflow:auto;margin-top:10px"></div>
+        <button class="btn btn-blue hidden" id="auswertungMultiGoBtn" style="margin-top:12px;width:100%;padding:12px">Weiter →</button>
+      </div>
+    </div>
+    <div id="auswertungPeriodStep" class="hidden">
+      <button class="btn btn-ghost" id="auswertungPeriodBack" style="padding:6px 12px;margin-bottom:14px">← Andere Auswahl</button>
+      <div id="auswertungPeriodHeader" style="font-size:15px;font-weight:900;color:var(--wg-navy);margin-bottom:16px"></div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
+        <div>
+          <label class="ac-lbl" for="auswertungVonInput">Zeitraum von</label>
+          <input type="date" id="auswertungVonInput">
+        </div>
+        <div>
+          <label class="ac-lbl" for="auswertungBisInput">bis</label>
+          <input type="date" id="auswertungBisInput">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <button class="btn btn-ghost auswertung-preset-btn" data-preset="month" style="padding:7px 12px;font-size:12.5px">Dieser Monat</button>
+        <button class="btn btn-ghost auswertung-preset-btn" data-preset="4weeks" style="padding:7px 12px;font-size:12.5px">Letzte 4 Wochen</button>
+        <button class="btn btn-ghost auswertung-preset-btn" data-preset="quarter" style="padding:7px 12px;font-size:12.5px">Letzte 3 Monate</button>
+        <button class="btn btn-ghost auswertung-preset-btn" data-preset="year" style="padding:7px 12px;font-size:12.5px">Dieses Jahr</button>
+      </div>
+      <label id="auswertungAkpChkRow" for="auswertungAkpChk" style="margin-top:16px;display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;padding:8px 0;cursor:pointer">
+        <input type="checkbox" id="auswertungAkpChk" style="width:18px;height:18px;accent-color:var(--wg-blue);cursor:pointer;flex-shrink:0"> AKP (Aktivpartner) mit anzeigen
+      </label>
+      <button class="btn btn-blue" id="auswertungBuildBtn" style="margin-top:18px;width:100%;padding:14px;font-size:14px">📊 Auswertung erstellen</button>
+      <div class="error" id="auswertungHint"></div>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -1355,6 +1418,10 @@ let chefgespraechEnabled = false;
 // normalen ADMIN-Panel gesetzt). Standardmäßig aus, bis Wert aus der DB
 // geladen wurde.
 let kooperationsgespraechEnabled = false;
+// Globaler Ein/Aus-Schalter für den "Auswertung erfassen"-Button
+// (dashboard_kv-Key "auswertung_enabled", per Schalter im normalen
+// ADMIN-Panel gesetzt). Standardmäßig aus, bis Wert aus der DB geladen wurde.
+let auswertungEnabled = false;
 // Zeitpunkt der letzten Miete-Report-Einspielung (dashboard_kv-Key
 // "miete_last_import", von upsertMieteData() bei jedem Import gesetzt -
 // deckt sowohl den Admin-Panel-Upload als auch den automatischen
@@ -1415,6 +1482,8 @@ function showRoleBadge(){
   $("chefgespraechBtn").classList.toggle("hidden", !chefgespraechEnabled||(myRole!=="admin"&&myRole!=="aussendienst"));
   // Kooperationsgespräch: gleiche Sichtbarkeitsregel wie Chefgespräch.
   $("kooperationsgespraechBtn").classList.toggle("hidden", !kooperationsgespraechEnabled||(myRole!=="admin"&&myRole!=="aussendienst"));
+  // Auswertung erfassen: gleiche Sichtbarkeitsregel wie Chefgespräch/Kooperationsgespräch.
+  $("auswertungBtn").classList.toggle("hidden", !auswertungEnabled||(myRole!=="admin"&&myRole!=="aussendienst"));
   const w=$("welcomeMsg");
   if(myName){
     const roleBadge=(myRole&&ROLE_LABEL[myRole])
@@ -1722,6 +1791,7 @@ function openAdminModal(){
   $("adminModal").classList.remove("hidden"); loadAdminUsers();
   $("chefgespraechEnabledChk").checked=chefgespraechEnabled;
   $("kooperationsgespraechEnabledChk").checked=kooperationsgespraechEnabled;
+  $("auswertungEnabledChk").checked=auswertungEnabled;
 }
 async function toggleChefgespraechEnabled(){
   const on=$("chefgespraechEnabledChk").checked;
@@ -1741,6 +1811,17 @@ async function toggleKooperationsgespraechEnabled(){
   try{
     await stSet("kooperationsgespraech_enabled",on?"1":"0");
     toast(on?"Kooperationsgespräch-Button aktiviert ✓":"Kooperationsgespräch-Button deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
+async function toggleAuswertungEnabled(){
+  const on=$("auswertungEnabledChk").checked;
+  auswertungEnabled=on;
+  showRoleBadge();
+  try{
+    await stSet("auswertung_enabled",on?"1":"0");
+    toast(on?"\"Auswertung erfassen\"-Button aktiviert ✓":"\"Auswertung erfassen\"-Button deaktiviert");
   }catch(e){
     toast("Speichern fehlgeschlagen: "+(e.message||e));
   }
@@ -3714,6 +3795,7 @@ async function loadAll(){
   try{ perfDialogEnabled=(await stGet("performance_dialog_enabled"))==="1"; }catch(e){}
   try{ chefgespraechEnabled=(await stGet("chefgespraech_enabled"))==="1"; }catch(e){}
   try{ kooperationsgespraechEnabled=(await stGet("kooperationsgespraech_enabled"))==="1"; }catch(e){}
+  try{ auswertungEnabled=(await stGet("auswertung_enabled"))==="1"; }catch(e){}
   try{ mieteLastImport=await stGet("miete_last_import"); }catch(e){}
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
@@ -5271,6 +5353,499 @@ async function exportKooperationsgespraechKiPdf(koop){
     pdfSendTarget=null;
   }
 }
+/* ---------- Auswertung erfassen: Kooperation/Weitere Zuordnung/Fachhändler/AKP über frei wählbaren Zeitraum ---------- */
+let auswertungTyp=null; // 'kooperation'|'weitere_zuordnung'|'fachhaendler'|'akp'
+let auswertungSingleValue=null; // Kooperation/Weitere-Zuordnung-Wert
+let auswertungMultiKeys=[]; // FH-Nrn bzw. AKP-Nrn
+function openAuswertungModal(){
+  if(!auswertungEnabled){ toast("Auswertung erfassen ist aktuell nicht aktiviert."); return; }
+  auswertungTyp=null; auswertungSingleValue=null; auswertungMultiKeys=[];
+  $("auswertungModal").classList.remove("hidden");
+  $("auswertungTypeStep").classList.remove("hidden");
+  $("auswertungSelectStep").classList.add("hidden");
+  $("auswertungPeriodStep").classList.add("hidden");
+  $("auswertungHint").textContent="";
+}
+function auswertungEntityLabel(key){
+  if(auswertungTyp==="fachhaendler"){
+    const f=(state.latest.fh||{})[key]||{};
+    return (f.name||key)+(f.ort?" · "+f.ort:"");
+  }
+  if(auswertungTyp==="akp"){
+    const a=akpContactsIndex&&akpContactsIndex[key];
+    if(a) return [a.vorname,a.nachname].filter(Boolean).join(" ")+(a.firma?" · "+a.firma:"");
+    return key;
+  }
+  return key;
+}
+function selectAuswertungTyp(typ){
+  auswertungTyp=typ;
+  auswertungSingleValue=null; auswertungMultiKeys=[];
+  $("auswertungTypeStep").classList.add("hidden");
+  $("auswertungSelectStep").classList.remove("hidden");
+  const isMulti=typ==="fachhaendler"||typ==="akp";
+  $("auswertungSingleSearchBox").classList.toggle("hidden",isMulti);
+  $("auswertungMultiSearchBox").classList.toggle("hidden",!isMulti);
+  $("auswertungSingleSearchInput").value="";
+  $("auswertungMultiSearchInput").value="";
+  $("auswertungSingleSearchResults").innerHTML="";
+  $("auswertungMultiSearchResults").innerHTML="";
+  $("auswertungChips").innerHTML="";
+  $("auswertungMultiGoBtn").classList.add("hidden");
+  const hints={
+    kooperation:"Einkaufskooperation suchen und auswählen.",
+    weitere_zuordnung:"Wert der Weiteren Zuordnung suchen und auswählen.",
+    fachhaendler:"Einen oder mehrere Fachhändler suchen und auswählen (Name, Ort oder FH-Nr.).",
+    akp:"Einen oder mehrere Aktivpartner (AKP) suchen und auswählen (Name oder Firma).",
+  };
+  $("auswertungSelectHint").textContent=hints[typ]||"";
+  if(typ==="weitere_zuordnung"){
+    loadWeitereZuordnungOptions().then(()=>{ if(auswertungTyp==="weitere_zuordnung") renderAuswertungSingleSearch(); });
+  }
+  if(isMulti) renderAuswertungMultiSearch(); else renderAuswertungSingleSearch();
+  setTimeout(()=>{ (isMulti?$("auswertungMultiSearchInput"):$("auswertungSingleSearchInput")).focus(); },50);
+}
+function renderAuswertungSingleSearch(){
+  const q=($("auswertungSingleSearchInput").value||"").trim().toLowerCase();
+  const box=$("auswertungSingleSearchResults");
+  let list=[];
+  if(auswertungTyp==="kooperation") list=KOOPERATION_OPTIONS.filter(k=>k!=="ohne Kooperation");
+  else if(auswertungTyp==="weitere_zuordnung") list=(weitereZuordnungOptionsCache||WEITERE_ZUORDNUNG_BASE).slice();
+  list=list.filter(k=>!q||k.toLowerCase().includes(q));
+  if(!list.length){ box.innerHTML=`<div class="empty-note">Nichts gefunden.</div>`; return; }
+  box.innerHTML=list.map(k=>`<div class="akp-search-row" style="cursor:pointer" data-val="${escapeHtml(k)}"><span><b>${escapeHtml(k)}</b></span></div>`).join("");
+  box.querySelectorAll("[data-val]").forEach(row=>{
+    row.onclick=()=>{ auswertungSingleValue=row.dataset.val; proceedToAuswertungPeriod(); };
+  });
+}
+function renderAuswertungChips(){
+  const box=$("auswertungChips");
+  box.innerHTML=auswertungMultiKeys.map(key=>{
+    const label=auswertungEntityLabel(key);
+    return `<span data-key="${escapeHtml(key)}" style="display:inline-flex;align-items:center;gap:6px;background:rgba(127,127,127,.15);border:1px solid var(--line);border-radius:999px;padding:5px 10px;font-size:12px;font-weight:700;color:var(--ink)">
+      ${escapeHtml(label)}
+      <button type="button" data-remove-key="${escapeHtml(key)}" style="border:none;background:none;cursor:pointer;font-size:14px;line-height:1;color:var(--muted);padding:0">✕</button>
+    </span>`;
+  }).join("");
+  box.querySelectorAll("[data-remove-key]").forEach(btn=>{
+    btn.onclick=()=>{
+      auswertungMultiKeys=auswertungMultiKeys.filter(k=>k!==btn.dataset.removeKey);
+      renderAuswertungChips();
+      $("auswertungMultiGoBtn").classList.toggle("hidden",auswertungMultiKeys.length===0);
+    };
+  });
+}
+function renderAuswertungMultiSearch(){
+  const q=($("auswertungMultiSearchInput").value||"").trim().toLowerCase();
+  const box=$("auswertungMultiSearchResults");
+  if(!q){ box.innerHTML=""; return; }
+  let rows=[];
+  if(auswertungTyp==="fachhaendler"){
+    if(!hasData()){ box.innerHTML=""; return; }
+    const fhMap=state.latest.fh||{};
+    rows=Object.entries(fhMap)
+      .filter(([nr,f])=>currentEmp===AT_GESAMT||f.emp===currentEmp)
+      .map(([nr,f])=>({key:nr,label:f.name||nr,sub:(f.ort||"")+" · FH-Nr. "+nr+(f.emp?" · "+f.emp:"")}))
+      .filter(r=>!auswertungMultiKeys.includes(r.key))
+      .filter(r=>r.label.toLowerCase().includes(q)||r.sub.toLowerCase().includes(q))
+      .slice(0,25);
+  }else if(auswertungTyp==="akp"){
+    if(!akpContactsIndex){ box.innerHTML=`<div class="empty-note">AKP-Kontaktdatenbank lädt noch …</div>`; return; }
+    rows=Object.values(akpContactsIndex)
+      .map(a=>({key:a.nr,label:[a.vorname,a.nachname].filter(Boolean).join(" ")||a.nr,sub:(a.firma||"")+(a.ort?" · "+a.ort:"")+(a.fh_nr?" · FH-Nr. "+a.fh_nr:"")}))
+      .filter(r=>!auswertungMultiKeys.includes(r.key))
+      .filter(r=>r.label.toLowerCase().includes(q)||r.sub.toLowerCase().includes(q))
+      .slice(0,25);
+  }
+  if(!rows.length){ box.innerHTML=`<div class="empty-note">Nichts gefunden.</div>`; return; }
+  box.innerHTML=rows.map(r=>`<div class="akp-search-row" style="cursor:pointer" data-key="${escapeHtml(r.key)}">
+      <span><b>${escapeHtml(r.label)}</b><span class="betr">${escapeHtml(r.sub)}</span></span>
+    </div>`).join("");
+  box.querySelectorAll("[data-key]").forEach(row=>{
+    row.onclick=()=>{
+      const key=row.dataset.key;
+      if(!auswertungMultiKeys.includes(key)) auswertungMultiKeys.push(key);
+      renderAuswertungChips();
+      $("auswertungMultiGoBtn").classList.remove("hidden");
+      $("auswertungMultiSearchInput").value="";
+      $("auswertungMultiSearchResults").innerHTML="";
+      setTimeout(()=>$("auswertungMultiSearchInput").focus(),50);
+    };
+  });
+}
+function proceedToAuswertungPeriod(){
+  if(auswertungTyp==="fachhaendler"||auswertungTyp==="akp"){ if(!auswertungMultiKeys.length) return; }
+  else if(!auswertungSingleValue) return;
+  $("auswertungSelectStep").classList.add("hidden");
+  $("auswertungPeriodStep").classList.remove("hidden");
+  $("auswertungHint").textContent="";
+  const headerLbl={kooperation:"Kooperation: ",weitere_zuordnung:"Weitere Zuordnung: ",fachhaendler:"Fachhändler: ",akp:"AKP: "}[auswertungTyp]||"";
+  const sel=(auswertungTyp==="kooperation"||auswertungTyp==="weitere_zuordnung")?auswertungSingleValue:auswertungMultiKeys.map(k=>auswertungEntityLabel(k)).join("  •  ");
+  $("auswertungPeriodHeader").textContent=headerLbl+sel;
+  $("auswertungAkpChkRow").classList.toggle("hidden",auswertungTyp==="akp");
+  $("auswertungAkpChk").checked=false;
+  if(!$("auswertungVonInput").value||!$("auswertungBisInput").value) applyAuswertungPreset("month");
+}
+function applyAuswertungPreset(preset){
+  const today=new Date(); const y=today.getUTCFullYear?today.getFullYear():today.getFullYear();
+  const yy=today.getFullYear(), mm=today.getMonth(), dd=today.getDate();
+  const bis=new Date(Date.UTC(yy,mm,dd));
+  let von;
+  if(preset==="4weeks") von=addDays(bis,-27);
+  else if(preset==="quarter") von=new Date(Date.UTC(yy,mm-2,1));
+  else if(preset==="year") von=new Date(Date.UTC(yy,0,1));
+  else von=new Date(Date.UTC(yy,mm,1));
+  $("auswertungVonInput").value=iso(von);
+  $("auswertungBisInput").value=iso(bis);
+}
+// ---- Zeitraum-Hilfsfunktionen (Monats-/Wochenbuckets) ----
+function monthKeysInRange(vonISO,bisISO){
+  const keys=[];
+  let y=+vonISO.slice(0,4), m=+vonISO.slice(5,7);
+  const yEnd=+bisISO.slice(0,4), mEnd=+bisISO.slice(5,7);
+  let guard=0;
+  while((y<yEnd||(y===yEnd&&m<=mEnd))&&guard<600){
+    keys.push(y+"-"+String(m).padStart(2,"0"));
+    m++; if(m>12){ m=1; y++; }
+    guard++;
+  }
+  return keys;
+}
+function auswertungMonthLabel(key){ return MONTH_LABELS[+key.slice(5,7)-1]+" "+key.slice(0,4); }
+function isoWeekNumber(d){
+  const t=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));
+  const dayNr=(t.getUTCDay()+6)%7;
+  t.setUTCDate(t.getUTCDate()-dayNr+3);
+  const firstThu=new Date(Date.UTC(t.getUTCFullYear(),0,4));
+  return 1+Math.round((t-firstThu)/(7*86400000));
+}
+function weeksInRange(vonISO,bisISO){
+  const weeks=[]; let cur=mondayOf(parseISO(vonISO)); const bisD=parseISO(bisISO); let guard=0;
+  while(cur<=bisD&&guard<300){
+    const a=iso(cur), bFull=iso(addDays(cur,5));
+    const clipA=a<vonISO?vonISO:a, clipB=bFull>bisISO?bisISO:bFull;
+    weeks.push({a:clipA,b:clipB,label:"KW "+isoWeekNumber(cur)+" ("+fmtDate(clipA)+"–"+fmtDate(clipB)+")"});
+    cur=addDays(cur,7); guard++;
+  }
+  return weeks;
+}
+function sumDailyRange(dailyMap,aISO,bISO){
+  if(!dailyMap) return 0;
+  let s=0; for(const d in dailyMap){ if(d>=aISO&&d<=bISO) s+=dailyMap[d]||0; }
+  return s;
+}
+// Verschmilzt Tages-Historie (state.dailyFH/state.dailyAKP, ab Datum ->
+// Wert) mit der Monats-Bulkhistorie (prod_monthly) zu EINEM
+// Monats-Dict - analog fhMonthlyMerged(), aber für beliebige FH/AKP
+// nutzbar (nicht nur den aktuell im FH-Popup geladenen).
+function mergedMonthlyFromDaily(dailyMap,bulkMonthly){
+  const fromDaily={};
+  for(const [d,v] of Object.entries(dailyMap||{})){
+    const ym=d.slice(0,7);
+    fromDaily[ym]=(fromDaily[ym]||0)+(v||0);
+  }
+  return {...fromDaily,...(bulkMonthly||{})};
+}
+function addYearsIso(dateISO,years){
+  return iso(new Date(Date.UTC(+dateISO.slice(0,4)+years,+dateISO.slice(5,7)-1,+dateISO.slice(8,10))));
+}
+// Baut aus einer Liste von "Einheiten" (FH- oder AKP-Datensätzen, siehe
+// auswertungLoadUnits) die Zeitreihen-Buckets für den gewählten Zeitraum:
+// Monatsbuckets bei einer Spanne über 31 Tage, sonst Wochenbuckets (KW,
+// Montag-Samstag - Sonntage sind keine Arbeitstage, siehe isWorkday()).
+// Der Vorjahresvergleich wird immer nur als Gesamtsumme gebildet (nicht
+// bucketweise), da unterschiedliche Wochentagslagen einen wochenweisen
+// Vorjahresvergleich wenig aussagekräftig machen würden.
+function auswertungBuildSeries(units,vonISO,bisISO){
+  const spanDays=Math.round((parseISO(bisISO)-parseISO(vonISO))/86400000)+1;
+  const weekly=spanDays<=31;
+  let buckets;
+  if(weekly){
+    buckets=weeksInRange(vonISO,bisISO).map(w=>({
+      key:w.a+"_"+w.b, label:w.label,
+      wg:units.reduce((s,u)=>s+sumDailyRange(u.dailyWg,w.a,w.b),0),
+      miete:units.reduce((s,u)=>s+sumDailyRange(u.dailyMiete,w.a,w.b),0),
+    }));
+  }else{
+    buckets=monthKeysInRange(vonISO,bisISO).map(mk=>({
+      key:mk, label:auswertungMonthLabel(mk),
+      wg:units.reduce((s,u)=>s+(u.monthlyWg[mk]||0),0),
+      miete:units.reduce((s,u)=>s+(u.monthlyMiete[mk]||0),0),
+    }));
+  }
+  const totalWg=buckets.reduce((s,b)=>s+b.wg,0);
+  const totalMiete=buckets.reduce((s,b)=>s+b.miete,0);
+  const vonPrev=addYearsIso(vonISO,-1), bisPrev=addYearsIso(bisISO,-1);
+  let totalWgPrev=0,totalMietePrev=0;
+  if(weekly){
+    for(const u of units){ totalWgPrev+=sumDailyRange(u.dailyWg,vonPrev,bisPrev); totalMietePrev+=sumDailyRange(u.dailyMiete,vonPrev,bisPrev); }
+  }else{
+    const monthsPrev=monthKeysInRange(vonPrev,bisPrev);
+    for(const u of units) for(const mk of monthsPrev){ totalWgPrev+=u.monthlyWg[mk]||0; totalMietePrev+=u.monthlyMiete[mk]||0; }
+  }
+  return {weekly,buckets,totalWg,totalMiete,totalWgPrev,totalMietePrev,vonPrev,bisPrev};
+}
+// Lädt die Rohdaten je Einheit (FH-Zeile aus fh_contacts bzw. AKP aus dem
+// bereits im Speicher gehaltenen akpContactsIndex) inkl. verschmolzener
+// Monats-Produktion und Tages-Historie (für Wochenbuckets).
+async function auswertungLoadUnits(typ,singleVal,multiKeys){
+  const fhMap=state.latest.fh||{};
+  if(typ==="akp"){
+    return multiKeys.map(nr=>{
+      const a=(akpContactsIndex&&akpContactsIndex[nr])||{};
+      const bulk={};
+      for(const [k,v] of Object.entries(a.prod_monthly||{})) bulk[k]=(bulk[k]||0)+(Number(v)||0);
+      for(const [k,v] of Object.entries(a.prod_monthly_other||{})) bulk[k]=(bulk[k]||0)+(Number(v)||0);
+      const dailyWg=(state.dailyAKP&&state.dailyAKP[nr])||{};
+      const snapAkp=(state.latest.akp||[]).find(x=>x.nr===nr);
+      return {
+        key:nr, kind:"akp", name:[a.vorname,a.nachname].filter(Boolean).join(" ")||nr,
+        firma:a.firma||"", ort:a.ort||"", fhNr:a.fh_nr||null,
+        monthlyWg:mergedMonthlyFromDaily(dailyWg,bulk), monthlyMiete:{}, dailyWg, dailyMiete:{},
+        poQuote:snapAkp?snapAkp.poQuote:null, q3fuer2:snapAkp?snapAkp.q3fuer2:null,
+        akqPunkte:null, clubWeiss:false, clubWeissNr:null,
+      };
+    });
+  }
+  let query=sb.from("fh_contacts").select("fh_nr,prod_monthly,miete_monthly,beitragsfrei_yearly,akq_punkte,club_weiss_mitglied,club_weiss_mitgliedsnummer");
+  if(typ==="kooperation") query=query.eq("kooperation",singleVal);
+  else if(typ==="weitere_zuordnung") query=query.eq("weitere_zuordnung",singleVal);
+  else query=query.in("fh_nr",multiKeys);
+  const {data,error}=await query;
+  if(error) throw new Error(error.message||String(error));
+  let units=(data||[]).map(r=>{
+    const f=fhMap[r.fh_nr]||{};
+    return {
+      key:r.fh_nr, kind:"fh", name:f.name||r.fh_nr, ort:f.ort||"", fhNr:r.fh_nr,
+      monthlyWg:mergedMonthlyFromDaily(state.dailyFH[r.fh_nr],r.prod_monthly),
+      monthlyMiete:r.miete_monthly||{},
+      dailyWg:state.dailyFH[r.fh_nr]||{}, dailyMiete:{},
+      poQuote:f.poQuote!=null?f.poQuote:null, q3fuer2:f.q3fuer2!=null?f.q3fuer2:null,
+      akqPunkte:r.akq_punkte, clubWeiss:!!r.club_weiss_mitglied, clubWeissNr:r.club_weiss_mitgliedsnummer||null,
+    };
+  });
+  if(typ==="fachhaendler") units.sort((a,b)=>multiKeys.indexOf(a.key)-multiKeys.indexOf(b.key));
+  return units;
+}
+// AKP-Reverse-Index (FH-Nr -> AKP-Liste) für die "AKP mit anzeigen"-Option
+// bei Kooperation/Weitere-Zuordnung/Fachhändler-Auswertungen.
+function auswertungAkpByFh(){
+  const idx={};
+  for(const a of Object.values(akpContactsIndex||{})){
+    if(!a.fh_nr) continue;
+    if(!idx[a.fh_nr]) idx[a.fh_nr]=[];
+    idx[a.fh_nr].push(a);
+  }
+  return idx;
+}
+function auswertungAkpProdInPeriod(a,vonISO,bisISO,weekly){
+  const bulk={};
+  for(const [k,v] of Object.entries(a.prod_monthly||{})) bulk[k]=(bulk[k]||0)+(Number(v)||0);
+  for(const [k,v] of Object.entries(a.prod_monthly_other||{})) bulk[k]=(bulk[k]||0)+(Number(v)||0);
+  const dailyWg=(state.dailyAKP&&state.dailyAKP[a.nr])||{};
+  if(weekly) return sumDailyRange(dailyWg,vonISO,bisISO);
+  const monthly=mergedMonthlyFromDaily(dailyWg,bulk);
+  return monthKeysInRange(vonISO,bisISO).reduce((s,mk)=>s+(monthly[mk]||0),0);
+}
+// Balkendiagramm + Tabelle für die Zeitreihen-Buckets (Monat oder Woche,
+// siehe auswertungBuildSeries) - WG-Produktion, ggf. zusätzlich Club Weiss.
+function auswertungBucketsChart(series,hasMiete){
+  if(!series.buckets.length) return "";
+  const labels=series.buckets.map(b=>b.label);
+  const chartSeries=[{name:"WG-Produktion",color:"#0B5A8A",values:series.buckets.map(b=>Math.round(b.wg))}];
+  if(hasMiete) chartSeries.push({name:"davon Club Weiss",color:"#9FCBE8",values:series.buckets.map(b=>Math.round(b.miete))});
+  const chart=svgBarChart(labels,chartSeries,{width:700,height:210});
+  const rows=series.buckets.map(b=>`<tr><td>${escapeHtml(b.label)}</td><td class="r">${fmt(b.wg)}</td>${hasMiete?`<td class="r">${fmt(b.miete)}</td>`:""}</tr>`).join("");
+  return `<div class="pdf-block" style="margin-bottom:18px">
+    <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:6px">Produktion ${series.weekly?"je Woche":"je Monat"}</div>
+    ${chart}
+    <table style="width:100%;border-collapse:collapse;font-size:10.5px;margin-top:8px">
+      <thead><tr style="color:#5D7284;text-align:left"><th>${series.weekly?"Woche":"Monat"}</th><th class="r">WG-Produktion</th>${hasMiete?`<th class="r">davon Club Weiss</th>`:""}</tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+function auswertungSummaryStrip(series,unitCount,unitLabel){
+  const kennzahl=(lbl,val)=>`<div style="text-align:center"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284">${lbl}</div><div style="font-size:18px;font-weight:900;color:#062A3F;margin-top:2px">${val}</div></div>`;
+  const yoy=series.totalWgPrev>0?((series.totalWg-series.totalWgPrev)/series.totalWgPrev*100):null;
+  return `<div class="pdf-block" style="display:flex;justify-content:space-around;flex-wrap:wrap;gap:12px;border:1px solid #E4EDF3;border-radius:8px;padding:14px 10px;margin-bottom:18px;background:#F5F9FC">
+    ${kennzahl(unitLabel,fmt(unitCount))}
+    ${kennzahl("WG-Produktion gesamt",fmt(series.totalWg))}
+    ${series.totalMiete>0?kennzahl("davon Club Weiss",fmt(series.totalMiete)):""}
+    ${kennzahl("Vorjahreszeitraum",fmt(series.totalWgPrev))}
+    ${kennzahl("Veränderung ggü. Vorjahreszeitraum",yoy!=null?(yoy>=0?"+":"")+yoy.toFixed(1).replace(".",",")+" %":"–")}
+  </div>`;
+}
+// Ein Abschnitt je ausgewählter Einheit (Fachhändler oder AKP) - analog zum
+// Chefgespräch-Muster bei mehreren Filialen.
+function auswertungUnitSectionHtml(u,vonISO,bisISO,idx,total,showAkp,akpByFh){
+  const series=auswertungBuildSeries([u],vonISO,bisISO);
+  const kennzahl=(lbl,val)=>`<div style="text-align:center"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284">${lbl}</div><div style="font-size:18px;font-weight:900;color:#062A3F;margin-top:2px">${val}</div></div>`;
+  const kennzahlBadge=(lbl,badgeHtml)=>`<div style="text-align:center;max-width:180px"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284;margin-bottom:5px">${lbl}</div>${badgeHtml}</div>`;
+  const title=u.kind==="akp"?(u.name+(u.firma?" · "+u.firma:"")):u.name;
+  const sub=u.kind==="akp"?[u.ort,u.fhNr?"FH-Nr. "+u.fhNr:""].filter(Boolean).join(" · "):[u.ort,"FH-Nr. "+u.fhNr].filter(Boolean).join(" · ");
+  const filialeLabel=total>1?`<div class="pdf-block" style="font-size:11px;font-weight:800;color:#009FE3;text-transform:uppercase;letter-spacing:.4px;margin:${idx>0?"22px":"0"} 0 6px">${idx+1} von ${total}</div>`:"";
+  let akpTableHtml="";
+  if(showAkp&&u.kind==="fh"){
+    const akps=akpByFh[u.fhNr]||[];
+    if(akps.length){
+      const rows=akps.map(a=>{
+        const prodRaw=auswertungAkpProdInPeriod(a,vonISO,bisISO,series.weekly);
+        const snapAkp=(state.latest.akp||[]).find(x=>x.nr===a.nr);
+        return {
+          name:[a.vorname,a.nachname].filter(Boolean).join(" ")||a.nr, prodRaw,
+          po:snapAkp&&snapAkp.poQuote!=null?(snapAkp.poQuote*100).toFixed(1).replace(".",",")+" %":"–",
+          f2:snapAkp&&snapAkp.q3fuer2!=null?(snapAkp.q3fuer2*100).toFixed(1).replace(".",",")+" %":"–",
+        };
+      }).sort((x,y)=>y.prodRaw-x.prodRaw);
+      akpTableHtml=`<div class="pdf-block" style="margin-bottom:18px">
+        <div style="font-size:12.5px;font-weight:800;color:#062A3F;margin-bottom:8px">AKP (Aktivpartner)</div>
+        <table style="width:100%;border-collapse:collapse;font-size:10px">
+          <thead><tr style="color:#5D7284;text-align:left"><th>Name</th><th class="r">Produktion im Zeitraum</th><th class="r">PO-Quote (LJ)</th><th class="r">3-für-2-Quote (LJ)</th></tr></thead>
+          <tbody>${rows.map(r=>`<tr><td>${escapeHtml(r.name)}</td><td class="r">${fmt(r.prodRaw)}</td><td class="r">${r.po}</td><td class="r">${r.f2}</td></tr>`).join("")}</tbody>
+        </table>
+      </div>`;
+    }
+  }
+  return `
+    ${filialeLabel}
+    <div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:18px">
+      <div>
+        <div style="font-size:19px;font-weight:900;color:#062A3F">${escapeHtml(title)}</div>
+        <div style="font-size:12px;color:#5D7284;margin-top:3px">${escapeHtml(sub)}</div>
+      </div>
+    </div>
+    <div class="pdf-block" style="display:flex;justify-content:space-around;flex-wrap:wrap;gap:12px;border:1px solid #E4EDF3;border-radius:8px;padding:14px 10px;margin-bottom:18px;background:#F5F9FC">
+      ${kennzahl("Produktion im Zeitraum",fmt(series.totalWg))}
+      ${series.totalMiete>0?kennzahl("davon Club Weiss",fmt(series.totalMiete)):""}
+      ${kennzahl("PO-Quote (LJ)",u.poQuote!=null?(u.poQuote*100).toFixed(1).replace(".",",")+" %":"–")}
+      ${kennzahl("3-für-2-Quote (LJ)",u.q3fuer2!=null?(u.q3fuer2*100).toFixed(1).replace(".",",")+" %":"–")}
+      ${u.kind==="fh"?kennzahl("Akquisepunkte",u.akqPunkte!=null?fmt(Math.round(u.akqPunkte)):"–"):""}
+      ${u.kind==="fh"?kennzahlBadge("Club Weiss",u.clubWeiss?pdfBadge("✓ Mitglied","good"):pdfBadge("Kein Mitglied","muted")):""}
+    </div>
+    ${auswertungBucketsChart(series,series.totalMiete>0)}
+    ${akpTableHtml}
+  `;
+}
+// Ein aggregierter Abschnitt für Kooperation/Weitere-Zuordnung: Summe über
+// alle Mitglieds-Fachhändler + nach Produktion sortierte Mitgliederliste,
+// optional inkl. AKP-Übersicht aller Mitglieds-Fachhändler.
+function auswertungAggregateSectionHtml(units,vonISO,bisISO,showAkp){
+  const series=auswertungBuildSeries(units,vonISO,bisISO);
+  const kennzahl=(lbl,val)=>`<div style="text-align:center"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284">${lbl}</div><div style="font-size:18px;font-weight:900;color:#062A3F;margin-top:2px">${val}</div></div>`;
+  const yoy=series.totalWgPrev>0?((series.totalWg-series.totalWgPrev)/series.totalWgPrev*100):null;
+  const monthsInRange=monthKeysInRange(vonISO,bisISO);
+  const prodOf=u=>series.weekly?sumDailyRange(u.dailyWg,vonISO,bisISO):monthsInRange.reduce((s,mk)=>s+(u.monthlyWg[mk]||0),0);
+  const memberRows=[...units].sort((a,b)=>prodOf(b)-prodOf(a)).map(u=>
+    `<tr><td>${escapeHtml(u.name)}</td><td>${escapeHtml(u.ort||"–")}</td><td>${escapeHtml(u.fhNr)}</td><td class="r">${fmt(prodOf(u))}</td><td style="text-align:center">${u.clubWeiss?"✓":"–"}</td></tr>`
+  ).join("");
+  let akpBlock="";
+  if(showAkp){
+    const akpByFh=auswertungAkpByFh();
+    const allAkp=[];
+    for(const u of units){
+      for(const a of (akpByFh[u.fhNr]||[])){
+        const prod=auswertungAkpProdInPeriod(a,vonISO,bisISO,series.weekly);
+        const snapAkp=(state.latest.akp||[]).find(x=>x.nr===a.nr);
+        allAkp.push({
+          name:[a.vorname,a.nachname].filter(Boolean).join(" ")||a.nr, firma:a.firma||"", fhName:u.name, prod,
+          po:snapAkp&&snapAkp.poQuote!=null?(snapAkp.poQuote*100).toFixed(1).replace(".",",")+" %":"–",
+          f2:snapAkp&&snapAkp.q3fuer2!=null?(snapAkp.q3fuer2*100).toFixed(1).replace(".",",")+" %":"–",
+        });
+      }
+    }
+    allAkp.sort((a,b)=>b.prod-a.prod);
+    if(allAkp.length){
+      akpBlock=`<div class="pdf-block" style="margin-bottom:18px">
+        <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:10px">AKP (Aktivpartner) aller Mitglieds-Fachhändler</div>
+        <table style="width:100%;border-collapse:collapse;font-size:9.5px">
+          <thead><tr style="color:#5D7284;text-align:left"><th>Name</th><th>Firma</th><th>Fachhändler</th><th class="r">Produktion im Zeitraum</th><th class="r">PO-Quote</th><th class="r">3-für-2-Quote</th></tr></thead>
+          <tbody>${allAkp.map(a=>`<tr><td>${escapeHtml(a.name)}</td><td>${escapeHtml(a.firma)}</td><td>${escapeHtml(a.fhName)}</td><td class="r">${fmt(a.prod)}</td><td class="r">${a.po}</td><td class="r">${a.f2}</td></tr>`).join("")}</tbody>
+        </table>
+      </div>`;
+    }
+  }
+  return `
+    <div class="pdf-block" style="display:flex;justify-content:space-around;flex-wrap:wrap;gap:12px;border:1px solid #E4EDF3;border-radius:8px;padding:14px 10px;margin-bottom:18px;background:#F5F9FC">
+      ${kennzahl("Fachhändler",fmt(units.length))}
+      ${kennzahl("WG-Produktion gesamt",fmt(series.totalWg))}
+      ${series.totalMiete>0?kennzahl("davon Club Weiss",fmt(series.totalMiete)):""}
+      ${kennzahl("Vorjahreszeitraum",fmt(series.totalWgPrev))}
+      ${kennzahl("Veränderung ggü. Vorjahreszeitraum",yoy!=null?(yoy>=0?"+":"")+yoy.toFixed(1).replace(".",",")+" %":"–")}
+    </div>
+    ${auswertungBucketsChart(series,series.totalMiete>0)}
+    <div class="pdf-block" style="margin-bottom:18px">
+      <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:10px">Mitglieds-Fachhändler (sortiert nach Produktion im Zeitraum)</div>
+      <table style="width:100%;border-collapse:collapse;font-size:9.5px">
+        <thead><tr style="color:#5D7284;text-align:left"><th>Name</th><th>Ort</th><th>FH-Nr.</th><th class="r">Produktion im Zeitraum</th><th style="text-align:center">Club Weiss</th></tr></thead>
+        <tbody>${memberRows}</tbody>
+      </table>
+    </div>
+    ${akpBlock}
+  `;
+}
+function auswertungPdfFilename(typ,singleVal,multiKeys){
+  const label=(typ==="kooperation"||typ==="weitere_zuordnung")?singleVal:(multiKeys.length===1?auswertungEntityLabel(multiKeys[0]):multiKeys.length+"_Auswahl");
+  return "Auswertung_"+asciiFilenamePart(label)+".pdf";
+}
+async function buildAuswertungPdfDoc(typ,singleVal,multiKeys,vonISO,bisISO,showAkp){
+  if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)) throw new Error("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals versuchen.");
+  const units=await auswertungLoadUnits(typ,singleVal,multiKeys);
+  const nowStr=fmtNowDateTime();
+  const typLabel={kooperation:"Kooperation",weitere_zuordnung:"Weitere Zuordnung",fachhaendler:"Fachhändler",akp:"AKP (Aktivpartner)"}[typ];
+  const titleVal=(typ==="kooperation"||typ==="weitere_zuordnung")?singleVal:(units.length===1?units[0].name:units.length+" ausgewählt");
+  const periodTxt=fmtDate(vonISO)+" – "+fmtDate(bisISO);
+
+  let bodyHtml;
+  if(typ==="kooperation"||typ==="weitere_zuordnung"){
+    bodyHtml=auswertungAggregateSectionHtml(units,vonISO,bisISO,showAkp);
+  }else{
+    const akpByFh=showAkp?auswertungAkpByFh():{};
+    const sections=[];
+    if(units.length>1){
+      const totalSeries=auswertungBuildSeries(units,vonISO,bisISO);
+      sections.push(`<div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:6px">Gesamtsumme (${units.length} ausgewählt)</div>`);
+      sections.push(auswertungSummaryStrip(totalSeries,units.length,typ==="akp"?"AKP":"Fachhändler"));
+      sections.push(auswertungBucketsChart(totalSeries,totalSeries.totalMiete>0));
+    }
+    units.forEach((u,i)=>sections.push(auswertungUnitSectionHtml(u,vonISO,bisISO,i,units.length,showAkp,akpByFh)));
+    bodyHtml=sections.join("");
+  }
+
+  const box=document.createElement("div");
+  box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
+  box.innerHTML=`
+    <div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:18px">
+      <div>
+        <div style="font-size:11px;font-weight:800;color:#009FE3;text-transform:uppercase;letter-spacing:.4px">${escapeHtml(typLabel)}</div>
+        <div style="font-size:21px;font-weight:900;color:#062A3F;margin-top:2px">${escapeHtml(titleVal)}</div>
+        <div style="font-size:12px;color:#5D7284;margin-top:3px">Zeitraum: ${escapeHtml(periodTxt)}</div>
+      </div>
+      <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Auswertung · Erstellt am: ${nowStr}</div>
+    </div>
+    ${bodyHtml}
+    <div class="pdf-block" style="margin-top:24px;padding-top:10px;border-top:1px solid #E4EDF3;font-size:9.5px;color:#8CA0AF">PO-Quote und 3-für-2-Quote sind aktuelle Werte des laufenden Jahres (LJ), keine für den gewählten Zeitraum rückwirkend berechneten Werte - dafür liegt keine monatsgenaue Historie vor. Club-Weiss-Produktion liegt nur monatsgenau vor (auch bei Wochen-Auswertungen). Der Vorjahresvergleich bezieht sich immer auf die Gesamtsumme des exakt gleich langen Zeitraums im Vorjahr.</div>
+  `;
+  document.body.appendChild(box);
+  await new Promise(r=>setTimeout(r,30));
+  try{
+    const pdf=await pdfBoxRenderToPdf(box);
+    return {pdf,filename:auswertungPdfFilename(typ,singleVal,multiKeys)};
+  }finally{
+    if(box.parentNode) box.parentNode.removeChild(box);
+  }
+}
+async function exportAuswertungPdf(typ,singleVal,multiKeys,vonISO,bisISO,showAkp){
+  toast("Auswertung wird erstellt …");
+  try{
+    const {pdf,filename}=await buildAuswertungPdfDoc(typ,singleVal,multiKeys,vonISO,bisISO,showAkp);
+    await finalizePdf(pdf,filename);
+  }catch(e){
+    console.error("exportAuswertungPdf failed:",e);
+    toast("Erstellung fehlgeschlagen: "+(e.message||e));
+    pdfSendTarget=null;
+  }
+}
 // Stammdaten-Änderungsworkflow: PLZ/Ort sind die einzigen Stammdaten-Felder,
 // die auch aus der täglichen Einspielung (FH_Liste) kommen - weicht der
 // eingespielte Wert vom gespeicherten Stammdatensatz ab, NIE automatisch
@@ -6531,6 +7106,7 @@ $("adminBtn").onclick=openAdminModal;
 $("adminClose").onclick=()=>$("adminModal").classList.add("hidden");
 $("chefgespraechEnabledChk").onchange=toggleChefgespraechEnabled;
 $("kooperationsgespraechEnabledChk").onchange=toggleKooperationsgespraechEnabled;
+$("auswertungEnabledChk").onchange=toggleAuswertungEnabled;
 $("chefgespraechBtn").onclick=openChefgespraechModal;
 $("chefgespraechClose").onclick=()=>$("chefgespraechModal").classList.add("hidden");
 $("chefgespraechSearchInput").addEventListener("input",renderChefgespraechSearch);
@@ -6578,6 +7154,34 @@ $("kooperationsgespraechUnterlagenBtn").onclick=()=>{
 $("kooperationsgespraechKiBtn").onclick=()=>{
   if(!kooperationsgespraechKoop) return;
   openPdfTargetChoice(()=>exportKooperationsgespraechKiPdf(kooperationsgespraechKoop));
+};
+$("auswertungBtn").onclick=openAuswertungModal;
+$("auswertungClose").onclick=()=>$("auswertungModal").classList.add("hidden");
+document.querySelectorAll(".auswertung-type-btn").forEach(btn=>{
+  btn.onclick=()=>selectAuswertungTyp(btn.dataset.typ);
+});
+$("auswertungSelectBack").onclick=()=>{
+  $("auswertungSelectStep").classList.add("hidden");
+  $("auswertungTypeStep").classList.remove("hidden");
+};
+$("auswertungSingleSearchInput").addEventListener("input",renderAuswertungSingleSearch);
+$("auswertungMultiSearchInput").addEventListener("input",renderAuswertungMultiSearch);
+$("auswertungMultiGoBtn").onclick=()=>proceedToAuswertungPeriod();
+$("auswertungPeriodBack").onclick=()=>{
+  $("auswertungPeriodStep").classList.add("hidden");
+  $("auswertungSelectStep").classList.remove("hidden");
+};
+document.querySelectorAll(".auswertung-preset-btn").forEach(btn=>{
+  btn.onclick=()=>applyAuswertungPreset(btn.dataset.preset);
+});
+$("auswertungBuildBtn").onclick=()=>{
+  const von=$("auswertungVonInput").value, bis=$("auswertungBisInput").value;
+  if(!von||!bis){ $("auswertungHint").textContent="Bitte Zeitraum von/bis angeben."; return; }
+  if(von>bis){ $("auswertungHint").textContent="\"Von\" muss vor \"bis\" liegen."; return; }
+  $("auswertungHint").textContent="";
+  const showAkp=auswertungTyp==="akp"?true:$("auswertungAkpChk").checked;
+  const typ=auswertungTyp, singleVal=auswertungSingleValue, multiKeys=auswertungMultiKeys.slice();
+  openPdfTargetChoice(()=>exportAuswertungPdf(typ,singleVal,multiKeys,von,bis,showAkp));
 };
 $("perfDialogBtn").onclick=openPerfModal;
 $("perfClose").onclick=()=>$("perfModal").classList.add("hidden");
