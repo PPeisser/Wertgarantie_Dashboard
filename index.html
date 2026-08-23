@@ -4032,6 +4032,19 @@ function fhZielHochrechnungFor(fhNr,c){
 function fhZielHochrechnung(fhNr){
   return fhZielHochrechnungFor(fhNr,fhContactCurrent);
 }
+// Gemeinsames Rendering der Ziel-Hochrechnung (Nutzervorgabe 24.08.2026):
+// fett in Grün/Rot die erwartete Gesamtzahl zum Jahresende, daneben kleiner
+// und nicht fett (aber ebenfalls Grün/Rot) die +/- Zahl und die Prozent-
+// Abweichung vom Ziel. posColor/negColor als Parameter, da die FH-Popup-
+// Ansicht CSS-Variablen nutzt, PDF-Dokumente aber feste Hex-Farben brauchen.
+// Wird an allen Stellen verwendet, die das Ziel anzeigen (FH-Popup UND beide
+// Chefgespräch-Protokolle).
+function fhZielHochrechnungHtml(hr,posColor,negColor){
+  if(!hr) return null;
+  const col=hr.diff>=0?posColor:negColor;
+  const pct=hr.ziel>0?(hr.diff/hr.ziel*100):null;
+  return `<b style="color:${col};font-weight:900">${fmt(Math.round(hr.hrJahr))}</b> <span style="color:${col};font-weight:600;font-size:.78em">${fmtSign(Math.round(hr.diff))} Stk. · ${fmtPct(pct)}</span>`;
+}
 function goalCard(name,target,ist,soll,extra,editable,hr,lbls,note){
   lbls=lbls||{}; lbls.ahead=lbls.ahead||"▲ vor Soll"; lbls.behind=lbls.behind||"▼ hinter Soll"; lbls.target=lbls.target||"Ziel";
   const pct=target>0?ist/target*100:0;
@@ -4775,8 +4788,7 @@ function renderFhContactView(){
   $("fhZielViewRow").classList.toggle("hidden",!showZiel);
   if(showZiel){
     const hr=fhZielHochrechnung(fhModalCurrent);
-    const diffTxt=hr?` <span style="font-weight:800;color:${hr.diff>=0?"var(--pos)":"var(--neg)"}">(${fmtSign(Math.round(hr.diff))} Hochr.)</span>`:"";
-    $("fhZielView").innerHTML=fmt(c.ziel)+" Stk."+diffTxt;
+    $("fhZielView").innerHTML=fhZielHochrechnungHtml(hr,"var(--pos)","var(--neg)")||(fmt(c.ziel)+" Stk.");
   }
   $("fhInfosView").textContent=c.sonstige_infos||"–";
   // PO-/3-für-2-Quote kommen aus der heutigen Einspielung (FH_Liste), nicht
@@ -5036,7 +5048,7 @@ function chefgespraechStammdatenCardHtml(fhNr,f,c){
   let zielRow="";
   if(fhZielEnabled&&c.ziel>0){
     const hr=fhZielHochrechnungFor(fhNr,c);
-    const zielVal=fmt(c.ziel)+" Stk."+(hr?` <span style="font-weight:800;color:${hr.diff>=0?"#12A150":"#E0234E"}">(${fmtSign(Math.round(hr.diff))} Hochr.)</span>`:"");
+    const zielVal=fhZielHochrechnungHtml(hr,"#12A150","#E0234E")||(fmt(c.ziel)+" Stk.");
     zielRow=stamRow("Ziel (Jahr)",zielVal);
   }
   return `<div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:18px;background:#F5F9FC">
