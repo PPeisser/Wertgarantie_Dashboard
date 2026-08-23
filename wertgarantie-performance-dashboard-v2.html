@@ -2680,6 +2680,32 @@ function mergeSnapshot(snap){
     if(!snap.gwQuote && state.latest?.gwQuote) snap.gwQuote=state.latest.gwQuote;
     if(!snap.ks && state.latest?.ks) snap.ks=state.latest.ks;
     if(!snap.sparten && state.latest?.sparten) snap.sparten=state.latest.sparten;
+    // Gleiches Problem wie oben bei gwQuote/ks/sparten, aber pro Fachhändler:
+    // manche Tages-Quellen führen nicht jeden FH jeden Tag (z.B. der
+    // automatische Mail-Import "ZE+Produktion_Vortag..."). Da state.latest.fh
+    // bisher komplett ersetzt wurde, verschwand ein an diesem Tag nicht
+    // gelisteter FH samt PO-Quote/3-für-2-Quote/Akquisepunkte-Anteil
+    // ersatzlos aus dem Dashboard - obwohl diese Werte ("... in % LJ")
+    // ohnehin nirgends sonst gespeichert sind und sich untertägig kaum
+    // ändern. Nutzervorgabe 24.08.2026: dürfen nie kommentarlos wegfallen,
+    // nur bei neuerem Wert aktualisiert werden. Fehlt ein FH heute, wird
+    // sein bisheriger Stand übernommen - "Vortag"-Produktion wird dabei auf
+    // 0 gesetzt (an diesem Tag keine neue Produktion gemeldet), Monats-/
+    // Jahres-/Vorjahreswerte, Plan, PO-/3-für-2-Quote und Stammdaten bleiben
+    // wie zuletzt bekannt erhalten.
+    if(state.latest&&state.latest.fh){
+      for(const [nr,f] of Object.entries(state.latest.fh)){
+        if(!snap.fh[nr]) snap.fh[nr]={...f,vt:0};
+      }
+    }
+    // Gleiches für die AKP-Liste (poQuote/q3fuer2 je Aktivpartner, siehe oben).
+    if(state.latest&&state.latest.akp&&state.latest.akp.length){
+      const seen=new Set(snap.akp.map(a=>a.nr||a.name+"@"+a.firma));
+      for(const a of state.latest.akp){
+        const k=a.nr||a.name+"@"+a.firma;
+        if(!seen.has(k)) snap.akp.push({...a,vt:0});
+      }
+    }
     state.latest=snap;
   }
 }
