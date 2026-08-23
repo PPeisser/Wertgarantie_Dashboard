@@ -5396,6 +5396,15 @@ function chefgespraechKiModeBlockHtml(mode,data,showModeHeader){
   const recs=(rep.recommendations||[]).map(r=>`<li style="margin-bottom:6px">${escapeHtml(r)}</li>`).join("");
   const groupLabel=data.groupLabel||"Vergleichsgruppe";
   const modeHeader=showModeHeader?`<div class="pdf-block" style="font-size:12.5px;font-weight:900;color:#fff;background:#0B5A8A;border-radius:6px;display:inline-block;padding:4px 12px;margin-bottom:12px">Vergleichsmodus: ${escapeHtml(CG_MODE_LABELS[mode]||mode)}</div>`:"";
+  // Kooperation: die statistische Vergleichsgruppe oben umfasst nur die
+  // aktuell PRODUZIERENDEN Mitglieder (sonst wäre der Median durch nicht
+  // produzierende Mitglieder verzerrt) - zusätzlich hier der Gesamtkontext
+  // der ganzen Kooperation (Nutzervorgabe 24.08.2026: "einmal mit dem
+  // produzierenden Teil ... und einmal mit der gesamten Koop vergleichen").
+  const coop=data.cooperationContext;
+  const coopContextHtml=coop?`<div class="pdf-block" style="font-size:11px;color:#5D7284;margin-bottom:12px;background:#F5F9FC;border:1px solid #E4EDF3;border-radius:6px;padding:8px 12px">
+    <b style="color:#062A3F">Gesamte Kooperation:</b> ${fmt(coop.totalMembers)} Mitglieds-Fachhändler, davon ${fmt(coop.producingMembers)} aktuell produzierend (${coop.participationRate!=null?Math.round(coop.participationRate*100)+" %":"–"}) · Gesamtproduktion: ${fmt(coop.totalProduction)} Verträge
+  </div>`:"";
   return `
     <div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:10px;padding:16px 18px;margin-bottom:16px">
       ${modeHeader}
@@ -5403,7 +5412,8 @@ function chefgespraechKiModeBlockHtml(mode,data,showModeHeader){
         <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Zusammenfassung</div>
         <div style="font-size:12px;color:#10202C;white-space:pre-wrap;line-height:1.5">${escapeHtml(rep.summary||"")}</div>
       </div>
-      <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:6px">Vergleich mit ${escapeHtml(groupLabel)} (${data.peerCount||0} Händler, anonym)</div>
+      ${coopContextHtml}
+      <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:6px">Vergleich mit ${coop?"produzierenden Mitgliedern: ":""}${escapeHtml(groupLabel)} (${data.peerCount||0} Händler, anonym)</div>
       <div class="pdf-block">${charts?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px">${charts}</div>`:`<div style="font-size:11px;color:#5D7284">Keine Vergleichsdaten verfügbar.</div>`}</div>
       ${comparisons?`<div class="pdf-block" style="margin-bottom:8px">${comparisons}</div>`:""}
       ${recs?`<div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px">
