@@ -1136,19 +1136,21 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <input type="file" id="fhSegmentFileInput" accept=".xlsx,.xls" class="hidden">
     <input type="file" id="mieteFileInput" accept=".xlsx,.xls" class="hidden">
 
-    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Funktionen</h4>
-    <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;margin-bottom:12px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
-      <input type="checkbox" id="chefgespraechEnabledChk" style="width:17px;height:17px;flex-shrink:0">
-      Chefgespräch-Button aktivieren <span style="font-weight:600;color:var(--muted);font-size:12px">(Außendienst-Mitarbeiter können dann Chefgesprächsunterlagen für einen Fachhändler zusammenstellen)</span>
-    </label>
-    <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;margin-bottom:12px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
-      <input type="checkbox" id="kooperationsgespraechEnabledChk" style="width:17px;height:17px;flex-shrink:0">
-      Kooperationsgespräch-Button aktivieren <span style="font-weight:600;color:var(--muted);font-size:12px">(Außendienst-Mitarbeiter können dann Kooperationsgesprächsunterlagen für eine Einkaufskooperation zusammenstellen)</span>
-    </label>
-    <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;margin-bottom:12px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
-      <input type="checkbox" id="auswertungEnabledChk" style="width:17px;height:17px;flex-shrink:0">
-      "Auswertung erfassen"-Button aktivieren <span style="font-weight:600;color:var(--muted);font-size:12px">(Außendienst-Mitarbeiter können dann Produktionsauswertungen nach Kooperation, Weiterer Zuordnung, Fachhändler oder AKP über einen frei wählbaren Zeitraum erstellen)</span>
-    </label>
+    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Funktionen aktivieren</h4>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+        <input type="checkbox" id="chefgespraechEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+        Chefgespräch
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+        <input type="checkbox" id="kooperationsgespraechEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+        Kooperationsgespräch
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+        <input type="checkbox" id="auswertungEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+        Auswertungen
+      </label>
+    </div>
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
