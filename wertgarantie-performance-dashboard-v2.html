@@ -5134,7 +5134,10 @@ async function chefgespraechUnterlagenSectionHtml(fhNr,idx,total,showBranding){
 
   const kennzahl=(lbl,val)=>`<div style="text-align:center"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284">${lbl}</div><div style="font-size:18px;font-weight:900;color:#062A3F;margin-top:2px">${val}</div></div>`;
   const kennzahlBadge=(lbl,badgeHtml)=>`<div style="text-align:center;max-width:160px"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284;margin-bottom:5px">${lbl}</div>${badgeHtml}</div>`;
-  const filialeLabel=total>1?`<div class="pdf-block" style="font-size:11px;font-weight:800;color:#009FE3;text-transform:uppercase;letter-spacing:.4px;margin:${idx>0?"22px":"0"} 0 6px">Filiale ${idx+1} von ${total}</div>`:"";
+  // Jede Filiale beginnt mit einer eigenen Seite (Nutzervorgabe 24.08.2026)
+  // - kein "22px"-Vorabstand mehr nötig, jeder Abschnitt ist jetzt immer das
+  // erste Element auf seiner Seite.
+  const filialeLabel=total>1?`<div class="pdf-block" style="font-size:11px;font-weight:800;color:#009FE3;text-transform:uppercase;letter-spacing:.4px;margin:0 0 6px">Filiale ${idx+1} von ${total}</div>`:"";
   return `
     ${filialeLabel}
     <div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:18px">
@@ -5192,7 +5195,9 @@ async function chefgespraechOverviewMetrics(fhNr){
   };
 }
 // Kombinierte "Produktion nach Jahren" über alle ausgewählten Filialen
-// aufsummiert (letzte 5 Jahre) - für die Gesamtauswertung.
+// aufsummiert (letzte 5 Jahre) - für die Gesamtauswertung. Kompakt gehalten
+// (Nutzervorgabe 24.08.2026: "Zusammenfassung ... auf eine Seite schaffen"),
+// damit die Übersichtsseite bei 2 Filialen auf eine Querformat-Seite passt.
 function chefgespraechAggregateYearlyChart(metricsList){
   const byYear={};
   metricsList.forEach(m=>{
@@ -5203,10 +5208,12 @@ function chefgespraechAggregateYearlyChart(metricsList){
   });
   const years=Object.keys(byYear).sort().slice(-5);
   if(!years.length) return "";
-  return svgBarChart(years,[{name:"Produktion (gesamt)",color:"#0B5A8A",values:years.map(y=>Math.round(byYear[y]||0))}],{width:950,height:230});
+  return svgBarChart(years,[{name:"Produktion (gesamt)",color:"#0B5A8A",values:years.map(y=>Math.round(byYear[y]||0))}],{width:1000,height:140});
 }
 // Ein Balkenchart pro Kennzahl, je Filiale ein Balken - für den direkten
 // Vergleich zwischen den Filialen (Nutzervorgabe: "Vergleich ... fehlt").
+// Kompakt und für ein 2-spaltiges Grid ausgelegt (Nutzervorgabe: "Diagramme
+// kleiner machen & 2 nebeneinander").
 function chefgespraechCompareChart(title,unit,metricsList,key,color,isPct){
   const labels=metricsList.map(m=>m.name);
   const values=metricsList.map(m=>{
@@ -5215,9 +5222,23 @@ function chefgespraechCompareChart(title,unit,metricsList,key,color,isPct){
     return isPct?Math.round(v*1000)/10:Math.round(v);
   });
   if(values.every(v=>v===0)) return "";
-  return `<div style="margin-bottom:18px">
-    <div style="font-size:12px;font-weight:800;color:#062A3F;margin-bottom:4px">${escapeHtml(title)}${unit?` (${unit})`:""}</div>
-    ${svgBarChart(labels,[{name:title,color,values}],{width:950,height:190})}
+  return `<div>
+    <div style="font-size:11px;font-weight:800;color:#062A3F;margin-bottom:3px">${escapeHtml(title)}${unit?` (${unit})`:""}</div>
+    ${svgBarChart(labels,[{name:title,color,values}],{width:475,height:120})}
+  </div>`;
+}
+// Chefgespräch-KI: "Dieser Händler vs. Median Vergleichsgruppe" für EINEN
+// Modus, aber alle gewählten Filialen gemeinsam in einem Chart (ein
+// Balkenpaar je Filiale) - Nutzervorgabe: "den Vergleich beider oder
+// mehrerer [Filialen] mit dem Vergleichsaspekt ebenfalls" auf der
+// Übersichtsseite.
+function chefgespraechKiGroupCompareChart(title,unit,fhNames,targetVals,peerMedianVals,color,isPct){
+  const scale=v=>{ if(v==null) return 0; return isPct?Math.round(v*1000)/10:Math.round(v); };
+  const tVals=targetVals.map(scale), pVals=peerMedianVals.map(scale);
+  if(tVals.every(v=>v===0)&&pVals.every(v=>v===0)) return "";
+  return `<div>
+    <div style="font-size:11px;font-weight:800;color:#062A3F;margin-bottom:3px">${escapeHtml(title)}${unit?` (${unit})`:""}</div>
+    ${svgBarChart(fhNames,[{name:"Dieser Händler",color,values:tVals},{name:"Median Vergleichsgruppe",color:"#9FCBE8",values:pVals}],{width:475,height:130})}
   </div>`;
 }
 async function buildChefgespraechUnterlagenPdfDoc(fhNrs){
@@ -5239,51 +5260,61 @@ async function buildChefgespraechUnterlagenPdfDoc(fhNrs){
     const avgF2=f2Vals.length?f2Vals.reduce((a,b)=>a+b,0)/f2Vals.length:null;
     const kennzahl=(lbl,val)=>`<div style="text-align:center"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284">${lbl}</div><div style="font-size:18px;font-weight:900;color:#062A3F;margin-top:2px">${val}</div></div>`;
     const overviewHeaderHtml=`
-      <div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:18px">
+      <div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:9px;margin-bottom:12px">
         <div>
           <div style="font-size:11px;font-weight:800;color:#009FE3;text-transform:uppercase;letter-spacing:.4px">Chefgesprächsunterlagen · Übersicht</div>
-          <div style="font-size:21px;font-weight:900;color:#062A3F;margin-top:2px">${escapeHtml(metricsList.map(m=>m.name).join(" · "))}</div>
+          <div style="font-size:19px;font-weight:900;color:#062A3F;margin-top:2px">${escapeHtml(metricsList.map(m=>m.name).join(" · "))}</div>
           <div style="font-size:12px;color:#5D7284;margin-top:3px">${metricsList.length} Filialen</div>
         </div>
         <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Erstellt am: ${nowStr}</div>
       </div>`;
-    const summaryStripHtml=`<div class="pdf-block" style="display:flex;justify-content:space-around;flex-wrap:wrap;gap:12px;border:1px solid #E4EDF3;border-radius:8px;padding:14px 10px;margin-bottom:18px;background:#F5F9FC">
+    const summaryStripHtml=`<div class="pdf-block" style="display:flex;justify-content:space-around;flex-wrap:wrap;gap:12px;border:1px solid #E4EDF3;border-radius:8px;padding:10px 10px;margin-bottom:12px;background:#F5F9FC">
       ${kennzahl("Filialen",fmt(metricsList.length))}
       ${kennzahl("Produktion "+state.latest.jahr+" gesamt",fmt(totalProdCurYear))}
       ${kennzahl("Ø PO-Quote (LJ)",avgPo!=null?(avgPo*100).toFixed(1).replace(".",",")+" %":"–")}
       ${kennzahl("Ø 3-für-2-Quote (LJ)",avgF2!=null?(avgF2*100).toFixed(1).replace(".",",")+" %":"–")}
       ${kennzahl("Club Weiss Mitglieder",clubCount+" / "+metricsList.length)}
     </div>`;
+    // Diagramme kompakt und 2 nebeneinander (Grid) statt gestapelt, damit die
+    // Übersicht bei z.B. 2 Filialen auf eine Seite passt (Nutzervorgabe).
+    const compareChartsHtml=[
+      chefgespraechCompareChart("Produktion "+state.latest.jahr,"Verträge",metricsList,"prodCurYear","#0B5A8A"),
+      chefgespraechCompareChart("PO-Quote (LJ)","%",metricsList,"poQuote","#2E9E5B",true),
+      chefgespraechCompareChart("3-für-2-Quote (LJ)","%",metricsList,"q3fuer2","#D9A400",true),
+      chefgespraechCompareChart("Akquisepunkte","Punkte",metricsList,"akqPunkte","#6B4FA0"),
+    ].filter(Boolean).join("");
     const overviewBox=document.createElement("div");
-    overviewBox.style.cssText="position:fixed;left:-99999px;top:0;width:1080px;background:#fff;padding:34px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
+    overviewBox.style.cssText="position:fixed;left:-99999px;top:0;width:1080px;background:#fff;padding:24px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
     overviewBox.innerHTML=`
       ${overviewHeaderHtml}
-      <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:6px">Gesamtauswertung (${metricsList.length} Filialen)</div>
+      <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:5px">Gesamtauswertung (${metricsList.length} Filialen)</div>
       ${summaryStripHtml}
       ${chefgespraechAggregateYearlyChart(metricsList)}
-      <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin:22px 0 6px">Vergleich der Filialen</div>
-      ${chefgespraechCompareChart("Produktion "+state.latest.jahr,"Verträge",metricsList,"prodCurYear","#0B5A8A")}
-      ${chefgespraechCompareChart("PO-Quote (LJ)","%",metricsList,"poQuote","#2E9E5B",true)}
-      ${chefgespraechCompareChart("3-für-2-Quote (LJ)","%",metricsList,"q3fuer2","#D9A400",true)}
-      ${chefgespraechCompareChart("Akquisepunkte","Punkte",metricsList,"akqPunkte","#6B4FA0")}
+      <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin:10px 0 6px">Vergleich der Filialen</div>
+      <div class="pdf-block" style="display:grid;grid-template-columns:1fr 1fr;gap:8px 20px">${compareChartsHtml}</div>
     `;
-    const sections=[];
-    for(let i=0;i<fhNrs.length;i++) sections.push(await chefgespraechUnterlagenSectionHtml(fhNrs[i],i,fhNrs.length,false));
-    const detailBox=document.createElement("div");
-    detailBox.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
-    detailBox.innerHTML=sections.join("");
     document.body.appendChild(overviewBox);
-    document.body.appendChild(detailBox);
+    // Jede Filiale bekommt eine EIGENE Box statt einer gemeinsamen "detailBox"
+    // (Nutzervorgabe: "jede Filiale beginnt mit einer eigenen Seite") - jede
+    // wird mit newPage=true angehängt, erzwingt also immer eine neue Seite.
+    const detailBoxes=[];
+    for(let i=0;i<fhNrs.length;i++){
+      const box=document.createElement("div");
+      box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
+      box.innerHTML=await chefgespraechUnterlagenSectionHtml(fhNrs[i],i,fhNrs.length,false);
+      document.body.appendChild(box);
+      detailBoxes.push(box);
+    }
     await new Promise(r=>setTimeout(r,30));
     try{
       const {jsPDF}=window.jspdf;
       const pdf=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
       await appendBoxPagesToPdf(pdf,overviewBox,false,"a4","landscape");
-      await appendBoxPagesToPdf(pdf,detailBox,true,"a4","portrait");
+      for(const box of detailBoxes) await appendBoxPagesToPdf(pdf,box,true,"a4","portrait");
       return {pdf,filename};
     }finally{
       if(overviewBox.parentNode) overviewBox.parentNode.removeChild(overviewBox);
-      if(detailBox.parentNode) detailBox.parentNode.removeChild(detailBox);
+      for(const box of detailBoxes) if(box.parentNode) box.parentNode.removeChild(box);
     }
   }
   const sections=[await chefgespraechUnterlagenSectionHtml(fhNrs[0],0,1)];
@@ -5331,12 +5362,14 @@ function chefgespraechKiModeBlockHtml(mode,data,showModeHeader){
   const rep=data.report||{};
 
   const pctVal=v=>v==null?null:Math.round(v*1000)/10;
+  // Kompakt, 2 nebeneinander (Grid) statt gestapelt - Nutzervorgabe
+  // "Diagramme kleiner machen & 2 nebeneinander" gilt auch hier.
   const chartFor=(title,unit,tv,med,p75,color)=>{
     if(tv==null&&med==null&&p75==null) return "";
     const vals=[tv,med,p75].map(v=>v==null?0:v);
-    return `<div style="margin-bottom:18px">
-      <div style="font-size:12px;font-weight:800;color:#062A3F;margin-bottom:4px">${escapeHtml(title)}${unit?` (${unit})`:""}</div>
-      ${svgBarChart(["Dieser Händler","Median Vergleichsgruppe","Top 25% Vergleichsgruppe"],[{name:title,color,values:vals}],{width:420,height:160})}
+    return `<div>
+      <div style="font-size:11px;font-weight:800;color:#062A3F;margin-bottom:3px">${escapeHtml(title)}${unit?` (${unit})`:""}</div>
+      ${svgBarChart(["Dieser Händler","Median VG","Top 25% VG"],[{name:title,color,values:vals}],{width:340,height:120})}
     </div>`;
   };
   // Club-Weiss-Vergleich: eigener 2-Balken-Chart (dieser Händler 0/100 % vs.
@@ -5346,9 +5379,9 @@ function chefgespraechKiModeBlockHtml(mode,data,showModeHeader){
     if(target.clubWeiss==null||peers.clubWeissRate==null) return "";
     const tv=target.clubWeiss?100:0;
     const peerPct=Math.round(peers.clubWeissRate*1000)/10;
-    return `<div style="margin-bottom:18px">
-      <div style="font-size:12px;font-weight:800;color:#062A3F;margin-bottom:4px">Club Weiss Mitgliedschaft (%)</div>
-      ${svgBarChart(["Dieser Händler","Vergleichsgruppe (Anteil Mitglieder)"],[{name:"Club Weiss",color:"#0B5A8A",values:[tv,peerPct]}],{width:420,height:160,maxVal:100,colors:[target.clubWeiss?"#1E7A46":"#8CA0AF","#9FCBE8"]})}
+    return `<div>
+      <div style="font-size:11px;font-weight:800;color:#062A3F;margin-bottom:3px">Club Weiss Mitgliedschaft (%)</div>
+      ${svgBarChart(["Dieser Händler","Vergleichsgruppe"],[{name:"Club Weiss",color:"#0B5A8A",values:[tv,peerPct]}],{width:340,height:120,maxVal:100,colors:[target.clubWeiss?"#1E7A46":"#8CA0AF","#9FCBE8"]})}
     </div>`;
   })();
   const charts=[
@@ -5370,8 +5403,8 @@ function chefgespraechKiModeBlockHtml(mode,data,showModeHeader){
         <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Zusammenfassung</div>
         <div style="font-size:12px;color:#10202C;white-space:pre-wrap;line-height:1.5">${escapeHtml(rep.summary||"")}</div>
       </div>
-      <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:4px">Vergleich mit ${escapeHtml(groupLabel)} (${data.peerCount||0} Händler, anonym)</div>
-      <div class="pdf-block">${charts||`<div style="font-size:11px;color:#5D7284">Keine Vergleichsdaten verfügbar.</div>`}</div>
+      <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:6px">Vergleich mit ${escapeHtml(groupLabel)} (${data.peerCount||0} Händler, anonym)</div>
+      <div class="pdf-block">${charts?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px">${charts}</div>`:`<div style="font-size:11px;color:#5D7284">Keine Vergleichsdaten verfügbar.</div>`}</div>
       ${comparisons?`<div class="pdf-block" style="margin-bottom:8px">${comparisons}</div>`:""}
       ${recs?`<div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px">
         <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Empfehlungen für das Gespräch</div>
@@ -5383,7 +5416,8 @@ function chefgespraechKiModeBlockHtml(mode,data,showModeHeader){
 // modeResults: Array aus {mode, data} - eines je gewähltem Vergleichsmodus für
 // diesen Händler (mind. 1). Lädt zusätzlich die fh_contacts-Stammdaten für
 // die Händlerdaten-Karte (Nutzervorgabe 24.08.2026: auch im KI-PDF anführen).
-async function chefgespraechKiSectionHtml(fhNr,modeResults,idx,total){
+async function chefgespraechKiSectionHtml(fhNr,modeResults,idx,total,showBranding){
+  if(showBranding==null) showBranding=true;
   const f=state.latest.fh[fhNr]||{};
   const c=await chefgespraechFhContactFor(fhNr);
   const fName=f.name||fhNr;
@@ -5391,7 +5425,8 @@ async function chefgespraechKiSectionHtml(fhNr,modeResults,idx,total){
   const target=(first.metrics||{}).target||{};
   const multiMode=modeResults.length>1;
 
-  const filialeLabel=total>1?`<div class="pdf-block" style="font-size:11px;font-weight:800;color:#009FE3;text-transform:uppercase;letter-spacing:.4px;margin:${idx>0?"22px":"0"} 0 6px">Filiale ${idx+1} von ${total}</div>`:"";
+  // Jede Filiale beginnt mit einer eigenen Seite (Nutzervorgabe 24.08.2026).
+  const filialeLabel=total>1?`<div class="pdf-block" style="font-size:11px;font-weight:800;color:#009FE3;text-transform:uppercase;letter-spacing:.4px;margin:0 0 6px">Filiale ${idx+1} von ${total}</div>`:"";
   const blocks=modeResults.map(r=>chefgespraechKiModeBlockHtml(r.mode,r.data,multiMode)).join("");
   return `
     ${filialeLabel}
@@ -5400,25 +5435,110 @@ async function chefgespraechKiSectionHtml(fhNr,modeResults,idx,total){
         <div style="font-size:21px;font-weight:900;color:#062A3F">${escapeHtml(fName)}</div>
         <div style="font-size:12px;color:#5D7284;margin-top:3px">FH-Nr. ${escapeHtml(fhNr)}${f.ort?" · "+escapeHtml(f.ort):""}${target.clubWeiss?" &nbsp;·&nbsp; ":""}${target.clubWeiss?pdfBadge("✓ Club Weiss","good"):""}</div>
       </div>
-      ${idx===0?`<div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Chefgespräch – KI-Unterstützt · Erstellt am: ${fmtNowDateTime()}</div>`:""}
+      ${idx===0&&showBranding?`<div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Chefgespräch – KI-Unterstützt · Erstellt am: ${fmtNowDateTime()}</div>`:""}
     </div>
     ${chefgespraechStammdatenCardHtml(fhNr,f,c)}
     ${blocks}
     ${idx===total-1?`<div class="pdf-block" style="margin-top:24px;padding-top:10px;border-top:1px solid #E4EDF3;font-size:9.5px;color:#8CA0AF">KI-generierte Einschätzung auf Basis der im Dashboard vorhandenen Kennzahlen und einer anonymisierten Vergleichsgruppe. Weitere Kennzahlen (Bestand, Storno, Provisionen, Schäden) folgen in einer späteren Ausbaustufe.</div>`:""}
   `;
 }
+// dataList: Array (je Filiale) aus Arrays [{mode,data}] (je gewählter Modus).
 async function buildChefgespraechKiPdfDoc(fhNrs,dataList){
   if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)) throw new Error("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals versuchen.");
+  const filename=chefgespraechPdfFilename("Chefgespraech_KI",fhNrs);
+  const nowStr=fmtNowDateTime();
+  // Bei mehreren Filialen (Nutzervorgabe 24.08.2026): eigene Übersichtsseite
+  // im Querformat mit Vergleich zwischen den Filialen UND Vergleich jeder
+  // Filiale mit ihrer Vergleichsgruppe je Modus, danach je Filiale eine
+  // eigene Seite mit Zusammenfassung + Vergleich (wie bisher).
+  if(fhNrs.length>1){
+    const fhNames=fhNrs.map(nr=>(state.latest.fh[nr]||{}).name||nr);
+    const targets=dataList.map(mr=>((mr[0]&&mr[0].data&&mr[0].data.metrics)||{}).target||{});
+    const clubCount=targets.filter(t=>t.clubWeiss).length;
+    const kennzahl=(lbl,val)=>`<div style="text-align:center"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284">${lbl}</div><div style="font-size:18px;font-weight:900;color:#062A3F;margin-top:2px">${val}</div></div>`;
+    const totalProd=targets.reduce((s,t)=>s+(t.curProd||0),0);
+    const overviewHeaderHtml=`
+      <div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:18px">
+        <div>
+          <div style="font-size:11px;font-weight:800;color:#009FE3;text-transform:uppercase;letter-spacing:.4px">Chefgespräch – KI-Unterstützt · Übersicht</div>
+          <div style="font-size:21px;font-weight:900;color:#062A3F;margin-top:2px">${escapeHtml(fhNames.join(" · "))}</div>
+          <div style="font-size:12px;color:#5D7284;margin-top:3px">${fhNrs.length} Filialen</div>
+        </div>
+        <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Erstellt am: ${nowStr}</div>
+      </div>`;
+    const summaryStripHtml=`<div class="pdf-block" style="display:flex;justify-content:space-around;flex-wrap:wrap;gap:12px;border:1px solid #E4EDF3;border-radius:8px;padding:14px 10px;margin-bottom:18px;background:#F5F9FC">
+      ${kennzahl("Filialen",fmt(fhNrs.length))}
+      ${kennzahl("Produktion "+state.latest.jahr+" gesamt",fmt(totalProd))}
+      ${kennzahl("Club Weiss Mitglieder",clubCount+" / "+fhNrs.length)}
+    </div>`;
+    const fhCompareCharts=[
+      chefgespraechCompareChart("Jahresproduktion","Verträge",targets.map((t,i)=>({name:fhNames[i],curProd:t.curProd})),"curProd","#0B5A8A"),
+      chefgespraechCompareChart("Wachstum ggü. Vorjahr","%",targets.map((t,i)=>({name:fhNames[i],yoy:t.yoy})),"yoy","#2E9E5B",true),
+      chefgespraechCompareChart("3-für-2-Quote","%",targets.map((t,i)=>({name:fhNames[i],q3f2:t.q3f2})),"q3f2","#D9A400",true),
+      chefgespraechCompareChart("Akquisepunkte","Punkte",targets.map((t,i)=>({name:fhNames[i],akqPunkte:t.akqPunkte})),"akqPunkte","#6B4FA0"),
+    ].filter(Boolean).join("");
+    // Vergleich jeder Filiale mit ihrer eigenen Vergleichsgruppe, je gewähltem
+    // Modus (Nutzervorgabe: "den Vergleich beider oder mehrerer mit dem
+    // Vergleichsaspekt ebenfalls").
+    const modes=[...new Set(dataList.flatMap(mr=>mr.map(r=>r.mode)))];
+    const modeSectionsHtml=modes.map(mode=>{
+      const perFh=fhNrs.map((nr,i)=>((dataList[i].find(r=>r.mode===mode)||{}).data)||{});
+      const tgs=perFh.map(d=>(d.metrics&&d.metrics.target)||{});
+      const prs=perFh.map(d=>(d.metrics&&d.metrics.peers)||{});
+      const charts=[
+        chefgespraechKiGroupCompareChart("Jahresproduktion","Verträge",fhNames,tgs.map(t=>t.curProd),prs.map(p=>p.curProd&&p.curProd.median),"#0B5A8A"),
+        chefgespraechKiGroupCompareChart("Wachstum ggü. Vorjahr","%",fhNames,tgs.map(t=>t.yoy),prs.map(p=>p.yoy&&p.yoy.median),"#2E9E5B",true),
+        chefgespraechKiGroupCompareChart("3-für-2-Quote","%",fhNames,tgs.map(t=>t.q3f2),prs.map(p=>p.q3f2&&p.q3f2.median),"#D9A400",true),
+        chefgespraechKiGroupCompareChart("Akquisepunkte","Punkte",fhNames,tgs.map(t=>t.akqPunkte),prs.map(p=>p.akqPunkte&&p.akqPunkte.median),"#6B4FA0"),
+      ].filter(Boolean).join("");
+      if(!charts) return "";
+      return `
+        <div class="pdf-block" style="font-size:12.5px;font-weight:900;color:#fff;background:#0B5A8A;border-radius:6px;display:inline-block;padding:4px 12px;margin:14px 0 8px">Vergleichsmodus: ${escapeHtml(CG_MODE_LABELS[mode]||mode)}</div>
+        <div class="pdf-block" style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px">${charts}</div>
+      `;
+    }).join("");
+    const overviewBox=document.createElement("div");
+    overviewBox.style.cssText="position:fixed;left:-99999px;top:0;width:1080px;background:#fff;padding:34px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
+    overviewBox.innerHTML=`
+      ${overviewHeaderHtml}
+      <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:6px">Gesamtübersicht (${fhNrs.length} Filialen)</div>
+      ${summaryStripHtml}
+      <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin:14px 0 8px">Vergleich der Filialen</div>
+      <div class="pdf-block" style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px">${fhCompareCharts}</div>
+      <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin:18px 0 4px">Vergleich mit der jeweiligen Vergleichsgruppe</div>
+      ${modeSectionsHtml}
+    `;
+    document.body.appendChild(overviewBox);
+    // Jede Filiale bekommt eine eigene Box + eigene Seite (newPage=true je
+    // Filiale), analog zu buildChefgespraechUnterlagenPdfDoc.
+    const detailBoxes=[];
+    for(let i=0;i<fhNrs.length;i++){
+      const box=document.createElement("div");
+      box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
+      box.innerHTML=await chefgespraechKiSectionHtml(fhNrs[i],dataList[i],i,fhNrs.length,false);
+      document.body.appendChild(box);
+      detailBoxes.push(box);
+    }
+    await new Promise(r=>setTimeout(r,30));
+    try{
+      const {jsPDF}=window.jspdf;
+      const pdf=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+      await appendBoxPagesToPdf(pdf,overviewBox,false,"a4","landscape");
+      for(const box of detailBoxes) await appendBoxPagesToPdf(pdf,box,true,"a4","portrait");
+      return {pdf,filename};
+    }finally{
+      if(overviewBox.parentNode) overviewBox.parentNode.removeChild(overviewBox);
+      for(const box of detailBoxes) if(box.parentNode) box.parentNode.removeChild(box);
+    }
+  }
   const box=document.createElement("div");
   box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
-  const sections=[];
-  for(let i=0;i<fhNrs.length;i++) sections.push(await chefgespraechKiSectionHtml(fhNrs[i],dataList[i],i,fhNrs.length));
-  box.innerHTML=sections.join("");
+  box.innerHTML=await chefgespraechKiSectionHtml(fhNrs[0],dataList[0],0,1);
   document.body.appendChild(box);
   await new Promise(r=>setTimeout(r,30));
   try{
     const pdf=await pdfBoxRenderToPdf(box);
-    return {pdf,filename:chefgespraechPdfFilename("Chefgespraech_KI",fhNrs)};
+    return {pdf,filename};
   }finally{
     if(box.parentNode) box.parentNode.removeChild(box);
   }
