@@ -1,15 +1,17 @@
 // Chefgespräch – KI-Unterstützt: fasst die Kennzahlen EINES Fachhändlers
 // zusammen und vergleicht ihn anonymisiert (nur Aggregatwerte, keine
-// Einzelhändler-Daten) mit einer Vergleichsgruppe anderer Händler - aktuell
-// "gleiche Region" (erste PLZ-Ziffer, grobe Bundesland-Näherung). Nutzt die
+// Einzelhändler-Daten) mit einer Vergleichsgruppe anderer Händler. Nutzt die
 // Anthropic Messages API mit erzwungenem Tool-Call für eine strukturierte
 // JSON-Antwort (Zusammenfassung + Vergleichswerte je Kennzahl + Empfehlungen).
 //
-// Erweiterbarkeit (Nutzervorgabe 22.08.2026): die Vergleichsgruppen-Auswahl
-// ist bewusst als eigener, austauschbarer Schritt (selectPeerGroup) gebaut -
-// später sollen weitere Modi dazukommen (bestimmte Händler, Kategorien,
-// Kooperationen, Umkreis in km). Der Request nimmt dafür schon ein optionales
-// "mode"-Feld entgegen (aktuell nur "region" implementiert, Default).
+// Vergleichsmodi (Nutzervorgabe 22./23.08.2026, "mode"-Feld im Request):
+// - "region" (Default): gleiche erste PLZ-Ziffer.
+// - "kooperation": gleicher Wert in fh_contacts.kooperation.
+// - "hauptzweig": gleicher Wert in fh_contacts.hauptzweig.
+// - "weitere_zuordnung": gleicher Wert in fh_contacts.weitere_zuordnung.
+// Die Vergleichsgruppen-Auswahl ist als eigener, austauschbarer Schritt
+// (selectPeerGroup) gebaut - weitere Modi (bestimmte Händler, Umkreis in km)
+// können später ergänzt werden, ohne den restlichen Ablauf anzufassen.
 //
 // Auth: normale Nutzer-Session (Authorization-Header) - KEIN Admin-Gate,
 // da jeder Außendienst-Mitarbeiter den Chefgespräch-Button nutzen darf
@@ -93,34 +95,51 @@ function rankPercentile(arr: number[], value: number): number | null {
   return below / s.length;
 }
 
-// Aktuell einziger Modus: "region" (erste PLZ-Ziffer). Gibt die Kandidaten-
-// Zeilen für die Vergleichsgruppe zurück (roher fh_contacts-Query, noch ohne
-// Metrik-Berechnung) - so bleibt Platz für künftige Modi (bestimmte Händler,
-// Kategorien, Kooperationen, Umkreis-km), ohne den restlichen Ablauf
-// anzufassen.
+const PEER_SELECT_COLS = "fh_nr,prod_monthly,beitragsfrei_yearly,akq_punkte";
+
+// Vier Modi: "region" (Default, erste PLZ-Ziffer), "kooperation",
+// "hauptzweig", "weitere_zuordnung" (jeweils: gleicher Wert wie der
+// Ziel-Händler in der gleichnamigen fh_contacts-Spalte). Gibt die
+// Kandidaten-Zeilen zurück (roher fh_contacts-Query, noch ohne
+// Metrik-Berechnung).
 async function selectPeerGroup(
   // deno-lint-ignore no-explicit-any
   admin: any,
   target: FhRow,
   mode: string,
 ): Promise<{ rows: FhRow[]; label: string }> {
-  if (mode !== "region") {
-    // Platzhalter für künftige Modi - fällt bis dahin auf "region" zurück.
-    mode = "region";
+  if (mode === "kooperation") {
+    const koop = (target.kooperation || "").trim();
+    if (!koop) return { rows: [], label: "Kooperation unbekannt (kein Wert hinterlegt)" };
+    const { data } = await admin.from("fh_contacts").select(PEER_SELECT_COLS)
+      .eq("kooperation", koop).neq("fh_nr", target.fh_nr);
+    return { rows: data || [], label: `Kooperation "${koop}"` };
   }
+  if (mode === "hauptzweig") {
+    const hz = (target.hauptzweig || "").trim();
+    if (!hz) return { rows: [], label: "Hauptzweig unbekannt (kein Wert hinterlegt)" };
+    const { data } = await admin.from("fh_contacts").select(PEER_SELECT_COLS)
+      .eq("hauptzweig", hz).neq("fh_nr", target.fh_nr);
+    return { rows: data || [], label: `Hauptzweig "${hz}"` };
+  }
+  if (mode === "weitere_zuordnung") {
+    const wz = (target.weitere_zuordnung || "").trim();
+    if (!wz) return { rows: [], label: "Weitere Zuordnung unbekannt (kein Wert hinterlegt)" };
+    const { data } = await admin.from("fh_contacts").select(PEER_SELECT_COLS)
+      .eq("weitere_zuordnung", wz).neq("fh_nr", target.fh_nr);
+    return { rows: data || [], label: `Weitere Zuordnung "${wz}"` };
+  }
+  // Default: "region" (erste PLZ-Ziffer, grobe Bundesland-Näherung).
   const plzPrefix = (target.plz || "").trim().charAt(0);
   if (!plzPrefix) return { rows: [], label: "Region unbekannt (keine PLZ hinterlegt)" };
-  const { data } = await admin
-    .from("fh_contacts")
-    .select("fh_nr,plz,prod_monthly,beitragsfrei_yearly,akq_punkte")
-    .like("plz", plzPrefix + "%")
-    .neq("fh_nr", target.fh_nr);
+  const { data } = await admin.from("fh_contacts").select(PEER_SELECT_COLS + ",plz")
+    .like("plz", plzPrefix + "%").neq("fh_nr", target.fh_nr);
   return { rows: data || [], label: "Region " + plzPrefix + "xxx (gleiche erste PLZ-Ziffer)" };
 }
 
 const COMPARISON_TOOL = {
   name: "generate_chefgespraech_comparison",
-  description: "Erstellt die strukturierte Zusammenfassung samt anonymem Regionsvergleich für das Chefgespräch.",
+  description: "Erstellt die strukturierte Zusammenfassung samt anonymem Vergleich für das Chefgespräch.",
   input_schema: {
     type: "object",
     properties: {
@@ -150,6 +169,13 @@ const COMPARISON_TOOL = {
   },
 };
 
+const MODE_DESCRIPTION: Record<string, string> = {
+  region: "Fachhändlern derselben Region (grobe PLZ-Näherung)",
+  kooperation: "Fachhändlern derselben Einkaufskooperation",
+  hauptzweig: "Fachhändlern desselben Hauptzweigs (Branche)",
+  weitere_zuordnung: "Fachhändlern mit derselben weiteren Zuordnung",
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS_HEADERS });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -170,7 +196,8 @@ Deno.serve(async (req) => {
   try { body = await req.json(); } catch { return json({ error: "Ungültiger Body" }, 400); }
   const fhNr = String(body.fh_nr || "").trim();
   if (!fhNr) return json({ error: "fh_nr fehlt" }, 400);
-  const mode = typeof body.mode === "string" ? body.mode : "region";
+  const modeRaw = typeof body.mode === "string" ? body.mode : "region";
+  const mode = ["region", "kooperation", "hauptzweig", "weitere_zuordnung"].includes(modeRaw) ? modeRaw : "region";
 
   const { data: target, error: targetErr } = await admin
     .from("fh_contacts").select("*").eq("fh_nr", fhNr).maybeSingle();
@@ -182,7 +209,7 @@ Deno.serve(async (req) => {
     return json({ error: "Für diesen Händler liegt noch keine Jahresproduktion vor - Vergleich nicht möglich." }, 400);
   }
 
-  const { rows: peerRows, label: regionLabel } = await selectPeerGroup(admin, target, mode);
+  const { rows: peerRows, label: groupLabel } = await selectPeerGroup(admin, target, mode);
   const peerMetrics = peerRows.map(metricsForFh).filter((m) => m.curYear === targetMetrics.curYear);
 
   const peerStats = {
@@ -213,13 +240,13 @@ Deno.serve(async (req) => {
 
   const fmtPct = (v: number | null) => v == null ? "–" : (v * 100).toFixed(1).replace(".", ",") + " %";
   const userPrompt =
-    `Fachhändler ${fhNr}, Vergleichsgruppe: ${regionLabel} (${peerMetrics.length} Vergleichshändler, anonym).\n\n` +
+    `Fachhändler ${fhNr}, Vergleichsgruppe: ${groupLabel} (${peerMetrics.length} Vergleichshändler, anonym).\n\n` +
     `Kennzahlen dieses Händlers (Jahr ${targetMetrics.curYear}):\n` +
     `- Jahresproduktion: ${targetMetrics.curProd} Verträge\n` +
     `- Wachstum ggü. Vorjahr: ${fmtPct(targetMetrics.yoy)}\n` +
     `- 3-für-2-Quote: ${fmtPct(targetMetrics.q3f2)}\n` +
     `- Akquisepunkte (lebenslang-kumulativ): ${targetMetrics.akqPunkte ?? "–"}\n\n` +
-    `Vergleichsgruppe (${regionLabel}), jeweils Median / oberes Quartil (75%) / Perzentil-Rang dieses Händlers:\n` +
+    `Vergleichsgruppe (${groupLabel}), jeweils Median / oberes Quartil (75%) / Perzentil-Rang dieses Händlers:\n` +
     `- Jahresproduktion: Median ${peerStats.curProd.median ?? "–"} / oberes Quartil ${peerStats.curProd.p75 ?? "–"} / dieser Händler liegt im ${peerStats.curProd.rank != null ? Math.round(peerStats.curProd.rank * 100) : "–"}. Perzentil\n` +
     `- Wachstum ggü. Vorjahr: Median ${fmtPct(peerStats.yoy.median)} / oberes Quartil ${fmtPct(peerStats.yoy.p75)} / Perzentil ${peerStats.yoy.rank != null ? Math.round(peerStats.yoy.rank * 100) : "–"}\n` +
     `- 3-für-2-Quote: Median ${fmtPct(peerStats.q3f2.median)} / oberes Quartil ${fmtPct(peerStats.q3f2.p75)} / Perzentil ${peerStats.q3f2.rank != null ? Math.round(peerStats.q3f2.rank * 100) : "–"}\n` +
@@ -228,11 +255,11 @@ Deno.serve(async (req) => {
   const systemPrompt =
     `Du bereitest ein "Chefgespräch" vor - ein internes Beratungsgespräch eines Wertgarantie-Vertriebsmitarbeiters ` +
     `mit der Geschäftsführung eines Fachhändlers. Du bekommst die Kennzahlen dieses einen Händlers sowie ` +
-    `ANONYME Aggregatwerte (Median, oberes Quartil, Perzentil-Rang) einer Vergleichsgruppe ähnlicher Händler ` +
-    `(nie Einzeldaten anderer Händler). Ordne die Zahlen sachlich ein, zeige wo der Händler im Vergleich gut ` +
-    `dasteht und wo Potenzial liegt, und leite daraus konkrete, umsetzbare Gesprächsansätze/Empfehlungen ab. ` +
-    `Schreibe auf Deutsch, professionell, prägnant, ohne Floskeln. Antworte ausschließlich über das Tool ` +
-    `"generate_chefgespraech_comparison".`;
+    `ANONYME Aggregatwerte (Median, oberes Quartil, Perzentil-Rang) einer Vergleichsgruppe von ` +
+    `${MODE_DESCRIPTION[mode]} (nie Einzeldaten anderer Händler). Ordne die Zahlen sachlich ein, zeige wo der ` +
+    `Händler im Vergleich gut dasteht und wo Potenzial liegt, und leite daraus konkrete, umsetzbare ` +
+    `Gesprächsansätze/Empfehlungen ab. Schreibe auf Deutsch, professionell, prägnant, ohne Floskeln. Antworte ` +
+    `ausschließlich über das Tool "generate_chefgespraech_comparison".`;
 
   let aiRes: Response;
   try {
@@ -268,7 +295,8 @@ Deno.serve(async (req) => {
   return json({
     ok: true,
     fh_nr: fhNr,
-    regionLabel,
+    mode,
+    groupLabel,
     peerCount: peerMetrics.length,
     year: targetMetrics.curYear,
     metrics: { target: targetMetrics, peers: peerStats },
