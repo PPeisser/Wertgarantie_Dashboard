@@ -750,6 +750,8 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div><span class="ac-lbl">E-Mail Ansprechpartner</span><div class="ac-val" id="fhEmailApView">–</div></div>
         <div><span class="ac-lbl">Homepage</span><div class="ac-val" id="fhHomepageView">–</div></div>
         <div><span class="ac-lbl">Händlersegmentierung</span><div class="ac-val" id="fhSegmentView">–</div></div>
+        <div><span class="ac-lbl">Kooperation</span><div class="ac-val" id="fhKooperationView">–</div></div>
+        <div><span class="ac-lbl">Hauptzweig</span><div class="ac-val" id="fhHauptzweigView">–</div></div>
         <div><span class="ac-lbl">Letzter Besuch</span><div class="ac-val" id="fhBesuchView">–</div></div>
         <div><span class="ac-lbl">9-Wochen-Plan</span><div class="ac-val" id="fhNwView">–</div></div>
         <div><span class="ac-lbl">Club.Weiss Mitglied</span><div class="ac-val" id="fhClubView">–</div></div>
@@ -771,6 +773,12 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div><label class="ac-lbl" for="fhHomepageEdit">Homepage</label><input id="fhHomepageEdit" autocomplete="off" placeholder="https://…"></div>
         <div><label class="ac-lbl" for="fhSegmentEdit">Händlersegmentierung</label>
           <select id="fhSegmentEdit"><option value="">–</option><option value="A+">A+</option><option value="A">A</option><option value="B">B</option><option value="C+">C+</option><option value="C">C</option><option value="D">D</option></select>
+        </div>
+        <div><label class="ac-lbl" for="fhKooperationEdit">Kooperation</label>
+          <select id="fhKooperationEdit"></select>
+        </div>
+        <div><label class="ac-lbl" for="fhHauptzweigEdit">Hauptzweig</label>
+          <select id="fhHauptzweigEdit"><option value="">–</option><option value="Vollsortiment">Vollsortiment</option><option value="Mobilfunk">Mobilfunk</option><option value="IT">IT</option><option value="Kundendienst">Kundendienst</option><option value="Industrie">Industrie</option><option value="Akustik">Akustik</option><option value="Optik">Optik</option><option value="Küchenhandel">Küchenhandel</option><option value="Uhrenhandel">Uhrenhandel</option><option value="Grüne Ware">Grüne Ware</option><option value="Sonstiges">Sonstiges</option></select>
         </div>
         <div><label class="ac-lbl" for="fhBesuchEdit">Letzter Besuch</label><input id="fhBesuchEdit" type="date"></div>
         <div><span class="ac-lbl">9-Wochen-Plan</span>
@@ -4396,6 +4404,31 @@ async function openFhModal(fhNr){
 /* ---------- Fachhändler-Stammdaten (Adresse, Kontakt, Ansprechpartner, Segmentierung, Besuch, Notizen) ---------- */
 let fhContactCurrent=null;
 const FH_SEGMENT_LBL={"A+":"A+",A:"A",B:"B","C+":"C+",C:"C",D:"D"};
+// Kooperationen (Einkaufsverbindungen) - Stand des Bulk-Imports vom
+// 23.08.2026 aus 14 Kooperationslisten (siehe fh_contacts.kooperation).
+// Neue Kooperationen können hier ergänzt werden; die Spalte selbst ist
+// bewusst freier Text (kein DB-CHECK), damit künftige Listen keine
+// Migration brauchen - "ohne Kooperation" ist der Default für alle
+// übrigen Händler.
+const KOOPERATION_OPTIONS=[
+  "ohne Kooperation","BSH Hausgeräte GmbH","ElectronicPartner Austria GmbH",
+  "EURONICS AUSTRIA","Hartlauer Handelsges. m. b. H / Koop","Ingram Micro GmbH",
+  "Zentr. Expertgruppe Österreich","TFK Handels GmbH","Miele FH AT",
+  "Miele Ges.m.b.H.","CPN Cooperation Network GmbH",
+  "ELECTROLUX Hausgeräte GmbH, ELECTROLUX Service Partner",
+  "freie Uhrenhändler","Akustiker ohne Koop","Optiker ohne Kooperation"
+];
+// Füllt das Kooperation-Dropdown im FH-Bearbeiten-Modus - inkl. eines
+// Fallback-Eintrags, falls ein Händler (noch) einen Wert außerhalb der
+// bekannten Liste hat, damit dieser beim Öffnen nicht stillschweigend auf
+// "–" zurückfällt.
+function populateFhKooperationSelect(current){
+  const opts=["<option value=\"\">–</option>"];
+  const known=new Set(KOOPERATION_OPTIONS);
+  if(current&&!known.has(current)) opts.push(`<option value="${escapeHtml(current)}">${escapeHtml(current)}</option>`);
+  KOOPERATION_OPTIONS.forEach(k=>opts.push(`<option value="${escapeHtml(k)}">${escapeHtml(k)}</option>`));
+  $("fhKooperationEdit").innerHTML=opts.join("");
+}
 function urlHref(u){ return /^https?:\/\//i.test(u)?u:"https://"+u; }
 // Hat dieser Händler einen AKQ-Eintrag mit Beginn der Zusammenarbeit
 // innerhalb der letzten 9 Wochen (63 Tage)? Nur dann gilt er als "neu" und
@@ -4431,6 +4464,8 @@ function renderFhContactView(){
   $("fhEmailApView").textContent=c.ansprechpartner_email||"–";
   $("fhHomepageView").innerHTML=c.homepage?`<a href="${escapeHtml(urlHref(c.homepage))}" target="_blank" rel="noopener">${escapeHtml(c.homepage)}</a>`:"–";
   $("fhSegmentView").textContent=c.segmentierung?(FH_SEGMENT_LBL[c.segmentierung]||c.segmentierung):"–";
+  $("fhKooperationView").textContent=c.kooperation||"–";
+  $("fhHauptzweigView").textContent=c.hauptzweig||"–";
   $("fhBesuchView").textContent=c.letzter_besuch?fmtDate(c.letzter_besuch):"–";
   $("fhNwView").textContent=c.neunwochen_erledigt?"✓ erledigt":"– offen";
   $("fhClubView").textContent=c.club_weiss_mitglied?"✓ Mitglied":"– kein Mitglied";
@@ -4625,6 +4660,7 @@ async function buildChefgespraechUnterlagenPdfDoc(fhNr){
     </div>
     <div class="pdf-block" style="display:flex;justify-content:space-around;border:1px solid #E4EDF3;border-radius:8px;padding:14px 10px;margin-bottom:18px;background:#F5F9FC">
       ${kennzahl("Segmentierung",c.segmentierung?(FH_SEGMENT_LBL[c.segmentierung]||c.segmentierung):"–")}
+      ${kennzahl("Kooperation",c.kooperation||"–")}
       ${kennzahl("PO-Quote (LJ)",f.poQuote!=null?(f.poQuote*100).toFixed(1).replace(".",",")+" %":"–")}
       ${kennzahl("3-für-2-Quote (LJ)",f.q3fuer2!=null?(f.q3fuer2*100).toFixed(1).replace(".",",")+" %":"–")}
       ${kennzahl("Akquisepunkte",c.akq_punkte!=null?fmt(Math.round(c.akq_punkte)):"–")}
@@ -5031,6 +5067,9 @@ function toggleFhEdit(on){
     $("fhEmailApEdit").value=c.ansprechpartner_email||"";
     $("fhHomepageEdit").value=c.homepage||"";
     $("fhSegmentEdit").value=c.segmentierung||"";
+    populateFhKooperationSelect(c.kooperation);
+    $("fhKooperationEdit").value=c.kooperation||"";
+    $("fhHauptzweigEdit").value=c.hauptzweig||"";
     $("fhBesuchEdit").value=c.letzter_besuch||"";
     $("fhNwEdit").checked=!!c.neunwochen_erledigt;
     $("fhClubEdit").checked=!!c.club_weiss_mitglied;
@@ -5049,18 +5088,20 @@ async function saveFhContact(){
   const homepage=$("fhHomepageEdit").value.trim()||null;
   const segSel=$("fhSegmentEdit").value;
   const segmentierung=segSel===""?null:segSel;
+  const kooperation=$("fhKooperationEdit").value.trim()||null;
+  const hauptzweig=$("fhHauptzweigEdit").value||null;
   const letzter_besuch=$("fhBesuchEdit").value||null;
   const neunwochen_erledigt=$("fhNwEdit").checked;
   const club_weiss_mitglied=$("fhClubEdit").checked;
   const sonstige_infos=$("fhInfosEdit").value.trim()||null;
   $("fhSaveBtn").disabled=true;
   const {error}=await sb.from("fh_contacts").upsert({
-    fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,sonstige_infos,
+    fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,sonstige_infos,
     updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()
   },{onConflict:"fh_nr"});
   $("fhSaveBtn").disabled=false;
   if(error){ $("fhSaveHint").textContent="Fehler: "+error.message; return; }
-  fhContactCurrent={...fhContactCurrent,fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,sonstige_infos};
+  fhContactCurrent={...fhContactCurrent,fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,sonstige_infos};
   if(neunwochen_erledigt) fhErledigtSet.add(fhNr); else fhErledigtSet.delete(fhNr);
   renderFhContactView();
   renderFhStammdatenDiff();
@@ -5135,6 +5176,8 @@ async function exportFhPdf(includeAkp){
         ${field("E-Mail Ansprechpartner",escapeHtml(c.ansprechpartner_email||"–"))}
         ${field("Homepage",escapeHtml(c.homepage||"–"))}
         ${field("Händlersegmentierung",c.segmentierung?escapeHtml(FH_SEGMENT_LBL[c.segmentierung]||c.segmentierung):"–")}
+        ${field("Kooperation",escapeHtml(c.kooperation||"–"))}
+        ${field("Hauptzweig",escapeHtml(c.hauptzweig||"–"))}
         ${field("Letzter Besuch",c.letzter_besuch?fmtDate(c.letzter_besuch):"–")}
       </div>
       ${c.sonstige_infos?`<div class="pdf-block" style="margin-bottom:18px"><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#5D7284;margin-bottom:4px">Sonstige Infos</div><div style="font-size:12.5px;color:#10202C;white-space:pre-wrap;line-height:1.5">${escapeHtml(c.sonstige_infos)}</div></div>`:""}
