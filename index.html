@@ -78,6 +78,30 @@ select#mitarbeiter{
 .btn-blue{background:var(--wg-blue);color:#fff}
 .btn-ghost{background:#EAF3F9;color:var(--wg-navy)}
 .btn svg{flex:none}
+/* Chefgespräch: Vergleichsmodus-Auswahl - eigene Kachel-Optik statt
+   generischer .btn-ghost-Buttons, mehrfach auswählbar (Checkbox-artiger
+   Haken oben rechts statt sofortigem Auslösen beim Klick). */
+.cg-mode-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.cg-mode-btn{
+  position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:8px;
+  text-align:left;font:inherit;cursor:pointer;
+  background:var(--paper);border:2px solid var(--line);border-radius:14px;
+  padding:16px 40px 16px 16px;transition:border-color .15s,background .15s,transform .05s;
+}
+.cg-mode-btn:hover{border-color:var(--wg-blue)}
+.cg-mode-btn:active{transform:translateY(1px)}
+.cg-mode-btn .cg-mode-icon{font-size:22px;line-height:1}
+.cg-mode-btn .cg-mode-txt{display:flex;flex-direction:column;gap:2px}
+.cg-mode-btn .cg-mode-txt b{font-size:14px;color:var(--wg-navy)}
+.cg-mode-btn .cg-mode-txt small{font-size:11.5px;font-weight:600;color:var(--muted)}
+.cg-mode-btn .cg-mode-check{
+  position:absolute;top:12px;right:12px;width:20px;height:20px;border-radius:50%;
+  border:2px solid var(--line);background:var(--paper);color:transparent;
+  display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;
+  transition:all .15s;
+}
+.cg-mode-btn.selected{border-color:var(--wg-blue);background:#EAF3F9;box-shadow:0 0 0 1px var(--wg-blue) inset}
+.cg-mode-btn.selected .cg-mode-check{background:var(--wg-blue);border-color:var(--wg-blue);color:#fff}
 .datenstand{font-size:12px;color:var(--muted);width:100%;text-align:right;margin-top:-4px}
 .datenstand b{color:var(--wg-navy)}
 
@@ -759,6 +783,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div id="fhClubViewRow" class="hidden"><span class="ac-lbl">Club.Weiss Mitglied</span><div class="ac-val" id="fhClubView">–</div></div>
         <div id="fhClubNrViewRow" class="hidden"><span class="ac-lbl">Club.Weiss Mitgliedsnummer</span><div class="ac-val" id="fhClubNrView">–</div></div>
         <div id="fhWeitereZuordnungViewRow" class="hidden"><span class="ac-lbl">Weitere Zuordnung</span><div class="ac-val" id="fhWeitereZuordnungView">–</div></div>
+        <div id="fhZielViewRow" class="hidden"><span class="ac-lbl">Ziel | Hochrechnung</span><div class="ac-val" id="fhZielView">–</div></div>
       </div>
       <div style="margin-top:14px"><span class="ac-lbl">Sonstige Infos</span><div class="ac-val" id="fhInfosView" style="font-weight:600;white-space:pre-wrap">–</div></div>
       <button class="btn btn-blue" id="fhEditBtn" style="margin-top:14px">✎ Stammdaten bearbeiten</button>
@@ -806,6 +831,13 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
             <label class="ac-lbl" for="fhWeitereZuordnungNeu">oder neuer Wert (wird für alle als Auswahl übernommen)</label>
             <input id="fhWeitereZuordnungNeu" autocomplete="off" placeholder="z.B. A1 Shop">
           </div>
+        </div>
+      </div>
+      <div id="fhZielEditBlock" class="hidden" style="margin-top:14px">
+        <label class="nw-check" for="fhZielChk"><input type="checkbox" id="fhZielChk"> Ziel aktivieren</label>
+        <div id="fhZielFields" class="hidden" style="margin-top:8px;max-width:200px">
+          <label class="ac-lbl" for="fhZielEdit">Ziel (Jahr, Stk.)</label>
+          <input id="fhZielEdit" type="number" step="1" autocomplete="off" placeholder="z.B. 1200">
         </div>
       </div>
       <div style="margin-top:14px">
@@ -1150,6 +1182,14 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <input type="checkbox" id="auswertungEnabledChk" style="width:17px;height:17px;flex-shrink:0">
         Auswertungen
       </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+        <input type="checkbox" id="fhZielEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+        Ziele (FH-Stammdaten)
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+        <input type="checkbox" id="perfDialogAdminEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+        Performance Dialog
+      </label>
     </div>
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
@@ -1241,13 +1281,14 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     </div>
     <div id="chefgespraechModeStep" class="hidden">
       <button class="btn btn-ghost" id="chefgespraechModeBack" style="padding:6px 12px;margin-bottom:14px">← Zurück</button>
-      <div class="hint" style="margin:0 0 14px">Womit soll die KI vergleichen?</div>
-      <div style="display:flex;gap:12px;flex-wrap:wrap">
-        <button class="btn btn-ghost cg-mode-btn" data-mode="region" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>📍 Region</span><small style="font-weight:600;opacity:.75">gleiche PLZ-Region</small></span></button>
-        <button class="btn btn-ghost cg-mode-btn" data-mode="kooperation" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>🤝 Kooperation</span><small style="font-weight:600;opacity:.75">gleiche Einkaufskooperation</small></span></button>
-        <button class="btn btn-ghost cg-mode-btn" data-mode="hauptzweig" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>🏷️ Hauptzweig</span><small style="font-weight:600;opacity:.75">gleiche Branche</small></span></button>
-        <button class="btn btn-ghost cg-mode-btn" data-mode="weitere_zuordnung" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>➕ Weitere Zuordnung</span><small style="font-weight:600;opacity:.75">gleicher Zusatzwert</small></span></button>
+      <div class="hint" style="margin:0 0 14px">Womit soll die KI vergleichen? Es können mehrere Vergleichsgruppen gleichzeitig gewählt werden.</div>
+      <div class="cg-mode-grid">
+        <button class="cg-mode-btn" data-mode="region"><span class="cg-mode-check">✓</span><span class="cg-mode-icon">📍</span><span class="cg-mode-txt"><b>Region</b><small>gleiche PLZ-Region</small></span></button>
+        <button class="cg-mode-btn" data-mode="kooperation"><span class="cg-mode-check">✓</span><span class="cg-mode-icon">🤝</span><span class="cg-mode-txt"><b>Kooperation</b><small>gleiche Einkaufskooperation</small></span></button>
+        <button class="cg-mode-btn" data-mode="hauptzweig"><span class="cg-mode-check">✓</span><span class="cg-mode-icon">🏷️</span><span class="cg-mode-txt"><b>Hauptzweig</b><small>gleiche Branche</small></span></button>
+        <button class="cg-mode-btn" data-mode="weitere_zuordnung"><span class="cg-mode-check">✓</span><span class="cg-mode-icon">➕</span><span class="cg-mode-txt"><b>Weitere Zuordnung</b><small>gleicher Zusatzwert</small></span></button>
       </div>
+      <button class="btn btn-blue hidden" id="chefgespraechModeGoBtn" style="margin-top:16px;width:100%;padding:12px">Vergleich erstellen →</button>
     </div>
   </div>
 </div>
@@ -1411,6 +1452,13 @@ let myName = null;
 // "performance_dialog_enabled", per Schalter im Performance Dialog – ADMIN
 // PopUp gesetzt). Standardmäßig aus, bis Wert aus der DB geladen wurde.
 let perfDialogEnabled = false;
+// Globaler Ein/Aus-Schalter für den "Performance Dialog – ADMIN"-Header-
+// Button (dashboard_kv-Key "performance_dialog_admin_enabled", per Schalter
+// im normalen ADMIN-Panel gesetzt) - getrennt von perfDialogEnabled oben, das
+// weiterhin steuert, ob MITARBEITER den Performance Dialog angefragt
+// bekommen. Erst wenn dieser Schalter an ist, sieht der Admin den "Performance
+// Dialog – ADMIN"-Button überhaupt und kann darin perfDialogEnabled setzen.
+let perfDialogAdminEnabled = false;
 // Globaler Ein/Aus-Schalter für den "Chefgespräch"-Button (dashboard_kv-Key
 // "chefgespraech_enabled", per Schalter im normalen ADMIN-Panel gesetzt).
 // Standardmäßig aus, bis Wert aus der DB geladen wurde.
@@ -1424,6 +1472,12 @@ let kooperationsgespraechEnabled = false;
 // (dashboard_kv-Key "auswertung_enabled", per Schalter im normalen
 // ADMIN-Panel gesetzt). Standardmäßig aus, bis Wert aus der DB geladen wurde.
 let auswertungEnabled = false;
+// Globaler Ein/Aus-Schalter für das "Ziele"-Feld im FH-Popup (dashboard_kv-
+// Key "fh_ziel_enabled", per Schalter im normalen ADMIN-Panel gesetzt) -
+// anders als die übrigen Schalter blendet dieser kein Header-Button ein/aus,
+// sondern nur die Ziel-Zeile/-Bearbeitung in den FH-Stammdaten. Standardmäßig
+// aus, bis Wert aus der DB geladen wurde.
+let fhZielEnabled = false;
 // Zeitpunkt der letzten Miete-Report-Einspielung (dashboard_kv-Key
 // "miete_last_import", von upsertMieteData() bei jedem Import gesetzt -
 // deckt sowohl den Admin-Panel-Upload als auch den automatischen
@@ -1478,7 +1532,9 @@ function showRoleBadge(){
   // Der Mitarbeiter-Button erscheint zudem nur, wenn der Admin das Feature im
   // Performance Dialog – ADMIN PopUp per Schalter aktiviert hat.
   $("perfDialogBtn").classList.toggle("hidden", !perfDialogEnabled||(myRole!=="admin"&&myRole!=="aussendienst"));
-  $("perfDialogAdminBtn").classList.toggle("hidden", myRole!=="admin");
+  // Performance Dialog – ADMIN-Button: zusätzlich zur Admin-Rolle nur, wenn im
+  // normalen ADMIN-Panel per Schalter freigeschaltet (Nutzervorgabe 24.08.2026).
+  $("perfDialogAdminBtn").classList.toggle("hidden", !perfDialogAdminEnabled||myRole!=="admin");
   // Chefgespräch: gleiche Sichtbarkeitsregel wie Performance Dialog (Außendienst
   // & Admin), nur wenn im normalen ADMIN-Panel per Schalter aktiviert.
   $("chefgespraechBtn").classList.toggle("hidden", !chefgespraechEnabled||(myRole!=="admin"&&myRole!=="aussendienst"));
@@ -1794,6 +1850,19 @@ function openAdminModal(){
   $("chefgespraechEnabledChk").checked=chefgespraechEnabled;
   $("kooperationsgespraechEnabledChk").checked=kooperationsgespraechEnabled;
   $("auswertungEnabledChk").checked=auswertungEnabled;
+  $("fhZielEnabledChk").checked=fhZielEnabled;
+  $("perfDialogAdminEnabledChk").checked=perfDialogAdminEnabled;
+}
+async function togglePerfDialogAdminEnabled(){
+  const on=$("perfDialogAdminEnabledChk").checked;
+  perfDialogAdminEnabled=on;
+  showRoleBadge();
+  try{
+    await stSet("performance_dialog_admin_enabled",on?"1":"0");
+    toast(on?"Performance Dialog – ADMIN-Button aktiviert ✓":"Performance Dialog – ADMIN-Button deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
 }
 async function toggleChefgespraechEnabled(){
   const on=$("chefgespraechEnabledChk").checked;
@@ -1824,6 +1893,16 @@ async function toggleAuswertungEnabled(){
   try{
     await stSet("auswertung_enabled",on?"1":"0");
     toast(on?"\"Auswertung erfassen\"-Button aktiviert ✓":"\"Auswertung erfassen\"-Button deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
+async function toggleFhZielEnabled(){
+  const on=$("fhZielEnabledChk").checked;
+  fhZielEnabled=on;
+  try{
+    await stSet("fh_ziel_enabled",on?"1":"0");
+    toast(on?"Ziele-Feld aktiviert ✓":"Ziele-Feld deaktiviert");
   }catch(e){
     toast("Speichern fehlgeschlagen: "+(e.message||e));
   }
@@ -1900,22 +1979,60 @@ async function doSaveSettings(){
 
 /* ---------- Benachrichtigungen: AKP ohne Produktion / FH Rückgang ggü. Vorjahr ---------- */
 let fhContactsBulkIndex=null;
-async function loadFhContactsBulkIndex(){
-  if(!(sb&&supaUser)) return;
-  try{
-    const idx={}; let from=0, guard=0;
-    for(;;){
-      guard++;
-      const {data,error}=await sb.from("fh_contacts").select("fh_nr,prod_monthly").range(from,from+999);
-      if(error){ console.error("loadFhContactsBulkIndex:",error.message||error); break; }
-      if(!data||!data.length) break;
-      for(const r of data) if(r.fh_nr) idx[r.fh_nr]=r.prod_monthly||{};
-      from+=data.length;
-      if(guard>50) break;
-    }
-    fhContactsBulkIndex=idx;
-  }catch(e){ console.error("loadFhContactsBulkIndex failed:",e); }
+// Konsolidierter Einzel-Durchlauf über fh_contacts: liest in EINEM Satz
+// paginierter Anfragen alle Spalten, die die vier separaten In-Memory-
+// Indizes brauchen (Bulk-Produktion, Miete/Club Weiss, 9-Wochen-erledigt,
+// Akquisestaffeln) - statt vier komplett getrennte Full-Table-Scans derselben
+// ~2900-Zeilen-Tabelle bei jedem Aktualisieren (Nutzervorgabe 24.08.2026:
+// "Mietzahlen dauern noch immer ewig beim Datenabgleich"). loadFhMieteIndex/
+// loadFhErledigtSet/loadFhAkqIndex/loadFhContactsBulkIndex bleiben als dünne
+// Wrapper bestehen, damit bestehende Aufrufstellen (z.B. nach einem
+// Einzel-Upload) unverändert funktionieren.
+// Reine Aggregationslogik (kein I/O) - baut aus einer Liste fh_contacts-Zeilen
+// alle vier Indizes gleichzeitig. Eigene Funktion, damit sie unabhängig von
+// sb/Netzwerk direkt testbar ist.
+function buildFhContactsIndices(rows){
+  const bulkIdx={}, mieteIdx={}, erledigt=new Set(), akqIdx={};
+  for(const r of rows){
+    if(!r.fh_nr) continue;
+    bulkIdx[r.fh_nr]=r.prod_monthly||{};
+    if(r.miete_monthly&&Object.keys(r.miete_monthly).length) mieteIdx[r.fh_nr]={monthly:r.miete_monthly};
+    if(r.neunwochen_erledigt) erledigt.add(r.fh_nr);
+    if(r.akq_punkte!=null||(r.akq_staffeln&&r.akq_staffeln.length)) akqIdx[r.fh_nr]={punkte:r.akq_punkte,staffeln:r.akq_staffeln||[],gl:r.akq_gl||null,name:r.akq_name||null};
+  }
+  return {bulkIdx,mieteIdx,erledigt,akqIdx};
 }
+let fhContactsIndicesLoading=null;
+async function loadFhContactsIndicesAll(){
+  if(!(sb&&supaUser)) return;
+  if(fhContactsIndicesLoading){ await fhContactsIndicesLoading; return; }
+  fhContactsIndicesLoading=(async()=>{
+    try{
+      const allRows=[];
+      let from=0, guard=0;
+      for(;;){
+        guard++;
+        const {data,error}=await sb.from("fh_contacts")
+          .select("fh_nr,prod_monthly,miete_monthly,neunwochen_erledigt,akq_punkte,akq_staffeln,akq_gl,akq_name")
+          .range(from,from+999);
+        if(error){ console.error("loadFhContactsIndicesAll:",error.message||error); break; }
+        if(!data||!data.length) break;
+        allRows.push(...data);
+        from+=data.length;
+        if(guard>50) break;
+      }
+      const {bulkIdx,mieteIdx,erledigt,akqIdx}=buildFhContactsIndices(allRows);
+      fhContactsBulkIndex=bulkIdx;
+      fhMieteIndex=mieteIdx;
+      fhErledigtSet=erledigt;
+      fhAkqIndex=akqIdx;
+      if(hasData()) render();
+    }catch(e){ console.error("loadFhContactsIndicesAll failed:",e); }
+    finally{ fhContactsIndicesLoading=null; }
+  })();
+  await fhContactsIndicesLoading;
+}
+async function loadFhContactsBulkIndex(){ await loadFhContactsIndicesAll(); }
 function lastMonthKeyOf(pm){
   let last=null;
   for(const [k,v] of Object.entries(pm)) if(v>0&&(!last||k>last)) last=k;
@@ -2874,75 +2991,21 @@ async function loadAkpContactsIndex(){
   }catch(e){ console.error("loadAkpContactsIndex failed:",e); }
 }
 // FH-Nrn, deren "9-Wochen-Plan" bereits (manuell oder automatisch) als
-// erledigt markiert wurde - nur das true-Set laden (klein & schnell), statt
-// alle Fachhändler-Stammdaten wie bei akpContactsIndex.
+// erledigt markiert wurde. Wird zusammen mit fhAkqIndex/fhMieteIndex/
+// fhContactsBulkIndex in EINEM konsolidierten Durchlauf geladen (siehe
+// loadFhContactsIndicesAll oben) statt in einem eigenen Full-Table-Scan.
 let fhErledigtSet=new Set();
-async function loadFhErledigtSet(){
-  if(!(sb&&supaUser)) return;
-  try{
-    const set=new Set(); let from=0, guard=0;
-    for(;;){
-      guard++;
-      const {data,error}=await sb.from("fh_contacts")
-        .select("fh_nr")
-        .eq("neunwochen_erledigt",true)
-        .range(from,from+999);
-      if(error){ console.error("loadFhErledigtSet:",error.message||error); break; }
-      if(!data||!data.length) break;
-      for(const r of data) if(r.fh_nr) set.add(r.fh_nr);
-      from+=data.length;
-      if(guard>50) break;
-    }
-    fhErledigtSet=set;
-    if(hasData()) render();
-  }catch(e){ console.error("loadFhErledigtSet failed:",e); }
-}
+async function loadFhErledigtSet(){ await loadFhContactsIndicesAll(); }
 // Akquisestaffeln je Fachhändler (Punkte + 7 Erreichungsdaten, siehe
 // parseAkquiseStaffeln) - komplett geladen (klein genug), damit Dashboard-
 // Kachel und FH-PopUp ohne Einzelabfrage je Händler rendern können.
 let fhAkqIndex={};
-async function loadFhAkqIndex(){
-  if(!(sb&&supaUser)) return;
-  try{
-    const idx={}; let from=0, guard=0;
-    for(;;){
-      guard++;
-      const {data,error}=await sb.from("fh_contacts")
-        .select("fh_nr,akq_punkte,akq_staffeln,akq_gl,akq_name")
-        .range(from,from+999);
-      if(error){ console.error("loadFhAkqIndex:",error.message||error); break; }
-      if(!data||!data.length) break;
-      for(const r of data) if(r.fh_nr&&(r.akq_punkte!=null||(r.akq_staffeln&&r.akq_staffeln.length))) idx[r.fh_nr]={punkte:r.akq_punkte,staffeln:r.akq_staffeln||[],gl:r.akq_gl||null,name:r.akq_name||null};
-      from+=data.length;
-      if(guard>50) break;
-    }
-    fhAkqIndex=idx;
-    if(hasData()) render();
-  }catch(e){ console.error("loadFhAkqIndex failed:",e); }
-}
+async function loadFhAkqIndex(){ await loadFhContactsIndicesAll(); }
 // Miete-Produktion je Fachhändler (Club.Weiss, siehe parseMieteReport) -
 // komplett geladen (analog fhAkqIndex), damit die Miete-Kachel bei "Ziele &
 // Hochrechnung" ohne Einzelabfrage je Händler über alle FH aggregieren kann.
 let fhMieteIndex={};
-async function loadFhMieteIndex(){
-  if(!(sb&&supaUser)) return;
-  try{
-    const idx={}; let from=0, guard=0;
-    for(;;){
-      guard++;
-      const {data,error}=await sb.from("fh_contacts")
-        .select("fh_nr,miete_monthly,club_weiss_mitglied")
-        .range(from,from+999);
-      if(error){ console.error("loadFhMieteIndex:",error.message||error); break; }
-      if(!data||!data.length) break;
-      for(const r of data) if(r.fh_nr&&r.miete_monthly&&Object.keys(r.miete_monthly).length) idx[r.fh_nr]={monthly:r.miete_monthly};
-      from+=data.length;
-      if(guard>50) break;
-    }
-    fhMieteIndex=idx;
-    if(hasData()) render();
-  }catch(e){ console.error("loadFhMieteIndex failed:",e); }
-}
+async function loadFhMieteIndex(){ await loadFhContactsIndicesAll(); }
 // Miete-Jahresproduktion (laufendes Jahr) für "emp" (Mitarbeitername oder
 // AT_GESAMT) - summiert alle Monate des aktuellen Jahres über alle FH, die
 // (bei Mitarbeiter-Filter) diesem Betreuer zugeordnet sind. Nutzt dieselbe
@@ -3821,9 +3884,11 @@ async function loadAll(){
   try{ const d=await stGet("wg-state"); if(d){ const p=JSON.parse(d); if(p&&p.latest) state=p; } }catch(e){}
   try{ const g=await stGet("wg-goals"); if(g) goals=JSON.parse(g); }catch(e){}
   try{ perfDialogEnabled=(await stGet("performance_dialog_enabled"))==="1"; }catch(e){}
+  try{ perfDialogAdminEnabled=(await stGet("performance_dialog_admin_enabled"))==="1"; }catch(e){}
   try{ chefgespraechEnabled=(await stGet("chefgespraech_enabled"))==="1"; }catch(e){}
   try{ kooperationsgespraechEnabled=(await stGet("kooperationsgespraech_enabled"))==="1"; }catch(e){}
   try{ auswertungEnabled=(await stGet("auswertung_enabled"))==="1"; }catch(e){}
+  try{ fhZielEnabled=(await stGet("fh_ziel_enabled"))==="1"; }catch(e){}
   try{ mieteLastImport=await stGet("miete_last_import"); }catch(e){}
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
@@ -3959,6 +4024,37 @@ function yearFrac(){
   const done=workdaysBetween(new Date(Date.UTC(y,0,1)),v);
   const total=workdaysBetween(new Date(Date.UTC(y,0,1)),new Date(Date.UTC(y,11,31)));
   return {done,total,f:done/total};
+}
+// FH-Ziel-Hochrechnung: gleiche Saisonalitäts-Gewichtung (seasonShare/Q4_ANTEIL)
+// wie die übrigen Jahres-Hochrechnungen im Dashboard - Nutzervorgabe "Gleiche
+// Gewichtung wie unsere Zahlen".
+// contact-Parameter explizit übergeben, damit dies auch für andere FH als das
+// gerade im FH-Popup geöffnete (fhContactCurrent) korrekt funktioniert - z.B.
+// für mehrere Filialen gleichzeitig im Chefgespräch-PDF.
+function fhZielHochrechnungFor(fhNr,c){
+  const f=state.latest&&state.latest.fh&&state.latest.fh[fhNr];
+  if(!c||!f||!(c.ziel>0)) return null;
+  const share=seasonShare(state.latest.vortag,state.latest.jahr);
+  if(!(share>0)) return null;
+  const hrJahr=(f.lj||0)/share;
+  return {ziel:c.ziel,hrJahr,diff:hrJahr-c.ziel};
+}
+function fhZielHochrechnung(fhNr){
+  return fhZielHochrechnungFor(fhNr,fhContactCurrent);
+}
+// Gemeinsames Rendering der Ziel-Hochrechnung (Nutzervorgabe 24.08.2026,
+// überarbeitet): fett in Schwarz das Ziel, daneben fett in Grün/Rot die
+// erwartete Gesamtzahl zum Jahresende (Hochrechnung), daneben unverändert
+// klein/dünn (aber ebenfalls Grün/Rot) die +/- Zahl und die Prozent-
+// Abweichung vom Ziel. posColor/negColor als Parameter, da die FH-Popup-
+// Ansicht CSS-Variablen nutzt, PDF-Dokumente aber feste Hex-Farben brauchen.
+// Wird an allen Stellen verwendet, die das Ziel anzeigen (FH-Popup UND beide
+// Chefgespräch-Protokolle) - Zeilen-Label dort jeweils "Ziel | Hochrechnung".
+function fhZielHochrechnungHtml(hr,posColor,negColor){
+  if(!hr) return null;
+  const col=hr.diff>=0?posColor:negColor;
+  const pct=hr.ziel>0?(hr.diff/hr.ziel*100):null;
+  return `<b style="font-weight:900">${fmt(Math.round(hr.ziel))}</b> <b style="font-weight:900">|</b> <b style="color:${col};font-weight:900">${fmt(Math.round(hr.hrJahr))}</b> <span style="color:${col};font-weight:600;font-size:.78em">${fmtSign(Math.round(hr.diff))} Stk. · ${fmtPct(pct)}</span>`;
 }
 function goalCard(name,target,ist,soll,extra,editable,hr,lbls,note){
   lbls=lbls||{}; lbls.ahead=lbls.ahead||"▲ vor Soll"; lbls.behind=lbls.behind||"▼ hinter Soll"; lbls.target=lbls.target||"Ziel";
@@ -4696,6 +4792,15 @@ function renderFhContactView(){
   $("fhClubNrView").textContent=c.club_weiss_mitgliedsnummer||"–";
   $("fhWeitereZuordnungViewRow").classList.toggle("hidden",!c.weitere_zuordnung);
   $("fhWeitereZuordnungView").textContent=c.weitere_zuordnung||"–";
+  // Ziel-Zeile: nur wenn im Admin-Panel freigeschaltet UND für diesen FH ein
+  // Wert gesetzt ist (Nutzervorgabe: "nur wenn es im ADMIN tool freigegeben
+  // ist... und angezeigt werden wenn es gefüllt worden ist").
+  const showZiel=fhZielEnabled&&c.ziel>0;
+  $("fhZielViewRow").classList.toggle("hidden",!showZiel);
+  if(showZiel){
+    const hr=fhZielHochrechnung(fhModalCurrent);
+    $("fhZielView").innerHTML=fhZielHochrechnungHtml(hr,"var(--pos)","var(--neg)")||(fmt(c.ziel)+" Stk.");
+  }
   $("fhInfosView").textContent=c.sonstige_infos||"–";
   // PO-/3-für-2-Quote kommen aus der heutigen Einspielung (FH_Liste), nicht
   // aus den Stammdaten - deshalb unten bei der Produktion, nicht editierbar.
@@ -4705,6 +4810,11 @@ function renderFhContactView(){
 }
 /* ---------- Chefgespräch: FH-Suche (ggf. mehrere Filialen) + Auswahl Chefgesprächsunterlagen/KI-Unterstützt ---------- */
 let chefgespraechFhNrs=[];
+// Ausgewählte Vergleichsmodi im "Chefgespräch-KI-Unterstützt"-Schritt -
+// mehrfach wählbar (Nutzervorgabe: "mehrere Vergleichsoptionen wählbar
+// machen").
+let chefgespraechSelectedModes=[];
+const CG_MODE_LABELS={region:"Region",kooperation:"Kooperation",hauptzweig:"Hauptzweig",weitere_zuordnung:"Weitere Zuordnung"};
 function openChefgespraechModal(){
   if(!chefgespraechEnabled){ toast("Chefgespräch ist aktuell nicht aktiviert."); return; }
   chefgespraechFhNrs=[];
@@ -4925,17 +5035,54 @@ function chefgespraechPdfFilename(prefix,fhNrs){
 // - Fußnote weist darauf hin, dass diese Bereiche später ergänzt werden.
 // Unterstützt mehrere Filialen (chefgespraechFhNrs) - je Filiale ein eigener
 // Abschnitt innerhalb desselben PDFs.
-async function chefgespraechUnterlagenSectionHtml(fhNr,idx,total){
-  const f=state.latest.fh[fhNr]||{};
+// Lädt die fh_contacts-Stammdaten für genau diesen fhNr - bevorzugt aus dem
+// gerade im FH-Popup geöffneten fhContactCurrent (kein Netzwerkaufruf nötig),
+// sonst per DB-Abfrage. Zentral genutzt von allen Chefgespräch-PDF-Bausteinen
+// (Unterlagen, KI-Unterstützt, Übersicht), damit die Stammdaten je Filiale
+// korrekt getrennt bleiben.
+async function chefgespraechFhContactFor(fhNr){
   let c=fhContactCurrent&&fhContactCurrent.fh_nr===fhNr?fhContactCurrent:null;
   if(!c){
     try{ const {data}=await sb.from("fh_contacts").select("*").eq("fh_nr",fhNr).maybeSingle(); c=data||{}; }catch(e){ c={}; }
   }
+  return c;
+}
+// Händlerdaten-Karte (Adresse, Gebietsleiter, Telefon, Ansprechpartner,
+// E-Mail, Club.Weiss, Ziel) - Nutzervorgabe 24.08.2026: soll in beiden
+// Chefgespräch-PDFs (Unterlagen & KI-Unterstützt) angeführt und optisch
+// vernünftig eingebaut werden. Ziel nur wenn im Admin-Panel freigeschaltet
+// und für diesen FH gesetzt (gleiche Regel wie im FH-Popup).
+function chefgespraechStammdatenCardHtml(fhNr,f,c){
+  const addr=[c.strasse,[c.plz,c.ort||f.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ")||"–";
+  const gebietsleiter=f.emp||f.gl||null;
+  const stamRow=(lbl,val)=>`<div style="min-width:170px"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284;margin-bottom:2px">${lbl}</div><div style="font-size:12px;font-weight:700;color:#10202C">${val}</div></div>`;
+  let zielRow="";
+  if(fhZielEnabled&&c.ziel>0){
+    const hr=fhZielHochrechnungFor(fhNr,c);
+    const zielVal=fhZielHochrechnungHtml(hr,"#12A150","#E0234E")||(fmt(c.ziel)+" Stk.");
+    zielRow=stamRow("Ziel | Hochrechnung",zielVal);
+  }
+  return `<div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:18px;background:#F5F9FC">
+    <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:10px">Händlerdaten</div>
+    <div style="display:flex;flex-wrap:wrap;gap:14px 26px">
+      ${stamRow("Adresse",escapeHtml(addr))}
+      ${stamRow("Gebietsleiter",gebietsleiter?escapeHtml(gebietsleiter):"–")}
+      ${stamRow("Telefon",c.telefon?escapeHtml(c.telefon):"–")}
+      ${stamRow("Ansprechpartner",c.ansprechpartner?escapeHtml(c.ansprechpartner):"–")}
+      ${stamRow("E-Mail",c.email?escapeHtml(c.email):"–")}
+      ${stamRow("Club Weiss",c.club_weiss_mitglied?"✓ Mitglied"+(c.club_weiss_mitgliedsnummer?" · Nr. "+escapeHtml(c.club_weiss_mitgliedsnummer):""):"Kein Mitglied")}
+      ${zielRow}
+    </div>
+  </div>`;
+}
+async function chefgespraechUnterlagenSectionHtml(fhNr,idx,total,showBranding){
+  if(showBranding==null) showBranding=true;
+  const f=state.latest.fh[fhNr]||{};
+  const c=await chefgespraechFhContactFor(fhNr);
   const nowStr=fmtNowDateTime();
   const fName=f.name||fhNr;
-  const addr=[c.strasse,[c.plz,c.ort||f.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ")||"–";
 
-  const merged=fhMonthlyMerged(fhNr);
+  const merged=fhMonthlyMerged(fhNr,c);
   const beitragsfrei=c.beitragsfrei_yearly||{};
   const byYear={};
   for(const [k,v] of Object.entries(merged)){
@@ -4993,17 +5140,17 @@ async function chefgespraechUnterlagenSectionHtml(fhNr,idx,total){
     <div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:18px">
       <div>
         <div style="font-size:21px;font-weight:900;color:#062A3F">${escapeHtml(fName)}</div>
-        <div style="font-size:12px;color:#5D7284;margin-top:3px">${escapeHtml(addr)} · FH-Nr. ${escapeHtml(fhNr)}${f.emp||f.gl?" · "+escapeHtml(f.emp||f.gl):""}</div>
+        <div style="font-size:12px;color:#5D7284;margin-top:3px">FH-Nr. ${escapeHtml(fhNr)}</div>
       </div>
-      ${idx===0?`<div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Chefgesprächsunterlagen · Erstellt am: ${nowStr}</div>`:""}
+      ${idx===0&&showBranding?`<div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Chefgesprächsunterlagen · Erstellt am: ${nowStr}</div>`:""}
     </div>
+    ${chefgespraechStammdatenCardHtml(fhNr,f,c)}
     <div class="pdf-block" style="display:flex;justify-content:space-around;flex-wrap:wrap;gap:12px;border:1px solid #E4EDF3;border-radius:8px;padding:14px 10px;margin-bottom:18px;background:#F5F9FC">
       ${kennzahlBadge("Segmentierung",c.segmentierung?pdfBadge(FH_SEGMENT_LBL[c.segmentierung]||c.segmentierung,"info"):pdfBadge("–","muted"))}
       ${kennzahlBadge("Kooperation",c.kooperation&&c.kooperation!=="ohne Kooperation"?pdfBadge(c.kooperation,"info"):pdfBadge("ohne Kooperation","muted"))}
       ${kennzahl("PO-Quote (LJ)",f.poQuote!=null?(f.poQuote*100).toFixed(1).replace(".",",")+" %":"–")}
       ${kennzahl("3-für-2-Quote (LJ)",f.q3fuer2!=null?(f.q3fuer2*100).toFixed(1).replace(".",",")+" %":"–")}
       ${kennzahl("Akquisepunkte",c.akq_punkte!=null?fmt(Math.round(c.akq_punkte)):"–")}
-      ${kennzahlBadge("Club Weiss",c.club_weiss_mitglied?pdfBadge("✓ Mitglied"+(c.club_weiss_mitgliedsnummer?" · Nr. "+c.club_weiss_mitgliedsnummer:""),"good"):pdfBadge("Kein Mitglied","muted"))}
     </div>
     ${prodChart?`<div class="pdf-block" style="margin-bottom:18px">
       <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:6px">Produktion nach Jahren</div>
@@ -5027,10 +5174,119 @@ async function chefgespraechUnterlagenSectionHtml(fhNr,idx,total){
     ${idx===total-1?`<div class="pdf-block" style="margin-top:24px;padding-top:10px;border-top:1px solid #E4EDF3;font-size:9.5px;color:#8CA0AF">Weitere Kennzahlen (Bestand, Storno-Quote, Provisionen, VIP-Bonus, Schadenaufwand, monetärer Zufluss) werden ergänzt, sobald diese Daten im Dashboard verfügbar sind.</div>`:""}
   `;
 }
+// Leichte Kennzahlen je Filiale für die Gesamtauswertung/Vergleichsseite bei
+// mehreren Filialen (Hauptgeschäft + Filiale(n)) - eigener, schlanker Abruf
+// statt der vollen chefgespraechUnterlagenSectionHtml (die zusätzlich AKP-
+// Liste, Akquisestaffel usw. lädt, die hier nicht gebraucht werden).
+async function chefgespraechOverviewMetrics(fhNr){
+  const f=state.latest.fh[fhNr]||{};
+  const c=await chefgespraechFhContactFor(fhNr);
+  const merged=fhMonthlyMerged(fhNr,c);
+  const curYear=String(state.latest.jahr);
+  const prodCurYear=Object.entries(merged).filter(([k])=>k.startsWith(curYear)).reduce((s,[,v])=>s+(v||0),0);
+  return {
+    fhNr, name:f.name||fhNr, ort:f.ort||c.ort||null,
+    prodCurYear, poQuote:f.poQuote, q3fuer2:f.q3fuer2,
+    akqPunkte:c.akq_punkte, clubWeiss:!!c.club_weiss_mitglied,
+    merged,
+  };
+}
+// Kombinierte "Produktion nach Jahren" über alle ausgewählten Filialen
+// aufsummiert (letzte 5 Jahre) - für die Gesamtauswertung.
+function chefgespraechAggregateYearlyChart(metricsList){
+  const byYear={};
+  metricsList.forEach(m=>{
+    for(const [k,v] of Object.entries(m.merged||{})){
+      const y=k.slice(0,4);
+      byYear[y]=(byYear[y]||0)+(v||0);
+    }
+  });
+  const years=Object.keys(byYear).sort().slice(-5);
+  if(!years.length) return "";
+  return svgBarChart(years,[{name:"Produktion (gesamt)",color:"#0B5A8A",values:years.map(y=>Math.round(byYear[y]||0))}],{width:950,height:230});
+}
+// Ein Balkenchart pro Kennzahl, je Filiale ein Balken - für den direkten
+// Vergleich zwischen den Filialen (Nutzervorgabe: "Vergleich ... fehlt").
+function chefgespraechCompareChart(title,unit,metricsList,key,color,isPct){
+  const labels=metricsList.map(m=>m.name);
+  const values=metricsList.map(m=>{
+    const v=m[key];
+    if(v==null) return 0;
+    return isPct?Math.round(v*1000)/10:Math.round(v);
+  });
+  if(values.every(v=>v===0)) return "";
+  return `<div style="margin-bottom:18px">
+    <div style="font-size:12px;font-weight:800;color:#062A3F;margin-bottom:4px">${escapeHtml(title)}${unit?` (${unit})`:""}</div>
+    ${svgBarChart(labels,[{name:title,color,values}],{width:950,height:190})}
+  </div>`;
+}
 async function buildChefgespraechUnterlagenPdfDoc(fhNrs){
   if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)) throw new Error("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals versuchen.");
-  const sections=[];
-  for(let i=0;i<fhNrs.length;i++) sections.push(await chefgespraechUnterlagenSectionHtml(fhNrs[i],i,fhNrs.length));
+  const filename=chefgespraechPdfFilename("Chefgespraech",fhNrs);
+  const nowStr=fmtNowDateTime();
+  // Bei mehreren Filialen (Hauptgeschäft + Filiale(n), Nutzervorgabe
+  // 24.08.2026): eigene Übersichtsseite im Querformat mit Gesamtauswertung
+  // (Summe über alle Filialen) und Vergleich (Balken je Filiale), danach ab
+  // Seite 2 wie gehabt ein Abschnitt pro Filiale im Hochformat.
+  if(fhNrs.length>1){
+    const metricsList=[];
+    for(const nr of fhNrs) metricsList.push(await chefgespraechOverviewMetrics(nr));
+    const totalProdCurYear=metricsList.reduce((s,m)=>s+(m.prodCurYear||0),0);
+    const clubCount=metricsList.filter(m=>m.clubWeiss).length;
+    const poVals=metricsList.map(m=>m.poQuote).filter(v=>v!=null);
+    const f2Vals=metricsList.map(m=>m.q3fuer2).filter(v=>v!=null);
+    const avgPo=poVals.length?poVals.reduce((a,b)=>a+b,0)/poVals.length:null;
+    const avgF2=f2Vals.length?f2Vals.reduce((a,b)=>a+b,0)/f2Vals.length:null;
+    const kennzahl=(lbl,val)=>`<div style="text-align:center"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284">${lbl}</div><div style="font-size:18px;font-weight:900;color:#062A3F;margin-top:2px">${val}</div></div>`;
+    const overviewHeaderHtml=`
+      <div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:18px">
+        <div>
+          <div style="font-size:11px;font-weight:800;color:#009FE3;text-transform:uppercase;letter-spacing:.4px">Chefgesprächsunterlagen · Übersicht</div>
+          <div style="font-size:21px;font-weight:900;color:#062A3F;margin-top:2px">${escapeHtml(metricsList.map(m=>m.name).join(" · "))}</div>
+          <div style="font-size:12px;color:#5D7284;margin-top:3px">${metricsList.length} Filialen</div>
+        </div>
+        <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Erstellt am: ${nowStr}</div>
+      </div>`;
+    const summaryStripHtml=`<div class="pdf-block" style="display:flex;justify-content:space-around;flex-wrap:wrap;gap:12px;border:1px solid #E4EDF3;border-radius:8px;padding:14px 10px;margin-bottom:18px;background:#F5F9FC">
+      ${kennzahl("Filialen",fmt(metricsList.length))}
+      ${kennzahl("Produktion "+state.latest.jahr+" gesamt",fmt(totalProdCurYear))}
+      ${kennzahl("Ø PO-Quote (LJ)",avgPo!=null?(avgPo*100).toFixed(1).replace(".",",")+" %":"–")}
+      ${kennzahl("Ø 3-für-2-Quote (LJ)",avgF2!=null?(avgF2*100).toFixed(1).replace(".",",")+" %":"–")}
+      ${kennzahl("Club Weiss Mitglieder",clubCount+" / "+metricsList.length)}
+    </div>`;
+    const overviewBox=document.createElement("div");
+    overviewBox.style.cssText="position:fixed;left:-99999px;top:0;width:1080px;background:#fff;padding:34px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
+    overviewBox.innerHTML=`
+      ${overviewHeaderHtml}
+      <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:6px">Gesamtauswertung (${metricsList.length} Filialen)</div>
+      ${summaryStripHtml}
+      ${chefgespraechAggregateYearlyChart(metricsList)}
+      <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin:22px 0 6px">Vergleich der Filialen</div>
+      ${chefgespraechCompareChart("Produktion "+state.latest.jahr,"Verträge",metricsList,"prodCurYear","#0B5A8A")}
+      ${chefgespraechCompareChart("PO-Quote (LJ)","%",metricsList,"poQuote","#2E9E5B",true)}
+      ${chefgespraechCompareChart("3-für-2-Quote (LJ)","%",metricsList,"q3fuer2","#D9A400",true)}
+      ${chefgespraechCompareChart("Akquisepunkte","Punkte",metricsList,"akqPunkte","#6B4FA0")}
+    `;
+    const sections=[];
+    for(let i=0;i<fhNrs.length;i++) sections.push(await chefgespraechUnterlagenSectionHtml(fhNrs[i],i,fhNrs.length,false));
+    const detailBox=document.createElement("div");
+    detailBox.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
+    detailBox.innerHTML=sections.join("");
+    document.body.appendChild(overviewBox);
+    document.body.appendChild(detailBox);
+    await new Promise(r=>setTimeout(r,30));
+    try{
+      const {jsPDF}=window.jspdf;
+      const pdf=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+      await appendBoxPagesToPdf(pdf,overviewBox,false,"a4","landscape");
+      await appendBoxPagesToPdf(pdf,detailBox,true,"a4","portrait");
+      return {pdf,filename};
+    }finally{
+      if(overviewBox.parentNode) overviewBox.parentNode.removeChild(overviewBox);
+      if(detailBox.parentNode) detailBox.parentNode.removeChild(detailBox);
+    }
+  }
+  const sections=[await chefgespraechUnterlagenSectionHtml(fhNrs[0],0,1)];
   const box=document.createElement("div");
   box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
   box.innerHTML=sections.join("");
@@ -5038,7 +5294,7 @@ async function buildChefgespraechUnterlagenPdfDoc(fhNrs){
   await new Promise(r=>setTimeout(r,30));
   try{
     const pdf=await pdfBoxRenderToPdf(box);
-    return {pdf,filename:chefgespraechPdfFilename("Chefgespraech",fhNrs)};
+    return {pdf,filename};
   }finally{
     if(box.parentNode) box.parentNode.removeChild(box);
   }
@@ -5067,10 +5323,10 @@ async function callChefgespraechAiComparison(fhNr,mode){
 // Zusammenfassung + anonymer Vergleich je gewähltem Modus: Region/Kooperation/
 // Hauptzweig/Weitere Zuordnung) und baut daraus ein eigenes PDF mit Vergleichs-
 // Charts (Händler vs. Median/Top-Quartil der Vergleichsgruppe). Unterstützt
-// mehrere Filialen - je Filiale ein eigener Abschnitt innerhalb desselben PDFs.
-function chefgespraechKiSectionHtml(fhNr,data,idx,total){
-  const f=state.latest.fh[fhNr]||{};
-  const fName=f.name||fhNr;
+// mehrere Filialen (je Filiale ein eigener Abschnitt) UND mehrere gleichzeitig
+// gewählte Vergleichsmodi (je Modus ein eigener, beschrifteter Unterblock
+// innerhalb des Filialen-Abschnitts).
+function chefgespraechKiModeBlockHtml(mode,data,showModeHeader){
   const m=data.metrics||{}, target=m.target||{}, peers=m.peers||{};
   const rep=data.report||{};
 
@@ -5106,7 +5362,37 @@ function chefgespraechKiSectionHtml(fhNr,data,idx,total){
   const comparisons=(rep.comparisons||[]).map(c=>`<div class="pdf-block" style="margin-bottom:10px"><b style="color:#062A3F">${escapeHtml(c.metric)}:</b> <span style="color:#10202C">${escapeHtml(c.assessment)}</span></div>`).join("");
   const recs=(rep.recommendations||[]).map(r=>`<li style="margin-bottom:6px">${escapeHtml(r)}</li>`).join("");
   const groupLabel=data.groupLabel||"Vergleichsgruppe";
+  const modeHeader=showModeHeader?`<div class="pdf-block" style="font-size:12.5px;font-weight:900;color:#fff;background:#0B5A8A;border-radius:6px;display:inline-block;padding:4px 12px;margin-bottom:12px">Vergleichsmodus: ${escapeHtml(CG_MODE_LABELS[mode]||mode)}</div>`:"";
+  return `
+    <div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:10px;padding:16px 18px;margin-bottom:16px">
+      ${modeHeader}
+      <div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:18px;background:#F5F9FC">
+        <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Zusammenfassung</div>
+        <div style="font-size:12px;color:#10202C;white-space:pre-wrap;line-height:1.5">${escapeHtml(rep.summary||"")}</div>
+      </div>
+      <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:4px">Vergleich mit ${escapeHtml(groupLabel)} (${data.peerCount||0} Händler, anonym)</div>
+      <div class="pdf-block">${charts||`<div style="font-size:11px;color:#5D7284">Keine Vergleichsdaten verfügbar.</div>`}</div>
+      ${comparisons?`<div class="pdf-block" style="margin-bottom:8px">${comparisons}</div>`:""}
+      ${recs?`<div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px">
+        <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Empfehlungen für das Gespräch</div>
+        <ul style="margin:0;padding-left:18px;font-size:12px;color:#10202C;line-height:1.5">${recs}</ul>
+      </div>`:""}
+    </div>
+  `;
+}
+// modeResults: Array aus {mode, data} - eines je gewähltem Vergleichsmodus für
+// diesen Händler (mind. 1). Lädt zusätzlich die fh_contacts-Stammdaten für
+// die Händlerdaten-Karte (Nutzervorgabe 24.08.2026: auch im KI-PDF anführen).
+async function chefgespraechKiSectionHtml(fhNr,modeResults,idx,total){
+  const f=state.latest.fh[fhNr]||{};
+  const c=await chefgespraechFhContactFor(fhNr);
+  const fName=f.name||fhNr;
+  const first=modeResults[0].data||{};
+  const target=(first.metrics||{}).target||{};
+  const multiMode=modeResults.length>1;
+
   const filialeLabel=total>1?`<div class="pdf-block" style="font-size:11px;font-weight:800;color:#009FE3;text-transform:uppercase;letter-spacing:.4px;margin:${idx>0?"22px":"0"} 0 6px">Filiale ${idx+1} von ${total}</div>`:"";
+  const blocks=modeResults.map(r=>chefgespraechKiModeBlockHtml(r.mode,r.data,multiMode)).join("");
   return `
     ${filialeLabel}
     <div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:18px">
@@ -5116,17 +5402,8 @@ function chefgespraechKiSectionHtml(fhNr,data,idx,total){
       </div>
       ${idx===0?`<div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Chefgespräch – KI-Unterstützt · Erstellt am: ${fmtNowDateTime()}</div>`:""}
     </div>
-    <div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:18px;background:#F5F9FC">
-      <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Zusammenfassung</div>
-      <div style="font-size:12px;color:#10202C;white-space:pre-wrap;line-height:1.5">${escapeHtml(rep.summary||"")}</div>
-    </div>
-    <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:4px">Vergleich mit ${escapeHtml(groupLabel)} (${data.peerCount||0} Händler, anonym)</div>
-    <div class="pdf-block">${charts||`<div style="font-size:11px;color:#5D7284">Keine Vergleichsdaten verfügbar.</div>`}</div>
-    ${comparisons?`<div class="pdf-block" style="margin-bottom:8px">${comparisons}</div>`:""}
-    ${recs?`<div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:18px">
-      <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Empfehlungen für das Gespräch</div>
-      <ul style="margin:0;padding-left:18px;font-size:12px;color:#10202C;line-height:1.5">${recs}</ul>
-    </div>`:""}
+    ${chefgespraechStammdatenCardHtml(fhNr,f,c)}
+    ${blocks}
     ${idx===total-1?`<div class="pdf-block" style="margin-top:24px;padding-top:10px;border-top:1px solid #E4EDF3;font-size:9.5px;color:#8CA0AF">KI-generierte Einschätzung auf Basis der im Dashboard vorhandenen Kennzahlen und einer anonymisierten Vergleichsgruppe. Weitere Kennzahlen (Bestand, Storno, Provisionen, Schäden) folgen in einer späteren Ausbaustufe.</div>`:""}
   `;
 }
@@ -5134,7 +5411,9 @@ async function buildChefgespraechKiPdfDoc(fhNrs,dataList){
   if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)) throw new Error("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals versuchen.");
   const box=document.createElement("div");
   box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
-  box.innerHTML=fhNrs.map((fhNr,i)=>chefgespraechKiSectionHtml(fhNr,dataList[i],i,fhNrs.length)).join("");
+  const sections=[];
+  for(let i=0;i<fhNrs.length;i++) sections.push(await chefgespraechKiSectionHtml(fhNrs[i],dataList[i],i,fhNrs.length));
+  box.innerHTML=sections.join("");
   document.body.appendChild(box);
   await new Promise(r=>setTimeout(r,30));
   try{
@@ -5144,14 +5423,22 @@ async function buildChefgespraechKiPdfDoc(fhNrs,dataList){
     if(box.parentNode) box.parentNode.removeChild(box);
   }
 }
-async function exportChefgespraechKiPdf(fhNrs,mode){
+// modes: Array von Vergleichsmodi (mind. 1) - je Händler wird für jeden
+// gewählten Modus ein eigener KI-Vergleich abgerufen und im PDF als eigener
+// Unterblock dargestellt.
+async function exportChefgespraechKiPdf(fhNrs,modes){
+  modes=Array.isArray(modes)?modes:[modes||"region"];
   toast("KI-Vergleich wird erstellt … das kann bis zu einer Minute dauern.");
   try{
     const dataList=[];
     for(const fhNr of fhNrs){
-      const data=await callChefgespraechAiComparison(fhNr,mode);
-      if(!data||data.error) throw new Error((data&&data.error)||"unbekannter Fehler");
-      dataList.push(data);
+      const modeResults=[];
+      for(const mode of modes){
+        const data=await callChefgespraechAiComparison(fhNr,mode);
+        if(!data||data.error) throw new Error((data&&data.error)||"unbekannter Fehler");
+        modeResults.push({mode,data});
+      }
+      dataList.push(modeResults);
     }
     const {pdf,filename}=await buildChefgespraechKiPdfDoc(fhNrs,dataList);
     await finalizePdf(pdf,filename);
@@ -5922,6 +6209,11 @@ function fhStammdatenDiff(fhNr){
   const diffs=[];
   if(f.plz&&f.plz!==(c.plz||"")) diffs.push({field:"plz",label:"PLZ",alt:c.plz||"–",neu:f.plz});
   if(f.ort&&f.ort!==(c.ort||"")) diffs.push({field:"ort",label:"Ort",alt:c.ort||"–",neu:f.ort});
+  // Ziel (Plan aus FH_Liste) nur als Diff vorschlagen, nie automatisch
+  // überschreiben (Nutzervorgabe: "dürfen täglich nicht überschrieben
+  // werden... nur aktualisiert bzw. ergänzt") - und nur wenn im Admin-Panel
+  // freigeschaltet, sonst ist das Feld für niemanden sichtbar/relevant.
+  if(fhZielEnabled&&f.plan>0&&f.plan!==(c.ziel||null)) diffs.push({field:"ziel",label:"Ziel",alt:c.ziel>0?fmt(c.ziel):"–",neu:fmt(f.plan),raw:f.plan});
   return diffs.length?diffs:null;
 }
 function renderFhStammdatenDiff(){
@@ -5938,7 +6230,7 @@ async function applyFhStammdatenDiff(){
   const fhNr=fhModalCurrent;
   const diffs=fhStammdatenDiff(fhNr); if(!diffs) return;
   const patch={fh_nr:fhNr};
-  diffs.forEach(d=>patch[d.field]=d.neu);
+  diffs.forEach(d=>patch[d.field]=d.raw!==undefined?d.raw:d.neu);
   const {error}=await sb.from("fh_contacts").upsert(patch,{onConflict:"fh_nr"});
   if(error){ toast("Fehler beim Übernehmen: "+error.message); return; }
   Object.assign(fhContactCurrent,patch);
@@ -5950,14 +6242,21 @@ async function applyFhStammdatenDiff(){
 // (künftiger Bulk-Import, echte Monatssummen), ergänzt um Monate, die dort
 // noch fehlen, aus der bereits vorhandenen Tages-Historie (state.dailyFH) -
 // so zeigt die Ansicht schon heute reale Daten, auch ohne den Bulk-Import.
-function fhMonthlyMerged(fhNr){
+// contact: optionaler fh_contacts-Datensatz für GENAU diesen fhNr - ohne
+// Angabe wird fhContactCurrent verwendet (nur korrekt, wenn das gerade das
+// im FH-Popup geöffnete Kontaktobjekt für diesen fhNr ist). Für Kontexte, die
+// mehrere Fachhändler gleichzeitig verarbeiten (z.B. mehrere Filialen im
+// Chefgespräch), IMMER den passenden Kontakt explizit übergeben - sonst wird
+// versehentlich der Bulk-Import einer anderen Filiale verwendet.
+function fhMonthlyMerged(fhNr,contact){
   const daily=state.dailyFH[fhNr]||{};
   const fromDaily={};
   for(const [d,v] of Object.entries(daily)){
     const ym=d.slice(0,7);
     fromDaily[ym]=(fromDaily[ym]||0)+v;
   }
-  const bulk=(fhContactCurrent&&fhContactCurrent.prod_monthly)||{};
+  const c=contact!==undefined?contact:fhContactCurrent;
+  const bulk=(c&&c.prod_monthly)||{};
   return {...fromDaily,...bulk};
 }
 function renderFhMonthly(){
@@ -6146,6 +6445,11 @@ async function toggleFhEdit(on){
     populateWeitereZuordnungSelect(c.weitere_zuordnung);
     await loadWeitereZuordnungOptions();
     populateWeitereZuordnungSelect(c.weitere_zuordnung);
+    // Ziel-Bearbeitungsblock nur anzeigen, wenn im Admin-Panel freigeschaltet.
+    $("fhZielEditBlock").classList.toggle("hidden",!fhZielEnabled);
+    $("fhZielChk").checked=c.ziel>0;
+    $("fhZielEdit").value=c.ziel>0?c.ziel:"";
+    $("fhZielFields").classList.toggle("hidden",!(c.ziel>0));
   }
 }
 async function saveFhContact(){
@@ -6170,14 +6474,17 @@ async function saveFhContact(){
   const wzNeu=$("fhWeitereZuordnungNeu").value.trim();
   const wzSel=$("fhWeitereZuordnungSelect").value;
   const weitere_zuordnung=$("fhWeitereZuordnungChk").checked?(wzNeu||wzSel||null):null;
+  // Ziel nur lesen/speichern, wenn der Bearbeitungsblock (Admin-Freischaltung)
+  // überhaupt sichtbar ist - sonst bleibt der bisherige Wert unangetastet.
+  const ziel=fhZielEnabled?($("fhZielChk").checked?(parseFloat($("fhZielEdit").value)||null):null):fhContactCurrent.ziel;
   $("fhSaveBtn").disabled=true;
   const {error}=await sb.from("fh_contacts").upsert({
-    fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung,
+    fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung,ziel,
     updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()
   },{onConflict:"fh_nr"});
   $("fhSaveBtn").disabled=false;
   if(error){ $("fhSaveHint").textContent="Fehler: "+error.message; return; }
-  fhContactCurrent={...fhContactCurrent,fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung};
+  fhContactCurrent={...fhContactCurrent,fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung,ziel};
   if(neunwochen_erledigt) fhErledigtSet.add(fhNr); else fhErledigtSet.delete(fhNr);
   renderFhContactView();
   renderFhStammdatenDiff();
@@ -7171,6 +7478,8 @@ $("adminClose").onclick=()=>$("adminModal").classList.add("hidden");
 $("chefgespraechEnabledChk").onchange=toggleChefgespraechEnabled;
 $("kooperationsgespraechEnabledChk").onchange=toggleKooperationsgespraechEnabled;
 $("auswertungEnabledChk").onchange=toggleAuswertungEnabled;
+$("fhZielEnabledChk").onchange=toggleFhZielEnabled;
+$("perfDialogAdminEnabledChk").onchange=togglePerfDialogAdminEnabled;
 $("chefgespraechBtn").onclick=openChefgespraechModal;
 $("chefgespraechClose").onclick=()=>$("chefgespraechModal").classList.add("hidden");
 $("chefgespraechSearchInput").addEventListener("input",renderChefgespraechSearch);
@@ -7191,18 +7500,35 @@ $("chefgespraechKiBtn").onclick=()=>{
   if(!chefgespraechFhNrs.length) return;
   $("chefgespraechChoiceStep").classList.add("hidden");
   $("chefgespraechModeStep").classList.remove("hidden");
+  chefgespraechSelectedModes=[];
+  renderChefgespraechModeSelection();
 };
 $("chefgespraechModeBack").onclick=()=>{
   $("chefgespraechModeStep").classList.add("hidden");
   $("chefgespraechChoiceStep").classList.remove("hidden");
 };
+function renderChefgespraechModeSelection(){
+  document.querySelectorAll(".cg-mode-btn").forEach(btn=>{
+    btn.classList.toggle("selected",chefgespraechSelectedModes.includes(btn.dataset.mode));
+  });
+  const n=chefgespraechSelectedModes.length;
+  $("chefgespraechModeGoBtn").classList.toggle("hidden",n===0);
+  $("chefgespraechModeGoBtn").textContent=n>1?`Vergleich erstellen (${n} Modi) →`:"Vergleich erstellen →";
+}
 document.querySelectorAll(".cg-mode-btn").forEach(btn=>{
   btn.onclick=()=>{
     const mode=btn.dataset.mode;
-    const fhNrs=chefgespraechFhNrs.slice();
-    openPdfTargetChoice(()=>exportChefgespraechKiPdf(fhNrs,mode),fhPdfSendExtra());
+    const i=chefgespraechSelectedModes.indexOf(mode);
+    if(i>=0) chefgespraechSelectedModes.splice(i,1); else chefgespraechSelectedModes.push(mode);
+    renderChefgespraechModeSelection();
   };
 });
+$("chefgespraechModeGoBtn").onclick=()=>{
+  if(!chefgespraechSelectedModes.length) return;
+  const fhNrs=chefgespraechFhNrs.slice();
+  const modes=chefgespraechSelectedModes.slice();
+  openPdfTargetChoice(()=>exportChefgespraechKiPdf(fhNrs,modes),fhPdfSendExtra());
+};
 $("kooperationsgespraechBtn").onclick=openKooperationsgespraechModal;
 $("kooperationsgespraechClose").onclick=()=>$("kooperationsgespraechModal").classList.add("hidden");
 $("kooperationsgespraechSearchInput").addEventListener("input",renderKooperationsgespraechSearch);
@@ -7294,7 +7620,7 @@ async function refreshData(silent){
   refreshBusy=true;
   const btn=$("refreshBtn"); if(btn) btn.disabled=true;
   try{
-    await Promise.all([loadAll(), loadAkpContactsIndex(), loadFhErledigtSet(), loadFhAkqIndex(), loadFhMieteIndex()]);
+    await Promise.all([loadAll(), loadAkpContactsIndex(), loadFhContactsIndicesAll()]);
     await processPendingImports();
     render();
     if(!silent) toast("Aktualisiert ✓");
@@ -7372,6 +7698,9 @@ $("fhWeitereZuordnungChk").onchange=()=>{
 $("fhClubEdit").onchange=()=>{
   $("fhClubNrFields").classList.toggle("hidden",!$("fhClubEdit").checked);
 };
+$("fhZielChk").onchange=()=>{
+  $("fhZielFields").classList.toggle("hidden",!$("fhZielChk").checked);
+};
 $("fhWeitereZuordnungNeu").addEventListener("input",()=>{
   if($("fhWeitereZuordnungNeu").value.trim()) $("fhWeitereZuordnungSelect").value="";
 });
@@ -7400,7 +7729,7 @@ window.addEventListener("pageshow",e=>{ if(e.persisted&&hasData()) refreshData(t
   const authed = await initAuth();
   if(authed){
     await loadAll(); showRoleBadge(); render();
-    await Promise.all([loadAkpContactsIndex(), loadFhErledigtSet(), loadFhAkqIndex(), loadFhMieteIndex()]);
+    await Promise.all([loadAkpContactsIndex(), loadFhContactsIndicesAll()]);
     await processPendingImports();
     render();
     maybeAutoShowNotifications();
