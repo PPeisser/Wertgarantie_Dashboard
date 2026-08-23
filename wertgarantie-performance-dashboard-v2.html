@@ -532,6 +532,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <button class="btn btn-ghost hidden" id="perfDialogBtn" title="Performance Dialog">📋 Performance Dialog</button>
       <button class="btn btn-ghost hidden" id="perfDialogAdminBtn" title="Performance Dialog – Admin-Übersicht">📋 Performance Dialog – ADMIN</button>
       <button class="btn btn-ghost hidden" id="chefgespraechBtn" title="Chefgespräch-Unterlagen für einen Fachhändler zusammenstellen">🤝 Chefgespräch</button>
+      <button class="btn btn-ghost hidden" id="kooperationsgespraechBtn" title="Kooperationsgesprächsunterlagen für eine Einkaufskooperation zusammenstellen">🏢 Kooperationsgespräch</button>
      </div>
     </div>
     <div class="datenstand" id="datenstand"></div>
@@ -1135,6 +1136,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <input type="checkbox" id="chefgespraechEnabledChk" style="width:17px;height:17px;flex-shrink:0">
       Chefgespräch-Button aktivieren <span style="font-weight:600;color:var(--muted);font-size:12px">(Außendienst-Mitarbeiter können dann Chefgesprächsunterlagen für einen Fachhändler zusammenstellen)</span>
     </label>
+    <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;margin-bottom:12px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+      <input type="checkbox" id="kooperationsgespraechEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+      Kooperationsgespräch-Button aktivieren <span style="font-weight:600;color:var(--muted);font-size:12px">(Außendienst-Mitarbeiter können dann Kooperationsgesprächsunterlagen für eine Einkaufskooperation zusammenstellen)</span>
+    </label>
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -1236,6 +1241,29 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
   </div>
 </div>
 
+<!-- Kooperationsgespräch: Kooperations-Suche + Auswahl Kooperationsgesprächsunterlagen/KI-Unterstützt -->
+<div class="modal-bg hidden" id="kooperationsgespraechModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">
+      <h3 style="margin:0">🏢 Kooperationsgespräch</h3>
+      <button class="btn btn-ghost" id="kooperationsgespraechClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+    <div id="kooperationsgespraechSearchStep">
+      <div class="hint" style="margin:0 0 10px">Einkaufskooperation suchen, dann die gewünschten Unterlagen auswählen.</div>
+      <input type="text" id="kooperationsgespraechSearchInput" placeholder="Kooperation suchen …" autocomplete="off" style="width:100%;padding:10px 14px;border:2px solid var(--line);border-radius:10px;font-size:14px;font-family:inherit;background:var(--paper);color:var(--ink)">
+      <div id="kooperationsgespraechSearchResults" style="max-height:360px;overflow:auto;margin-top:10px"></div>
+    </div>
+    <div id="kooperationsgespraechChoiceStep" class="hidden">
+      <button class="btn btn-ghost" id="kooperationsgespraechBack" style="padding:6px 12px;margin-bottom:14px">← Andere Auswahl</button>
+      <div id="kooperationsgespraechHeader" style="font-size:15px;font-weight:900;color:var(--wg-navy);margin-bottom:16px"></div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap">
+        <button class="btn btn-blue" id="kooperationsgespraechUnterlagenBtn" style="flex:1;min-width:220px;padding:18px;font-size:14px">📄 Kooperationsgesprächsunterlagen<br><small style="font-weight:600;opacity:.85">Kennzahlen &amp; FH-Übersicht</small></button>
+        <button class="btn btn-blue" id="kooperationsgespraechKiBtn" style="flex:1;min-width:220px;padding:18px;font-size:14px">🧠 Kooperationsgespräch-KI-Unterstützt<br><small style="font-weight:600;opacity:.85">Zusammenfassung &amp; anonymer Vergleich</small></button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -1318,6 +1346,11 @@ let perfDialogEnabled = false;
 // "chefgespraech_enabled", per Schalter im normalen ADMIN-Panel gesetzt).
 // Standardmäßig aus, bis Wert aus der DB geladen wurde.
 let chefgespraechEnabled = false;
+// Globaler Ein/Aus-Schalter für den "Kooperationsgespräch"-Button
+// (dashboard_kv-Key "kooperationsgespraech_enabled", per Schalter im
+// normalen ADMIN-Panel gesetzt). Standardmäßig aus, bis Wert aus der DB
+// geladen wurde.
+let kooperationsgespraechEnabled = false;
 // Zeitpunkt der letzten Miete-Report-Einspielung (dashboard_kv-Key
 // "miete_last_import", von upsertMieteData() bei jedem Import gesetzt -
 // deckt sowohl den Admin-Panel-Upload als auch den automatischen
@@ -1376,6 +1409,8 @@ function showRoleBadge(){
   // Chefgespräch: gleiche Sichtbarkeitsregel wie Performance Dialog (Außendienst
   // & Admin), nur wenn im normalen ADMIN-Panel per Schalter aktiviert.
   $("chefgespraechBtn").classList.toggle("hidden", !chefgespraechEnabled||(myRole!=="admin"&&myRole!=="aussendienst"));
+  // Kooperationsgespräch: gleiche Sichtbarkeitsregel wie Chefgespräch.
+  $("kooperationsgespraechBtn").classList.toggle("hidden", !kooperationsgespraechEnabled||(myRole!=="admin"&&myRole!=="aussendienst"));
   const w=$("welcomeMsg");
   if(myName){
     const roleBadge=(myRole&&ROLE_LABEL[myRole])
@@ -1679,7 +1714,11 @@ async function createAdminUser(){
   toast("Nutzer angelegt: "+email+" (Erstpasswort: WertGARANTIE)");
   loadAdminUsers();
 }
-function openAdminModal(){ $("adminModal").classList.remove("hidden"); loadAdminUsers(); $("chefgespraechEnabledChk").checked=chefgespraechEnabled; }
+function openAdminModal(){
+  $("adminModal").classList.remove("hidden"); loadAdminUsers();
+  $("chefgespraechEnabledChk").checked=chefgespraechEnabled;
+  $("kooperationsgespraechEnabledChk").checked=kooperationsgespraechEnabled;
+}
 async function toggleChefgespraechEnabled(){
   const on=$("chefgespraechEnabledChk").checked;
   chefgespraechEnabled=on;
@@ -1687,6 +1726,17 @@ async function toggleChefgespraechEnabled(){
   try{
     await stSet("chefgespraech_enabled",on?"1":"0");
     toast(on?"Chefgespräch-Button aktiviert ✓":"Chefgespräch-Button deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
+async function toggleKooperationsgespraechEnabled(){
+  const on=$("kooperationsgespraechEnabledChk").checked;
+  kooperationsgespraechEnabled=on;
+  showRoleBadge();
+  try{
+    await stSet("kooperationsgespraech_enabled",on?"1":"0");
+    toast(on?"Kooperationsgespräch-Button aktiviert ✓":"Kooperationsgespräch-Button deaktiviert");
   }catch(e){
     toast("Speichern fehlgeschlagen: "+(e.message||e));
   }
@@ -3659,6 +3709,7 @@ async function loadAll(){
   try{ const g=await stGet("wg-goals"); if(g) goals=JSON.parse(g); }catch(e){}
   try{ perfDialogEnabled=(await stGet("performance_dialog_enabled"))==="1"; }catch(e){}
   try{ chefgespraechEnabled=(await stGet("chefgespraech_enabled"))==="1"; }catch(e){}
+  try{ kooperationsgespraechEnabled=(await stGet("kooperationsgespraech_enabled"))==="1"; }catch(e){}
   try{ mieteLastImport=await stGet("miete_last_import"); }catch(e){}
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
@@ -4951,6 +5002,231 @@ async function exportChefgespraechKiPdf(fhNrs,mode){
   }
 }
 
+/* ---------- Kooperationsgespräch: Kooperations-Suche + Auswahl Unterlagen/KI-Unterstützt ---------- */
+let kooperationsgespraechKoop=null;
+function openKooperationsgespraechModal(){
+  if(!kooperationsgespraechEnabled){ toast("Kooperationsgespräch ist aktuell nicht aktiviert."); return; }
+  kooperationsgespraechKoop=null;
+  $("kooperationsgespraechModal").classList.remove("hidden");
+  $("kooperationsgespraechSearchStep").classList.remove("hidden");
+  $("kooperationsgespraechChoiceStep").classList.add("hidden");
+  $("kooperationsgespraechSearchInput").value="";
+  renderKooperationsgespraechSearch();
+  setTimeout(()=>$("kooperationsgespraechSearchInput").focus(),50);
+}
+// Suche über die bekannten Einkaufskooperationen (KOOPERATION_OPTIONS, ohne
+// "ohne Kooperation" - das ist keine echte Kooperation und kann nicht
+// Gegenstand eines Kooperationsgesprächs sein).
+function renderKooperationsgespraechSearch(){
+  const q=($("kooperationsgespraechSearchInput").value||"").trim().toLowerCase();
+  const box=$("kooperationsgespraechSearchResults");
+  const list=KOOPERATION_OPTIONS.filter(k=>k!=="ohne Kooperation").filter(k=>!q||k.toLowerCase().includes(q));
+  if(!list.length){ box.innerHTML=`<div class="empty-note">Keine Kooperation gefunden.</div>`; return; }
+  box.innerHTML=list.map(k=>`<div class="akp-search-row" style="cursor:pointer" data-koop="${escapeHtml(k)}">
+      <span><b>${escapeHtml(k)}</b></span>
+    </div>`).join("");
+  box.querySelectorAll("[data-koop]").forEach(row=>{
+    row.onclick=()=>selectKooperationsgespraechKoop(row.dataset.koop);
+  });
+}
+function selectKooperationsgespraechKoop(koop){
+  kooperationsgespraechKoop=koop;
+  $("kooperationsgespraechHeader").textContent=koop;
+  $("kooperationsgespraechSearchStep").classList.add("hidden");
+  $("kooperationsgespraechChoiceStep").classList.remove("hidden");
+}
+// Lädt alle Fachhändler dieser Kooperation in EINER Abfrage (statt je FH
+// einzeln) und aggregiert Jahresproduktion/Wachstum/3-für-2-Quote/Ø
+// Akquisepunkte - analog zur Aggregation in der Edge Function
+// kooperationsgespraech-ai-comparison, damit Unterlagen- und KI-PDF
+// konsistente Zahlen zeigen.
+async function loadKooperationAggregate(koop){
+  const {data,error}=await sb.from("fh_contacts").select("fh_nr,prod_monthly,beitragsfrei_yearly,akq_punkte").eq("kooperation",koop);
+  if(error) throw new Error(error.message||String(error));
+  const rows=data||[];
+  const byYear={};
+  const perFh=rows.map(r=>{
+    const pm=r.prod_monthly||{};
+    const fhByYear={};
+    for(const [k,v] of Object.entries(pm)){
+      const y=k.slice(0,4);
+      fhByYear[y]=(fhByYear[y]||0)+(Number(v)||0);
+      byYear[y]=(byYear[y]||0)+(Number(v)||0);
+    }
+    return {fh_nr:r.fh_nr,byYear:fhByYear,akq_punkte:r.akq_punkte,beitragsfrei_yearly:r.beitragsfrei_yearly||{}};
+  });
+  const years=Object.keys(byYear).sort();
+  const curYear=years.length?years[years.length-1]:null;
+  const prevYear=years.length>1?years[years.length-2]:null;
+  const curProd=curYear?(byYear[curYear]||0):0;
+  const prevProd=prevYear?(byYear[prevYear]||0):0;
+  const yoy=prevProd>0?(curProd-prevProd)/prevProd:null;
+  let bf=0;
+  for(const r of rows) bf+=Number((r.beitragsfrei_yearly||{})[curYear])||0;
+  const q3f2=(curYear&&curProd>0)?bf/curProd:null;
+  const akqVals=rows.map(r=>r.akq_punkte).filter(v=>v!=null).map(Number);
+  const akqPunkte=akqVals.length?akqVals.reduce((a,b)=>a+b,0)/akqVals.length:null;
+  return {rows,perFh,byYear,years,curYear,prevYear,curProd,prevProd,yoy,q3f2,akqPunkte,fhCount:rows.length};
+}
+function kooperationsgespraechPdfFilename(prefix,koop){
+  return prefix+"_"+asciiFilenamePart(koop)+".pdf";
+}
+// "Kooperationsgesprächsunterlagen" (ohne KI) - Kennzahlen-Kurzüberblick über
+// alle Mitglieds-Fachhändler dieser Kooperation, Produktion nach Jahren
+// (Chart + Tabelle) sowie eine nach Jahresproduktion sortierte Mitgliederliste.
+async function buildKooperationsgespraechUnterlagenPdfDoc(koop){
+  if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)) throw new Error("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals versuchen.");
+  const agg=await loadKooperationAggregate(koop);
+  const nowStr=fmtNowDateTime();
+  const fhMap=state.latest.fh||{};
+
+  const years=agg.years.slice(-5);
+  const prodChart=years.length?svgBarChart(years,[
+    {name:"Produktion",color:"#0B5A8A",values:years.map(y=>Math.round(agg.byYear[y]||0))}
+  ],{width:480,height:190}):null;
+  const yearRows=years.map(y=>`<tr><td>${y}</td><td class="r">${fmt(agg.byYear[y]||0)}</td></tr>`).join("");
+
+  const memberRows=[...agg.perFh].sort((a,b)=>(b.byYear[agg.curYear]||0)-(a.byYear[agg.curYear]||0)).map(m=>{
+    const f=fhMap[m.fh_nr]||{};
+    return `<tr><td>${escapeHtml(f.name||m.fh_nr)}</td><td>${escapeHtml(f.ort||"–")}</td><td>${escapeHtml(m.fh_nr)}</td><td class="r">${fmt(m.byYear[agg.curYear]||0)}</td><td class="r">${m.akq_punkte!=null?fmt(Math.round(m.akq_punkte)):"–"}</td></tr>`;
+  }).join("");
+
+  const kennzahl=(lbl,val)=>`<div style="text-align:center"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284">${lbl}</div><div style="font-size:18px;font-weight:900;color:#062A3F;margin-top:2px">${val}</div></div>`;
+  const box=document.createElement("div");
+  box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
+  box.innerHTML=`
+    <div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:18px">
+      <div>
+        <div style="font-size:21px;font-weight:900;color:#062A3F">${escapeHtml(koop)}</div>
+        <div style="font-size:12px;color:#5D7284;margin-top:3px">${agg.fhCount} Mitglieds-Fachhändler</div>
+      </div>
+      <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Kooperationsgesprächsunterlagen · Erstellt am: ${nowStr}</div>
+    </div>
+    <div class="pdf-block" style="display:flex;justify-content:space-around;border:1px solid #E4EDF3;border-radius:8px;padding:14px 10px;margin-bottom:18px;background:#F5F9FC">
+      ${kennzahl("Fachhändler",fmt(agg.fhCount))}
+      ${kennzahl("Jahresproduktion"+(agg.curYear?" "+agg.curYear:""),fmt(agg.curProd))}
+      ${kennzahl("Wachstum ggü. Vorjahr",agg.yoy!=null?(agg.yoy*100).toFixed(1).replace(".",",")+" %":"–")}
+      ${kennzahl("3-für-2-Quote",agg.q3f2!=null?(agg.q3f2*100).toFixed(1).replace(".",",")+" %":"–")}
+      ${kennzahl("Ø Akquisepunkte je FH",agg.akqPunkte!=null?fmt(Math.round(agg.akqPunkte)):"–")}
+    </div>
+    ${prodChart?`<div class="pdf-block" style="margin-bottom:18px">
+      <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:6px">Produktion nach Jahren (gesamte Kooperation)</div>
+      ${prodChart}
+      <table style="width:100%;border-collapse:collapse;font-size:10.5px;margin-top:8px">
+        <thead><tr style="color:#5D7284;text-align:left"><th>Jahr</th><th class="r">Produktion</th></tr></thead>
+        <tbody>${yearRows}</tbody>
+      </table>
+    </div>`:`<div class="pdf-block" style="margin-bottom:18px;font-size:11px;color:#5D7284">Noch keine Jahresproduktion erfasst.</div>`}
+    <div class="pdf-block" style="margin-bottom:18px">
+      <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:10px">Mitglieds-Fachhändler${agg.curYear?" (sortiert nach Jahresproduktion "+agg.curYear+")":""}</div>
+      <table style="width:100%;border-collapse:collapse;font-size:9.5px">
+        <thead><tr style="color:#5D7284;text-align:left"><th>Name</th><th>Ort</th><th>FH-Nr.</th><th class="r">Jahresproduktion</th><th class="r">Akquisepunkte</th></tr></thead>
+        <tbody>${memberRows}</tbody>
+      </table>
+    </div>
+  `;
+  document.body.appendChild(box);
+  await new Promise(r=>setTimeout(r,30));
+  try{
+    const pdf=await pdfBoxRenderToPdf(box);
+    return {pdf,filename:kooperationsgespraechPdfFilename("Kooperationsgespraech",koop)};
+  }finally{
+    if(box.parentNode) box.parentNode.removeChild(box);
+  }
+}
+async function exportKooperationsgespraechUnterlagenPdf(koop){
+  toast("Kooperationsgesprächsunterlagen werden erstellt …");
+  try{
+    const {pdf,filename}=await buildKooperationsgespraechUnterlagenPdfDoc(koop);
+    await finalizePdf(pdf,filename);
+  }catch(e){
+    console.error("exportKooperationsgespraechUnterlagenPdf failed:",e);
+    toast("Erstellung fehlgeschlagen: "+(e.message||e));
+    pdfSendTarget=null;
+  }
+}
+async function callKooperationsgespraechAiComparison(koop){
+  const { data:{ session } } = await sb.auth.getSession();
+  const res = await fetch(SUPABASE_URL+"/functions/v1/kooperationsgespraech-ai-comparison", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+session.access_token },
+    body: JSON.stringify({ kooperation: koop })
+  });
+  return await res.json();
+}
+// "Kooperationsgespräch-KI-Unterstützt": ruft kooperationsgespraech-ai-comparison
+// auf (KI-Zusammenfassung + anonymer Vergleich mit allen anderen
+// Einkaufskooperationen) und baut daraus ein eigenes PDF mit Vergleichs-Charts.
+async function buildKooperationsgespraechKiPdfDoc(koop,data){
+  if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)) throw new Error("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals versuchen.");
+  const nowStr=fmtNowDateTime();
+  const m=data.metrics||{}, target=m.target||{}, peers=m.peers||{};
+  const rep=data.report||{};
+
+  const pctVal=v=>v==null?null:Math.round(v*1000)/10;
+  const chartFor=(title,unit,tv,med,p75,color)=>{
+    if(tv==null&&med==null&&p75==null) return "";
+    const vals=[tv,med,p75].map(v=>v==null?0:v);
+    return `<div style="margin-bottom:18px">
+      <div style="font-size:12px;font-weight:800;color:#062A3F;margin-bottom:4px">${escapeHtml(title)}${unit?` (${unit})`:""}</div>
+      ${svgBarChart(["Diese Kooperation","Median andere Kooperationen","Top 25% andere Kooperationen"],[{name:title,color,values:vals}],{width:420,height:160})}
+    </div>`;
+  };
+  const charts=[
+    chartFor("Jahresproduktion "+(target.curYear||data.year||""),"Verträge",target.curProd,peers.curProd&&peers.curProd.median,peers.curProd&&peers.curProd.p75,"#0B5A8A"),
+    chartFor("Wachstum ggü. Vorjahr","%",pctVal(target.yoy),peers.yoy&&pctVal(peers.yoy.median),peers.yoy&&pctVal(peers.yoy.p75),"#2E9E5B"),
+    chartFor("3-für-2-Quote","%",pctVal(target.q3f2),peers.q3f2&&pctVal(peers.q3f2.median),peers.q3f2&&pctVal(peers.q3f2.p75),"#D9A400"),
+    chartFor("Ø Akquisepunkte je FH","Punkte",target.akqPunkte,peers.akqPunkte&&peers.akqPunkte.median,peers.akqPunkte&&peers.akqPunkte.p75,"#6B4FA0"),
+  ].filter(Boolean).join("");
+
+  const comparisons=(rep.comparisons||[]).map(c=>`<div class="pdf-block" style="margin-bottom:10px"><b style="color:#062A3F">${escapeHtml(c.metric)}:</b> <span style="color:#10202C">${escapeHtml(c.assessment)}</span></div>`).join("");
+  const recs=(rep.recommendations||[]).map(r=>`<li style="margin-bottom:6px">${escapeHtml(r)}</li>`).join("");
+
+  const box=document.createElement("div");
+  box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
+  box.innerHTML=`
+    <div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:18px">
+      <div>
+        <div style="font-size:21px;font-weight:900;color:#062A3F">${escapeHtml(koop)}</div>
+        <div style="font-size:12px;color:#5D7284;margin-top:3px">${target.fhCount!=null?target.fhCount+" Mitglieds-Fachhändler":""}</div>
+      </div>
+      <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Kooperationsgespräch – KI-Unterstützt · Erstellt am: ${nowStr}</div>
+    </div>
+    <div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:18px;background:#F5F9FC">
+      <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Zusammenfassung</div>
+      <div style="font-size:12px;color:#10202C;white-space:pre-wrap;line-height:1.5">${escapeHtml(rep.summary||"")}</div>
+    </div>
+    <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:4px">Vergleich mit anderen Einkaufskooperationen (${data.peerCount||0} Kooperationen, anonym)</div>
+    <div class="pdf-block">${charts||`<div style="font-size:11px;color:#5D7284">Keine Vergleichsdaten verfügbar.</div>`}</div>
+    ${comparisons?`<div class="pdf-block" style="margin-bottom:8px">${comparisons}</div>`:""}
+    ${recs?`<div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:18px">
+      <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Empfehlungen für das Gespräch</div>
+      <ul style="margin:0;padding-left:18px;font-size:12px;color:#10202C;line-height:1.5">${recs}</ul>
+    </div>`:""}
+    <div class="pdf-block" style="margin-top:24px;padding-top:10px;border-top:1px solid #E4EDF3;font-size:9.5px;color:#8CA0AF">KI-generierte Einschätzung auf Basis der im Dashboard vorhandenen Kennzahlen, aufsummiert über alle Mitglieds-Fachhändler dieser Kooperation, im Vergleich zu einer anonymisierten Vergleichsgruppe aller anderen Einkaufskooperationen.</div>
+  `;
+  document.body.appendChild(box);
+  await new Promise(r=>setTimeout(r,30));
+  try{
+    const pdf=await pdfBoxRenderToPdf(box);
+    return {pdf,filename:kooperationsgespraechPdfFilename("Kooperationsgespraech_KI",koop)};
+  }finally{
+    if(box.parentNode) box.parentNode.removeChild(box);
+  }
+}
+async function exportKooperationsgespraechKiPdf(koop){
+  toast("KI-Vergleich wird erstellt … das kann bis zu einer Minute dauern.");
+  try{
+    const data=await callKooperationsgespraechAiComparison(koop);
+    if(!data||data.error) throw new Error((data&&data.error)||"unbekannter Fehler");
+    const {pdf,filename}=await buildKooperationsgespraechKiPdfDoc(koop,data);
+    await finalizePdf(pdf,filename);
+  }catch(e){
+    console.error("exportKooperationsgespraechKiPdf failed:",e);
+    toast("KI-Vergleich fehlgeschlagen: "+(e.message||e));
+    pdfSendTarget=null;
+  }
+}
 // Stammdaten-Änderungsworkflow: PLZ/Ort sind die einzigen Stammdaten-Felder,
 // die auch aus der täglichen Einspielung (FH_Liste) kommen - weicht der
 // eingespielte Wert vom gespeicherten Stammdatensatz ab, NIE automatisch
@@ -6207,6 +6483,7 @@ $("logoutBtn").onclick=doLogout;
 $("adminBtn").onclick=openAdminModal;
 $("adminClose").onclick=()=>$("adminModal").classList.add("hidden");
 $("chefgespraechEnabledChk").onchange=toggleChefgespraechEnabled;
+$("kooperationsgespraechEnabledChk").onchange=toggleKooperationsgespraechEnabled;
 $("chefgespraechBtn").onclick=openChefgespraechModal;
 $("chefgespraechClose").onclick=()=>$("chefgespraechModal").classList.add("hidden");
 $("chefgespraechSearchInput").addEventListener("input",renderChefgespraechSearch);
@@ -6239,6 +6516,22 @@ document.querySelectorAll(".cg-mode-btn").forEach(btn=>{
     openPdfTargetChoice(()=>exportChefgespraechKiPdf(fhNrs,mode),fhPdfSendExtra());
   };
 });
+$("kooperationsgespraechBtn").onclick=openKooperationsgespraechModal;
+$("kooperationsgespraechClose").onclick=()=>$("kooperationsgespraechModal").classList.add("hidden");
+$("kooperationsgespraechSearchInput").addEventListener("input",renderKooperationsgespraechSearch);
+$("kooperationsgespraechBack").onclick=()=>{
+  $("kooperationsgespraechChoiceStep").classList.add("hidden");
+  $("kooperationsgespraechSearchStep").classList.remove("hidden");
+  setTimeout(()=>$("kooperationsgespraechSearchInput").focus(),50);
+};
+$("kooperationsgespraechUnterlagenBtn").onclick=()=>{
+  if(!kooperationsgespraechKoop) return;
+  openPdfTargetChoice(()=>exportKooperationsgespraechUnterlagenPdf(kooperationsgespraechKoop));
+};
+$("kooperationsgespraechKiBtn").onclick=()=>{
+  if(!kooperationsgespraechKoop) return;
+  openPdfTargetChoice(()=>exportKooperationsgespraechKiPdf(kooperationsgespraechKoop));
+};
 $("perfDialogBtn").onclick=openPerfModal;
 $("perfClose").onclick=()=>$("perfModal").classList.add("hidden");
 $("perfDialogAdminBtn").onclick=openPerfAdminModal;
