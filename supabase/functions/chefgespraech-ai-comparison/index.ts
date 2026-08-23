@@ -37,11 +37,30 @@ function json(body: unknown, status = 200) {
 
 // deno-lint-ignore no-explicit-any
 type FhRow = Record<string, any>;
+// deno-lint-ignore no-explicit-any
+type DailyFhMap = Record<string, Record<string, number>>;
 
-function yearlyProd(row: FhRow): Record<string, number> {
-  const pm = row.prod_monthly || {};
+// Tagesproduktion (dashboard_kv "wg-state" -> dailyFH) + Bulk-Import
+// (fh_contacts.prod_monthly) zusammenführen - exakt wie fhMonthlyMerged() im
+// Client. Ohne dies sah diese Funktion NUR den (oft lückenhaften) Bulk-Import
+// und ignorierte die tägliche Produktionshistorie komplett, wodurch sowohl
+// die Zahlen des Zielhändlers als auch die Vergleichsgruppe unvollständig/
+// falsch waren (Nutzer-Feedback 24.08.2026: "Daten ... können nicht
+// stimmen"). Bulk-Werte gewinnen bei Überschneidung (echte Monatssumme statt
+// aus Tageswerten hochgerechnet).
+function mergedMonthly(fhNr: string, prodMonthly: Record<string, number> | null | undefined, dailyFH: DailyFhMap): Record<string, number> {
+  const daily = dailyFH[fhNr] || {};
+  const fromDaily: Record<string, number> = {};
+  for (const [d, v] of Object.entries(daily)) {
+    const ym = d.slice(0, 7);
+    fromDaily[ym] = (fromDaily[ym] || 0) + (Number(v) || 0);
+  }
+  return { ...fromDaily, ...(prodMonthly || {}) };
+}
+
+function yearlyProd(monthly: Record<string, number>): Record<string, number> {
   const byYear: Record<string, number> = {};
-  for (const [k, v] of Object.entries(pm)) {
+  for (const [k, v] of Object.entries(monthly)) {
     const y = k.slice(0, 4);
     byYear[y] = (byYear[y] || 0) + (Number(v) || 0);
   }
@@ -57,8 +76,8 @@ interface Metrics {
   clubWeiss: boolean;
 }
 
-function metricsForFh(row: FhRow): Metrics {
-  const byYear = yearlyProd(row);
+function metricsForFh(row: FhRow, dailyFH: DailyFhMap): Metrics {
+  const byYear = yearlyProd(mergedMonthly(row.fh_nr, row.prod_monthly, dailyFH));
   const years = Object.keys(byYear).sort();
   const curYear = years.length ? years[years.length - 1] : null;
   const prevYear = years.length > 1 ? years[years.length - 2] : null;
@@ -206,13 +225,49 @@ Deno.serve(async (req) => {
   if (targetErr) return json({ error: targetErr.message }, 500);
   if (!target) return json({ error: `Fachhändler ${fhNr} hat noch keine Stammdaten.` }, 400);
 
-  const targetMetrics = metricsForFh(target);
+  // Tägliche Produktionshistorie (dashboard_kv "wg-state" -> dailyFH) laden -
+  // ein einzelner geteilter Datensatz für das gesamte Dashboard (~300 KB),
+  // siehe mergedMonthly() oben. "value" ist eine Text-Spalte (JSON.stringify
+  // clientseitig), daher hier explizit JSON.parse statt automatischer jsonb-
+  // Dekodierung.
+  let dailyFH: DailyFhMap = {};
+  try {
+    const { data: kvRow } = await admin.from("dashboard_kv").select("value").eq("key", "wg-state").maybeSingle();
+    if (kvRow?.value) {
+      const parsed = JSON.parse(kvRow.value);
+      dailyFH = parsed?.dailyFH || {};
+    }
+  } catch (e) {
+    console.error("dailyFH konnte nicht geladen werden, Vergleich läuft nur mit Bulk-Import-Daten weiter:", e);
+  }
+
+  const targetMetrics = metricsForFh(target, dailyFH);
   if (!targetMetrics.curYear) {
     return json({ error: "Für diesen Händler liegt noch keine Jahresproduktion vor - Vergleich nicht möglich." }, 400);
   }
 
   const { rows: peerRows, label: groupLabel } = await selectPeerGroup(admin, target, mode);
-  const peerMetrics = peerRows.map(metricsForFh).filter((m) => m.curYear === targetMetrics.curYear);
+  const allPeerMetrics = peerRows.map((r) => metricsForFh(r, dailyFH));
+  const peerMetrics = allPeerMetrics.filter((m) => m.curYear === targetMetrics.curYear);
+
+  // Kooperation: zusätzlich zur (statistisch aussagekräftigeren) Vergleichsgruppe
+  // der aktuell produzierenden Mitglieder auch den Gesamtkontext der ganzen
+  // Kooperation liefern - Nutzervorgabe 24.08.2026: "einmal mit dem
+  // produzierenden Teil ... und einmal mit der gesamten Koop vergleichen".
+  // Bewusst KEIN zweiter voller KI-Vergleich (Kosten/Dauer verdoppelt sich
+  // sonst) - stattdessen als Kontext-Kennzahlen in Prompt + Antwort.
+  let cooperationContext: Record<string, unknown> | null = null;
+  if (mode === "kooperation") {
+    const totalMembers = peerRows.length + 1;
+    const producingMembers = peerMetrics.length + 1; // Zielhändler hat curYear (s.o. Guard)
+    const totalProduction = peerMetrics.reduce((s, m) => s + m.curProd, 0) + targetMetrics.curProd;
+    cooperationContext = {
+      totalMembers,
+      producingMembers,
+      participationRate: totalMembers > 0 ? producingMembers / totalMembers : null,
+      totalProduction,
+    };
+  }
 
   const peerStats = {
     curProd: {
@@ -255,7 +310,13 @@ Deno.serve(async (req) => {
     `- Wachstum ggü. Vorjahr: Median ${fmtPct(peerStats.yoy.median)} / oberes Quartil ${fmtPct(peerStats.yoy.p75)} / Perzentil ${peerStats.yoy.rank != null ? Math.round(peerStats.yoy.rank * 100) : "–"}\n` +
     `- 3-für-2-Quote: Median ${fmtPct(peerStats.q3f2.median)} / oberes Quartil ${fmtPct(peerStats.q3f2.p75)} / Perzentil ${peerStats.q3f2.rank != null ? Math.round(peerStats.q3f2.rank * 100) : "–"}\n` +
     `- Akquisepunkte: Median ${peerStats.akqPunkte.median ?? "–"} / oberes Quartil ${peerStats.akqPunkte.p75 ?? "–"} / Perzentil ${peerStats.akqPunkte.rank != null ? Math.round(peerStats.akqPunkte.rank * 100) : "–"}\n` +
-    `- Club Weiss Mitgliedschaftsquote in der Vergleichsgruppe: ${fmtPct(peerStats.clubWeissRate)}\n`;
+    `- Club Weiss Mitgliedschaftsquote in der Vergleichsgruppe: ${fmtPct(peerStats.clubWeissRate)}\n` +
+    (cooperationContext
+      ? `\nGesamtkontext der ganzen Kooperation "${(target.kooperation || "").trim()}" (alle Mitglieds-Fachhändler, nicht nur die aktuell produzierenden):\n` +
+        `- Mitglieds-Fachhändler gesamt: ${cooperationContext.totalMembers}\n` +
+        `- davon aktuell produzierend (Jahr ${targetMetrics.curYear}): ${cooperationContext.producingMembers} (${fmtPct(cooperationContext.participationRate as number | null)})\n` +
+        `- Gesamtproduktion der Kooperation (nur produzierende Mitglieder): ${cooperationContext.totalProduction} Verträge\n`
+      : "");
 
   const systemPrompt =
     `Du bereitest ein "Chefgespräch" vor - ein internes Beratungsgespräch eines Wertgarantie-Vertriebsmitarbeiters ` +
@@ -266,6 +327,12 @@ Deno.serve(async (req) => {
     `Gesprächsansätze/Empfehlungen ab. Berücksichtige dabei auch die Club-Weiss-Mitgliedschaft: ist der Händler ` +
     `noch KEIN Mitglied, obwohl die Vergleichsgruppe eine hohe Mitgliedschaftsquote hat, ist das ein konkreter ` +
     `Gesprächsansatz (Empfehlung zum Beitritt); ist er Mitglied, kann das als Stärke hervorgehoben werden. ` +
+    (mode === "kooperation"
+      ? `Zusätzlich bekommst du den Gesamtkontext der ganzen Kooperation (alle Mitglieds-Fachhändler, nicht nur ` +
+        `die produzierenden, auf denen der statistische Vergleich oben beruht) - erwähne kurz und sachlich, wie ` +
+        `viele Mitglieder aktuell produzieren, aber überbewerte eine niedrige Teilnahmequote nicht als Vorwurf an ` +
+        `diesen einzelnen Händler. `
+      : "") +
     `Schreibe auf Deutsch, professionell, prägnant, ohne Floskeln. Antworte ` +
     `ausschließlich über das Tool "generate_chefgespraech_comparison".`;
 
@@ -308,6 +375,7 @@ Deno.serve(async (req) => {
     peerCount: peerMetrics.length,
     year: targetMetrics.curYear,
     metrics: { target: targetMetrics, peers: peerStats },
+    cooperationContext,
     report: toolUse.input,
   });
 });

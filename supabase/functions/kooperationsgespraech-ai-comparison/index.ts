@@ -32,11 +32,28 @@ function json(body: unknown, status = 200) {
 
 // deno-lint-ignore no-explicit-any
 type FhRow = Record<string, any>;
+// deno-lint-ignore no-explicit-any
+type DailyFhMap = Record<string, Record<string, number>>;
 
-function yearlyProd(row: FhRow): Record<string, number> {
-  const pm = row.prod_monthly || {};
+// Tagesproduktion (dashboard_kv "wg-state" -> dailyFH) + Bulk-Import
+// (fh_contacts.prod_monthly) zusammenführen - exakt wie fhMonthlyMerged() im
+// Client / mergedMonthly() in chefgespraech-ai-comparison. Ohne dies sah
+// diese Funktion NUR den (oft lückenhaften) Bulk-Import und ignorierte die
+// tägliche Produktionshistorie komplett (Nutzer-Feedback 24.08.2026: "Daten
+// ... können nicht stimmen"). Bulk-Werte gewinnen bei Überschneidung.
+function mergedMonthly(fhNr: string, prodMonthly: Record<string, number> | null | undefined, dailyFH: DailyFhMap): Record<string, number> {
+  const daily = dailyFH[fhNr] || {};
+  const fromDaily: Record<string, number> = {};
+  for (const [d, v] of Object.entries(daily)) {
+    const ym = d.slice(0, 7);
+    fromDaily[ym] = (fromDaily[ym] || 0) + (Number(v) || 0);
+  }
+  return { ...fromDaily, ...(prodMonthly || {}) };
+}
+
+function yearlyProd(monthly: Record<string, number>): Record<string, number> {
   const byYear: Record<string, number> = {};
-  for (const [k, v] of Object.entries(pm)) {
+  for (const [k, v] of Object.entries(monthly)) {
     const y = k.slice(0, 4);
     byYear[y] = (byYear[y] || 0) + (Number(v) || 0);
   }
@@ -57,10 +74,10 @@ interface KoopMetrics {
 // Kennzahlen dieser Kooperation, bezogen auf ein fest vorgegebenes Jahr
 // (curYear) - damit sind Kooperationen untereinander vergleichbar, auch wenn
 // einzelne Mitglieds-Händler unterschiedliche Datenstände haben.
-function aggregateGroup(rows: FhRow[], curYear: string, prevYear: string): KoopMetrics {
+function aggregateGroup(rows: FhRow[], curYear: string, prevYear: string, dailyFH: DailyFhMap): KoopMetrics {
   let curProd = 0, prevProd = 0, bf = 0, akqSum = 0, akqCount = 0, clubWeissCount = 0;
   for (const r of rows) {
-    const byYear = yearlyProd(r);
+    const byYear = yearlyProd(mergedMonthly(r.fh_nr, r.prod_monthly, dailyFH));
     curProd += byYear[curYear] || 0;
     prevProd += byYear[prevYear] || 0;
     bf += Number((r.beitragsfrei_yearly || {})[curYear]) || 0;
@@ -162,9 +179,22 @@ Deno.serve(async (req) => {
   if (allErr) return json({ error: allErr.message }, 500);
   const rows = allRows || [];
 
+  // Tägliche Produktionshistorie laden (siehe mergedMonthly() oben) - ohne
+  // dies sah diese Funktion nur den lückenhaften Bulk-Import je Fachhändler.
+  let dailyFH: DailyFhMap = {};
+  try {
+    const { data: kvRow } = await admin.from("dashboard_kv").select("value").eq("key", "wg-state").maybeSingle();
+    if (kvRow?.value) {
+      const parsed = JSON.parse(kvRow.value);
+      dailyFH = parsed?.dailyFH || {};
+    }
+  } catch (e) {
+    console.error("dailyFH konnte nicht geladen werden, Vergleich läuft nur mit Bulk-Import-Daten weiter:", e);
+  }
+
   let maxYear = "";
   for (const r of rows) {
-    for (const k of Object.keys(r.prod_monthly || {})) {
+    for (const k of Object.keys(mergedMonthly(r.fh_nr, r.prod_monthly, dailyFH))) {
       const y = k.slice(0, 4);
       if (y > maxYear) maxYear = y;
     }
@@ -182,12 +212,12 @@ Deno.serve(async (req) => {
 
   const targetRows = byKoop.get(kooperation) || [];
   if (!targetRows.length) return json({ error: `Keine Fachhändler mit Kooperation "${kooperation}" gefunden.` }, 400);
-  const targetMetrics = aggregateGroup(targetRows, maxYear, prevYear);
+  const targetMetrics = aggregateGroup(targetRows, maxYear, prevYear, dailyFH);
 
   const peerGroups: KoopMetrics[] = [];
   for (const [k, grp] of byKoop) {
     if (k === kooperation) continue;
-    peerGroups.push(aggregateGroup(grp, maxYear, prevYear));
+    peerGroups.push(aggregateGroup(grp, maxYear, prevYear, dailyFH));
   }
 
   const peerStats = {
