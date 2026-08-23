@@ -1979,22 +1979,60 @@ async function doSaveSettings(){
 
 /* ---------- Benachrichtigungen: AKP ohne Produktion / FH Rückgang ggü. Vorjahr ---------- */
 let fhContactsBulkIndex=null;
-async function loadFhContactsBulkIndex(){
-  if(!(sb&&supaUser)) return;
-  try{
-    const idx={}; let from=0, guard=0;
-    for(;;){
-      guard++;
-      const {data,error}=await sb.from("fh_contacts").select("fh_nr,prod_monthly").range(from,from+999);
-      if(error){ console.error("loadFhContactsBulkIndex:",error.message||error); break; }
-      if(!data||!data.length) break;
-      for(const r of data) if(r.fh_nr) idx[r.fh_nr]=r.prod_monthly||{};
-      from+=data.length;
-      if(guard>50) break;
-    }
-    fhContactsBulkIndex=idx;
-  }catch(e){ console.error("loadFhContactsBulkIndex failed:",e); }
+// Konsolidierter Einzel-Durchlauf über fh_contacts: liest in EINEM Satz
+// paginierter Anfragen alle Spalten, die die vier separaten In-Memory-
+// Indizes brauchen (Bulk-Produktion, Miete/Club Weiss, 9-Wochen-erledigt,
+// Akquisestaffeln) - statt vier komplett getrennte Full-Table-Scans derselben
+// ~2900-Zeilen-Tabelle bei jedem Aktualisieren (Nutzervorgabe 24.08.2026:
+// "Mietzahlen dauern noch immer ewig beim Datenabgleich"). loadFhMieteIndex/
+// loadFhErledigtSet/loadFhAkqIndex/loadFhContactsBulkIndex bleiben als dünne
+// Wrapper bestehen, damit bestehende Aufrufstellen (z.B. nach einem
+// Einzel-Upload) unverändert funktionieren.
+// Reine Aggregationslogik (kein I/O) - baut aus einer Liste fh_contacts-Zeilen
+// alle vier Indizes gleichzeitig. Eigene Funktion, damit sie unabhängig von
+// sb/Netzwerk direkt testbar ist.
+function buildFhContactsIndices(rows){
+  const bulkIdx={}, mieteIdx={}, erledigt=new Set(), akqIdx={};
+  for(const r of rows){
+    if(!r.fh_nr) continue;
+    bulkIdx[r.fh_nr]=r.prod_monthly||{};
+    if(r.miete_monthly&&Object.keys(r.miete_monthly).length) mieteIdx[r.fh_nr]={monthly:r.miete_monthly};
+    if(r.neunwochen_erledigt) erledigt.add(r.fh_nr);
+    if(r.akq_punkte!=null||(r.akq_staffeln&&r.akq_staffeln.length)) akqIdx[r.fh_nr]={punkte:r.akq_punkte,staffeln:r.akq_staffeln||[],gl:r.akq_gl||null,name:r.akq_name||null};
+  }
+  return {bulkIdx,mieteIdx,erledigt,akqIdx};
 }
+let fhContactsIndicesLoading=null;
+async function loadFhContactsIndicesAll(){
+  if(!(sb&&supaUser)) return;
+  if(fhContactsIndicesLoading){ await fhContactsIndicesLoading; return; }
+  fhContactsIndicesLoading=(async()=>{
+    try{
+      const allRows=[];
+      let from=0, guard=0;
+      for(;;){
+        guard++;
+        const {data,error}=await sb.from("fh_contacts")
+          .select("fh_nr,prod_monthly,miete_monthly,neunwochen_erledigt,akq_punkte,akq_staffeln,akq_gl,akq_name")
+          .range(from,from+999);
+        if(error){ console.error("loadFhContactsIndicesAll:",error.message||error); break; }
+        if(!data||!data.length) break;
+        allRows.push(...data);
+        from+=data.length;
+        if(guard>50) break;
+      }
+      const {bulkIdx,mieteIdx,erledigt,akqIdx}=buildFhContactsIndices(allRows);
+      fhContactsBulkIndex=bulkIdx;
+      fhMieteIndex=mieteIdx;
+      fhErledigtSet=erledigt;
+      fhAkqIndex=akqIdx;
+      if(hasData()) render();
+    }catch(e){ console.error("loadFhContactsIndicesAll failed:",e); }
+    finally{ fhContactsIndicesLoading=null; }
+  })();
+  await fhContactsIndicesLoading;
+}
+async function loadFhContactsBulkIndex(){ await loadFhContactsIndicesAll(); }
 function lastMonthKeyOf(pm){
   let last=null;
   for(const [k,v] of Object.entries(pm)) if(v>0&&(!last||k>last)) last=k;
@@ -2953,75 +2991,21 @@ async function loadAkpContactsIndex(){
   }catch(e){ console.error("loadAkpContactsIndex failed:",e); }
 }
 // FH-Nrn, deren "9-Wochen-Plan" bereits (manuell oder automatisch) als
-// erledigt markiert wurde - nur das true-Set laden (klein & schnell), statt
-// alle Fachhändler-Stammdaten wie bei akpContactsIndex.
+// erledigt markiert wurde. Wird zusammen mit fhAkqIndex/fhMieteIndex/
+// fhContactsBulkIndex in EINEM konsolidierten Durchlauf geladen (siehe
+// loadFhContactsIndicesAll oben) statt in einem eigenen Full-Table-Scan.
 let fhErledigtSet=new Set();
-async function loadFhErledigtSet(){
-  if(!(sb&&supaUser)) return;
-  try{
-    const set=new Set(); let from=0, guard=0;
-    for(;;){
-      guard++;
-      const {data,error}=await sb.from("fh_contacts")
-        .select("fh_nr")
-        .eq("neunwochen_erledigt",true)
-        .range(from,from+999);
-      if(error){ console.error("loadFhErledigtSet:",error.message||error); break; }
-      if(!data||!data.length) break;
-      for(const r of data) if(r.fh_nr) set.add(r.fh_nr);
-      from+=data.length;
-      if(guard>50) break;
-    }
-    fhErledigtSet=set;
-    if(hasData()) render();
-  }catch(e){ console.error("loadFhErledigtSet failed:",e); }
-}
+async function loadFhErledigtSet(){ await loadFhContactsIndicesAll(); }
 // Akquisestaffeln je Fachhändler (Punkte + 7 Erreichungsdaten, siehe
 // parseAkquiseStaffeln) - komplett geladen (klein genug), damit Dashboard-
 // Kachel und FH-PopUp ohne Einzelabfrage je Händler rendern können.
 let fhAkqIndex={};
-async function loadFhAkqIndex(){
-  if(!(sb&&supaUser)) return;
-  try{
-    const idx={}; let from=0, guard=0;
-    for(;;){
-      guard++;
-      const {data,error}=await sb.from("fh_contacts")
-        .select("fh_nr,akq_punkte,akq_staffeln,akq_gl,akq_name")
-        .range(from,from+999);
-      if(error){ console.error("loadFhAkqIndex:",error.message||error); break; }
-      if(!data||!data.length) break;
-      for(const r of data) if(r.fh_nr&&(r.akq_punkte!=null||(r.akq_staffeln&&r.akq_staffeln.length))) idx[r.fh_nr]={punkte:r.akq_punkte,staffeln:r.akq_staffeln||[],gl:r.akq_gl||null,name:r.akq_name||null};
-      from+=data.length;
-      if(guard>50) break;
-    }
-    fhAkqIndex=idx;
-    if(hasData()) render();
-  }catch(e){ console.error("loadFhAkqIndex failed:",e); }
-}
+async function loadFhAkqIndex(){ await loadFhContactsIndicesAll(); }
 // Miete-Produktion je Fachhändler (Club.Weiss, siehe parseMieteReport) -
 // komplett geladen (analog fhAkqIndex), damit die Miete-Kachel bei "Ziele &
 // Hochrechnung" ohne Einzelabfrage je Händler über alle FH aggregieren kann.
 let fhMieteIndex={};
-async function loadFhMieteIndex(){
-  if(!(sb&&supaUser)) return;
-  try{
-    const idx={}; let from=0, guard=0;
-    for(;;){
-      guard++;
-      const {data,error}=await sb.from("fh_contacts")
-        .select("fh_nr,miete_monthly,club_weiss_mitglied")
-        .range(from,from+999);
-      if(error){ console.error("loadFhMieteIndex:",error.message||error); break; }
-      if(!data||!data.length) break;
-      for(const r of data) if(r.fh_nr&&r.miete_monthly&&Object.keys(r.miete_monthly).length) idx[r.fh_nr]={monthly:r.miete_monthly};
-      from+=data.length;
-      if(guard>50) break;
-    }
-    fhMieteIndex=idx;
-    if(hasData()) render();
-  }catch(e){ console.error("loadFhMieteIndex failed:",e); }
-}
+async function loadFhMieteIndex(){ await loadFhContactsIndicesAll(); }
 // Miete-Jahresproduktion (laufendes Jahr) für "emp" (Mitarbeitername oder
 // AT_GESAMT) - summiert alle Monate des aktuellen Jahres über alle FH, die
 // (bei Mitarbeiter-Filter) diesem Betreuer zugeordnet sind. Nutzt dieselbe
@@ -7636,7 +7620,7 @@ async function refreshData(silent){
   refreshBusy=true;
   const btn=$("refreshBtn"); if(btn) btn.disabled=true;
   try{
-    await Promise.all([loadAll(), loadAkpContactsIndex(), loadFhErledigtSet(), loadFhAkqIndex(), loadFhMieteIndex()]);
+    await Promise.all([loadAll(), loadAkpContactsIndex(), loadFhContactsIndicesAll()]);
     await processPendingImports();
     render();
     if(!silent) toast("Aktualisiert ✓");
@@ -7745,7 +7729,7 @@ window.addEventListener("pageshow",e=>{ if(e.persisted&&hasData()) refreshData(t
   const authed = await initAuth();
   if(authed){
     await loadAll(); showRoleBadge(); render();
-    await Promise.all([loadAkpContactsIndex(), loadFhErledigtSet(), loadFhAkqIndex(), loadFhMieteIndex()]);
+    await Promise.all([loadAkpContactsIndex(), loadFhContactsIndicesAll()]);
     await processPendingImports();
     render();
     maybeAutoShowNotifications();
