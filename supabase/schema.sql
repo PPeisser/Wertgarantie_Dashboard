@@ -271,9 +271,30 @@ alter table public.fh_contacts add column if not exists club_weiss_mitgliedsnumm
 alter table public.fh_contacts add column if not exists miete_monthly jsonb not null default '{}'::jsonb;
 alter table public.fh_contacts add column if not exists miete_sortiment jsonb not null default '{}'::jsonb;
 
+-- Kooperation (Einkaufsverbindung) und Hauptzweig je Fachhändler (Nutzer-
+-- vorgabe 23.08.2026). Kooperation ist bewusst freier Text (kein CHECK),
+-- da künftige Kooperationslisten ohne Migration ergänzt werden können - die
+-- feste Auswahl im Dropdown lebt im Client (index.html, KOOPERATION_OPTIONS).
+-- Hauptzweig ist dagegen eine bewusst feste, kleine Liste.
+alter table public.fh_contacts add column if not exists kooperation text;
+alter table public.fh_contacts add column if not exists hauptzweig text;
+-- "Weitere Zuordnung" (Nutzervorgabe 23.08.2026) - optionales, per Haken
+-- aktivierbares Zusatzfeld. Bewusst freier Text ohne CHECK: der Client baut
+-- das Dropdown aus den bereits verwendeten DISTINCT-Werten dieser Spalte
+-- (+ dem fixen Basiswert "A1 Shop") - ein neuer Freitext-Wert wird dadurch
+-- automatisch zur Dropdown-Option für alle anderen Händler.
+alter table public.fh_contacts add column if not exists weitere_zuordnung text;
+
 alter table public.fh_contacts drop constraint if exists fh_contacts_segmentierung_check;
 alter table public.fh_contacts add constraint fh_contacts_segmentierung_check
   check (segmentierung is null or segmentierung in ('A+','A','B','C+','C','D'));
+
+alter table public.fh_contacts drop constraint if exists fh_contacts_hauptzweig_check;
+alter table public.fh_contacts add constraint fh_contacts_hauptzweig_check
+  check (hauptzweig is null or hauptzweig in (
+    'Vollsortiment','Mobilfunk','IT','Kundendienst','Industrie','Akustik',
+    'Optik','Küchenhandel','Uhrenhandel','Grüne Ware','Sonstiges'
+  ));
 
 alter table public.fh_contacts enable row level security;
 
@@ -294,25 +315,68 @@ create policy "Authenticated update fh_contacts"
   using (true)
   with check (true);
 
+-- Für FH, die aus einer Kooperationsliste bekannt sind, aber noch keine
+-- fh_contacts-Zeile haben (siehe Kooperations-Bulk-Import 23.08.2026) -
+-- sobald der Händler über die tägliche Einspielung (fh_sync_daily) zum
+-- ersten Mal angelegt wird, bekommt er die hinterlegte Kooperation
+-- automatisch mit. Einmalig "konsumiert" (Zeile wird danach gelöscht).
+create table if not exists public.fh_kooperation_pending (
+  fh_nr        text primary key,
+  kooperation  text not null,
+  created_at   timestamptz not null default now()
+);
+
+alter table public.fh_kooperation_pending enable row level security;
+
+create policy "Authenticated read fh_kooperation_pending"
+  on public.fh_kooperation_pending for select
+  to authenticated
+  using (true);
+
+create policy "Authenticated insert fh_kooperation_pending"
+  on public.fh_kooperation_pending for insert
+  to authenticated
+  with check (true);
+
+create policy "Authenticated delete fh_kooperation_pending"
+  on public.fh_kooperation_pending for delete
+  to authenticated
+  using (true);
+
 -- Hält fh_contacts.prod_monthly bei jeder täglichen Einspielung aktuell
 -- (analog zu akp_sync_daily) - schreibt den laufenden Monat mit dem
--- kumulierten Monatswert aus der FH-Liste fest.
+-- kumulierten Monatswert aus der FH-Liste fest. Erkennt außerdem, ob eine
+-- Zeile NEU angelegt wird (statt eines Updates auf einen bereits bekannten
+-- Händler) und übernimmt in dem Fall eine vorgemerkte Kooperation aus
+-- fh_kooperation_pending, falls vorhanden.
 create or replace function public.fh_sync_daily(rows jsonb) returns void
 language plpgsql security definer set search_path = public as $$
 declare
-  r jsonb; mval int; mkey text; monthjson jsonb;
+  r jsonb; mval int; mkey text; monthjson jsonb; fhnr text;
+  is_new boolean; pending_koop text;
 begin
   for r in select * from jsonb_array_elements(rows) loop
-    if coalesce(r->>'nr','') = '' then continue; end if;
+    fhnr := r->>'nr';
+    if coalesce(fhnr,'') = '' then continue; end if;
     mkey := r->>'mk';
     mval := coalesce((r->>'mv')::int, 0);
     monthjson := case when mkey is not null and mval <> 0 then jsonb_build_object(mkey, mval) else '{}'::jsonb end;
 
+    is_new := not exists (select 1 from public.fh_contacts where fh_nr = fhnr);
+
     insert into public.fh_contacts (fh_nr, prod_monthly)
-    values (r->>'nr', monthjson)
+    values (fhnr, monthjson)
     on conflict (fh_nr) do update set
       prod_monthly = coalesce(fh_contacts.prod_monthly,'{}'::jsonb) || excluded.prod_monthly,
       updated_at = now();
+
+    if is_new then
+      select kooperation into pending_koop from public.fh_kooperation_pending where fh_nr = fhnr;
+      if pending_koop is not null then
+        update public.fh_contacts set kooperation = pending_koop where fh_nr = fhnr;
+        delete from public.fh_kooperation_pending where fh_nr = fhnr;
+      end if;
+    end if;
   end loop;
 end;
 $$;
