@@ -285,6 +285,15 @@ alter table public.fh_contacts add column if not exists hauptzweig text;
 -- automatisch zur Dropdown-Option für alle anderen Händler.
 alter table public.fh_contacts add column if not exists weitere_zuordnung text;
 
+-- Jahres-Ziel/Plan je Fachhändler in Stk. (Nutzervorgabe 24.08.2026) - kommt
+-- primär aus der täglichen FH_Liste (Spalte "Plan"), ist aber auch manuell in
+-- den Stammdaten editierbar. Abweichungen zwischen Einspielung und
+-- gespeichertem Wert werden NICHT automatisch übernommen, sondern wie bei
+-- PLZ/Ort über den Stammdaten-Diff-Workflow bestätigt (siehe fhStammdatenDiff
+-- im Client). Nur sichtbar, wenn im Admin-Panel freigeschaltet
+-- (dashboard_kv-Key "fh_ziel_enabled") UND für den jeweiligen FH gesetzt.
+alter table public.fh_contacts add column if not exists ziel numeric;
+
 alter table public.fh_contacts drop constraint if exists fh_contacts_segmentierung_check;
 alter table public.fh_contacts add constraint fh_contacts_segmentierung_check
   check (segmentierung is null or segmentierung in ('A+','A','B','C+','C','D'));
