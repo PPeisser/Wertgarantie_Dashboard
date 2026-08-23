@@ -1186,6 +1186,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <input type="checkbox" id="fhZielEnabledChk" style="width:17px;height:17px;flex-shrink:0">
         Ziele (FH-Stammdaten)
       </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+        <input type="checkbox" id="perfDialogAdminEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+        Performance Dialog
+      </label>
     </div>
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
@@ -1448,6 +1452,13 @@ let myName = null;
 // "performance_dialog_enabled", per Schalter im Performance Dialog – ADMIN
 // PopUp gesetzt). Standardmäßig aus, bis Wert aus der DB geladen wurde.
 let perfDialogEnabled = false;
+// Globaler Ein/Aus-Schalter für den "Performance Dialog – ADMIN"-Header-
+// Button (dashboard_kv-Key "performance_dialog_admin_enabled", per Schalter
+// im normalen ADMIN-Panel gesetzt) - getrennt von perfDialogEnabled oben, das
+// weiterhin steuert, ob MITARBEITER den Performance Dialog angefragt
+// bekommen. Erst wenn dieser Schalter an ist, sieht der Admin den "Performance
+// Dialog – ADMIN"-Button überhaupt und kann darin perfDialogEnabled setzen.
+let perfDialogAdminEnabled = false;
 // Globaler Ein/Aus-Schalter für den "Chefgespräch"-Button (dashboard_kv-Key
 // "chefgespraech_enabled", per Schalter im normalen ADMIN-Panel gesetzt).
 // Standardmäßig aus, bis Wert aus der DB geladen wurde.
@@ -1521,7 +1532,9 @@ function showRoleBadge(){
   // Der Mitarbeiter-Button erscheint zudem nur, wenn der Admin das Feature im
   // Performance Dialog – ADMIN PopUp per Schalter aktiviert hat.
   $("perfDialogBtn").classList.toggle("hidden", !perfDialogEnabled||(myRole!=="admin"&&myRole!=="aussendienst"));
-  $("perfDialogAdminBtn").classList.toggle("hidden", myRole!=="admin");
+  // Performance Dialog – ADMIN-Button: zusätzlich zur Admin-Rolle nur, wenn im
+  // normalen ADMIN-Panel per Schalter freigeschaltet (Nutzervorgabe 24.08.2026).
+  $("perfDialogAdminBtn").classList.toggle("hidden", !perfDialogAdminEnabled||myRole!=="admin");
   // Chefgespräch: gleiche Sichtbarkeitsregel wie Performance Dialog (Außendienst
   // & Admin), nur wenn im normalen ADMIN-Panel per Schalter aktiviert.
   $("chefgespraechBtn").classList.toggle("hidden", !chefgespraechEnabled||(myRole!=="admin"&&myRole!=="aussendienst"));
@@ -1838,6 +1851,18 @@ function openAdminModal(){
   $("kooperationsgespraechEnabledChk").checked=kooperationsgespraechEnabled;
   $("auswertungEnabledChk").checked=auswertungEnabled;
   $("fhZielEnabledChk").checked=fhZielEnabled;
+  $("perfDialogAdminEnabledChk").checked=perfDialogAdminEnabled;
+}
+async function togglePerfDialogAdminEnabled(){
+  const on=$("perfDialogAdminEnabledChk").checked;
+  perfDialogAdminEnabled=on;
+  showRoleBadge();
+  try{
+    await stSet("performance_dialog_admin_enabled",on?"1":"0");
+    toast(on?"Performance Dialog – ADMIN-Button aktiviert ✓":"Performance Dialog – ADMIN-Button deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
 }
 async function toggleChefgespraechEnabled(){
   const on=$("chefgespraechEnabledChk").checked;
@@ -3875,6 +3900,7 @@ async function loadAll(){
   try{ const d=await stGet("wg-state"); if(d){ const p=JSON.parse(d); if(p&&p.latest) state=p; } }catch(e){}
   try{ const g=await stGet("wg-goals"); if(g) goals=JSON.parse(g); }catch(e){}
   try{ perfDialogEnabled=(await stGet("performance_dialog_enabled"))==="1"; }catch(e){}
+  try{ perfDialogAdminEnabled=(await stGet("performance_dialog_admin_enabled"))==="1"; }catch(e){}
   try{ chefgespraechEnabled=(await stGet("chefgespraech_enabled"))==="1"; }catch(e){}
   try{ kooperationsgespraechEnabled=(await stGet("kooperationsgespraech_enabled"))==="1"; }catch(e){}
   try{ auswertungEnabled=(await stGet("auswertung_enabled"))==="1"; }catch(e){}
@@ -7468,6 +7494,7 @@ $("chefgespraechEnabledChk").onchange=toggleChefgespraechEnabled;
 $("kooperationsgespraechEnabledChk").onchange=toggleKooperationsgespraechEnabled;
 $("auswertungEnabledChk").onchange=toggleAuswertungEnabled;
 $("fhZielEnabledChk").onchange=toggleFhZielEnabled;
+$("perfDialogAdminEnabledChk").onchange=togglePerfDialogAdminEnabled;
 $("chefgespraechBtn").onclick=openChefgespraechModal;
 $("chefgespraechClose").onclick=()=>$("chefgespraechModal").classList.add("hidden");
 $("chefgespraechSearchInput").addEventListener("input",renderChefgespraechSearch);
