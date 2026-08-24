@@ -161,7 +161,7 @@ Deno.serve(async (req) => {
   if (!year || year < 2000 || year > 3000) return json({ error: "Ungültiges Jahr" }, 400);
 
   const { data: reports, error: repErr } = await admin
-    .from("performance_dialog_reports").select("*").eq("year", year).order("employee").order("month");
+    .from("performance_dialog_reports").select("*").eq("year", year).eq("is_draft", false).order("employee").order("month");
   if (repErr) return json({ error: repErr.message }, 500);
   if (!reports || !reports.length) {
     return json({ error: `Für ${year} liegen noch keine Performance-Dialog-Protokolle vor.` }, 400);
