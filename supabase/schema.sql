@@ -557,13 +557,19 @@ select cron.schedule(
 -- eingefroren, damit der Bericht ein fixer historischer Datensatz bleibt
 -- und sich nicht rückwirkend ändert, wenn sich die Statistik später
 -- weiterentwickelt) als auch die vier Freitextantworten.
+-- is_draft=true + submitted_at=null: Zwischenstand, den der Mitarbeiter noch
+-- nicht abgeschickt hat (Autosave nach jedem Wizard-Schritt) - wird NICHT
+-- als PDF versendet und zaehlt in Admin-Uebersicht/Erinnerungsmails/
+-- Jahresbericht nicht als abgegeben. Erst der finale "Abschliessen und
+-- absenden"-Klick setzt is_draft=false + submitted_at.
 create table if not exists public.performance_dialog_reports (
   id           uuid primary key default gen_random_uuid(),
   employee     text not null,
   year         int not null,
   month        int not null check (month between 1 and 12),
   goals        jsonb not null default '[]'::jsonb,
-  submitted_at timestamptz not null default now(),
+  is_draft     boolean not null default false,
+  submitted_at timestamptz,
   submitted_by uuid references auth.users(id),
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now(),

@@ -1216,7 +1216,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
   <div class="modal wide">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">
       <h3 style="margin:0">Performance Dialog</h3>
-      <button class="btn btn-ghost" id="perfClose">✕ Schließen</button>
+      <span style="display:flex;align-items:center;gap:12px">
+        <span id="perfSaveStatus" style="font-size:12px;color:var(--muted)"></span>
+        <button class="btn btn-ghost" id="perfClose">✕ Schließen</button>
+      </span>
     </div>
     <div id="perfBody"></div>
   </div>
@@ -3219,6 +3222,7 @@ const PERF_QUESTIONS=[
 const PERF_MIN_LEN=50;
 const PERF_ADMIN_EMAIL="k.scheiermann@wertgarantie.com";
 let perfEmployee=null, perfReportYear=null, perfReportMonth=null;
+let perfDraftSaveTimer=null, perfDraftSaveBusy=false, perfDraftSaveQueued=false;
 let perfGoalIds=[], perfStepIdx=0, perfAnswers={}, perfSnapshots={}, perfExistingReport=null;
 // Berichtszeitraum = immer der abgeschlossene Vormonat zum Öffnungszeitpunkt
 // (das Protokoll ist laut Vorgabe "immer vom Vormonat", unabhängig davon, ob
@@ -3301,8 +3305,49 @@ async function openPerfModal(){
     }
   }catch(e){}
   perfStepIdx=0;
+  updatePerfSaveStatus("");
   $("perfModal").classList.remove("hidden");
   renderPerfStep();
+}
+// Autosave: jeder Schritt (Weiter/Zurück-Klick, Textarea-Eingabe, Schließen)
+// speichert die bisherigen Antworten als Entwurf (is_draft=true, kein
+// submitted_at) - erst der finale "Abschließen und absenden"-Klick markiert
+// den Bericht als abgegeben und verschickt das PDF (Nutzervorgabe
+// 24.08.2026: "jeder Schritt wird immer gespeichert, erst versendet wenn
+// abgeschickt wird").
+function updatePerfSaveStatus(state){
+  const el=$("perfSaveStatus");
+  if(!el) return;
+  if(state==="saving") el.textContent="Speichert …";
+  else if(state==="saved") el.textContent="Entwurf gespeichert ✓ "+fmtNowDateTime();
+  else if(state==="error") el.textContent="⚠️ Entwurf konnte nicht gespeichert werden";
+  else el.textContent="";
+}
+async function savePerfDraft(){
+  if(!sb||!perfEmployee||!perfGoalIds.length) return;
+  clearTimeout(perfDraftSaveTimer);
+  if(perfDraftSaveBusy){ perfDraftSaveQueued=true; return; }
+  perfDraftSaveBusy=true;
+  updatePerfSaveStatus("saving");
+  try{
+    const goalsPayload=perfGoalIds.map(g=>({goal_id:g,snapshot:perfSnapshots[g],answers:perfAnswers[g]}));
+    const {error}=await sb.from("performance_dialog_reports").upsert({
+      employee:perfEmployee,year:perfReportYear,month:perfReportMonth,goals:goalsPayload,
+      is_draft:true,submitted_by:supaUser.id,updated_at:new Date().toISOString()
+    },{onConflict:"employee,year,month"});
+    if(error) throw error;
+    updatePerfSaveStatus("saved");
+  }catch(e){
+    console.error("savePerfDraft failed:",e);
+    updatePerfSaveStatus("error");
+  }finally{
+    perfDraftSaveBusy=false;
+    if(perfDraftSaveQueued){ perfDraftSaveQueued=false; savePerfDraft(); }
+  }
+}
+function schedulePerfDraftSave(){
+  clearTimeout(perfDraftSaveTimer);
+  perfDraftSaveTimer=setTimeout(savePerfDraft,1200);
 }
 function renderPerfStep(){
   const lastStep=2+perfGoalIds.length;
@@ -3315,7 +3360,10 @@ function renderPerfWelcomeStep(){
   $("perfBody").innerHTML=`<div style="text-align:center;padding:34px 10px">
     <div style="font-size:20px;font-weight:900;color:var(--wg-navy);margin-bottom:10px">Willkommen beim Performance Dialog</div>
     <div style="font-size:15px;color:var(--muted);margin-bottom:26px">Monat: ${MONATE[perfReportMonth-1]} ${perfReportYear} · lieber ${escapeHtml(perfEmployee)}</div>
-    ${perfExistingReport?`<div style="color:var(--muted);font-size:12.5px;margin-bottom:14px">ℹ️ Für diesen Monat liegt bereits ein gespeicherter Bericht vor (${fmtDate(perfExistingReport.submitted_at.slice(0,10))}) - deine bisherigen Antworten sind vorausgefüllt.</div>`:""}
+    ${perfExistingReport?(perfExistingReport.is_draft
+      ?`<div style="color:var(--muted);font-size:12.5px;margin-bottom:14px">ℹ️ Für diesen Monat liegt ein automatisch gespeicherter Entwurf vor (Stand: ${fmtDate(perfExistingReport.updated_at.slice(0,10))}) - noch nicht abgeschickt. Deine bisherigen Eingaben sind vorausgefüllt.</div>`
+      :`<div style="color:var(--muted);font-size:12.5px;margin-bottom:14px">ℹ️ Für diesen Monat liegt bereits ein abgeschickter Bericht vor (${fmtDate(perfExistingReport.submitted_at.slice(0,10))}) - deine bisherigen Antworten sind vorausgefüllt.</div>`
+      ):""}
     <button class="btn btn-blue" id="perfNextBtn" style="padding:12px 28px">Los geht's →</button>
   </div>`;
   $("perfNextBtn").onclick=()=>{ perfStepIdx++; renderPerfStep(); };
@@ -3364,11 +3412,12 @@ function renderPerfGoalStep(goalId,goalIdx){
       $("perfCount_"+key).style.color=len>=PERF_MIN_LEN?"var(--pos)":"var(--muted)";
     });
     $("perfNextBtn").disabled=!perfGoalValid(goalId);
+    schedulePerfDraftSave();
   };
   PERF_QUESTIONS.forEach(([key])=>{ $("perfQ_"+key).oninput=updateValidity; });
   updateValidity();
-  $("perfBackBtn").onclick=()=>{ perfStepIdx--; renderPerfStep(); };
-  $("perfNextBtn").onclick=()=>{ if(!perfGoalValid(goalId)) return; perfStepIdx++; renderPerfStep(); };
+  $("perfBackBtn").onclick=()=>{ savePerfDraft(); perfStepIdx--; renderPerfStep(); };
+  $("perfNextBtn").onclick=()=>{ if(!perfGoalValid(goalId)) return; savePerfDraft(); perfStepIdx++; renderPerfStep(); };
 }
 function renderPerfFinalStep(){
   $("perfBody").innerHTML=`<div style="text-align:center;padding:24px 10px">
@@ -3391,9 +3440,10 @@ async function submitPerfReport(){
   $("perfSubmitHint").textContent="";
   try{
     const goalsPayload=perfGoalIds.map(g=>({goal_id:g,snapshot:perfSnapshots[g],answers:perfAnswers[g]}));
+    clearTimeout(perfDraftSaveTimer);
     const { error }=await sb.from("performance_dialog_reports").upsert({
       employee:perfEmployee,year:perfReportYear,month:perfReportMonth,goals:goalsPayload,
-      submitted_at:new Date().toISOString(),submitted_by:supaUser.id,updated_at:new Date().toISOString()
+      is_draft:false,submitted_at:new Date().toISOString(),submitted_by:supaUser.id,updated_at:new Date().toISOString()
     },{onConflict:"employee,year,month"});
     if(error) throw error;
     toast("Gespeichert ✓ PDF wird erstellt und versendet …");
@@ -3600,7 +3650,7 @@ async function loadPerfAdminReports(){
   $("perfAdminBody").innerHTML=`<div class="empty-note">Lädt …</div>`;
   const idx={};
   try{
-    const {data,error}=await sb.from("performance_dialog_reports").select("*").eq("year",perfAdminYear);
+    const {data,error}=await sb.from("performance_dialog_reports").select("*").eq("year",perfAdminYear).eq("is_draft",false);
     if(!error&&data) for(const r of data){ if(!idx[r.employee]) idx[r.employee]={}; idx[r.employee][r.month]=r; }
   }catch(e){ console.error("loadPerfAdminReports failed:",e); }
   perfAdminReports=idx;
@@ -3737,7 +3787,7 @@ async function exportPerfAllReportsPdf(year,month){
   if(year==null||month==null){ const p=perfActivePeriod(); year=p.year; month=p.month; }
   toast("Sammel-PDF wird erstellt …");
   try{
-    const {data,error}=await sb.from("performance_dialog_reports").select("*").eq("year",year).eq("month",month).order("employee");
+    const {data,error}=await sb.from("performance_dialog_reports").select("*").eq("year",year).eq("month",month).eq("is_draft",false).order("employee");
     if(error) throw error;
     if(!data||!data.length){ toast("Für "+MONATE[month-1]+" "+year+" liegt noch kein Protokoll vor."); pdfSendTarget=null; return; }
     const {pdf,filename}=await buildCombinedPerfReportsPdfDoc(data,year,month);
@@ -7737,7 +7787,7 @@ $("auswertungBuildBtn").onclick=()=>{
   openPdfTargetChoice(()=>exportAuswertungPdf(typ,singleVal,multiKeys,von,bis,showAkp));
 };
 $("perfDialogBtn").onclick=openPerfModal;
-$("perfClose").onclick=()=>$("perfModal").classList.add("hidden");
+$("perfClose").onclick=()=>{ savePerfDraft(); $("perfModal").classList.add("hidden"); };
 $("perfDialogAdminBtn").onclick=openPerfAdminModal;
 $("perfAdminClose").onclick=()=>$("perfAdminModal").classList.add("hidden");
 $("perfAdminPdfBtn").onclick=()=>openPdfTargetChoice(()=>exportPerfAllReportsPdf());

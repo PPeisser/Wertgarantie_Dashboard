@@ -125,7 +125,7 @@ Deno.serve(async (req) => {
   const [year, month] = activeYm.split("-").map(Number);
 
   const { data: reportRows, error: repErr } = await admin
-    .from("performance_dialog_reports").select("employee").eq("year", year).eq("month", month);
+    .from("performance_dialog_reports").select("employee").eq("year", year).eq("month", month).eq("is_draft", false);
   if (repErr) return json({ error: repErr.message }, 500);
   const submitted = new Set((reportRows || []).map((r) => r.employee as string));
 
