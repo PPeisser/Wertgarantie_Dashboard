@@ -3398,7 +3398,7 @@ async function submitPerfReport(){
     if(error) throw error;
     toast("Gespeichert ✓ PDF wird erstellt und versendet …");
     const {mailFailures}=await exportPerfReportPdf(perfEmployee,perfReportYear,perfReportMonth,goalsPayload,{mailToSelf:true,mailToAdmin:true});
-    $("perfModal").classList.add("hidden");
+    renderPerfDoneOverview(goalsPayload,mailFailures);
     if(mailFailures&&mailFailures.length){
       toast("Performance Dialog gespeichert ✓ - Mailversand an "+mailFailures.join(", ")+" ist fehlgeschlagen. Bitte Admin informieren.");
     }else{
@@ -3411,6 +3411,39 @@ async function submitPerfReport(){
     perfSubmitBusy=false;
     $("perfSubmitBtn").disabled=false;
   }
+}
+// Nach dem Absenden bleibt das PopUp offen und zeigt eine lesbare Übersicht
+// des gerade abgegebenen Berichts (Nutzervorgabe 24.08.2026: "bei Fertig
+// öffnet er keinen Text/keine Datei") - bisher schloss sich das PopUp direkt
+// nach dem Absenden, ohne dass die/der Mitarbeiter:in die eigenen Antworten
+// nochmal sehen konnte (das PDF ging nur per Mail raus, wurde nie angezeigt).
+function renderPerfDoneOverview(goalsPayload,mailFailures){
+  const goalsHtml=goalsPayload.map(g=>{
+    const qa=PERF_QUESTIONS.map(([key,label])=>`
+      <div style="margin-top:10px">
+        <span class="ac-lbl">${escapeHtml(label)}</span>
+        <div class="ac-val" style="font-weight:600;white-space:pre-wrap">${escapeHtml((g.answers&&g.answers[key])||"–")}</div>
+      </div>`).join("");
+    return `<div style="border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px;text-align:left">
+      <div style="font-size:14px;font-weight:900;color:var(--wg-navy);margin-bottom:10px">${escapeHtml(PERF_GOAL_TITLES[g.goal_id]||("Ziel "+g.goal_id))}</div>
+      ${perfGoalSystemHtml(g.goal_id,g.snapshot)}
+      ${qa}
+    </div>`;
+  }).join("");
+  const failureNote=(mailFailures&&mailFailures.length)?`<div class="error" style="margin-bottom:14px">⚠️ Mailversand an ${escapeHtml(mailFailures.join(", "))} ist fehlgeschlagen. Bitte Admin informieren.</div>`:"";
+  $("perfBody").innerHTML=`
+    <div style="text-align:center;padding:6px 0 20px">
+      <div style="font-size:20px;font-weight:900;color:var(--wg-navy);margin-bottom:6px">✓ Performance Dialog abgeschlossen</div>
+      <div style="color:var(--muted);font-size:14px">${MONATE[perfReportMonth-1]} ${perfReportYear} · ${escapeHtml(perfEmployee)}</div>
+      <div style="color:var(--muted);font-size:12.5px;margin-top:6px">${mailFailures&&mailFailures.length?"Gespeichert, Mailversand siehe unten.":"Gespeichert und per Mail an dich sowie Konstantin Scheiermann versendet."}</div>
+    </div>
+    ${failureNote}
+    ${goalsHtml}
+    <div class="actions" style="justify-content:center;margin-top:6px">
+      <button class="btn btn-blue" id="perfDoneCloseBtn">Schließen</button>
+    </div>
+  `;
+  $("perfDoneCloseBtn").onclick=()=>$("perfModal").classList.add("hidden");
 }
 // Baut den PDF-Report für EINEN Mitarbeiter/Monat (aus dem gespeicherten
 // goals-Array, egal ob gerade frisch abgeschlossen oder nachträglich vom
