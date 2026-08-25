@@ -284,6 +284,12 @@ alter table public.fh_contacts add column if not exists hauptzweig text;
 -- (+ dem fixen Basiswert "A1 Shop") - ein neuer Freitext-Wert wird dadurch
 -- automatisch zur Dropdown-Option für alle anderen Händler.
 alter table public.fh_contacts add column if not exists weitere_zuordnung text;
+-- Zwei weitere, unabhängig per eigenem Haken aktivierbare Zusatzslots
+-- (Nutzervorgabe 25.08.2026: "2 weitere Zuordnungen machen") - gleiches
+-- Prinzip wie oben, teilen sich aber den DISTINCT-Wertepool mit dem
+-- ersten Slot (siehe loadWeitereZuordnungOptions() im Client).
+alter table public.fh_contacts add column if not exists weitere_zuordnung_2 text;
+alter table public.fh_contacts add column if not exists weitere_zuordnung_3 text;
 
 -- Jahres-Ziel/Plan je Fachhändler in Stk. (Nutzervorgabe 24.08.2026) - kommt
 -- primär aus der täglichen FH_Liste (Spalte "Plan"), ist aber auch manuell in
