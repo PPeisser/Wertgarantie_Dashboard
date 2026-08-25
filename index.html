@@ -815,6 +815,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 
     <div id="fhViewMode">
       <div class="ac-grid">
+        <div id="fhManualNameViewRow" class="hidden"><span class="ac-lbl">Firmenname (manuell hinterlegt)</span><div class="ac-val" id="fhManualNameView">–</div></div>
         <div><span class="ac-lbl">Adresse</span><div class="ac-val" id="fhAddrView">–</div></div>
         <div><span class="ac-lbl">Telefon</span><div class="ac-val" id="fhTelefonView">–</div></div>
         <div><span class="ac-lbl">E-Mail Geschäft</span><div class="ac-val" id="fhEmailView">–</div></div>
@@ -842,6 +843,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 
     <div id="fhEditMode" class="hidden">
       <div class="ac-grid">
+        <div>
+          <label class="ac-lbl" for="fhManualNameEdit">Firmenname (nur falls hier nicht automatisch bekannt)</label>
+          <input id="fhManualNameEdit" autocomplete="off" placeholder="z.B. Elektro Muster GmbH">
+        </div>
         <div><label class="ac-lbl" for="fhStrasseEdit">Straße</label><input id="fhStrasseEdit" autocomplete="off"></div>
         <div><label class="ac-lbl" for="fhPlzEdit">PLZ</label><input id="fhPlzEdit" autocomplete="off"></div>
         <div><label class="ac-lbl" for="fhOrtEdit">Ort</label><input id="fhOrtEdit" autocomplete="off"></div>
@@ -2126,15 +2131,16 @@ let fhContactsBulkIndex=null;
 // alle vier Indizes gleichzeitig. Eigene Funktion, damit sie unabhängig von
 // sb/Netzwerk direkt testbar ist.
 function buildFhContactsIndices(rows){
-  const bulkIdx={}, mieteIdx={}, erledigt=new Set(), akqIdx={};
+  const bulkIdx={}, mieteIdx={}, erledigt=new Set(), akqIdx={}, manualNameIdx={};
   for(const r of rows){
     if(!r.fh_nr) continue;
     bulkIdx[r.fh_nr]=r.prod_monthly||{};
     if(r.miete_monthly&&Object.keys(r.miete_monthly).length) mieteIdx[r.fh_nr]={monthly:r.miete_monthly};
     if(r.neunwochen_erledigt) erledigt.add(r.fh_nr);
     if(r.akq_punkte!=null||(r.akq_staffeln&&r.akq_staffeln.length)) akqIdx[r.fh_nr]={punkte:r.akq_punkte,staffeln:r.akq_staffeln||[],gl:r.akq_gl||null,name:r.akq_name||null};
+    if(r.name) manualNameIdx[r.fh_nr]=r.name;
   }
-  return {bulkIdx,mieteIdx,erledigt,akqIdx};
+  return {bulkIdx,mieteIdx,erledigt,akqIdx,manualNameIdx};
 }
 let fhContactsIndicesLoading=null;
 async function loadFhContactsIndicesAll(){
@@ -2147,7 +2153,7 @@ async function loadFhContactsIndicesAll(){
       for(;;){
         guard++;
         const {data,error}=await sb.from("fh_contacts")
-          .select("fh_nr,prod_monthly,miete_monthly,neunwochen_erledigt,akq_punkte,akq_staffeln,akq_gl,akq_name")
+          .select("fh_nr,prod_monthly,miete_monthly,neunwochen_erledigt,akq_punkte,akq_staffeln,akq_gl,akq_name,name")
           .range(from,from+999);
         if(error){ console.error("loadFhContactsIndicesAll:",error.message||error); break; }
         if(!data||!data.length) break;
@@ -2155,11 +2161,12 @@ async function loadFhContactsIndicesAll(){
         from+=data.length;
         if(guard>50) break;
       }
-      const {bulkIdx,mieteIdx,erledigt,akqIdx}=buildFhContactsIndices(allRows);
+      const {bulkIdx,mieteIdx,erledigt,akqIdx,manualNameIdx}=buildFhContactsIndices(allRows);
       fhContactsBulkIndex=bulkIdx;
       fhMieteIndex=mieteIdx;
       fhErledigtSet=erledigt;
       fhAkqIndex=akqIdx;
+      fhManualNameIndex=manualNameIdx;
       if(hasData()) render();
       // Direkt (statt nur über render()) - falls IRGENDEINE andere
       // render()-Teilfunktion bei ungewöhnlichen Live-Daten wirft, würde das
@@ -3143,6 +3150,12 @@ async function loadAkpContactsIndex(){
 // loadFhContactsIndicesAll oben) statt in einem eigenen Full-Table-Scan.
 let fhErledigtSet=new Set();
 async function loadFhErledigtSet(){ await loadFhContactsIndicesAll(); }
+// Manueller Namens-Fallback (fh_contacts.name, Nutzervorgabe 25.08.2026):
+// letzte Instanz in fhFallbackFromAkp(), für Händler, die weder heute
+// produziert haben, noch einen AKP-Ansprechpartner mit Firma, noch einen
+// akq_name besitzen - siehe FH-PopUp-Stammdaten ("Firmenname, falls hier
+// nicht bekannt").
+let fhManualNameIndex={};
 // Akquisestaffeln je Fachhändler (Punkte + 7 Erreichungsdaten, siehe
 // parseAkquiseStaffeln) - komplett geladen (klein genug), damit Dashboard-
 // Kachel und FH-PopUp ohne Einzelabfrage je Händler rendern können.
@@ -4936,6 +4949,12 @@ function fhFallbackFromAkp(fhNr){
   // Nummern statt Namen, obwohl der AKP-Fallback bereits vorhanden war.
   const akq=fhAkqIndex&&fhAkqIndex[fhNr];
   if(akq&&akq.name) return {name:akq.name,ort:null};
+  // Letzte Instanz: manuell im FH-PopUp hinterlegter Name (fh_contacts.name)
+  // - für Händler, die in KEINER der obigen Quellen vorkommen (Bug-Report
+  // 25.08.2026, konkrete Beispiele 205027/208006/213022: nirgends in der DB
+  // ein Firmenname hinterlegt).
+  const manual=fhManualNameIndex&&fhManualNameIndex[fhNr];
+  if(manual) return {name:manual,ort:null};
   return null;
 }
 let fhModalCurrent=null;
@@ -5148,6 +5167,8 @@ async function loadFhContact(fhNr){
 function renderFhContactView(){
   const c=fhContactCurrent||{};
   const f=state.latest.fh[fhModalCurrent];
+  $("fhManualNameViewRow").classList.toggle("hidden",!c.name);
+  $("fhManualNameView").textContent=c.name||"–";
   const addr=[c.strasse,[c.plz,c.ort||(f&&f.ort)].filter(Boolean).join(" ")].filter(Boolean).join(", ");
   $("fhAddrView").textContent=addr||"–";
   $("fhTelefonView").textContent=c.telefon||"–";
@@ -7236,6 +7257,7 @@ async function toggleFhEdit(on){
   if(on){
     const c=fhContactCurrent||{};
     const f=state.latest.fh[fhModalCurrent];
+    $("fhManualNameEdit").value=c.name||"";
     $("fhStrasseEdit").value=c.strasse||"";
     $("fhPlzEdit").value=c.plz||(f&&f.plz)||"";
     $("fhOrtEdit").value=c.ort||(f&&f.ort)||"";
@@ -7278,6 +7300,7 @@ async function toggleFhEdit(on){
 }
 async function saveFhContact(){
   const fhNr=fhModalCurrent; if(!fhNr) return;
+  const name=$("fhManualNameEdit").value.trim()||null;
   const strasse=$("fhStrasseEdit").value.trim()||null;
   const plz=$("fhPlzEdit").value.trim()||null;
   const ort=$("fhOrtEdit").value.trim()||null;
@@ -7306,12 +7329,17 @@ async function saveFhContact(){
   const ziel=fhZielEnabled?($("fhZielChk").checked?(parseFloat($("fhZielEdit").value)||null):null):fhContactCurrent.ziel;
   $("fhSaveBtn").disabled=true;
   const {error}=await sb.from("fh_contacts").upsert({
-    fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung,filialbetriebe,ziel,
+    fh_nr:fhNr,name,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung,filialbetriebe,ziel,
     updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()
   },{onConflict:"fh_nr"});
   $("fhSaveBtn").disabled=false;
   if(error){ $("fhSaveHint").textContent="Fehler: "+error.message; return; }
-  fhContactCurrent={...fhContactCurrent,fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung,filialbetriebe,ziel};
+  fhContactCurrent={...fhContactCurrent,fh_nr:fhNr,name,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung,filialbetriebe,ziel};
+  // fhManualNameIndex live nachziehen (statt erst beim nächsten
+  // loadFhContactsIndicesAll-Refresh) - sonst zeigt z.B. das Miete-PopUp den
+  // gerade eingetragenen Namen erst nach einem Reload.
+  if(name) fhManualNameIndex[fhNr]=name; else delete fhManualNameIndex[fhNr];
+  if(!(state.latest.fh[fhNr]&&state.latest.fh[fhNr].name)) $("fhName").textContent=name||fhNr;
   if(neunwochen_erledigt) fhErledigtSet.add(fhNr); else fhErledigtSet.delete(fhNr);
   renderFhContactView();
   renderFhStammdatenDiff();

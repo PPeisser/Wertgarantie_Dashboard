@@ -259,6 +259,14 @@ alter table public.fh_contacts add column if not exists akq_gl text;
 -- Händler in der aktuellen täglichen FH_Liste-Auswertung keine Zeile hat
 -- (z.B. keine Tagesproduktion) und dort daher kein Name verfügbar ist.
 alter table public.fh_contacts add column if not exists akq_name text;
+-- Manueller Namens-Fallback (FH-PopUp, Nutzervorgabe 25.08.2026): fuer
+-- Haendler, die WEDER in der taeglichen FH_Liste-Einspielung, NOCH als
+-- AKP-Kontakt mit Firma, NOCH in der Akquisestaffeln-Datei (akq_name) einen
+-- Namen haben, zeigten Miete-PopUp/FH-PopUp bis dahin nur die rohe FH-Nr.
+-- an, da nirgends in der DB ein Firmenname hinterlegt war. Rein manuelles
+-- Feld (ueberschreibt NICHT die automatischen Quellen, greift nur, wenn alle
+-- anderen fehlen) - siehe fhFallbackFromAkp() in index.html.
+alter table public.fh_contacts add column if not exists name text;
 -- Miete-Report (Club Weiß, MSK_Report-Datei, Admin-Import): club_weiss_mitglied
 -- wird beim Import IMMER auf true gesetzt (jeder FH in der Datei ist Mitglied),
 -- aber nie automatisch wieder zurückgesetzt (siehe fh_sync_miete) - manuelles
