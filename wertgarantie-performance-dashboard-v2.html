@@ -821,7 +821,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
           <select id="fhKooperationEdit"></select>
         </div>
         <div><label class="ac-lbl" for="fhHauptzweigEdit">Hauptzweig</label>
-          <select id="fhHauptzweigEdit"><option value="">–</option><option value="Vollsortiment">Vollsortiment</option><option value="Mobilfunk">Mobilfunk</option><option value="IT">IT</option><option value="Kundendienst">Kundendienst</option><option value="Industrie">Industrie</option><option value="Akustik">Akustik</option><option value="Optik">Optik</option><option value="Küchenhandel">Küchenhandel</option><option value="Uhrenhandel">Uhrenhandel</option><option value="Grüne Ware">Grüne Ware</option><option value="Sonstiges">Sonstiges</option></select>
+          <select id="fhHauptzweigEdit"><option value="">–</option><option value="Vollsortiment">Vollsortiment</option><option value="Mobilfunk">Mobilfunk</option><option value="IT">IT</option><option value="Kundendienst">Kundendienst</option><option value="Industrie">Industrie</option><option value="Akustik">Akustik</option><option value="Optik">Optik</option><option value="Küchenhandel">Küchenhandel</option><option value="Uhrenhandel">Uhrenhandel</option><option value="Grüne Ware">Grüne Ware</option><option value="Makler">Makler</option><option value="Projekt">Projekt</option><option value="Sonstiges">Sonstiges</option></select>
         </div>
         <div><label class="ac-lbl" for="fhBesuchEdit">Letzter Besuch</label><input id="fhBesuchEdit" type="date"></div>
         <div><span class="ac-lbl">9-Wochen-Plan</span>
@@ -916,6 +916,24 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       </span>
     </div>
     <div id="filialGruppeBody" style="max-height:75vh;overflow:auto"></div>
+  </div>
+</div>
+
+<!-- Miete (Club.Weiss) PopUp: Fachhändler-Übersicht nach Produktion sortiert -->
+<div class="modal-bg hidden" id="mieteListModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px">
+      <h3 style="margin:0">🏠 Miete – Fachhändler-Übersicht</h3>
+      <button class="btn btn-ghost" id="mieteListClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin:10px 0">
+      <span class="tabs mini" id="mieteListTabs">
+        <button data-p="jahr" class="on">Jahr</button>
+        <button data-p="monat">Aktuelles Monat</button>
+      </span>
+      <span id="mieteListSubtitle" style="font-size:12px;color:var(--muted);font-weight:700"></span>
+    </div>
+    <div id="mieteListBody" style="overflow-x:auto;max-height:65vh;overflow-y:auto"></div>
   </div>
 </div>
 
@@ -3069,6 +3087,48 @@ function mieteJahrFor(emp,year){
   }
   return sum;
 }
+// Miete-PopUp (Nutzervorgabe 25.08.2026: Klick auf die Miete-Kachel öffnet
+// eine FH-Übersicht, Jahresproduktion absteigend + Umschalter auf das
+// aktuelle Monat) - dieselbe Mitarbeiter-Filterung (currentEmp/AT_GESAMT)
+// wie mieteJahrFor() oben, damit die Liste konsistent zur Kachel bleibt.
+let mieteListPeriod="jahr"; // 'jahr'|'monat'
+function mieteListRows(period){
+  const s=state.latest; if(!s) return [];
+  const mk=s.jahr+"-"+String(s.monat).padStart(2,"0");
+  const rows=[];
+  for(const [nr,rec] of Object.entries(fhMieteIndex)){
+    const fh=s.fh[nr];
+    if(currentEmp!==AT_GESAMT&&(!fh||fh.emp!==currentEmp)) continue;
+    let val=0;
+    if(period==="monat") val=(rec.monthly||{})[mk]||0;
+    else for(const [ym,v] of Object.entries(rec.monthly||{})) if(ym.slice(0,4)===String(s.jahr)) val+=v;
+    if(val<=0) continue;
+    rows.push({fhNr:nr,name:(fh&&fh.name)||nr,ort:(fh&&fh.ort)||"",emp:(fh&&fh.emp)||"",val});
+  }
+  rows.sort((a,b)=>b.val-a.val);
+  return rows;
+}
+function openMieteListModal(){
+  mieteListPeriod="jahr";
+  $("mieteListModal").classList.remove("hidden");
+  renderMieteListModal();
+}
+function renderMieteListModal(){
+  const s=state.latest; if(!s) return;
+  document.querySelectorAll("#mieteListTabs button").forEach(b=>b.classList.toggle("on",b.dataset.p===mieteListPeriod));
+  const rows=mieteListRows(mieteListPeriod);
+  const periodLbl=mieteListPeriod==="monat"?("Produktion "+MONATE[s.monat-1]+" "+s.jahr):("Jahresproduktion "+s.jahr);
+  $("mieteListSubtitle").textContent=periodLbl+" · "+fmt(rows.length)+" Fachhändler mit Miete-Produktion"+(currentEmp!==AT_GESAMT?" · "+currentEmp:"");
+  $("mieteListBody").innerHTML=rows.length
+    ? `<table><thead><tr><th>Fachhändler</th><th>Ort</th><th>Betreuer</th><th class="r">${periodLbl}</th></tr></thead><tbody>`+
+      rows.map(r=>`<tr>
+        <td><b><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.fhNr)}">${escapeHtml(r.name)}</button></b></td>
+        <td>${escapeHtml(r.ort||"–")}</td>
+        <td>${escapeHtml(r.emp||"–")}</td>
+        <td class="r">${fmt(r.val)}</td>
+      </tr>`).join("")+`</tbody></table>`
+    : `<div class="empty-note">Keine Miete-Produktion im gewählten Zeitraum.</div>`;
+}
 /* ---------- Performance Dialog: Ziel-Definitionen + Berechnungen ---------- */
 // Welches der 5 Ziele für wen gilt - siehe Vorgabe des Nutzers vom
 // 18.08.2026. Ziel 1 (Produktion) für alle 6, Ziel 2+3 (Akquise/Miete) für
@@ -4297,7 +4357,7 @@ function renderGoals(){
     mieteTarget>0?{val:mieteHrJahr,lbl:"Jahresende (gleichmäßig)"}:null,
     null,
     "Zahlen aus Freitagsreport, letzte Einspielung: "+(fmtWeekdayDate(mieteLastImport)||MIETE_REPORT_STAND_FALLBACK)
-  ).replace('class="goal"','class="goal goal-miete"');
+  ).replace('class="goal"','class="goal goal-miete" style="cursor:pointer" onclick="openMieteListModal()"');
   // Nur für Österreich gesamt und die Mitarbeiter mit Club.Weiss-Ziel
   // anzeigen - Szendi und Eitzinger haben keines (mieteTarget=0), bei ihnen
   // soll die Kachel komplett ausgeblendet werden statt "kein Jahresziel
@@ -8271,6 +8331,10 @@ $("fhFilialbetriebeSiblings").addEventListener("click",e=>{
 });
 $("fhFilialGruppeBtn").onclick=openFilialGruppeModal;
 $("filialGruppeClose").onclick=()=>$("filialGruppeModal").classList.add("hidden");
+$("mieteListClose").onclick=()=>$("mieteListModal").classList.add("hidden");
+document.querySelectorAll("#mieteListTabs button").forEach(b=>{
+  b.onclick=()=>{ mieteListPeriod=b.dataset.p; renderMieteListModal(); };
+});
 $("filialGruppePdfBtn").onclick=()=>openPdfTargetChoice(()=>exportFilialGruppePdf());
 $("fhClubEdit").onchange=()=>{
   $("fhClubNrFields").classList.toggle("hidden",!$("fhClubEdit").checked);
