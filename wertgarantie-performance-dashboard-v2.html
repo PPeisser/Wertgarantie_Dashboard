@@ -543,6 +543,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <h1>Performance Dashboard Österreich</h1>
       <div class="sub">Vertragsproduktion · Ziele · Händler &amp; AKP im Blick</div>
       <div class="hidden" id="welcomeMsg" style="font-size:12.5px;color:var(--wg-blue-dark);font-weight:700;margin-top:2px"></div>
+      <div class="hidden no-print akp-search" id="fhSearchBox" style="max-width:320px;margin-top:10px">
+        <input type="text" id="fhSearchInput" placeholder="Fachhändlersuche: Name, Ort oder FH-Nr. …" autocomplete="off">
+        <div id="fhSearchResults"></div>
+      </div>
     </div>
     <div class="controls no-print">
      <div class="controls-row">
@@ -1258,6 +1262,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <input type="checkbox" id="perfDialogAdminEnabledChk" style="width:17px;height:17px;flex-shrink:0">
         Performance Dialog
       </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+        <input type="checkbox" id="fhSearchEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+        Fachhändlersuche (Header)
+      </label>
     </div>
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
@@ -1551,6 +1559,12 @@ let auswertungEnabled = false;
 // sondern nur die Ziel-Zeile/-Bearbeitung in den FH-Stammdaten. Standardmäßig
 // aus, bis Wert aus der DB geladen wurde.
 let fhZielEnabled = false;
+// Globaler Ein/Aus-Schalter für die "Fachhändlersuche" im Header
+// (dashboard_kv-Key "fh_search_enabled", per Schalter im normalen
+// ADMIN-Panel gesetzt, Nutzervorgabe 25.08.2026) - für alle Rollen, keine
+// Rolleneinschränkung wie bei Chefgespräch/Auswertung. Standardmäßig aus,
+// bis Wert aus der DB geladen wurde.
+let fhSearchEnabled = false;
 // Zeitpunkt der letzten Miete-Report-Einspielung (dashboard_kv-Key
 // "miete_last_import", von upsertMieteData() bei jedem Import gesetzt -
 // deckt sowohl den Admin-Panel-Upload als auch den automatischen
@@ -1615,6 +1629,9 @@ function showRoleBadge(){
   $("kooperationsgespraechBtn").classList.toggle("hidden", !kooperationsgespraechEnabled||(myRole!=="admin"&&myRole!=="aussendienst"));
   // Auswertung erfassen: gleiche Sichtbarkeitsregel wie Chefgespräch/Kooperationsgespräch.
   $("auswertungBtn").classList.toggle("hidden", !auswertungEnabled||(myRole!=="admin"&&myRole!=="aussendienst"));
+  // Fachhändlersuche im Header: für ALLE Rollen (keine Rolleneinschränkung),
+  // nur ob überhaupt eingeloggt UND im ADMIN-Panel freigeschaltet.
+  $("fhSearchBox").classList.toggle("hidden", !fhSearchEnabled||!supaUser);
   const w=$("welcomeMsg");
   if(myName){
     const roleBadge=(myRole&&ROLE_LABEL[myRole])
@@ -1925,6 +1942,7 @@ function openAdminModal(){
   $("auswertungEnabledChk").checked=auswertungEnabled;
   $("fhZielEnabledChk").checked=fhZielEnabled;
   $("perfDialogAdminEnabledChk").checked=perfDialogAdminEnabled;
+  $("fhSearchEnabledChk").checked=fhSearchEnabled;
 }
 async function togglePerfDialogAdminEnabled(){
   const on=$("perfDialogAdminEnabledChk").checked;
@@ -1976,6 +1994,17 @@ async function toggleFhZielEnabled(){
   try{
     await stSet("fh_ziel_enabled",on?"1":"0");
     toast(on?"Ziele-Feld aktiviert ✓":"Ziele-Feld deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
+async function toggleFhSearchEnabled(){
+  const on=$("fhSearchEnabledChk").checked;
+  fhSearchEnabled=on;
+  showRoleBadge();
+  try{
+    await stSet("fh_search_enabled",on?"1":"0");
+    toast(on?"Fachhändlersuche aktiviert ✓":"Fachhändlersuche deaktiviert");
   }catch(e){
     toast("Speichern fehlgeschlagen: "+(e.message||e));
   }
@@ -4085,6 +4114,7 @@ async function loadAll(){
   try{ kooperationsgespraechEnabled=(await stGet("kooperationsgespraech_enabled"))==="1"; }catch(e){}
   try{ auswertungEnabled=(await stGet("auswertung_enabled"))==="1"; }catch(e){}
   try{ fhZielEnabled=(await stGet("fh_ziel_enabled"))==="1"; }catch(e){}
+  try{ fhSearchEnabled=(await stGet("fh_search_enabled"))==="1"; }catch(e){}
   try{ mieteLastImport=await stGet("miete_last_import"); }catch(e){}
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
@@ -5405,6 +5435,34 @@ function renderChefgespraechChips(){
 }
 // Suche wie akpSearchInput (Name/Ort/FH-Nr.), gescoped auf die aktuelle
 // Mitarbeiter-Ansicht (currentEmp) bzw. alle FH bei "Österreich gesamt".
+// Fachhändlersuche im Header (Nutzervorgabe 25.08.2026, per Schalter im
+// normalen ADMIN-Panel ein-/ausblendbar) - dieselbe Logik/Scoping wie die
+// AKP-Suche (renderAkpSearch) bzw. die FH-Suche im Chefgespräch
+// (renderChefgespraechSearch direkt darunter), öffnet einen Treffer aber
+// direkt im FH-PopUp statt ihn einer Auswahlliste hinzuzufügen.
+function renderFhSearch(){
+  const q=($("fhSearchInput").value||"").trim().toLowerCase();
+  const box=$("fhSearchResults");
+  if(!q){ box.innerHTML=""; return; }
+  if(!hasData()){ box.innerHTML=""; return; }
+  const fhMap=state.latest.fh||{};
+  const rows=Object.entries(fhMap)
+    .filter(([nr,f])=>currentEmp===AT_GESAMT||f.emp===currentEmp)
+    .map(([nr,f])=>({nr,...f}))
+    .filter(f=>(f.name||"").toLowerCase().includes(q)||(f.ort||"").toLowerCase().includes(q)||f.nr.toLowerCase().includes(q))
+    .slice(0,20);
+  if(!rows.length){ box.innerHTML=`<div class="empty-note">Kein Fachhändler gefunden.</div>`; return; }
+  box.innerHTML=rows.map(f=>`<div class="akp-search-row" style="cursor:pointer" data-fh-nr="${escapeHtml(f.nr)}">
+      <span><b>${escapeHtml(f.name||f.nr)}</b><span class="betr">${escapeHtml(f.ort||"")} · FH-Nr. ${escapeHtml(f.nr)}${f.emp?" · "+escapeHtml(f.emp):""}</span></span>
+    </div>`).join("");
+  box.querySelectorAll("[data-fh-nr]").forEach(row=>{
+    row.onclick=()=>{
+      openFhModal(row.dataset.fhNr);
+      $("fhSearchInput").value="";
+      box.innerHTML="";
+    };
+  });
+}
 function renderChefgespraechSearch(){
   const q=($("chefgespraechSearchInput").value||"").trim().toLowerCase();
   const box=$("chefgespraechSearchResults");
@@ -8188,6 +8246,7 @@ $("chefgespraechEnabledChk").onchange=toggleChefgespraechEnabled;
 $("kooperationsgespraechEnabledChk").onchange=toggleKooperationsgespraechEnabled;
 $("auswertungEnabledChk").onchange=toggleAuswertungEnabled;
 $("fhZielEnabledChk").onchange=toggleFhZielEnabled;
+$("fhSearchEnabledChk").onchange=toggleFhSearchEnabled;
 $("perfDialogAdminEnabledChk").onchange=togglePerfDialogAdminEnabled;
 $("chefgespraechBtn").onclick=openChefgespraechModal;
 $("chefgespraechClose").onclick=()=>$("chefgespraechModal").classList.add("hidden");
@@ -8372,6 +8431,7 @@ document.querySelectorAll("#akqYearTabs button").forEach(b=>{
 });
 $("akpMoreBtn").onclick=()=>{ fhAkpFilter=null; openAkpModal(); };
 $("akpSearchInput").oninput=()=>renderAkpSearch();
+$("fhSearchInput").oninput=()=>renderFhSearch();
 $("amClose").onclick=()=>$("akpModal").classList.add("hidden");
 // Nur bei FH-scoped Aufruf ("Top & Flop AKP dieses Händlers") gibt es einen
 // einzelnen Händler, dessen Stammdaten die zusätzlichen Versandziele
