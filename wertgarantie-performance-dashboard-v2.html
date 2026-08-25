@@ -783,7 +783,13 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div id="fhClubViewRow" class="hidden"><span class="ac-lbl">Club.Weiss Mitglied</span><div class="ac-val" id="fhClubView">–</div></div>
         <div id="fhClubNrViewRow" class="hidden"><span class="ac-lbl">Club.Weiss Mitgliedsnummer</span><div class="ac-val" id="fhClubNrView">–</div></div>
         <div id="fhWeitereZuordnungViewRow" class="hidden"><span class="ac-lbl">Weitere Zuordnung</span><div class="ac-val" id="fhWeitereZuordnungView">–</div></div>
+        <div id="fhFilialbetriebeViewRow" class="hidden"><span class="ac-lbl">Filialbetriebe</span><div class="ac-val" id="fhFilialbetriebeView">–</div></div>
+        <div id="fhWeitereZuordnung3ViewRow" class="hidden"><span class="ac-lbl">Weitere Zuordnung 3</span><div class="ac-val" id="fhWeitereZuordnung3View">–</div></div>
         <div id="fhZielViewRow" class="hidden"><span class="ac-lbl">Ziel | Hochrechnung</span><div class="ac-val" id="fhZielView">–</div></div>
+      </div>
+      <div id="fhFilialbetriebeSiblingsRow" class="hidden" style="margin-top:14px">
+        <span class="ac-lbl">Andere Filialen dieser Gruppe</span>
+        <div id="fhFilialbetriebeSiblings" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
       </div>
       <div style="margin-top:14px"><span class="ac-lbl">Sonstige Infos</span><div class="ac-val" id="fhInfosView" style="font-weight:600;white-space:pre-wrap">–</div></div>
       <button class="btn btn-blue" id="fhEditBtn" style="margin-top:14px">✎ Stammdaten bearbeiten</button>
@@ -833,6 +839,32 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
           </div>
         </div>
       </div>
+      <div style="margin-top:14px">
+        <label class="nw-check" for="fhFilialbetriebeChk"><input type="checkbox" id="fhFilialbetriebeChk"> Filialbetriebe aktivieren</label>
+        <div id="fhFilialbetriebeFields" class="hidden" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+          <div style="flex:1;min-width:160px">
+            <label class="ac-lbl" for="fhFilialbetriebeSelect">Auswahl</label>
+            <select id="fhFilialbetriebeSelect"></select>
+          </div>
+          <div style="flex:1;min-width:160px">
+            <label class="ac-lbl" for="fhFilialbetriebeNeu">oder neuer Wert (wird für alle als Auswahl übernommen)</label>
+            <input id="fhFilialbetriebeNeu" autocomplete="off" placeholder="z.B. Filialverbund XY">
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:14px">
+        <label class="nw-check" for="fhWeitereZuordnung3Chk"><input type="checkbox" id="fhWeitereZuordnung3Chk"> Weitere Zuordnung 3 aktivieren</label>
+        <div id="fhWeitereZuordnung3Fields" class="hidden" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+          <div style="flex:1;min-width:160px">
+            <label class="ac-lbl" for="fhWeitereZuordnung3Select">Auswahl</label>
+            <select id="fhWeitereZuordnung3Select"></select>
+          </div>
+          <div style="flex:1;min-width:160px">
+            <label class="ac-lbl" for="fhWeitereZuordnung3Neu">oder neuer Wert (wird für alle als Auswahl übernommen)</label>
+            <input id="fhWeitereZuordnung3Neu" autocomplete="off" placeholder="z.B. A1 Shop">
+          </div>
+        </div>
+      </div>
       <div id="fhZielEditBlock" class="hidden" style="margin-top:14px">
         <label class="nw-check" for="fhZielChk"><input type="checkbox" id="fhZielChk"> Ziel aktivieren</label>
         <div id="fhZielFields" class="hidden" style="margin-top:8px;max-width:200px">
@@ -861,6 +893,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div class="actions" style="justify-content:flex-start;margin-top:18px;margin-bottom:10px">
       <button class="btn btn-blue" id="fhTopFlopBtn">Top &amp; Flop AKP dieses Händlers ⤢</button>
       <button class="btn btn-ghost no-print" id="fhPdfBtn">⬇ Datenblatt als PDF</button>
+      <button class="btn btn-ghost hidden" id="fhFilialGruppeBtn">🏬 Alle Filialen anzeigen ⤢</button>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
       <span style="font-size:12px;color:var(--muted);font-weight:700">Zeitraum:</span>
@@ -874,6 +907,17 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     </div>
     <h4 style="margin:0 0 8px;color:var(--wg-navy);font-size:13px">Ansprechpartner (AKP)</h4>
     <div id="fhBody" style="overflow-x:auto"></div>
+  </div>
+</div>
+
+<!-- Filialgruppe PopUp (Gesamtübersicht aller Filialen eines "Filialbetriebe"-Werts) -->
+<div class="modal-bg hidden" id="filialGruppeModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
+      <h3 id="filialGruppeTitle" style="margin:0">Filialgruppe</h3>
+      <button class="btn btn-ghost" id="filialGruppeClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+    <div id="filialGruppeBody" style="max-height:75vh;overflow:auto"></div>
   </div>
 </div>
 
@@ -4772,7 +4816,7 @@ async function openFhModal(fhNr){
   }
   $("fhModal").classList.remove("hidden");
   await loadFhContact(fhNr);
-  if(fhModalCurrent===fhNr){ renderFhContactView(); renderFhMonthly(); renderFhYearlyTrend(); renderFhStammdatenDiff(); renderFhMieteSection(); }
+  if(fhModalCurrent===fhNr){ renderFhContactView(); renderFhMonthly(); renderFhYearlyTrend(); renderFhStammdatenDiff(); renderFhMieteSection(); renderFhFilialbetriebeSwitcher(); }
 }
 
 /* ---------- Fachhändler-Stammdaten (Adresse, Kontakt, Ansprechpartner, Segmentierung, Besuch, Notizen) ---------- */
@@ -4809,23 +4853,47 @@ function populateFhKooperationSelect(current){
 // von fh_contacts.weitere_zuordnung. Gibt ein Admin/Mitarbeiter im Freifeld
 // einen neuen Wert ein, taucht dieser danach automatisch im Dropdown aller
 // anderen Händler auf - ganz ohne eigene Options-Tabelle.
+// Seit 25.08.2026 gibt es einen weiteren, unabhängig aktivierbaren Slot
+// (weitere_zuordnung_3, siehe fh_contacts) - er teilt sich denselben
+// Options-Pool (alle DISTINCT-Werte über beide Spalten hinweg). Der zweite
+// ursprüngliche Slot wurde zu "Filialbetriebe" umgewidmet (siehe unten,
+// eigener Options-Pool + Filial-Umschalter/-Gruppen-PopUp).
 const WEITERE_ZUORDNUNG_BASE=["A1 Shop"];
+const WEITERE_ZUORDNUNG_COLS=["weitere_zuordnung","weitere_zuordnung_3"];
 let weitereZuordnungOptionsCache=null;
 async function loadWeitereZuordnungOptions(){
   const set=new Set(WEITERE_ZUORDNUNG_BASE);
   try{
-    const {data,error}=await sb.from("fh_contacts").select("weitere_zuordnung").not("weitere_zuordnung","is",null);
-    if(!error&&data) data.forEach(r=>{ if(r.weitere_zuordnung) set.add(r.weitere_zuordnung); });
+    const {data,error}=await sb.from("fh_contacts").select(WEITERE_ZUORDNUNG_COLS.join(","))
+      .or(WEITERE_ZUORDNUNG_COLS.map(c=>`${c}.not.is.null`).join(","));
+    if(!error&&data) data.forEach(r=>{ WEITERE_ZUORDNUNG_COLS.forEach(c=>{ if(r[c]) set.add(r[c]); }); });
   }catch(e){}
   weitereZuordnungOptionsCache=[...set].sort((a,b)=>a.localeCompare(b,"de"));
   return weitereZuordnungOptionsCache;
 }
-function populateWeitereZuordnungSelect(current){
-  const opts=(weitereZuordnungOptionsCache||WEITERE_ZUORDNUNG_BASE).slice();
+// pool optional - Default ist der geteilte Weitere-Zuordnung-Pool (Slot 1/3);
+// Filialbetriebe übergibt seinen eigenen, unabhängigen Pool (siehe unten).
+function populateWeitereZuordnungSelect(selectId,current,pool){
+  const opts=(pool||weitereZuordnungOptionsCache||WEITERE_ZUORDNUNG_BASE).slice();
   if(current&&!opts.includes(current)) opts.push(current);
   opts.sort((a,b)=>a.localeCompare(b,"de"));
-  $("fhWeitereZuordnungSelect").innerHTML=["<option value=\"\">–</option>",...opts.map(o=>`<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`)].join("");
-  $("fhWeitereZuordnungSelect").value=current||"";
+  $(selectId).innerHTML=["<option value=\"\">–</option>",...opts.map(o=>`<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`)].join("");
+  $(selectId).value=current||"";
+}
+// "Filialbetriebe": fasst FH zusammen, die zur selben Filialkette gehören -
+// eigener Options-Pool (keine Vermischung mit den generischen "Weitere
+// Zuordnung"-Tags), da der Wert hier direkt die Gruppenzugehörigkeit für den
+// Filial-Umschalter (renderFhFilialbetriebeSwitcher) und das
+// Filialgruppen-PopUp (openFilialGruppeModal) steuert.
+let filialbetriebeOptionsCache=null;
+async function loadFilialbetriebeOptions(){
+  const set=new Set();
+  try{
+    const {data,error}=await sb.from("fh_contacts").select("filialbetriebe").not("filialbetriebe","is",null);
+    if(!error&&data) data.forEach(r=>{ if(r.filialbetriebe) set.add(r.filialbetriebe); });
+  }catch(e){}
+  filialbetriebeOptionsCache=[...set].sort((a,b)=>a.localeCompare(b,"de"));
+  return filialbetriebeOptionsCache;
 }
 function urlHref(u){ return /^https?:\/\//i.test(u)?u:"https://"+u; }
 // Hat dieser Händler einen AKQ-Eintrag mit Beginn der Zusammenarbeit
@@ -4875,6 +4943,10 @@ function renderFhContactView(){
   $("fhClubNrView").textContent=c.club_weiss_mitgliedsnummer||"–";
   $("fhWeitereZuordnungViewRow").classList.toggle("hidden",!c.weitere_zuordnung);
   $("fhWeitereZuordnungView").textContent=c.weitere_zuordnung||"–";
+  $("fhFilialbetriebeViewRow").classList.toggle("hidden",!c.filialbetriebe);
+  $("fhFilialbetriebeView").textContent=c.filialbetriebe||"–";
+  $("fhWeitereZuordnung3ViewRow").classList.toggle("hidden",!c.weitere_zuordnung_3);
+  $("fhWeitereZuordnung3View").textContent=c.weitere_zuordnung_3||"–";
   // Ziel-Zeile: nur wenn im Admin-Panel freigeschaltet UND für diesen FH ein
   // Wert gesetzt ist (Nutzervorgabe: "nur wenn es im ADMIN tool freigegeben
   // ist... und angezeigt werden wenn es gefüllt worden ist").
@@ -4890,6 +4962,122 @@ function renderFhContactView(){
   const poTxt=(f&&f.poQuote!=null)?(f.poQuote*100).toFixed(1).replace(".",",")+" %":"–";
   const f2Txt=(f&&f.q3fuer2!=null)?(f.q3fuer2*100).toFixed(1).replace(".",",")+" %":"–";
   $("fhQuotesInfo").textContent=`PO-Quote (LJ): ${poTxt} · 3-für-2-Quote (LJ): ${f2Txt}`;
+}
+// Filialbetriebe: zeigt Umschalt-Buttons zu anderen FH derselben Gruppe im
+// FH-PopUp an, damit man zwischen den Filialen hin- und herschalten kann
+// (Nutzervorgabe 25.08.2026) - bewusst NUR bei diesem Slot, nicht bei
+// Weitere Zuordnung/Weitere Zuordnung 3. Lädt die Gruppenmitglieder per
+// eigener Abfrage (Stammdaten-Verknüpfung, keine Tages-Einspielung, daher
+// nicht zwingend alle schon in state.latest.fh vorhanden).
+async function renderFhFilialbetriebeSwitcher(){
+  const value=fhContactCurrent&&fhContactCurrent.filialbetriebe;
+  const fhNr=fhModalCurrent;
+  $("fhFilialGruppeBtn").classList.toggle("hidden",!value);
+  if(!value){
+    $("fhFilialbetriebeSiblingsRow").classList.add("hidden");
+    $("fhFilialbetriebeSiblings").innerHTML="";
+    return;
+  }
+  let members=[];
+  try{
+    const {data,error}=await sb.from("fh_contacts").select("fh_nr").eq("filialbetriebe",value);
+    if(!error&&data) members=data;
+  }catch(e){}
+  // fhModalCurrent kann sich während der (async) Abfrage schon geändert haben
+  // (Nutzer hat inzwischen zu einer anderen Filiale/einem anderen Händler
+  // gewechselt) - dann nicht mehr in die inzwischen falsche Ansicht rendern.
+  if(fhModalCurrent!==fhNr) return;
+  const siblings=members.map(m=>m.fh_nr).filter(nr=>nr&&nr!==fhNr);
+  const row=$("fhFilialbetriebeSiblingsRow");
+  if(!siblings.length){ row.classList.add("hidden"); $("fhFilialbetriebeSiblings").innerHTML=""; return; }
+  row.classList.remove("hidden");
+  $("fhFilialbetriebeSiblings").innerHTML=siblings.map(nr=>{
+    const f=state.latest.fh[nr];
+    const label=(f&&f.name)||nr;
+    return `<button type="button" class="btn btn-ghost fh-filial-switch-btn" data-fh-nr="${escapeHtml(nr)}" style="padding:5px 10px;font-size:12.5px">${escapeHtml(label)}</button>`;
+  }).join("");
+}
+// Filialgruppen-PopUp: Gesamtübersicht aller FH mit demselben
+// "Filialbetriebe"-Wert (Nutzervorgabe 25.08.2026, Button "Alle Filialen
+// anzeigen" im FH-PopUp) - Gesamtproduktion, Aufteilung/Prozente je Filiale,
+// aggregierte Monatsproduktion (wie renderFhMonthly()) und die AKP der
+// gesamten Gruppe.
+async function openFilialGruppeModal(){
+  const value=fhContactCurrent&&fhContactCurrent.filialbetriebe;
+  if(!value) return;
+  $("filialGruppeTitle").textContent="Filialgruppe: "+value;
+  $("filialGruppeBody").innerHTML=`<div class="empty-note">Lädt …</div>`;
+  $("filialGruppeModal").classList.remove("hidden");
+  let members=[];
+  try{
+    const {data,error}=await sb.from("fh_contacts").select("fh_nr,prod_monthly").eq("filialbetriebe",value);
+    if(!error&&data) members=data;
+  }catch(e){}
+  renderFilialGruppe(value,members);
+}
+function renderFilialGruppe(value,members){
+  if(!members.length){ $("filialGruppeBody").innerHTML=`<div class="empty-note">Keine Filialen in dieser Gruppe gefunden.</div>`; return; }
+  // Pro Filiale dieselbe gemergte Monatsproduktion wie im FH-PopUp
+  // (Tages-Historie + Stammdaten-Bulk, siehe fhMonthlyMerged()), daraus die
+  // Gesamtsumme je Filiale.
+  const perFiliale=members.map(m=>{
+    const merged=fhMonthlyMerged(m.fh_nr,{prod_monthly:m.prod_monthly||{}});
+    const total=Object.values(merged).reduce((a,b)=>a+b,0);
+    const f=state.latest.fh[m.fh_nr];
+    return { fhNr:m.fh_nr, name:(f&&f.name)||m.fh_nr, ort:(f&&f.ort)||"", merged, total };
+  }).sort((a,b)=>b.total-a.total);
+  const gesamt=perFiliale.reduce((a,f)=>a+f.total,0);
+
+  const breakdownRows=perFiliale.map(f=>{
+    const pct=gesamt>0?(f.total/gesamt*100):0;
+    return `<tr>
+      <td><b>${escapeHtml(f.name)}</b>${f.ort?` <span style="color:var(--muted);font-weight:600">· ${escapeHtml(f.ort)}</span>`:""}</td>
+      <td class="r">${fmt(f.total)}</td>
+      <td class="r">${pct.toFixed(1).replace(".",",")} %</td>
+    </tr>`;
+  }).join("");
+
+  // Aggregierte Monatstabelle (Summe je Monat über alle Filialen) - gleiches
+  // Format wie renderFhMonthly() im FH-PopUp.
+  const mergedAll={};
+  perFiliale.forEach(f=>{ for(const [k,v] of Object.entries(f.merged)){ mergedAll[k]=(mergedAll[k]||0)+v; } });
+  const years=[...new Set(Object.keys(mergedAll).map(k=>k.slice(0,4)))].sort();
+  const monthlyTbl=years.length
+    ? `<div style="overflow:auto"><table class="ac-month-table"><thead><tr><th>Jahr</th>${MONTH_LABELS.map(m=>`<th>${m}</th>`).join("")}<th>Summe</th></tr></thead><tbody>`+
+      years.map(y=>{
+        let sum=0;
+        const cells=MONTH_LABELS.map((_,i)=>{
+          const k=y+"-"+String(i+1).padStart(2,"0");
+          const v=mergedAll[k];
+          if(v==null) return `<td class="empty">–</td>`;
+          sum+=v;
+          return `<td>${fmt(v)}</td>`;
+        }).join("");
+        return `<tr><td><b>${y}</b></td>${cells}<td><b>${fmt(sum)}</b></td></tr>`;
+      }).join("")+`</tbody></table></div>`
+    : `<div class="empty-note">Keine Monatsdaten vorhanden.</div>`;
+
+  // AKP über alle Filialen der Gruppe, absteigend nach Monatsproduktion.
+  const fhNrs=new Set(perFiliale.map(f=>f.fhNr));
+  const akpRows=akpFullList(state.latest).filter(a=>fhNrs.has(a.fhNr)).sort((a,b)=>(b.monat||0)-(a.monat||0));
+  const akpHtml=akpRows.length
+    ? akpRows.map(r=>`<div class="akp-search-row">
+        <span><b>${escapeHtml(r.name)}</b>
+        <span class="betr">${escapeHtml(r.firma||"")} · ${escapeHtml(r.ort||"")}</span></span>
+        <span class="val"><span class="val-num">${fmt(r.monat||0)}<small> Monat</small></span> · <span class="val-num">${fmt(r.lj||0)}<small> Jahr</small></span></span>
+      </div>`).join("")
+    : `<div class="empty-note">Keine AKP für diese Filialgruppe gefunden.</div>`;
+
+  $("filialGruppeBody").innerHTML=`
+    <div style="font-size:13px;color:var(--muted);margin-bottom:14px">${perFiliale.length} Filialen: ${perFiliale.map(f=>escapeHtml(f.name)).join(", ")}</div>
+    <div style="margin-bottom:18px"><span class="ac-lbl">Gesamtproduktion</span><div class="ac-val" style="font-size:22px;font-weight:900;color:var(--wg-navy)">${fmt(gesamt)} Stk.</div></div>
+    <h4 style="margin:0 0 8px;color:var(--wg-navy);font-size:13px">Aufteilung nach Filialen</h4>
+    <div style="overflow:auto;margin-bottom:18px"><table class="ac-yearly-table"><thead><tr><th>Filiale</th><th class="r">Gesamtproduktion</th><th class="r">Anteil</th></tr></thead><tbody>${breakdownRows}</tbody></table></div>
+    <h4 style="margin:0 0 8px;color:var(--wg-navy);font-size:13px">Produktion nach Monaten (gesamte Gruppe)</h4>
+    <div style="margin-bottom:18px">${monthlyTbl}</div>
+    <h4 style="margin:0 0 8px;color:var(--wg-navy);font-size:13px">Ansprechpartner (AKP)</h4>
+    <div style="overflow-x:auto">${akpHtml}</div>
+  `;
 }
 /* ---------- Chefgespräch: FH-Suche (ggf. mehrere Filialen) + Auswahl Chefgesprächsunterlagen/KI-Unterstützt ---------- */
 let chefgespraechFhNrs=[];
@@ -6655,9 +6843,19 @@ async function toggleFhEdit(on){
     $("fhWeitereZuordnungChk").checked=!!c.weitere_zuordnung;
     $("fhWeitereZuordnungFields").classList.toggle("hidden",!c.weitere_zuordnung);
     $("fhWeitereZuordnungNeu").value="";
-    populateWeitereZuordnungSelect(c.weitere_zuordnung);
-    await loadWeitereZuordnungOptions();
-    populateWeitereZuordnungSelect(c.weitere_zuordnung);
+    populateWeitereZuordnungSelect("fhWeitereZuordnungSelect",c.weitere_zuordnung);
+    $("fhFilialbetriebeChk").checked=!!c.filialbetriebe;
+    $("fhFilialbetriebeFields").classList.toggle("hidden",!c.filialbetriebe);
+    $("fhFilialbetriebeNeu").value="";
+    populateWeitereZuordnungSelect("fhFilialbetriebeSelect",c.filialbetriebe,filialbetriebeOptionsCache);
+    $("fhWeitereZuordnung3Chk").checked=!!c.weitere_zuordnung_3;
+    $("fhWeitereZuordnung3Fields").classList.toggle("hidden",!c.weitere_zuordnung_3);
+    $("fhWeitereZuordnung3Neu").value="";
+    populateWeitereZuordnungSelect("fhWeitereZuordnung3Select",c.weitere_zuordnung_3);
+    await Promise.all([loadWeitereZuordnungOptions(),loadFilialbetriebeOptions()]);
+    populateWeitereZuordnungSelect("fhWeitereZuordnungSelect",c.weitere_zuordnung);
+    populateWeitereZuordnungSelect("fhFilialbetriebeSelect",c.filialbetriebe,filialbetriebeOptionsCache);
+    populateWeitereZuordnungSelect("fhWeitereZuordnung3Select",c.weitere_zuordnung_3);
     // Ziel-Bearbeitungsblock nur anzeigen, wenn im Admin-Panel freigeschaltet.
     $("fhZielEditBlock").classList.toggle("hidden",!fhZielEnabled);
     $("fhZielChk").checked=c.ziel>0;
@@ -6687,21 +6885,28 @@ async function saveFhContact(){
   const wzNeu=$("fhWeitereZuordnungNeu").value.trim();
   const wzSel=$("fhWeitereZuordnungSelect").value;
   const weitere_zuordnung=$("fhWeitereZuordnungChk").checked?(wzNeu||wzSel||null):null;
+  const fbNeu=$("fhFilialbetriebeNeu").value.trim();
+  const fbSel=$("fhFilialbetriebeSelect").value;
+  const filialbetriebe=$("fhFilialbetriebeChk").checked?(fbNeu||fbSel||null):null;
+  const wz3Neu=$("fhWeitereZuordnung3Neu").value.trim();
+  const wz3Sel=$("fhWeitereZuordnung3Select").value;
+  const weitere_zuordnung_3=$("fhWeitereZuordnung3Chk").checked?(wz3Neu||wz3Sel||null):null;
   // Ziel nur lesen/speichern, wenn der Bearbeitungsblock (Admin-Freischaltung)
   // überhaupt sichtbar ist - sonst bleibt der bisherige Wert unangetastet.
   const ziel=fhZielEnabled?($("fhZielChk").checked?(parseFloat($("fhZielEdit").value)||null):null):fhContactCurrent.ziel;
   $("fhSaveBtn").disabled=true;
   const {error}=await sb.from("fh_contacts").upsert({
-    fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung,ziel,
+    fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung,filialbetriebe,weitere_zuordnung_3,ziel,
     updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()
   },{onConflict:"fh_nr"});
   $("fhSaveBtn").disabled=false;
   if(error){ $("fhSaveHint").textContent="Fehler: "+error.message; return; }
-  fhContactCurrent={...fhContactCurrent,fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung,ziel};
+  fhContactCurrent={...fhContactCurrent,fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung,filialbetriebe,weitere_zuordnung_3,ziel};
   if(neunwochen_erledigt) fhErledigtSet.add(fhNr); else fhErledigtSet.delete(fhNr);
   renderFhContactView();
   renderFhStammdatenDiff();
   renderFhMieteSection();
+  renderFhFilialbetriebeSwitcher();
   toggleFhEdit(false);
   toast("Händlerdaten gespeichert ✓");
 }
@@ -6775,6 +6980,8 @@ async function exportFhPdf(includeAkp){
         ${field("Kooperation",escapeHtml(c.kooperation||"–"))}
         ${field("Hauptzweig",escapeHtml(c.hauptzweig||"–"))}
         ${field("Weitere Zuordnung",escapeHtml(c.weitere_zuordnung||"–"))}
+        ${c.filialbetriebe?field("Filialbetriebe",escapeHtml(c.filialbetriebe)):""}
+        ${c.weitere_zuordnung_3?field("Weitere Zuordnung 3",escapeHtml(c.weitere_zuordnung_3)):""}
         ${field("Letzter Besuch",c.letzter_besuch?fmtDate(c.letzter_besuch):"–")}
       </div>
       ${c.sonstige_infos?`<div class="pdf-block" style="margin-bottom:18px"><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#5D7284;margin-bottom:4px">Sonstige Infos</div><div style="font-size:12.5px;color:#10202C;white-space:pre-wrap;line-height:1.5">${escapeHtml(c.sonstige_infos)}</div></div>`:""}
@@ -7905,21 +8112,29 @@ $("acPdfBtn").onclick=()=>openPdfTargetChoice(()=>exportAkpPdf());
 $("fhEditBtn").onclick=()=>toggleFhEdit(true);
 $("fhCancelBtn").onclick=()=>toggleFhEdit(false);
 $("fhSaveBtn").onclick=saveFhContact;
-$("fhWeitereZuordnungChk").onchange=()=>{
-  $("fhWeitereZuordnungFields").classList.toggle("hidden",!$("fhWeitereZuordnungChk").checked);
-};
+// Ein "aktivieren"-Haken + Auswahl/Neu-Feldpaar (Weitere Zuordnung 1/3,
+// Filialbetriebe) einheitlich verdrahten: Haken blendet die Felder live
+// ein/aus, "Neu" und "Auswahl" schließen sich gegenseitig aus.
+function wireWeitereZuordnungSlot(chkId,fieldsId,selectId,neuId){
+  $(chkId).onchange=()=>{ $(fieldsId).classList.toggle("hidden",!$(chkId).checked); };
+  $(neuId).addEventListener("input",()=>{ if($(neuId).value.trim()) $(selectId).value=""; });
+  $(selectId).addEventListener("change",()=>{ if($(selectId).value) $(neuId).value=""; });
+}
+wireWeitereZuordnungSlot("fhWeitereZuordnungChk","fhWeitereZuordnungFields","fhWeitereZuordnungSelect","fhWeitereZuordnungNeu");
+wireWeitereZuordnungSlot("fhWeitereZuordnung3Chk","fhWeitereZuordnung3Fields","fhWeitereZuordnung3Select","fhWeitereZuordnung3Neu");
+wireWeitereZuordnungSlot("fhFilialbetriebeChk","fhFilialbetriebeFields","fhFilialbetriebeSelect","fhFilialbetriebeNeu");
+$("fhFilialbetriebeSiblings").addEventListener("click",e=>{
+  const btn=e.target.closest(".fh-filial-switch-btn"); if(!btn) return;
+  openFhModal(btn.dataset.fhNr);
+});
+$("fhFilialGruppeBtn").onclick=openFilialGruppeModal;
+$("filialGruppeClose").onclick=()=>$("filialGruppeModal").classList.add("hidden");
 $("fhClubEdit").onchange=()=>{
   $("fhClubNrFields").classList.toggle("hidden",!$("fhClubEdit").checked);
 };
 $("fhZielChk").onchange=()=>{
   $("fhZielFields").classList.toggle("hidden",!$("fhZielChk").checked);
 };
-$("fhWeitereZuordnungNeu").addEventListener("input",()=>{
-  if($("fhWeitereZuordnungNeu").value.trim()) $("fhWeitereZuordnungSelect").value="";
-});
-$("fhWeitereZuordnungSelect").addEventListener("change",()=>{
-  if($("fhWeitereZuordnungSelect").value) $("fhWeitereZuordnungNeu").value="";
-});
 $("fhPdfBtn").onclick=()=>$("fhPdfChoiceModal").classList.remove("hidden");
 $("fhPdfChoiceCancel").onclick=()=>$("fhPdfChoiceModal").classList.add("hidden");
 $("fhPdfWithAkp").onclick=()=>{ $("fhPdfChoiceModal").classList.add("hidden"); openPdfTargetChoice(()=>exportFhPdf(true),fhPdfSendExtra()); };
