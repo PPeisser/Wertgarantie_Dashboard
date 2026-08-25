@@ -110,7 +110,12 @@ select#mitarbeiter{
 }
 .cg-mode-btn.selected{border-color:var(--wg-blue);background:#EAF3F9;box-shadow:0 0 0 1px var(--wg-blue) inset}
 .cg-mode-btn.selected .cg-mode-check{background:var(--wg-blue);border-color:var(--wg-blue);color:#fff}
-.datenstand{font-size:12px;color:var(--muted);width:100%;text-align:right;margin-top:-4px}
+/* Nutzervorgabe 25.08.2026: stand bisher als eigene, volle Header-Breite
+   spannende Zeile UNTER den Controls und machte den Header dadurch nochmal
+   höher - steht jetzt als zweite Zeile INNERHALB von .controls (rechte
+   Spalte, wie die Buttons darüber), Header dadurch flacher. width:100% zieht
+   sich hier auf die Breite von .controls (nicht mehr des ganzen Headers). */
+.datenstand{font-size:12px;color:var(--muted);width:100%;text-align:right}
 .datenstand b{color:var(--wg-navy)}
 
 /* ---------- Sections ---------- */
@@ -607,15 +612,17 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       </button>
       <button class="btn btn-ghost hidden" id="settingsBtn" title="Einstellungen">⚙ Einstellungen</button>
       <button class="btn btn-ghost hidden" id="adminBtn" title="Admin-Panel">⚙ Admin</button>
+      <button class="btn btn-ghost hidden" id="logoutBtn" title="Abmelden" style="margin-left:18px">Abmelden</button>
+     </div>
+     <div class="controls-row">
       <button class="btn btn-ghost hidden" id="perfDialogBtn" title="Performance Dialog">📋 Performance Dialog</button>
       <button class="btn btn-ghost hidden" id="perfDialogAdminBtn" title="Performance Dialog – Admin-Übersicht">📋 Performance Dialog – ADMIN</button>
       <button class="btn btn-ghost hidden" id="chefgespraechBtn" title="Chefgespräch-Unterlagen für einen Fachhändler zusammenstellen">🤝 Chefgespräch</button>
       <button class="btn btn-ghost hidden" id="kooperationsgespraechBtn" title="Kooperationsgesprächsunterlagen für eine Einkaufskooperation zusammenstellen">🏢 Kooperationsgespräch</button>
       <button class="btn btn-ghost hidden" id="auswertungBtn" title="Produktionsauswertung nach Kooperation, Weiterer Zuordnung, Fachhändler oder AKP erfassen">📊 Auswertung erfassen</button>
-      <button class="btn btn-ghost hidden" id="logoutBtn" title="Abmelden" style="margin-left:18px">Abmelden</button>
      </div>
+     <div class="datenstand" id="datenstand"></div>
     </div>
-    <div class="datenstand" id="datenstand"></div>
   </header>
 
   <div id="emptyState">
