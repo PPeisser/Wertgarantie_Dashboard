@@ -1332,6 +1332,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <button class="cg-mode-btn" data-mode="kooperation"><span class="cg-mode-check">✓</span><span class="cg-mode-icon">🤝</span><span class="cg-mode-txt"><b>Kooperation</b><small>gleiche Einkaufskooperation</small></span></button>
         <button class="cg-mode-btn" data-mode="hauptzweig"><span class="cg-mode-check">✓</span><span class="cg-mode-icon">🏷️</span><span class="cg-mode-txt"><b>Hauptzweig</b><small>gleiche Branche</small></span></button>
         <button class="cg-mode-btn" data-mode="weitere_zuordnung"><span class="cg-mode-check">✓</span><span class="cg-mode-icon">➕</span><span class="cg-mode-txt"><b>Weitere Zuordnung</b><small>gleicher Zusatzwert</small></span></button>
+        <button class="cg-mode-btn" data-mode="filialbetriebe"><span class="cg-mode-check">✓</span><span class="cg-mode-icon">🏬</span><span class="cg-mode-txt"><b>Filialbetriebe</b><small>gleiche Filialkette</small></span></button>
       </div>
       <button class="btn btn-blue hidden" id="chefgespraechModeGoBtn" style="margin-top:16px;width:100%;padding:12px">Vergleich erstellen →</button>
     </div>
@@ -1373,6 +1374,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <div style="display:flex;gap:12px;flex-wrap:wrap">
         <button class="btn btn-ghost auswertung-type-btn" data-typ="kooperation" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>🤝 Kooperation</span><small style="font-weight:600;opacity:.75">eine Einkaufskooperation</small></span></button>
         <button class="btn btn-ghost auswertung-type-btn" data-typ="weitere_zuordnung" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>➕ Weitere Zuordnung</span><small style="font-weight:600;opacity:.75">ein Zusatzwert</small></span></button>
+        <button class="btn btn-ghost auswertung-type-btn" data-typ="filialbetriebe" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>🏪 Filialbetriebe</span><small style="font-weight:600;opacity:.75">eine Filialkette</small></span></button>
         <button class="btn btn-ghost auswertung-type-btn" data-typ="fachhaendler" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>🏬 Fachhändler</span><small style="font-weight:600;opacity:.75">ein oder mehrere FH</small></span></button>
         <button class="btn btn-ghost auswertung-type-btn" data-typ="akp" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>🧑‍💼 AKP (Aktivpartner)</span><small style="font-weight:600;opacity:.75">ein oder mehrere AKP</small></span></button>
       </div>
@@ -5225,7 +5227,7 @@ let chefgespraechFhNrs=[];
 // mehrfach wählbar (Nutzervorgabe: "mehrere Vergleichsoptionen wählbar
 // machen").
 let chefgespraechSelectedModes=[];
-const CG_MODE_LABELS={region:"Region",kooperation:"Kooperation",hauptzweig:"Hauptzweig",weitere_zuordnung:"Weitere Zuordnung"};
+const CG_MODE_LABELS={region:"Region",kooperation:"Kooperation",hauptzweig:"Hauptzweig",weitere_zuordnung:"Weitere Zuordnung",filialbetriebe:"Filialbetriebe"};
 function openChefgespraechModal(){
   if(!chefgespraechEnabled){ toast("Chefgespräch ist aktuell nicht aktiviert."); return; }
   chefgespraechFhNrs=[];
@@ -6221,7 +6223,11 @@ async function exportKooperationsgespraechKiPdf(koop){
   }
 }
 /* ---------- Auswertung erfassen: Kooperation/Weitere Zuordnung/Fachhändler/AKP über frei wählbaren Zeitraum ---------- */
-let auswertungTyp=null; // 'kooperation'|'weitere_zuordnung'|'fachhaendler'|'akp'
+// Typen mit einem einzelnen aggregierten Auswahlwert (Dropdown-artige Suche,
+// EIN gemeinsamer PDF-Abschnitt) statt einer Mehrfachauswahl konkreter
+// Einheiten (Fachhändler/AKP) - siehe auswertungLoadUnits()/buildAuswertungPdfDoc().
+const AUSWERTUNG_SINGLE_TYPES=["kooperation","weitere_zuordnung","filialbetriebe"];
+let auswertungTyp=null; // 'kooperation'|'weitere_zuordnung'|'filialbetriebe'|'fachhaendler'|'akp'
 let auswertungSingleValue=null; // Kooperation/Weitere-Zuordnung-Wert
 let auswertungMultiKeys=[]; // FH-Nrn bzw. AKP-Nrn
 function openAuswertungModal(){
@@ -6262,12 +6268,16 @@ function selectAuswertungTyp(typ){
   const hints={
     kooperation:"Einkaufskooperation suchen und auswählen.",
     weitere_zuordnung:"Wert der Weiteren Zuordnung suchen und auswählen.",
+    filialbetriebe:"Filialbetrieb (Filialkette) suchen und auswählen.",
     fachhaendler:"Einen oder mehrere Fachhändler suchen und auswählen (Name, Ort oder FH-Nr.).",
     akp:"Einen oder mehrere Aktivpartner (AKP) suchen und auswählen (Name oder Firma).",
   };
   $("auswertungSelectHint").textContent=hints[typ]||"";
   if(typ==="weitere_zuordnung"){
     loadWeitereZuordnungOptions().then(()=>{ if(auswertungTyp==="weitere_zuordnung") renderAuswertungSingleSearch(); });
+  }
+  if(typ==="filialbetriebe"){
+    loadFilialbetriebeOptions().then(()=>{ if(auswertungTyp==="filialbetriebe") renderAuswertungSingleSearch(); });
   }
   if(isMulti) renderAuswertungMultiSearch(); else renderAuswertungSingleSearch();
   setTimeout(()=>{ (isMulti?$("auswertungMultiSearchInput"):$("auswertungSingleSearchInput")).focus(); },50);
@@ -6278,6 +6288,7 @@ function renderAuswertungSingleSearch(){
   let list=[];
   if(auswertungTyp==="kooperation") list=KOOPERATION_OPTIONS.filter(k=>k!=="ohne Kooperation");
   else if(auswertungTyp==="weitere_zuordnung") list=(weitereZuordnungOptionsCache||WEITERE_ZUORDNUNG_BASE).slice();
+  else if(auswertungTyp==="filialbetriebe") list=(filialbetriebeOptionsCache||[]).slice();
   list=list.filter(k=>!q||k.toLowerCase().includes(q));
   if(!list.length){ box.innerHTML=`<div class="empty-note">Nichts gefunden.</div>`; return; }
   box.innerHTML=list.map(k=>`<div class="akp-search-row" style="cursor:pointer" data-val="${escapeHtml(k)}"><span><b>${escapeHtml(k)}</b></span></div>`).join("");
@@ -6346,8 +6357,8 @@ function proceedToAuswertungPeriod(){
   $("auswertungSelectStep").classList.add("hidden");
   $("auswertungPeriodStep").classList.remove("hidden");
   $("auswertungHint").textContent="";
-  const headerLbl={kooperation:"Kooperation: ",weitere_zuordnung:"Weitere Zuordnung: ",fachhaendler:"Fachhändler: ",akp:"AKP: "}[auswertungTyp]||"";
-  const sel=(auswertungTyp==="kooperation"||auswertungTyp==="weitere_zuordnung")?auswertungSingleValue:auswertungMultiKeys.map(k=>auswertungEntityLabel(k)).join("  •  ");
+  const headerLbl={kooperation:"Kooperation: ",weitere_zuordnung:"Weitere Zuordnung: ",filialbetriebe:"Filialbetriebe: ",fachhaendler:"Fachhändler: ",akp:"AKP: "}[auswertungTyp]||"";
+  const sel=AUSWERTUNG_SINGLE_TYPES.includes(auswertungTyp)?auswertungSingleValue:auswertungMultiKeys.map(k=>auswertungEntityLabel(k)).join("  •  ");
   $("auswertungPeriodHeader").textContent=headerLbl+sel;
   $("auswertungAkpChkRow").classList.toggle("hidden",auswertungTyp==="akp");
   $("auswertungAkpChk").checked=false;
@@ -6477,6 +6488,7 @@ async function auswertungLoadUnits(typ,singleVal,multiKeys){
   let query=sb.from("fh_contacts").select("fh_nr,prod_monthly,miete_monthly,beitragsfrei_yearly,akq_punkte,club_weiss_mitglied,club_weiss_mitgliedsnummer");
   if(typ==="kooperation") query=query.eq("kooperation",singleVal);
   else if(typ==="weitere_zuordnung") query=query.eq("weitere_zuordnung",singleVal);
+  else if(typ==="filialbetriebe") query=query.eq("filialbetriebe",singleVal);
   else query=query.in("fh_nr",multiKeys);
   const {data,error}=await query;
   if(error) throw new Error(error.message||String(error));
@@ -6652,15 +6664,15 @@ function auswertungAggregateSectionHtml(units,vonISO,bisISO,showAkp){
   `;
 }
 function auswertungPdfFilename(typ,singleVal,multiKeys){
-  const label=(typ==="kooperation"||typ==="weitere_zuordnung")?singleVal:(multiKeys.length===1?auswertungEntityLabel(multiKeys[0]):multiKeys.length+"_Auswahl");
+  const label=AUSWERTUNG_SINGLE_TYPES.includes(typ)?singleVal:(multiKeys.length===1?auswertungEntityLabel(multiKeys[0]):multiKeys.length+"_Auswahl");
   return "Auswertung_"+asciiFilenamePart(label)+".pdf";
 }
 async function buildAuswertungPdfDoc(typ,singleVal,multiKeys,vonISO,bisISO,showAkp){
   if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)) throw new Error("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals versuchen.");
   const units=await auswertungLoadUnits(typ,singleVal,multiKeys);
   const nowStr=fmtNowDateTime();
-  const typLabel={kooperation:"Kooperation",weitere_zuordnung:"Weitere Zuordnung",fachhaendler:"Fachhändler",akp:"AKP (Aktivpartner)"}[typ];
-  const titleVal=(typ==="kooperation"||typ==="weitere_zuordnung")?singleVal:(units.length===1?units[0].name:units.length+" ausgewählt");
+  const typLabel={kooperation:"Kooperation",weitere_zuordnung:"Weitere Zuordnung",filialbetriebe:"Filialbetriebe",fachhaendler:"Fachhändler",akp:"AKP (Aktivpartner)"}[typ];
+  const titleVal=AUSWERTUNG_SINGLE_TYPES.includes(typ)?singleVal:(units.length===1?units[0].name:units.length+" ausgewählt");
   const periodTxt=fmtDate(vonISO)+" – "+fmtDate(bisISO);
   const filename=auswertungPdfFilename(typ,singleVal,multiKeys);
   const headerHtml=`
@@ -6712,7 +6724,7 @@ async function buildAuswertungPdfDoc(typ,singleVal,multiKeys,vonISO,bisISO,showA
 
   // Einzelauswahl (ein Fachhändler/AKP) oder Kooperation/Weitere Zuordnung
   // (ein aggregierter Abschnitt): durchgehendes Hochformat-Dokument wie bisher.
-  const bodyHtml=(typ==="kooperation"||typ==="weitere_zuordnung")
+  const bodyHtml=AUSWERTUNG_SINGLE_TYPES.includes(typ)
     ? auswertungAggregateSectionHtml(units,vonISO,bisISO,showAkp)
     : auswertungUnitSectionHtml(units[0],vonISO,bisISO,0,1,showAkp,showAkp?auswertungAkpByFh():{});
   const box=document.createElement("div");
