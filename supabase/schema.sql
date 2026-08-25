@@ -259,6 +259,14 @@ alter table public.fh_contacts add column if not exists akq_gl text;
 -- Händler in der aktuellen täglichen FH_Liste-Auswertung keine Zeile hat
 -- (z.B. keine Tagesproduktion) und dort daher kein Name verfügbar ist.
 alter table public.fh_contacts add column if not exists akq_name text;
+-- Manueller Namens-Fallback (FH-PopUp, Nutzervorgabe 25.08.2026): fuer
+-- Haendler, die WEDER in der taeglichen FH_Liste-Einspielung, NOCH als
+-- AKP-Kontakt mit Firma, NOCH in der Akquisestaffeln-Datei (akq_name) einen
+-- Namen haben, zeigten Miete-PopUp/FH-PopUp bis dahin nur die rohe FH-Nr.
+-- an, da nirgends in der DB ein Firmenname hinterlegt war. Rein manuelles
+-- Feld (ueberschreibt NICHT die automatischen Quellen, greift nur, wenn alle
+-- anderen fehlen) - siehe fhFallbackFromAkp() in index.html.
+alter table public.fh_contacts add column if not exists name text;
 -- Miete-Report (Club Weiß, MSK_Report-Datei, Admin-Import): club_weiss_mitglied
 -- wird beim Import IMMER auf true gesetzt (jeder FH in der Datei ist Mitglied),
 -- aber nie automatisch wieder zurückgesetzt (siehe fh_sync_miete) - manuelles
@@ -270,6 +278,13 @@ alter table public.fh_contacts add column if not exists club_weiss_mitglied bool
 alter table public.fh_contacts add column if not exists club_weiss_mitgliedsnummer text;
 alter table public.fh_contacts add column if not exists miete_monthly jsonb not null default '{}'::jsonb;
 alter table public.fh_contacts add column if not exists miete_sortiment jsonb not null default '{}'::jsonb;
+-- Firmenname direkt aus dem Miete-Report (Freitagsreport, Spalte "FH Bez
+-- (ohne Nr)", Nutzer-Bestaetigung 25.08.2026) - deckt Haendler ab, die in
+-- keiner anderen Quelle (taegliche FH_Liste, AKP, Akquisestaffeln) einen
+-- Namen haben, automatisch bei jedem Miete-Import statt manueller Eingabe.
+-- Eigene Spalte (nicht die manuelle fh_contacts.name), damit ein Import den
+-- manuell im FH-PopUp eingetragenen Namen nie stillschweigend ueberschreibt.
+alter table public.fh_contacts add column if not exists miete_name text;
 
 -- Kooperation (Einkaufsverbindung) und Hauptzweig je Fachhändler (Nutzer-
 -- vorgabe 23.08.2026). Kooperation ist bewusst freier Text (kein CHECK),
@@ -413,21 +428,23 @@ grant execute on function public.fh_sync_daily(jsonb) to authenticated;
 create or replace function public.fh_sync_miete(rows jsonb) returns void
 language plpgsql security definer set search_path = public as $$
 declare
-  r jsonb; monthlyj jsonb; sortimentj jsonb; clubnr text;
+  r jsonb; monthlyj jsonb; sortimentj jsonb; clubnr text; mietename text;
 begin
   for r in select * from jsonb_array_elements(rows) loop
     if coalesce(r->>'fh_nr','') = '' then continue; end if;
     monthlyj := coalesce(r->'monthly','{}'::jsonb);
     sortimentj := coalesce(r->'sortiment','{}'::jsonb);
     clubnr := r->>'club_nr';
+    mietename := nullif(r->>'name','');
 
-    insert into public.fh_contacts (fh_nr, miete_monthly, miete_sortiment, club_weiss_mitglied, club_weiss_mitgliedsnummer)
-    values (r->>'fh_nr', monthlyj, sortimentj, true, clubnr)
+    insert into public.fh_contacts (fh_nr, miete_monthly, miete_sortiment, club_weiss_mitglied, club_weiss_mitgliedsnummer, miete_name)
+    values (r->>'fh_nr', monthlyj, sortimentj, true, clubnr, mietename)
     on conflict (fh_nr) do update set
       miete_monthly = coalesce(fh_contacts.miete_monthly,'{}'::jsonb) || excluded.miete_monthly,
       miete_sortiment = coalesce(fh_contacts.miete_sortiment,'{}'::jsonb) || excluded.miete_sortiment,
       club_weiss_mitglied = true,
       club_weiss_mitgliedsnummer = coalesce(excluded.club_weiss_mitgliedsnummer, fh_contacts.club_weiss_mitgliedsnummer),
+      miete_name = coalesce(excluded.miete_name, fh_contacts.miete_name),
       updated_at = now();
   end loop;
 end;

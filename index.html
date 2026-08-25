@@ -57,13 +57,14 @@ header{
   border-top:5px solid var(--wg-blue);
 }
 header img.logo{height:52px;width:auto}
-/* Fachhändlersuche (Nutzervorgabe 25.08.2026): steht zusammen mit dem Logo in
-   einer eigenen Spalte GANZ LINKS im Header, statt wie ursprünglich als 4.
-   Zeile unter der "Herzlich Willkommen"-Textspalte - dort verlängerte sie den
-   title-block um eine ganze Zeile und machte den ganzen Header spürbar höher
-   (Nutzer-Feedback 25.08.2026, Desktop-Ansicht). */
-.logo-col{display:flex;flex-direction:column;gap:8px}
-#fhSearchBox{width:190px;flex:none;margin-top:0;padding-top:0;border-top:none}
+/* Fachhändlersuche (Nutzervorgabe 25.08.2026, Feintuning 25.08.2026): steht
+   als eigene, volle Zeile UNTER Logo + Titel, nicht mehr als 4. Zeile im
+   title-block selbst (das machte den Header spürbar höher) - startet links
+   unter dem Logo und reicht so breit wie Logo+Titel zusammen (statt nur so
+   breit wie das Logo, das wirkte zu schmal/gequetscht). */
+.brand-col{display:flex;flex-direction:column;gap:10px;flex:1;min-width:280px}
+.brand-top{display:flex;align-items:center;flex-wrap:wrap;gap:18px}
+#fhSearchBox{width:100%;max-width:600px;flex:none;margin-top:0;padding-top:0;border-top:none}
 .title-block{flex:1;min-width:240px}
 .title-block h1{font-size:21px;font-weight:800;letter-spacing:-.3px;color:var(--wg-navy)}
 .title-block .sub{font-size:12.5px;color:var(--muted);margin-top:2px}
@@ -318,6 +319,18 @@ td .betr{font-size:11px;color:var(--muted)}
 .akqop-table .akqop-name b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default}
 .akqop-table .akqop-name .betr{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .akqop-table .akqop-addr{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;height:2.6em;line-height:1.3;max-width:130px;white-space:normal}
+/* Miete-PopUp (Fachhändler-Übersicht): feste Spaltenbreiten statt frei
+   wachsendem table-layout, sonst sprengen lange Firmennamen die Tabelle über
+   die Modal-Breite hinaus und erzwingen horizontales Scrollen (Bug-Report
+   25.08.2026: "muss man rechts/links scrollen, soll übersichtlich sein") -
+   lange Werte werden stattdessen mit Ellipsis abgeschnitten (Volltext per
+   title-Attribut beim Hover). */
+.mietelist-table{table-layout:fixed}
+.mietelist-table td,.mietelist-table th{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:6px 8px}
+.mietelist-table th:nth-child(1),.mietelist-table td:nth-child(1){width:38%}
+.mietelist-table th:nth-child(2),.mietelist-table td:nth-child(2){width:22%}
+.mietelist-table th:nth-child(3),.mietelist-table td:nth-child(3){width:22%}
+.mietelist-table th:nth-child(4),.mietelist-table td:nth-child(4){width:18%}
 
 /* ---------- Empty state ---------- */
 #emptyState{
@@ -567,17 +580,19 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 <div class="wrap">
 
   <header>
-    <div class="logo-col">
+    <div class="brand-col">
+    <div class="brand-top">
     <img class="logo" id="wgLogo" src="data:image/jpeg;base64,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" alt="Wertgarantie – Einfach. Gut. Geschützt.">
-    <div class="hidden no-print akp-search" id="fhSearchBox">
-      <input type="text" id="fhSearchInput" placeholder="Fachhändlersuche: Name, Ort oder FH-Nr. …" autocomplete="off">
-      <div id="fhSearchResults"></div>
-    </div>
-    </div>
     <div class="title-block">
       <h1>Performance Dashboard Österreich</h1>
       <div class="sub">Vertragsproduktion · Ziele · Händler &amp; AKP im Blick</div>
       <div class="hidden" id="welcomeMsg" style="font-size:12.5px;color:var(--wg-blue-dark);font-weight:700;margin-top:2px"></div>
+    </div>
+    </div>
+    <div class="hidden no-print akp-search" id="fhSearchBox">
+      <input type="text" id="fhSearchInput" placeholder="Fachhändlersuche: Name, Ort oder FH-Nr. …" autocomplete="off">
+      <div id="fhSearchResults"></div>
+    </div>
     </div>
     <div class="controls no-print">
      <div class="controls-row">
@@ -592,14 +607,12 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       </button>
       <button class="btn btn-ghost hidden" id="settingsBtn" title="Einstellungen">⚙ Einstellungen</button>
       <button class="btn btn-ghost hidden" id="adminBtn" title="Admin-Panel">⚙ Admin</button>
-      <button class="btn btn-ghost hidden" id="logoutBtn" title="Abmelden" style="margin-left:18px">Abmelden</button>
-     </div>
-     <div class="controls-row">
       <button class="btn btn-ghost hidden" id="perfDialogBtn" title="Performance Dialog">📋 Performance Dialog</button>
       <button class="btn btn-ghost hidden" id="perfDialogAdminBtn" title="Performance Dialog – Admin-Übersicht">📋 Performance Dialog – ADMIN</button>
       <button class="btn btn-ghost hidden" id="chefgespraechBtn" title="Chefgespräch-Unterlagen für einen Fachhändler zusammenstellen">🤝 Chefgespräch</button>
       <button class="btn btn-ghost hidden" id="kooperationsgespraechBtn" title="Kooperationsgesprächsunterlagen für eine Einkaufskooperation zusammenstellen">🏢 Kooperationsgespräch</button>
       <button class="btn btn-ghost hidden" id="auswertungBtn" title="Produktionsauswertung nach Kooperation, Weiterer Zuordnung, Fachhändler oder AKP erfassen">📊 Auswertung erfassen</button>
+      <button class="btn btn-ghost hidden" id="logoutBtn" title="Abmelden" style="margin-left:18px">Abmelden</button>
      </div>
     </div>
     <div class="datenstand" id="datenstand"></div>
@@ -814,6 +827,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 
     <div id="fhViewMode">
       <div class="ac-grid">
+        <div id="fhManualNameViewRow" class="hidden"><span class="ac-lbl">Firmenname (manuell hinterlegt)</span><div class="ac-val" id="fhManualNameView">–</div></div>
         <div><span class="ac-lbl">Adresse</span><div class="ac-val" id="fhAddrView">–</div></div>
         <div><span class="ac-lbl">Telefon</span><div class="ac-val" id="fhTelefonView">–</div></div>
         <div><span class="ac-lbl">E-Mail Geschäft</span><div class="ac-val" id="fhEmailView">–</div></div>
@@ -841,6 +855,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 
     <div id="fhEditMode" class="hidden">
       <div class="ac-grid">
+        <div>
+          <label class="ac-lbl" for="fhManualNameEdit">Firmenname (nur falls hier nicht automatisch bekannt)</label>
+          <input id="fhManualNameEdit" autocomplete="off" placeholder="z.B. Elektro Muster GmbH">
+        </div>
         <div><label class="ac-lbl" for="fhStrasseEdit">Straße</label><input id="fhStrasseEdit" autocomplete="off"></div>
         <div><label class="ac-lbl" for="fhPlzEdit">PLZ</label><input id="fhPlzEdit" autocomplete="off"></div>
         <div><label class="ac-lbl" for="fhOrtEdit">Ort</label><input id="fhOrtEdit" autocomplete="off"></div>
@@ -2125,15 +2143,17 @@ let fhContactsBulkIndex=null;
 // alle vier Indizes gleichzeitig. Eigene Funktion, damit sie unabhängig von
 // sb/Netzwerk direkt testbar ist.
 function buildFhContactsIndices(rows){
-  const bulkIdx={}, mieteIdx={}, erledigt=new Set(), akqIdx={};
+  const bulkIdx={}, mieteIdx={}, erledigt=new Set(), akqIdx={}, manualNameIdx={}, mieteNameIdx={};
   for(const r of rows){
     if(!r.fh_nr) continue;
     bulkIdx[r.fh_nr]=r.prod_monthly||{};
     if(r.miete_monthly&&Object.keys(r.miete_monthly).length) mieteIdx[r.fh_nr]={monthly:r.miete_monthly};
     if(r.neunwochen_erledigt) erledigt.add(r.fh_nr);
     if(r.akq_punkte!=null||(r.akq_staffeln&&r.akq_staffeln.length)) akqIdx[r.fh_nr]={punkte:r.akq_punkte,staffeln:r.akq_staffeln||[],gl:r.akq_gl||null,name:r.akq_name||null};
+    if(r.name) manualNameIdx[r.fh_nr]=r.name;
+    if(r.miete_name) mieteNameIdx[r.fh_nr]=r.miete_name;
   }
-  return {bulkIdx,mieteIdx,erledigt,akqIdx};
+  return {bulkIdx,mieteIdx,erledigt,akqIdx,manualNameIdx,mieteNameIdx};
 }
 let fhContactsIndicesLoading=null;
 async function loadFhContactsIndicesAll(){
@@ -2146,7 +2166,7 @@ async function loadFhContactsIndicesAll(){
       for(;;){
         guard++;
         const {data,error}=await sb.from("fh_contacts")
-          .select("fh_nr,prod_monthly,miete_monthly,neunwochen_erledigt,akq_punkte,akq_staffeln,akq_gl,akq_name")
+          .select("fh_nr,prod_monthly,miete_monthly,neunwochen_erledigt,akq_punkte,akq_staffeln,akq_gl,akq_name,name,miete_name")
           .range(from,from+999);
         if(error){ console.error("loadFhContactsIndicesAll:",error.message||error); break; }
         if(!data||!data.length) break;
@@ -2154,12 +2174,22 @@ async function loadFhContactsIndicesAll(){
         from+=data.length;
         if(guard>50) break;
       }
-      const {bulkIdx,mieteIdx,erledigt,akqIdx}=buildFhContactsIndices(allRows);
+      const {bulkIdx,mieteIdx,erledigt,akqIdx,manualNameIdx,mieteNameIdx}=buildFhContactsIndices(allRows);
       fhContactsBulkIndex=bulkIdx;
       fhMieteIndex=mieteIdx;
       fhErledigtSet=erledigt;
       fhAkqIndex=akqIdx;
+      fhManualNameIndex=manualNameIdx;
+      fhMieteNameIndex=mieteNameIdx;
       if(hasData()) render();
+      // Direkt (statt nur über render()) - falls IRGENDEINE andere
+      // render()-Teilfunktion bei ungewöhnlichen Live-Daten wirft, würde das
+      // Miete-PopUp sonst nie aktualisiert, selbst wenn render() den
+      // entsprechenden Aufruf enthält (bricht vorher ab). Siehe Bug-Report
+      // 25.08.2026: "Mietdaten passen noch immer nicht".
+      if(!$("mieteListModal").classList.contains("hidden")){
+        try{ renderMieteListModal(); }catch(e){ console.error("renderMieteListModal (fhContactsIndices):",e); }
+      }
     }catch(e){ console.error("loadFhContactsIndicesAll failed:",e); }
     finally{ fhContactsIndicesLoading=null; }
   })();
@@ -2844,6 +2874,10 @@ function parseMieteReport(wb){
     const idxDatum=header.findIndex(h=>h==="Datum");
     const idxSortiment=header.findIndex(h=>h==="Sortiment");
     const idxAnzahl=header.findIndex(h=>h==="Anzahl Produktion Mietverträge");
+    // Firmenname (Nutzer-Bestätigung 25.08.2026) - deckt Händler ab, die in
+    // keiner anderen Quelle (tägliche FH_Liste, AKP, Akquisestaffeln) einen
+    // Namen haben (siehe miete_name/fhMieteNameIndex in fhFallbackFromAkp).
+    const idxBez=header.findIndex(h=>h==="FH Bez (ohne Nr)");
     if(idxFh<0||idxDatum<0) continue;
     for(let i=1;i<rows.length;i++){
       const r=rows[i]; if(!r||r[idxFh]==null||r[idxFh]==="") continue;
@@ -2851,12 +2885,14 @@ function parseMieteReport(wb){
       const datum=cellDate(r[idxDatum]); if(!datum) continue;
       const ym=datum.slice(0,7);
       const count=idxAnzahl>-1?(num(r[idxAnzahl])||1):1;
-      if(!byFh[fhNr]) byFh[fhNr]={monthly:{},sortiment:{},clubNr:null};
+      if(!byFh[fhNr]) byFh[fhNr]={monthly:{},sortiment:{},clubNr:null,name:null};
       byFh[fhNr].monthly[ym]=(byFh[fhNr].monthly[ym]||0)+count;
       const sort=idxSortiment>-1?String(r[idxSortiment]??"").trim():"";
       if(sort) byFh[fhNr].sortiment[sort]=(byFh[fhNr].sortiment[sort]||0)+count;
       const clubNr=idxClubNr>-1?String(r[idxClubNr]??"").trim():"";
       if(clubNr) byFh[fhNr].clubNr=clubNr;
+      const bez=idxBez>-1?String(r[idxBez]??"").trim():"";
+      if(bez) byFh[fhNr].name=bez;
       totalRows++;
     }
   }
@@ -2872,7 +2908,7 @@ async function upsertMieteData(byFh){
   const CHUNK=200;
   for(let i=0;i<entries.length;i+=CHUNK){
     const chunk=entries.slice(i,i+CHUNK).map(([fh_nr,rec])=>({
-      fh_nr, monthly:rec.monthly, sortiment:rec.sortiment, club_nr:rec.clubNr
+      fh_nr, monthly:rec.monthly, sortiment:rec.sortiment, club_nr:rec.clubNr, name:rec.name
     }));
     const { error }=await sb.rpc("fh_sync_miete",{rows:chunk});
     if(error) throw error;
@@ -3121,6 +3157,11 @@ async function loadAkpContactsIndex(){
     akpIndexGen++;
     console.log("AKP-Kontaktdatenbank geladen:",Object.keys(idx).length,"Einträge");
     if(hasData()) render();
+    // Direkt (statt nur über render()) - siehe gleicher Kommentar in
+    // loadFhContactsIndicesAll.
+    if(!$("mieteListModal").classList.contains("hidden")){
+      try{ renderMieteListModal(); }catch(e){ console.error("renderMieteListModal (akpContactsIndex):",e); }
+    }
   }catch(e){ console.error("loadAkpContactsIndex failed:",e); }
 }
 // FH-Nrn, deren "9-Wochen-Plan" bereits (manuell oder automatisch) als
@@ -3129,6 +3170,18 @@ async function loadAkpContactsIndex(){
 // loadFhContactsIndicesAll oben) statt in einem eigenen Full-Table-Scan.
 let fhErledigtSet=new Set();
 async function loadFhErledigtSet(){ await loadFhContactsIndicesAll(); }
+// Manueller Namens-Fallback (fh_contacts.name, Nutzervorgabe 25.08.2026):
+// letzte Instanz in fhFallbackFromAkp(), für Händler, die weder heute
+// produziert haben, noch einen AKP-Ansprechpartner mit Firma, noch einen
+// akq_name besitzen - siehe FH-PopUp-Stammdaten ("Firmenname, falls hier
+// nicht bekannt").
+let fhManualNameIndex={};
+// Automatischer Namens-Fallback aus dem Miete-Report (fh_contacts.miete_name,
+// Spalte "FH Bez (ohne Nr)", Nutzer-Bestätigung 25.08.2026) - eigene Spalte
+// statt der manuellen fh_contacts.name, damit ein Import einen dort
+// eingetragenen Namen nie stillschweigend überschreibt (siehe
+// parseMieteReport/upsertMieteData/fh_sync_miete).
+let fhMieteNameIndex={};
 // Akquisestaffeln je Fachhändler (Punkte + 7 Erreichungsdaten, siehe
 // parseAkquiseStaffeln) - komplett geladen (klein genug), damit Dashboard-
 // Kachel und FH-PopUp ohne Einzelabfrage je Händler rendern können.
@@ -3189,11 +3242,11 @@ function renderMieteListModal(){
   const periodLbl=mieteListPeriod==="monat"?("Produktion "+MONATE[s.monat-1]+" "+s.jahr):("Jahresproduktion "+s.jahr);
   $("mieteListSubtitle").textContent=periodLbl+" · "+fmt(rows.length)+" Fachhändler mit Miete-Produktion"+(currentEmp!==AT_GESAMT?" · "+currentEmp:"");
   $("mieteListBody").innerHTML=rows.length
-    ? `<table><thead><tr><th>Fachhändler</th><th>Ort</th><th>Betreuer</th><th class="r">${periodLbl}</th></tr></thead><tbody>`+
+    ? `<table class="mietelist-table"><thead><tr><th>Fachhändler</th><th>Ort</th><th>Betreuer</th><th class="r">${periodLbl}</th></tr></thead><tbody>`+
       rows.map(r=>`<tr>
-        <td><b><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.fhNr)}">${escapeHtml(r.name)}</button></b></td>
-        <td>${escapeHtml(r.ort||"–")}</td>
-        <td>${escapeHtml(r.emp||"–")}</td>
+        <td title="${escapeHtml(r.name)}"><b><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.fhNr)}">${escapeHtml(r.name)}</button></b></td>
+        <td title="${escapeHtml(r.ort||"")}">${escapeHtml(r.ort||"–")}</td>
+        <td title="${escapeHtml(r.emp||"")}">${escapeHtml(r.emp||"–")}</td>
         <td class="r">${fmt(r.val)}</td>
       </tr>`).join("")+`</tbody></table>`
     : `<div class="empty-note">Keine Miete-Produktion im gewählten Zeitraum.</div>`;
@@ -4922,6 +4975,17 @@ function fhFallbackFromAkp(fhNr){
   // Nummern statt Namen, obwohl der AKP-Fallback bereits vorhanden war.
   const akq=fhAkqIndex&&fhAkqIndex[fhNr];
   if(akq&&akq.name) return {name:akq.name,ort:null};
+  // Weiterer automatischer Fallback über den Miete-Report (Spalte "FH Bez
+  // (ohne Nr)", siehe miete_name/fhMieteNameIndex) - deckt Händler ab, die
+  // NUR über Miete-Produktion bekannt sind, sonst in keiner Quelle vorkommen
+  // (konkrete Beispiele aus Nutzer-Report 25.08.2026: 205027/208006/213022).
+  const mieteName=fhMieteNameIndex&&fhMieteNameIndex[fhNr];
+  if(mieteName) return {name:mieteName,ort:null};
+  // Letzte Instanz: manuell im FH-PopUp hinterlegter Name (fh_contacts.name)
+  // - für Händler, die in KEINER der obigen (automatischen) Quellen
+  // vorkommen.
+  const manual=fhManualNameIndex&&fhManualNameIndex[fhNr];
+  if(manual) return {name:manual,ort:null};
   return null;
 }
 let fhModalCurrent=null;
@@ -5134,6 +5198,8 @@ async function loadFhContact(fhNr){
 function renderFhContactView(){
   const c=fhContactCurrent||{};
   const f=state.latest.fh[fhModalCurrent];
+  $("fhManualNameViewRow").classList.toggle("hidden",!c.name);
+  $("fhManualNameView").textContent=c.name||"–";
   const addr=[c.strasse,[c.plz,c.ort||(f&&f.ort)].filter(Boolean).join(" ")].filter(Boolean).join(", ");
   $("fhAddrView").textContent=addr||"–";
   $("fhTelefonView").textContent=c.telefon||"–";
@@ -7222,6 +7288,7 @@ async function toggleFhEdit(on){
   if(on){
     const c=fhContactCurrent||{};
     const f=state.latest.fh[fhModalCurrent];
+    $("fhManualNameEdit").value=c.name||"";
     $("fhStrasseEdit").value=c.strasse||"";
     $("fhPlzEdit").value=c.plz||(f&&f.plz)||"";
     $("fhOrtEdit").value=c.ort||(f&&f.ort)||"";
@@ -7264,6 +7331,7 @@ async function toggleFhEdit(on){
 }
 async function saveFhContact(){
   const fhNr=fhModalCurrent; if(!fhNr) return;
+  const name=$("fhManualNameEdit").value.trim()||null;
   const strasse=$("fhStrasseEdit").value.trim()||null;
   const plz=$("fhPlzEdit").value.trim()||null;
   const ort=$("fhOrtEdit").value.trim()||null;
@@ -7292,12 +7360,17 @@ async function saveFhContact(){
   const ziel=fhZielEnabled?($("fhZielChk").checked?(parseFloat($("fhZielEdit").value)||null):null):fhContactCurrent.ziel;
   $("fhSaveBtn").disabled=true;
   const {error}=await sb.from("fh_contacts").upsert({
-    fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung,filialbetriebe,ziel,
+    fh_nr:fhNr,name,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung,filialbetriebe,ziel,
     updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()
   },{onConflict:"fh_nr"});
   $("fhSaveBtn").disabled=false;
   if(error){ $("fhSaveHint").textContent="Fehler: "+error.message; return; }
-  fhContactCurrent={...fhContactCurrent,fh_nr:fhNr,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung,filialbetriebe,ziel};
+  fhContactCurrent={...fhContactCurrent,fh_nr:fhNr,name,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung,filialbetriebe,ziel};
+  // fhManualNameIndex live nachziehen (statt erst beim nächsten
+  // loadFhContactsIndicesAll-Refresh) - sonst zeigt z.B. das Miete-PopUp den
+  // gerade eingetragenen Namen erst nach einem Reload.
+  if(name) fhManualNameIndex[fhNr]=name; else delete fhManualNameIndex[fhNr];
+  if(!(state.latest.fh[fhNr]&&state.latest.fh[fhNr].name)) $("fhName").textContent=name||fhNr;
   if(neunwochen_erledigt) fhErledigtSet.add(fhNr); else fhErledigtSet.delete(fhNr);
   renderFhContactView();
   renderFhStammdatenDiff();
