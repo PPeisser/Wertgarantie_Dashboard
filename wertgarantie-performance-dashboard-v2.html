@@ -4235,6 +4235,14 @@ function render(){
   renderKPIs(); renderTopFlop(); renderObs(); renderAKP(); renderAKQ();
   renderAkqOhneProd(); renderNeunWochen();
   if($("akpSearchInput")) renderAkpSearch();
+  // AKP-Kontaktdatenbank und fh_contacts-Indizes (u.a. für die Namens-
+  // Fallbacks in mieteListRows/fhFallbackFromAkp) laden im Hintergrund nach
+  // und lösen bei Fertigstellung ebenfalls render() aus (siehe
+  // loadAkpContactsIndex/loadFhContactsIndicesAll) - ein bereits offenes
+  // Miete-PopUp zeigt sonst dauerhaft nur Nummern, wenn es geöffnet wurde,
+  // bevor diese Hintergrund-Ladevorgänge fertig waren (Bug-Report
+  // 25.08.2026: "teilweise nur Nummern" im Miete-PopUp).
+  if(!$("mieteListModal").classList.contains("hidden")) renderMieteListModal();
   maybeAskGoal();
 }
 
@@ -4901,10 +4909,19 @@ function openAkpModal(){
 // aktuellen Tag keine Produktion hatte und daher nicht in state.latest.fh
 // steht - sonst zeigt das Popup weder Name noch Ort (z.B. Bug bei "KURTZ").
 function fhFallbackFromAkp(fhNr){
-  if(!akpContactsIndex) return null;
-  for(const a of Object.values(akpContactsIndex)){
-    if(a.fh_nr===fhNr&&a.firma) return {name:a.firma,ort:a.ort||null};
+  if(akpContactsIndex){
+    for(const a of Object.values(akpContactsIndex)){
+      if(a.fh_nr===fhNr&&a.firma) return {name:a.firma,ort:a.ort||null};
+    }
   }
+  // Zusätzlicher Fallback über die Akquisestaffeln-Datei (Spalte "FH Bez
+  // (ohne Nr)", siehe akq_name/fhAkqIndex) - deckt Händler ab, die weder
+  // heute produziert haben (state.latest.fh) noch einen AKP-Ansprechpartner
+  // mit Firmenfeld besitzen. Kein Ort in dieser Quelle enthalten. Bug-Report
+  // 25.08.2026: im Miete-PopUp standen bei einigen Händlern weiterhin nur
+  // Nummern statt Namen, obwohl der AKP-Fallback bereits vorhanden war.
+  const akq=fhAkqIndex&&fhAkqIndex[fhNr];
+  if(akq&&akq.name) return {name:akq.name,ort:null};
   return null;
 }
 let fhModalCurrent=null;
