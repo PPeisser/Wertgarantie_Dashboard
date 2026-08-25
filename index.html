@@ -239,7 +239,7 @@ h2.sec small{font-weight:600;text-transform:none;color:var(--muted);letter-spaci
 /* ---------- Tables ---------- */
 .duo{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .panel{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 16px;overflow:hidden}
-.panel h3{font-size:13.5px;font-weight:800;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.panel h3{font-size:13.5px;font-weight:800;margin-bottom:8px;display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px}
 .panel h3 .dot{width:9px;height:9px;border-radius:99px;flex:none}
 table{width:100%;border-collapse:collapse;font-size:11.5px}
 th{
@@ -384,6 +384,19 @@ td .betr{font-size:11px;color:var(--muted)}
 .akp-search-row>span:first-child{flex:1;min-width:0}
 .akp-search-row>span:first-child b,.akp-search-row .betr{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 .akp-search-row .betr{font-size:11px;color:var(--muted)}
+/* Fachhändlersuche im Header: schwebendes Dropdown statt eingebetteter Liste
+   - bei vielen Treffern (bis zu 20, siehe renderFhSearch) würde eine normal
+   eingebettete Liste den kompletten Dashboard-Inhalt weit nach unten
+   schieben (v.a. auf Handy fatal, da das Suchfeld ganz oben im Header sitzt,
+   anders als die AKP-Suche in der Seitenspalte) - daher als Overlay mit
+   Innen-Scroll gelöst. */
+#fhSearchBox{position:relative}
+#fhSearchResults:not(:empty){
+  position:absolute;left:0;right:0;top:100%;margin-top:6px;
+  background:var(--card);border:1px solid var(--line);border-radius:10px;
+  max-height:min(320px,60vh);overflow-y:auto;padding:2px 10px;
+  box-shadow:0 10px 28px rgba(6,42,63,.18);z-index:60;
+}
 .ac-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px}
 .ac-lbl{display:block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:3px}
 .ac-val{font-size:14px;font-weight:700;color:var(--ink)}
@@ -531,6 +544,15 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 }
 @media (max-width:480px){
   .ac-grid{grid-template-columns:1fr}
+  /* Der Info-Badge (<small>, z.B. "38 Händler, davon ...") drängt die
+     Überschrift auf schmalen Handy-Bildschirmen sonst in den Zeilenumbruch
+     MITTEN im Wort (z.B. "9-Wochen-Plan" -> "9-" / "Wochen-" / "Plan"
+     untereinander, weil .panel h3 als flex-Zeile die Textbreite sonst bis
+     zum Kollaps schrumpft) - erzwingt stattdessen einen sauberen
+     Zeilenumbruch VOR dem Badge, sodass die Überschrift selbst immer eine
+     Zeile bleibt (Bug-Report 25.08.2026). Nur auf schmalen Bildschirmen, ab
+     Tablet-Breite bleibt genug Platz für eine Zeile.  */
+  .panel h3 small{flex:1 1 100%}
 }
 </style>
 </head>
@@ -699,7 +721,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 <!-- Einstellungen (pro Nutzer: Passwort, Rolle, Benachrichtigungen) -->
 <div class="modal-bg hidden" id="settingsModal">
   <div class="modal wide">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
       <h3 style="margin:0">⚙ Einstellungen</h3>
       <button class="btn btn-ghost" id="settingsClose" style="padding:7px 12px">✕ Schließen</button>
     </div>
@@ -760,7 +782,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 <!-- Benachrichtigungen (Ergebnis der Prüfung) -->
 <div class="modal-bg hidden" id="notifModal">
   <div class="modal wide">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
       <h3 style="margin:0">🔔 Benachrichtigungen</h3>
       <button class="btn btn-ghost" id="notifClose" style="padding:7px 12px">✕ Schließen</button>
     </div>
@@ -771,7 +793,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 <!-- Fachhändler PopUp -->
 <div class="modal-bg hidden" id="fhModal">
   <div class="modal wide">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:2px">
       <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <h3 id="fhName" style="margin:0">Fachhändler</h3>
         <button class="btn btn-ghost hidden" id="fhFilialGruppeBtn" style="padding:4px 9px;font-size:11.5px">🏬 Alle Filialen ⤢</button>
@@ -920,7 +942,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 <!-- Filialgruppe PopUp (Gesamtübersicht aller Filialen eines "Filialbetriebe"-Werts) -->
 <div class="modal-bg hidden" id="filialGruppeModal">
   <div class="modal wide">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
       <h3 id="filialGruppeTitle" style="margin:0">Filialgruppe</h3>
       <span style="display:flex;gap:8px">
         <button class="btn btn-ghost no-print" id="filialGruppePdfBtn" style="padding:7px 12px">⬇ PDF</button>
@@ -934,7 +956,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 <!-- Miete (Club.Weiss) PopUp: Fachhändler-Übersicht nach Produktion sortiert -->
 <div class="modal-bg hidden" id="mieteListModal">
   <div class="modal wide">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:2px">
       <h3 style="margin:0">🏠 Miete – Fachhändler-Übersicht</h3>
       <button class="btn btn-ghost" id="mieteListClose" style="padding:7px 12px">✕ Schließen</button>
     </div>
@@ -952,7 +974,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 <!-- Händler Top/Flop 10·20·30 PopUp -->
 <div class="modal-bg hidden" id="fhTopFlopModal">
   <div class="modal wide">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
       <h3 id="ftfTitle" style="margin:0">Top &amp; Flop Händler</h3>
       <span style="display:flex;gap:8px">
         <button class="btn btn-ghost no-print" id="ftfPdfBtn" style="padding:7px 12px">⬇ PDF</button>
@@ -978,7 +1000,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         </span>
       </span>
     </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:4px">
       <b class="pos-t" id="ftfTopLbl">TOP</b>
       <span class="tabs mini no-print" id="ftfTopSortTabs">
         <button data-sort="absolut">Absolut</button>
@@ -986,7 +1008,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       </span>
     </div>
     <div id="ftfTopTable" style="overflow-x:auto"></div>
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:14px 0 4px">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin:14px 0 4px">
       <b class="neg-t" id="ftfFlopLbl">FLOP</b>
       <span class="tabs mini no-print" id="ftfFlopSortTabs">
         <button data-sort="absolut">Absolut</button>
@@ -1000,7 +1022,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 <!-- AKP Top/Flop PopUp -->
 <div class="modal-bg hidden" id="akpModal">
   <div class="modal wide">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
       <h3 id="amTitle" style="margin:0">Top &amp; Flop AKP</h3>
       <span style="display:flex;gap:8px">
         <button class="btn btn-ghost no-print" id="amPdfBtn" style="padding:7px 12px">⬇ PDF</button>
@@ -1029,7 +1051,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 <!-- Akquisestaffeln Gesamtauflistung PopUp -->
 <div class="modal-bg hidden" id="akqStaffelnModal">
   <div class="modal wide">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
       <h3 id="aqmTitle" style="margin:0">Akquisestaffeln</h3>
       <span style="display:flex;gap:8px">
         <button class="btn btn-ghost no-print" id="aqmPdfBtn" style="padding:7px 12px">⬇ PDF</button>
@@ -1044,7 +1066,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 <!-- AKP-Kontakt PopUp -->
 <div class="modal-bg hidden" id="akpContactModal">
   <div class="modal wide">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:2px">
       <h3 id="acName" style="margin:0">AKP</h3>
       <button class="btn btn-ghost" id="acClose" style="padding:7px 12px">✕ Schließen</button>
     </div>
@@ -1224,7 +1246,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 <!-- Admin-Panel -->
 <div class="modal-bg hidden" id="adminModal">
   <div class="modal wide">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
       <h3 style="margin:0">Admin-Panel</h3>
       <button class="btn btn-ghost" id="adminClose" style="padding:7px 12px">✕ Schließen</button>
     </div>
@@ -1290,7 +1312,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 <!-- Performance Dialog (Mitarbeiter-Ansicht, mehrseitiger Wizard) -->
 <div class="modal-bg hidden" id="perfModal">
   <div class="modal wide">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:10px">
       <h3 style="margin:0">Performance Dialog</h3>
       <span style="display:flex;align-items:center;gap:12px">
         <span id="perfSaveStatus" style="font-size:12px;color:var(--muted)"></span>
@@ -1304,7 +1326,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 <!-- Performance Dialog - ADMIN (Übersicht + Sammel-PDF) -->
 <div class="modal-bg hidden" id="perfAdminModal">
   <div class="modal wide">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
       <h3 style="margin:0">Performance Dialog – Admin-Übersicht</h3>
       <span style="display:flex;gap:8px">
         <button class="btn btn-ghost no-print" id="perfAdminPdfBtn" style="padding:7px 12px">⬇ Gesamt-PDF freigeschalteter Monat</button>
@@ -1335,7 +1357,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 <!-- Chefgespräch: FH-Suche + Auswahl Chefgesprächsunterlagen/KI-Unterstützt -->
 <div class="modal-bg hidden" id="chefgespraechModal">
   <div class="modal wide">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:10px">
       <h3 style="margin:0">🤝 Chefgespräch</h3>
       <button class="btn btn-ghost" id="chefgespraechClose" style="padding:7px 12px">✕ Schließen</button>
     </div>
@@ -1376,7 +1398,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 <!-- Kooperationsgespräch: Kooperations-Suche + Auswahl Kooperationsgesprächsunterlagen/KI-Unterstützt -->
 <div class="modal-bg hidden" id="kooperationsgespraechModal">
   <div class="modal wide">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:10px">
       <h3 style="margin:0">🏢 Kooperationsgespräch</h3>
       <button class="btn btn-ghost" id="kooperationsgespraechClose" style="padding:7px 12px">✕ Schließen</button>
     </div>
@@ -1399,7 +1421,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 <!-- Auswertung erfassen: Typ wählen -> Auswahl (Kooperation/Weitere Zuordnung/Fachhändler/AKP) -> Zeitraum -> PDF -->
 <div class="modal-bg hidden" id="auswertungModal">
   <div class="modal wide">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:10px">
       <h3 style="margin:0">📊 Auswertung erfassen</h3>
       <button class="btn btn-ghost" id="auswertungClose" style="padding:7px 12px">✕ Schließen</button>
     </div>
