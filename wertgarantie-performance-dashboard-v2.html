@@ -839,8 +839,12 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <label class="nw-check" for="fhWeitereZuordnungChk"><input type="checkbox" id="fhWeitereZuordnungChk"> Weitere Zuordnung aktivieren</label>
         <div id="fhWeitereZuordnungFields" class="hidden" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
           <div style="flex:1;min-width:160px">
-            <label class="ac-lbl" for="fhWeitereZuordnungSelect">Auswahl</label>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <label class="ac-lbl" for="fhWeitereZuordnungSelect">Auswahl</label>
+              <button type="button" id="fhWeitereZuordnungManageBtn" class="btn btn-ghost" style="padding:2px 9px;font-size:11px">Verwalten</button>
+            </div>
             <select id="fhWeitereZuordnungSelect"></select>
+            <div id="fhWeitereZuordnungManageList" class="hidden" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div>
           </div>
           <div style="flex:1;min-width:160px">
             <label class="ac-lbl" for="fhWeitereZuordnungNeu">oder neuer Wert (wird für alle als Auswahl übernommen)</label>
@@ -852,8 +856,12 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <label class="nw-check" for="fhFilialbetriebeChk"><input type="checkbox" id="fhFilialbetriebeChk"> Filialbetriebe aktivieren</label>
         <div id="fhFilialbetriebeFields" class="hidden" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
           <div style="flex:1;min-width:160px">
-            <label class="ac-lbl" for="fhFilialbetriebeSelect">Auswahl</label>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <label class="ac-lbl" for="fhFilialbetriebeSelect">Auswahl</label>
+              <button type="button" id="fhFilialbetriebeManageBtn" class="btn btn-ghost" style="padding:2px 9px;font-size:11px">Verwalten</button>
+            </div>
             <select id="fhFilialbetriebeSelect"></select>
+            <div id="fhFilialbetriebeManageList" class="hidden" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div>
           </div>
           <div style="flex:1;min-width:160px">
             <label class="ac-lbl" for="fhFilialbetriebeNeu">oder neuer Wert (wird für alle als Auswahl übernommen)</label>
@@ -3103,7 +3111,8 @@ function mieteListRows(period){
     if(period==="monat") val=(rec.monthly||{})[mk]||0;
     else for(const [ym,v] of Object.entries(rec.monthly||{})) if(ym.slice(0,4)===String(s.jahr)) val+=v;
     if(val<=0) continue;
-    rows.push({fhNr:nr,name:(fh&&fh.name)||nr,ort:(fh&&fh.ort)||"",emp:(fh&&fh.emp)||"",val});
+    const fb=fh?null:fhFallbackFromAkp(nr);
+    rows.push({fhNr:nr,name:(fh&&fh.name)||(fb&&fb.name)||nr,ort:(fh&&fh.ort)||(fb&&fb.ort)||"",emp:(fh&&fh.emp)||"",val});
   }
   rows.sort((a,b)=>b.val-a.val);
   return rows;
@@ -4925,9 +4934,12 @@ async function loadWeitereZuordnungOptions(){
   return weitereZuordnungOptionsCache;
 }
 // pool optional - Default ist der Weitere-Zuordnung-Pool; Filialbetriebe
-// übergibt seinen eigenen, unabhängigen Pool (siehe unten).
-function populateWeitereZuordnungSelect(selectId,current,pool){
-  const opts=(pool||weitereZuordnungOptionsCache||WEITERE_ZUORDNUNG_BASE).slice();
+// übergibt seinen eigenen, unabhängigen Pool (siehe unten). hiddenSet optional
+// - vom Nutzer ausgeblendete Werte (siehe wireZuordnungManage unten); der
+// aktuell zugewiesene Wert bleibt auch dann sichtbar, wenn er ausgeblendet ist.
+function populateWeitereZuordnungSelect(selectId,current,pool,hiddenSet){
+  let opts=(pool||weitereZuordnungOptionsCache||WEITERE_ZUORDNUNG_BASE).slice();
+  if(hiddenSet&&hiddenSet.size) opts=opts.filter(o=>o===current||!hiddenSet.has(o));
   if(current&&!opts.includes(current)) opts.push(current);
   opts.sort((a,b)=>a.localeCompare(b,"de"));
   $(selectId).innerHTML=["<option value=\"\">–</option>",...opts.map(o=>`<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`)].join("");
@@ -4947,6 +4959,75 @@ async function loadFilialbetriebeOptions(){
   }catch(e){}
   filialbetriebeOptionsCache=[...set].sort((a,b)=>a.localeCompare(b,"de"));
   return filialbetriebeOptionsCache;
+}
+// DropDown-Verwaltung "Weitere Zuordnung"/"Filialbetriebe" (Nutzervorgabe
+// 25.08.2026, für ALLE Rollen freigegeben - nicht nur Admin): je Eintrag ein
+// "x" zum Aus-/Wieder-Einblenden (kein Hard-Delete, GLOBAL über dashboard_kv
+// persistiert, damit ein versehentlich ausgeblendeter Wert nicht verloren
+// geht) sowie "Bearbeiten" zum Umbenennen - benennt den Wert bei ALLEN
+// fh_contacts-Zeilen um, die ihn aktuell tragen (Bulk-UPDATE), damit die
+// Zuordnung bestehen bleibt statt einen zweiten, gleichbedeutenden Eintrag zu
+// erzeugen.
+let weitereZuordnungHiddenSet=new Set(), filialbetriebeHiddenSet=new Set();
+async function loadZuordnungHidden(key){
+  try{ const v=await stGet(key); return new Set(v?JSON.parse(v):[]); }catch(e){ return new Set(); }
+}
+async function saveZuordnungHidden(key,set){ await stSet(key,JSON.stringify([...set])); }
+function renderZuordnungManageList(listId,pool,hiddenSet){
+  const el=$(listId);
+  if(!pool.length){ el.innerHTML=`<span style="font-size:12px;color:var(--muted)">Keine Einträge</span>`; return; }
+  el.innerHTML=pool.map(o=>{
+    const hidden=hiddenSet.has(o);
+    return `<span class="wz-manage-tag" data-val="${escapeHtml(o)}" style="display:inline-flex;align-items:center;gap:2px;padding:3px 4px 3px 9px;border-radius:12px;font-size:12px;border:1px solid var(--line);${hidden?"opacity:.55":""}">
+      <span class="wz-manage-label" style="${hidden?"text-decoration:line-through":""}">${escapeHtml(o)}</span>
+      <button type="button" class="wz-manage-edit" data-val="${escapeHtml(o)}" title="Umbenennen" style="border:none;background:none;cursor:pointer;font-size:12px;line-height:1;padding:2px 4px;color:#5D7284">✎</button>
+      <button type="button" class="wz-manage-toggle" data-val="${escapeHtml(o)}" title="${hidden?"wieder einblenden":"ausblenden"}" style="border:none;background:none;cursor:pointer;font-weight:900;font-size:13px;line-height:1;padding:2px 4px;color:${hidden?"#2E8B57":"#C0392B"}">${hidden?"↺":"×"}</button>
+    </span>`;
+  }).join("");
+}
+// Bulk-Umbenennung: alle fh_contacts-Zeilen mit altem Wert auf neuen Wert
+// setzen, danach Pool + ggf. Hidden-Set (falls der alte Wert ausgeblendet
+// war) aktualisieren.
+async function renameZuordnungValue(column,oldVal,newVal,hiddenSet,hiddenKey){
+  try{
+    const {error}=await sb.from("fh_contacts").update({[column]:newVal}).eq(column,oldVal);
+    if(error){ toast("Umbenennen fehlgeschlagen: "+error.message); return false; }
+  }catch(e){ toast("Umbenennen fehlgeschlagen."); return false; }
+  if(hiddenSet.has(oldVal)){ hiddenSet.delete(oldVal); hiddenSet.add(newVal); await saveZuordnungHidden(hiddenKey,hiddenSet); }
+  return true;
+}
+function wireZuordnungManage(btnId,listId,selectId,column,hiddenKey,poolFn,hiddenSetFn,setHiddenSetFn,reloadPoolFn,repopulateFn){
+  $(btnId).onclick=()=>{
+    const list=$(listId);
+    const opening=list.classList.contains("hidden");
+    list.classList.toggle("hidden");
+    if(opening) renderZuordnungManageList(listId,poolFn(),hiddenSetFn());
+  };
+  $(listId).addEventListener("click",async e=>{
+    const toggleBtn=e.target.closest(".wz-manage-toggle");
+    const editBtn=e.target.closest(".wz-manage-edit");
+    if(toggleBtn){
+      const val=toggleBtn.dataset.val, hs=hiddenSetFn();
+      if(hs.has(val)) hs.delete(val); else hs.add(val);
+      setHiddenSetFn(hs);
+      await saveZuordnungHidden(hiddenKey,hs);
+      renderZuordnungManageList(listId,poolFn(),hiddenSetFn());
+      repopulateFn();
+      return;
+    }
+    if(editBtn){
+      const oldVal=editBtn.dataset.val;
+      const neu=prompt("Neuer Name für \""+oldVal+"\":",oldVal);
+      if(!neu||!neu.trim()||neu.trim()===oldVal) return;
+      const newVal=neu.trim();
+      const ok=await renameZuordnungValue(column,oldVal,newVal,hiddenSetFn(),hiddenKey);
+      if(!ok) return;
+      await reloadPoolFn();
+      renderZuordnungManageList(listId,poolFn(),hiddenSetFn());
+      repopulateFn();
+      toast("Umbenannt.");
+    }
+  });
 }
 function urlHref(u){ return /^https?:\/\//i.test(u)?u:"https://"+u; }
 // Hat dieser Händler einen AKQ-Eintrag mit Beginn der Zusammenarbeit
@@ -5080,16 +5161,17 @@ async function openFilialGruppeModal(){
 // fhMonthlyMerged()), daraus Gesamtsumme je Filiale + aggregierte
 // Monatswerte der gesamten Gruppe.
 function filialGruppeCompute(members){
+  const year=String((state.latest&&state.latest.jahr)||new Date().getFullYear());
   const perFiliale=members.map(m=>{
     const merged=fhMonthlyMerged(m.fh_nr,{prod_monthly:m.prod_monthly||{}});
-    const total=Object.values(merged).reduce((a,b)=>a+b,0);
+    const total=Object.entries(merged).reduce((a,[k,v])=>k.slice(0,4)===year?a+v:a,0);
     const f=state.latest.fh[m.fh_nr];
     return { fhNr:m.fh_nr, name:(f&&f.name)||m.fh_nr, ort:(f&&f.ort)||"", merged, total };
   }).sort((a,b)=>b.total-a.total);
   const gesamt=perFiliale.reduce((a,f)=>a+f.total,0);
   const mergedAll={};
   perFiliale.forEach(f=>{ for(const [k,v] of Object.entries(f.merged)){ mergedAll[k]=(mergedAll[k]||0)+v; } });
-  return { perFiliale, gesamt, mergedAll };
+  return { perFiliale, gesamt, mergedAll, year };
 }
 // Monatstabelle - gleiches Format wie renderFhMonthly() im FH-PopUp, aber als
 // wiederverwendbarer HTML-String (Gruppe gesamt UND je einzelner Filiale).
@@ -5147,7 +5229,7 @@ function filialGruppeAkpHtml(fhNrs){
 }
 function renderFilialGruppe(value,members){
   if(!members.length){ $("filialGruppeBody").innerHTML=`<div class="empty-note">Keine Filialen in dieser Gruppe gefunden.</div>`; return; }
-  const {perFiliale,gesamt,mergedAll}=filialGruppeCompute(members);
+  const {perFiliale,gesamt,mergedAll,year}=filialGruppeCompute(members);
 
   const breakdownRows=perFiliale.map(f=>{
     const pct=gesamt>0?(f.total/gesamt*100):0;
@@ -5175,9 +5257,9 @@ function renderFilialGruppe(value,members){
 
   $("filialGruppeBody").innerHTML=`
     <div style="font-size:13px;color:var(--muted);margin-bottom:14px">${perFiliale.length} Filialen: ${perFiliale.map(f=>escapeHtml(fhNameOrt(f.name,f.ort))).join(" · ")}</div>
-    <div style="margin-bottom:18px"><span class="ac-lbl">Gesamtproduktion</span><div class="ac-val" style="font-size:22px;font-weight:900;color:var(--wg-navy)">${fmt(gesamt)} Stk.</div></div>
-    <h4 style="margin:0 0 8px;color:var(--wg-navy);font-size:13px">Aufteilung nach Filialen</h4>
-    <div style="overflow:auto;margin-bottom:18px"><table class="ac-yearly-table"><thead><tr><th>Filiale</th><th class="r">Gesamtproduktion</th><th class="r">Anteil</th></tr></thead><tbody>${breakdownRows}</tbody></table></div>
+    <div style="margin-bottom:18px"><span class="ac-lbl">Gesamtproduktion ${year}</span><div class="ac-val" style="font-size:22px;font-weight:900;color:var(--wg-navy)">${fmt(gesamt)} Stk.</div></div>
+    <h4 style="margin:0 0 8px;color:var(--wg-navy);font-size:13px">Aufteilung nach Filialen (${year})</h4>
+    <div style="overflow:auto;margin-bottom:18px"><table class="ac-yearly-table"><thead><tr><th>Filiale</th><th class="r">Produktion ${year}</th><th class="r">Anteil</th></tr></thead><tbody>${breakdownRows}</tbody></table></div>
     <h4 style="margin:0 0 8px;color:var(--wg-navy);font-size:13px">Produktion nach Monaten (gesamte Gruppe)</h4>
     <div style="margin-bottom:18px">${monthlyTbl}</div>
     ${yearlyTbl?`<h4 style="margin:0 0 8px;color:var(--wg-navy);font-size:13px">Jahresvergleich (gesamte Gruppe)</h4><div style="margin-bottom:18px">${yearlyTbl}</div>`:""}
@@ -5203,7 +5285,7 @@ async function exportFilialGruppePdf(){
   toast("PDF wird erstellt …");
   const box=document.createElement("div");
   try{
-    const {perFiliale,gesamt,mergedAll}=filialGruppeCompute(members);
+    const {perFiliale,gesamt,mergedAll,year}=filialGruppeCompute(members);
     const nowStr=fmtNowDateTime();
     const breakdownRows=perFiliale.map(f=>{
       const pct=gesamt>0?(f.total/gesamt*100):0;
@@ -5229,9 +5311,9 @@ async function exportFilialGruppePdf(){
         </div>
         <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Filialgruppen-Übersicht</div>
       </div>
-      <div class="pdf-block" style="margin-bottom:18px"><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#5D7284;margin-bottom:3px">Gesamtproduktion</div><div style="font-size:20px;font-weight:900;color:#062A3F">${fmt(gesamt)} Stk.</div></div>
-      <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Aufteilung nach Filialen</div>
-      <div class="pdf-block" style="margin-bottom:18px"><table class="ac-yearly-table"><thead><tr><th>Filiale</th><th class="r">Gesamtproduktion</th><th class="r">Anteil</th></tr></thead><tbody>${breakdownRows}</tbody></table></div>
+      <div class="pdf-block" style="margin-bottom:18px"><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#5D7284;margin-bottom:3px">Gesamtproduktion ${year}</div><div style="font-size:20px;font-weight:900;color:#062A3F">${fmt(gesamt)} Stk.</div></div>
+      <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Aufteilung nach Filialen (${year})</div>
+      <div class="pdf-block" style="margin-bottom:18px"><table class="ac-yearly-table"><thead><tr><th>Filiale</th><th class="r">Produktion ${year}</th><th class="r">Anteil</th></tr></thead><tbody>${breakdownRows}</tbody></table></div>
       <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Produktion nach Monaten (gesamte Gruppe)</div>
       <div class="pdf-block" style="margin-bottom:18px">${fhMonthlyTableHtml(mergedAll)}</div>
       ${yearlyTbl?`<div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Jahresvergleich (gesamte Gruppe)</div><div class="pdf-block" style="margin-bottom:18px">${yearlyTbl}</div>`:""}
@@ -7055,14 +7137,18 @@ async function toggleFhEdit(on){
     $("fhWeitereZuordnungChk").checked=!!c.weitere_zuordnung;
     $("fhWeitereZuordnungFields").classList.toggle("hidden",!c.weitere_zuordnung);
     $("fhWeitereZuordnungNeu").value="";
-    populateWeitereZuordnungSelect("fhWeitereZuordnungSelect",c.weitere_zuordnung);
+    $("fhWeitereZuordnungManageList").classList.add("hidden");
+    populateWeitereZuordnungSelect("fhWeitereZuordnungSelect",c.weitere_zuordnung,null,weitereZuordnungHiddenSet);
     $("fhFilialbetriebeChk").checked=!!c.filialbetriebe;
     $("fhFilialbetriebeFields").classList.toggle("hidden",!c.filialbetriebe);
     $("fhFilialbetriebeNeu").value="";
-    populateWeitereZuordnungSelect("fhFilialbetriebeSelect",c.filialbetriebe,filialbetriebeOptionsCache);
-    await Promise.all([loadWeitereZuordnungOptions(),loadFilialbetriebeOptions()]);
-    populateWeitereZuordnungSelect("fhWeitereZuordnungSelect",c.weitere_zuordnung);
-    populateWeitereZuordnungSelect("fhFilialbetriebeSelect",c.filialbetriebe,filialbetriebeOptionsCache);
+    $("fhFilialbetriebeManageList").classList.add("hidden");
+    populateWeitereZuordnungSelect("fhFilialbetriebeSelect",c.filialbetriebe,filialbetriebeOptionsCache,filialbetriebeHiddenSet);
+    await Promise.all([loadWeitereZuordnungOptions(),loadFilialbetriebeOptions(),
+      loadZuordnungHidden("weitere_zuordnung_hidden").then(s=>weitereZuordnungHiddenSet=s),
+      loadZuordnungHidden("filialbetriebe_hidden").then(s=>filialbetriebeHiddenSet=s)]);
+    populateWeitereZuordnungSelect("fhWeitereZuordnungSelect",c.weitere_zuordnung,null,weitereZuordnungHiddenSet);
+    populateWeitereZuordnungSelect("fhFilialbetriebeSelect",c.filialbetriebe,filialbetriebeOptionsCache,filialbetriebeHiddenSet);
     // Ziel-Bearbeitungsblock nur anzeigen, wenn im Admin-Panel freigeschaltet.
     $("fhZielEditBlock").classList.toggle("hidden",!fhZielEnabled);
     $("fhZielChk").checked=c.ziel>0;
@@ -8325,6 +8411,16 @@ function wireWeitereZuordnungSlot(chkId,fieldsId,selectId,neuId){
 }
 wireWeitereZuordnungSlot("fhWeitereZuordnungChk","fhWeitereZuordnungFields","fhWeitereZuordnungSelect","fhWeitereZuordnungNeu");
 wireWeitereZuordnungSlot("fhFilialbetriebeChk","fhFilialbetriebeFields","fhFilialbetriebeSelect","fhFilialbetriebeNeu");
+wireZuordnungManage("fhWeitereZuordnungManageBtn","fhWeitereZuordnungManageList","fhWeitereZuordnungSelect",
+  "weitere_zuordnung","weitere_zuordnung_hidden",
+  ()=>weitereZuordnungOptionsCache||WEITERE_ZUORDNUNG_BASE, ()=>weitereZuordnungHiddenSet, s=>{weitereZuordnungHiddenSet=s;},
+  loadWeitereZuordnungOptions,
+  ()=>populateWeitereZuordnungSelect("fhWeitereZuordnungSelect",$("fhWeitereZuordnungSelect").value,null,weitereZuordnungHiddenSet));
+wireZuordnungManage("fhFilialbetriebeManageBtn","fhFilialbetriebeManageList","fhFilialbetriebeSelect",
+  "filialbetriebe","filialbetriebe_hidden",
+  ()=>filialbetriebeOptionsCache||[], ()=>filialbetriebeHiddenSet, s=>{filialbetriebeHiddenSet=s;},
+  loadFilialbetriebeOptions,
+  ()=>populateWeitereZuordnungSelect("fhFilialbetriebeSelect",$("fhFilialbetriebeSelect").value,filialbetriebeOptionsCache,filialbetriebeHiddenSet));
 $("fhFilialbetriebeSiblings").addEventListener("click",e=>{
   const btn=e.target.closest(".fh-filial-switch-btn"); if(!btn) return;
   openFhModal(btn.dataset.fhNr);
