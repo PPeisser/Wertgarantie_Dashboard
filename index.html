@@ -595,14 +595,12 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       </button>
       <button class="btn btn-ghost hidden" id="settingsBtn" title="Einstellungen">⚙ Einstellungen</button>
       <button class="btn btn-ghost hidden" id="adminBtn" title="Admin-Panel">⚙ Admin</button>
-      <button class="btn btn-ghost hidden" id="logoutBtn" title="Abmelden" style="margin-left:18px">Abmelden</button>
-     </div>
-     <div class="controls-row">
       <button class="btn btn-ghost hidden" id="perfDialogBtn" title="Performance Dialog">📋 Performance Dialog</button>
       <button class="btn btn-ghost hidden" id="perfDialogAdminBtn" title="Performance Dialog – Admin-Übersicht">📋 Performance Dialog – ADMIN</button>
       <button class="btn btn-ghost hidden" id="chefgespraechBtn" title="Chefgespräch-Unterlagen für einen Fachhändler zusammenstellen">🤝 Chefgespräch</button>
       <button class="btn btn-ghost hidden" id="kooperationsgespraechBtn" title="Kooperationsgesprächsunterlagen für eine Einkaufskooperation zusammenstellen">🏢 Kooperationsgespräch</button>
       <button class="btn btn-ghost hidden" id="auswertungBtn" title="Produktionsauswertung nach Kooperation, Weiterer Zuordnung, Fachhändler oder AKP erfassen">📊 Auswertung erfassen</button>
+      <button class="btn btn-ghost hidden" id="logoutBtn" title="Abmelden" style="margin-left:18px">Abmelden</button>
      </div>
     </div>
     <div class="datenstand" id="datenstand"></div>
@@ -2163,6 +2161,14 @@ async function loadFhContactsIndicesAll(){
       fhErledigtSet=erledigt;
       fhAkqIndex=akqIdx;
       if(hasData()) render();
+      // Direkt (statt nur über render()) - falls IRGENDEINE andere
+      // render()-Teilfunktion bei ungewöhnlichen Live-Daten wirft, würde das
+      // Miete-PopUp sonst nie aktualisiert, selbst wenn render() den
+      // entsprechenden Aufruf enthält (bricht vorher ab). Siehe Bug-Report
+      // 25.08.2026: "Mietdaten passen noch immer nicht".
+      if(!$("mieteListModal").classList.contains("hidden")){
+        try{ renderMieteListModal(); }catch(e){ console.error("renderMieteListModal (fhContactsIndices):",e); }
+      }
     }catch(e){ console.error("loadFhContactsIndicesAll failed:",e); }
     finally{ fhContactsIndicesLoading=null; }
   })();
@@ -3124,6 +3130,11 @@ async function loadAkpContactsIndex(){
     akpIndexGen++;
     console.log("AKP-Kontaktdatenbank geladen:",Object.keys(idx).length,"Einträge");
     if(hasData()) render();
+    // Direkt (statt nur über render()) - siehe gleicher Kommentar in
+    // loadFhContactsIndicesAll.
+    if(!$("mieteListModal").classList.contains("hidden")){
+      try{ renderMieteListModal(); }catch(e){ console.error("renderMieteListModal (akpContactsIndex):",e); }
+    }
   }catch(e){ console.error("loadAkpContactsIndex failed:",e); }
 }
 // FH-Nrn, deren "9-Wochen-Plan" bereits (manuell oder automatisch) als
