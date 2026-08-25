@@ -284,11 +284,6 @@ alter table public.fh_contacts add column if not exists hauptzweig text;
 -- (+ dem fixen Basiswert "A1 Shop") - ein neuer Freitext-Wert wird dadurch
 -- automatisch zur Dropdown-Option für alle anderen Händler.
 alter table public.fh_contacts add column if not exists weitere_zuordnung text;
--- Zweiter, unabhängig per eigenem Haken aktivierbarer Zusatzslot
--- (Nutzervorgabe 25.08.2026: "2 weitere Zuordnungen machen") - teilt sich
--- den DISTINCT-Wertepool mit dem ersten Slot (siehe
--- loadWeitereZuordnungOptions() im Client).
-alter table public.fh_contacts add column if not exists weitere_zuordnung_3 text;
 -- "Filialbetriebe" (Nutzervorgabe 25.08.2026, umbenannt aus dem
 -- ursprünglichen zweiten "Weitere Zuordnung"-Slot, live per "alter table ...
 -- rename column" migriert): fasst FH zusammen, die zur selben
