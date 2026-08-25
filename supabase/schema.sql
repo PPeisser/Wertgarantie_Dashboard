@@ -311,7 +311,7 @@ alter table public.fh_contacts drop constraint if exists fh_contacts_hauptzweig_
 alter table public.fh_contacts add constraint fh_contacts_hauptzweig_check
   check (hauptzweig is null or hauptzweig in (
     'Vollsortiment','Mobilfunk','IT','Kundendienst','Industrie','Akustik',
-    'Optik','Küchenhandel','Uhrenhandel','Grüne Ware','Sonstiges'
+    'Optik','Küchenhandel','Uhrenhandel','Grüne Ware','Makler','Projekt','Sonstiges'
   ));
 
 alter table public.fh_contacts enable row level security;

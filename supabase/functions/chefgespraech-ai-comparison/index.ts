@@ -1,24 +1,30 @@
-// Chefgespräch – KI-Unterstützt: fasst die Kennzahlen EINES Fachhändlers
+// Chefgespraech - KI-Unterstuetzt: fasst die Kennzahlen EINES Fachhaendlers
 // zusammen und vergleicht ihn anonymisiert (nur Aggregatwerte, keine
-// Einzelhändler-Daten) mit einer Vergleichsgruppe anderer Händler. Nutzt die
-// Anthropic Messages API mit erzwungenem Tool-Call für eine strukturierte
+// Einzelhaendler-Daten) mit einer Vergleichsgruppe anderer Haendler. Nutzt die
+// Anthropic Messages API mit erzwungenem Tool-Call fuer eine strukturierte
 // JSON-Antwort (Zusammenfassung + Vergleichswerte je Kennzahl + Empfehlungen).
 //
-// Vergleichsmodi (Nutzervorgabe 22./23.08.2026, "mode"-Feld im Request):
+// Vergleichsmodi (Nutzervorgabe 22./23./25.08.2026, "mode"-Feld im Request):
 // - "region" (Default): gleiche erste PLZ-Ziffer.
 // - "kooperation": gleicher Wert in fh_contacts.kooperation.
 // - "hauptzweig": gleicher Wert in fh_contacts.hauptzweig.
 // - "weitere_zuordnung": gleicher Wert in fh_contacts.weitere_zuordnung.
+// - "filialbetriebe": gleicher Wert in fh_contacts.filialbetriebe.
 // Die Vergleichsgruppen-Auswahl ist als eigener, austauschbarer Schritt
-// (selectPeerGroup) gebaut - weitere Modi (bestimmte Händler, Umkreis in km)
-// können später ergänzt werden, ohne den restlichen Ablauf anzufassen.
+// (selectPeerGroup) gebaut - weitere Modi (bestimmte Haendler, Umkreis in km)
+// koennen spaeter ergaenzt werden, ohne den restlichen Ablauf anzufassen.
 //
 // Auth: normale Nutzer-Session (Authorization-Header) - KEIN Admin-Gate,
-// da jeder Außendienst-Mitarbeiter den Chefgespräch-Button nutzen darf
-// (fh_contacts ist ohnehin für alle authentifizierten Nutzer lesbar).
+// da jeder Aussendienst-Mitarbeiter den Chefgespraech-Button nutzen darf
+// (fh_contacts ist ohnehin fuer alle authentifizierten Nutzer lesbar).
 //
 // Secret: ANTHROPIC_API_KEY (bereits als Supabase-Secret hinterlegt, siehe
 // performance-dialog-annual-summary).
+//
+// Hinweis 25.08.2026: Kommentare/Prompt-Texte in dieser Datei sind bewusst
+// ASCII-transliteriert (ae/oe/ue/ss statt ä/ö/ü/ß) - reine Deploy-Mechanik
+// (Umlaute im MCP-Deploy-Tool-Aufruf wiederholt korrumpiert), kein Nutzer
+// sieht diesen Text direkt (Code-Kommentare + KI-Tool-Schema/Prompt-Text).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -41,12 +47,12 @@ type FhRow = Record<string, any>;
 type DailyFhMap = Record<string, Record<string, number>>;
 
 // Tagesproduktion (dashboard_kv "wg-state" -> dailyFH) + Bulk-Import
-// (fh_contacts.prod_monthly) zusammenführen - exakt wie fhMonthlyMerged() im
-// Client. Ohne dies sah diese Funktion NUR den (oft lückenhaften) Bulk-Import
-// und ignorierte die tägliche Produktionshistorie komplett, wodurch sowohl
-// die Zahlen des Zielhändlers als auch die Vergleichsgruppe unvollständig/
-// falsch waren (Nutzer-Feedback 24.08.2026: "Daten ... können nicht
-// stimmen"). Bulk-Werte gewinnen bei Überschneidung (echte Monatssumme statt
+// (fh_contacts.prod_monthly) zusammenfuehren - exakt wie fhMonthlyMerged() im
+// Client. Ohne dies sah diese Funktion NUR den (oft lueckenhaften) Bulk-Import
+// und ignorierte die taegliche Produktionshistorie komplett, wodurch sowohl
+// die Zahlen des Zielhaendlers als auch die Vergleichsgruppe unvollstaendig/
+// falsch waren (Nutzer-Feedback 24.08.2026: "Daten ... koennen nicht
+// stimmen"). Bulk-Werte gewinnen bei Ueberschneidung (echte Monatssumme statt
 // aus Tageswerten hochgerechnet).
 function mergedMonthly(fhNr: string, prodMonthly: Record<string, number> | null | undefined, dailyFH: DailyFhMap): Record<string, number> {
   const daily = dailyFH[fhNr] || {};
@@ -118,10 +124,10 @@ function rankPercentile(arr: number[], value: number): number | null {
 
 const PEER_SELECT_COLS = "fh_nr,prod_monthly,beitragsfrei_yearly,akq_punkte,club_weiss_mitglied";
 
-// Vier Modi: "region" (Default, erste PLZ-Ziffer), "kooperation",
-// "hauptzweig", "weitere_zuordnung" (jeweils: gleicher Wert wie der
-// Ziel-Händler in der gleichnamigen fh_contacts-Spalte). Gibt die
-// Kandidaten-Zeilen zurück (roher fh_contacts-Query, noch ohne
+// Fuenf Modi: "region" (Default, erste PLZ-Ziffer), "kooperation",
+// "hauptzweig", "weitere_zuordnung", "filialbetriebe" (jeweils: gleicher
+// Wert wie der Ziel-Haendler in der gleichnamigen fh_contacts-Spalte). Gibt
+// die Kandidaten-Zeilen zurueck (roher fh_contacts-Query, noch ohne
 // Metrik-Berechnung).
 async function selectPeerGroup(
   // deno-lint-ignore no-explicit-any
@@ -150,7 +156,14 @@ async function selectPeerGroup(
       .eq("weitere_zuordnung", wz).neq("fh_nr", target.fh_nr);
     return { rows: data || [], label: `Weitere Zuordnung "${wz}"` };
   }
-  // Default: "region" (erste PLZ-Ziffer, grobe Bundesland-Näherung).
+  if (mode === "filialbetriebe") {
+    const fb = (target.filialbetriebe || "").trim();
+    if (!fb) return { rows: [], label: "Filialbetriebe unbekannt (kein Wert hinterlegt)" };
+    const { data } = await admin.from("fh_contacts").select(PEER_SELECT_COLS)
+      .eq("filialbetriebe", fb).neq("fh_nr", target.fh_nr);
+    return { rows: data || [], label: `Filialbetriebe "${fb}"` };
+  }
+  // Default: "region" (erste PLZ-Ziffer, grobe Bundesland-Naeherung).
   const plzPrefix = (target.plz || "").trim().charAt(0);
   if (!plzPrefix) return { rows: [], label: "Region unbekannt (keine PLZ hinterlegt)" };
   const { data } = await admin.from("fh_contacts").select(PEER_SELECT_COLS + ",plz")
@@ -160,22 +173,22 @@ async function selectPeerGroup(
 
 const COMPARISON_TOOL = {
   name: "generate_chefgespraech_comparison",
-  description: "Erstellt die strukturierte Zusammenfassung samt anonymem Vergleich für das Chefgespräch.",
+  description: "Erstellt die strukturierte Zusammenfassung samt anonymem Vergleich fuer das Chefgespraech.",
   input_schema: {
     type: "object",
     properties: {
       summary: {
         type: "string",
-        description: "Zusammenfassung der wichtigsten Kennzahlen dieses Händlers für das Chefgespräch (2-4 Sätze, sachlich, konkret).",
+        description: "Zusammenfassung der wichtigsten Kennzahlen dieses Haendlers fuer das Chefgespraech (2-4 Saetze, sachlich, konkret).",
       },
       comparisons: {
         type: "array",
-        description: "Ein Eintrag je Kennzahl, mit Einordnung ggü. der (anonymen) Vergleichsgruppe.",
+        description: "Ein Eintrag je Kennzahl, mit Einordnung vs. der (anonymen) Vergleichsgruppe.",
         items: {
           type: "object",
           properties: {
-            metric: { type: "string", description: "Name der Kennzahl, z.B. 'Jahresproduktion', 'Wachstum ggü. Vorjahr', '3-für-2-Quote', 'Akquisepunkte'." },
-            assessment: { type: "string", description: "1 Satz Einordnung: steht der Händler besser/schlechter da als die Vergleichsgruppe, und was heißt das." },
+            metric: { type: "string", description: "Name der Kennzahl, z.B. 'Jahresproduktion', 'Wachstum vs. Vorjahr', '3fuer2-Quote', 'Akquisepunkte'." },
+            assessment: { type: "string", description: "1 Satz Einordnung: steht der Haendler besser/schlechter da als die Vergleichsgruppe, und was das heisst." },
           },
           required: ["metric", "assessment"],
         },
@@ -183,7 +196,7 @@ const COMPARISON_TOOL = {
       recommendations: {
         type: "array",
         items: { type: "string" },
-        description: "2-4 konkrete, umsetzbare Empfehlungen/Gesprächsansätze für das Chefgespräch, abgeleitet aus dem Vergleich.",
+        description: "2-4 konkrete, umsetzbare Empfehlungen/Gespraechsansaetze fuer das Chefgespraech, abgeleitet aus dem Vergleich.",
       },
     },
     required: ["summary", "comparisons", "recommendations"],
@@ -191,10 +204,11 @@ const COMPARISON_TOOL = {
 };
 
 const MODE_DESCRIPTION: Record<string, string> = {
-  region: "Fachhändlern derselben Region (grobe PLZ-Näherung)",
-  kooperation: "Fachhändlern derselben Einkaufskooperation",
-  hauptzweig: "Fachhändlern desselben Hauptzweigs (Branche)",
-  weitere_zuordnung: "Fachhändlern mit derselben weiteren Zuordnung",
+  region: "Fachhaendlern derselben Region (grobe PLZ-Naeherung)",
+  kooperation: "Fachhaendlern derselben Einkaufskooperation",
+  hauptzweig: "Fachhaendlern desselben Hauptzweigs (Branche)",
+  weitere_zuordnung: "Fachhaendlern mit derselben weiteren Zuordnung",
+  filialbetriebe: "Fachhaendlern desselben Filialbetriebs (anderen Filialen derselben Kette)",
 };
 
 Deno.serve(async (req) => {
@@ -211,22 +225,22 @@ Deno.serve(async (req) => {
   );
 
   const { data: { user }, error: userErr } = await admin.auth.getUser(token);
-  if (userErr || !user) return json({ error: "Ungültige Session" }, 401);
+  if (userErr || !user) return json({ error: "Ungueltige Session" }, 401);
 
   let body: Record<string, unknown>;
-  try { body = await req.json(); } catch { return json({ error: "Ungültiger Body" }, 400); }
+  try { body = await req.json(); } catch { return json({ error: "Ungueltiger Body" }, 400); }
   const fhNr = String(body.fh_nr || "").trim();
   if (!fhNr) return json({ error: "fh_nr fehlt" }, 400);
   const modeRaw = typeof body.mode === "string" ? body.mode : "region";
-  const mode = ["region", "kooperation", "hauptzweig", "weitere_zuordnung"].includes(modeRaw) ? modeRaw : "region";
+  const mode = ["region", "kooperation", "hauptzweig", "weitere_zuordnung", "filialbetriebe"].includes(modeRaw) ? modeRaw : "region";
 
   const { data: target, error: targetErr } = await admin
     .from("fh_contacts").select("*").eq("fh_nr", fhNr).maybeSingle();
   if (targetErr) return json({ error: targetErr.message }, 500);
-  if (!target) return json({ error: `Fachhändler ${fhNr} hat noch keine Stammdaten.` }, 400);
+  if (!target) return json({ error: `Fachhaendler ${fhNr} hat noch keine Stammdaten.` }, 400);
 
-  // Tägliche Produktionshistorie (dashboard_kv "wg-state" -> dailyFH) laden -
-  // ein einzelner geteilter Datensatz für das gesamte Dashboard (~300 KB),
+  // Taegliche Produktionshistorie (dashboard_kv "wg-state" -> dailyFH) laden -
+  // ein einzelner geteilter Datensatz fuer das gesamte Dashboard (~300 KB),
   // siehe mergedMonthly() oben. "value" ist eine Text-Spalte (JSON.stringify
   // clientseitig), daher hier explizit JSON.parse statt automatischer jsonb-
   // Dekodierung.
@@ -238,19 +252,19 @@ Deno.serve(async (req) => {
       dailyFH = parsed?.dailyFH || {};
     }
   } catch (e) {
-    console.error("dailyFH konnte nicht geladen werden, Vergleich läuft nur mit Bulk-Import-Daten weiter:", e);
+    console.error("dailyFH konnte nicht geladen werden, Vergleich laeuft nur mit Bulk-Import-Daten weiter:", e);
   }
 
   const targetMetrics = metricsForFh(target, dailyFH);
   if (!targetMetrics.curYear) {
-    return json({ error: "Für diesen Händler liegt noch keine Jahresproduktion vor - Vergleich nicht möglich." }, 400);
+    return json({ error: "Fuer diesen Haendler liegt noch keine Jahresproduktion vor - Vergleich nicht moeglich." }, 400);
   }
 
   const { rows: peerRows, label: groupLabel } = await selectPeerGroup(admin, target, mode);
   const allPeerMetrics = peerRows.map((r) => metricsForFh(r, dailyFH));
   const peerMetrics = allPeerMetrics.filter((m) => m.curYear === targetMetrics.curYear);
 
-  // Kooperation: zusätzlich zur (statistisch aussagekräftigeren) Vergleichsgruppe
+  // Kooperation: zusaetzlich zur (statistisch aussagekraeftigeren) Vergleichsgruppe
   // der aktuell produzierenden Mitglieder auch den Gesamtkontext der ganzen
   // Kooperation liefern - Nutzervorgabe 24.08.2026: "einmal mit dem
   // produzierenden Teil ... und einmal mit der gesamten Koop vergleichen".
@@ -259,7 +273,7 @@ Deno.serve(async (req) => {
   let cooperationContext: Record<string, unknown> | null = null;
   if (mode === "kooperation") {
     const totalMembers = peerRows.length + 1;
-    const producingMembers = peerMetrics.length + 1; // Zielhändler hat curYear (s.o. Guard)
+    const producingMembers = peerMetrics.length + 1; // Zielhaendler hat curYear (s.o. Guard)
     const totalProduction = peerMetrics.reduce((s, m) => s + m.curProd, 0) + targetMetrics.curProd;
     cooperationContext = {
       totalMembers,
@@ -296,45 +310,45 @@ Deno.serve(async (req) => {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) return json({ error: "ANTHROPIC_API_KEY ist nicht als Supabase-Secret hinterlegt." }, 500);
 
-  const fmtPct = (v: number | null) => v == null ? "–" : (v * 100).toFixed(1).replace(".", ",") + " %";
+  const fmtPct = (v: number | null) => v == null ? "-" : (v * 100).toFixed(1).replace(".", ",") + " %";
   const userPrompt =
-    `Fachhändler ${fhNr}, Vergleichsgruppe: ${groupLabel} (${peerMetrics.length} Vergleichshändler, anonym).\n\n` +
-    `Kennzahlen dieses Händlers (Jahr ${targetMetrics.curYear}):\n` +
-    `- Jahresproduktion: ${targetMetrics.curProd} Verträge\n` +
-    `- Wachstum ggü. Vorjahr: ${fmtPct(targetMetrics.yoy)}\n` +
-    `- 3-für-2-Quote: ${fmtPct(targetMetrics.q3f2)}\n` +
-    `- Akquisepunkte (lebenslang-kumulativ): ${targetMetrics.akqPunkte ?? "–"}\n` +
+    `Fachhaendler ${fhNr}, Vergleichsgruppe: ${groupLabel} (${peerMetrics.length} Vergleichshaendler, anonym).\n\n` +
+    `Kennzahlen dieses Haendlers (Jahr ${targetMetrics.curYear}):\n` +
+    `- Jahresproduktion: ${targetMetrics.curProd} Vertraege\n` +
+    `- Wachstum vs. Vorjahr: ${fmtPct(targetMetrics.yoy)}\n` +
+    `- 3fuer2-Quote: ${fmtPct(targetMetrics.q3f2)}\n` +
+    `- Akquisepunkte (lebenslang-kumulativ): ${targetMetrics.akqPunkte ?? "-"}\n` +
     `- Club Weiss Mitglied: ${targetMetrics.clubWeiss ? "Ja" : "Nein"}\n\n` +
-    `Vergleichsgruppe (${groupLabel}), jeweils Median / oberes Quartil (75%) / Perzentil-Rang dieses Händlers:\n` +
-    `- Jahresproduktion: Median ${peerStats.curProd.median ?? "–"} / oberes Quartil ${peerStats.curProd.p75 ?? "–"} / dieser Händler liegt im ${peerStats.curProd.rank != null ? Math.round(peerStats.curProd.rank * 100) : "–"}. Perzentil\n` +
-    `- Wachstum ggü. Vorjahr: Median ${fmtPct(peerStats.yoy.median)} / oberes Quartil ${fmtPct(peerStats.yoy.p75)} / Perzentil ${peerStats.yoy.rank != null ? Math.round(peerStats.yoy.rank * 100) : "–"}\n` +
-    `- 3-für-2-Quote: Median ${fmtPct(peerStats.q3f2.median)} / oberes Quartil ${fmtPct(peerStats.q3f2.p75)} / Perzentil ${peerStats.q3f2.rank != null ? Math.round(peerStats.q3f2.rank * 100) : "–"}\n` +
-    `- Akquisepunkte: Median ${peerStats.akqPunkte.median ?? "–"} / oberes Quartil ${peerStats.akqPunkte.p75 ?? "–"} / Perzentil ${peerStats.akqPunkte.rank != null ? Math.round(peerStats.akqPunkte.rank * 100) : "–"}\n` +
+    `Vergleichsgruppe (${groupLabel}), jeweils Median / oberes Quartil (75%) / Perzentil-Rang dieses Haendlers:\n` +
+    `- Jahresproduktion: Median ${peerStats.curProd.median ?? "-"} / oberes Quartil ${peerStats.curProd.p75 ?? "-"} / dieser Haendler liegt im ${peerStats.curProd.rank != null ? Math.round(peerStats.curProd.rank * 100) : "-"}. Perzentil\n` +
+    `- Wachstum vs. Vorjahr: Median ${fmtPct(peerStats.yoy.median)} / oberes Quartil ${fmtPct(peerStats.yoy.p75)} / Perzentil ${peerStats.yoy.rank != null ? Math.round(peerStats.yoy.rank * 100) : "-"}\n` +
+    `- 3fuer2-Quote: Median ${fmtPct(peerStats.q3f2.median)} / oberes Quartil ${fmtPct(peerStats.q3f2.p75)} / Perzentil ${peerStats.q3f2.rank != null ? Math.round(peerStats.q3f2.rank * 100) : "-"}\n` +
+    `- Akquisepunkte: Median ${peerStats.akqPunkte.median ?? "-"} / oberes Quartil ${peerStats.akqPunkte.p75 ?? "-"} / Perzentil ${peerStats.akqPunkte.rank != null ? Math.round(peerStats.akqPunkte.rank * 100) : "-"}\n` +
     `- Club Weiss Mitgliedschaftsquote in der Vergleichsgruppe: ${fmtPct(peerStats.clubWeissRate)}\n` +
     (cooperationContext
-      ? `\nGesamtkontext der ganzen Kooperation "${(target.kooperation || "").trim()}" (alle Mitglieds-Fachhändler, nicht nur die aktuell produzierenden):\n` +
-        `- Mitglieds-Fachhändler gesamt: ${cooperationContext.totalMembers}\n` +
+      ? `\nGesamtkontext der ganzen Kooperation "${(target.kooperation || "").trim()}" (alle Mitglieds-Fachhaendler, nicht nur die aktuell produzierenden):\n` +
+        `- Mitglieds-Fachhaendler gesamt: ${cooperationContext.totalMembers}\n` +
         `- davon aktuell produzierend (Jahr ${targetMetrics.curYear}): ${cooperationContext.producingMembers} (${fmtPct(cooperationContext.participationRate as number | null)})\n` +
-        `- Gesamtproduktion der Kooperation (nur produzierende Mitglieder): ${cooperationContext.totalProduction} Verträge\n`
+        `- Gesamtproduktion der Kooperation (nur produzierende Mitglieder): ${cooperationContext.totalProduction} Vertraege\n`
       : "");
 
   const systemPrompt =
-    `Du bereitest ein "Chefgespräch" vor - ein internes Beratungsgespräch eines Wertgarantie-Vertriebsmitarbeiters ` +
-    `mit der Geschäftsführung eines Fachhändlers. Du bekommst die Kennzahlen dieses einen Händlers sowie ` +
+    `Du bereitest ein "Chefgespraech" vor - ein internes Beratungsgespraech eines Wertgarantie-Vertriebsmitarbeiters ` +
+    `mit der Geschaeftsfuehrung eines Fachhaendlers. Du bekommst die Kennzahlen dieses einen Haendlers sowie ` +
     `ANONYME Aggregatwerte (Median, oberes Quartil, Perzentil-Rang) einer Vergleichsgruppe von ` +
-    `${MODE_DESCRIPTION[mode]} (nie Einzeldaten anderer Händler). Ordne die Zahlen sachlich ein, zeige wo der ` +
-    `Händler im Vergleich gut dasteht und wo Potenzial liegt, und leite daraus konkrete, umsetzbare ` +
-    `Gesprächsansätze/Empfehlungen ab. Berücksichtige dabei auch die Club-Weiss-Mitgliedschaft: ist der Händler ` +
+    `${MODE_DESCRIPTION[mode]} (nie Einzeldaten anderer Haendler). Ordne die Zahlen sachlich ein, zeige wo der ` +
+    `Haendler im Vergleich gut dasteht und wo Potenzial liegt, und leite daraus konkrete, umsetzbare ` +
+    `Gespraechsansaetze/Empfehlungen ab. Beruecksichtige dabei auch die Club-Weiss-Mitgliedschaft: ist der Haendler ` +
     `noch KEIN Mitglied, obwohl die Vergleichsgruppe eine hohe Mitgliedschaftsquote hat, ist das ein konkreter ` +
-    `Gesprächsansatz (Empfehlung zum Beitritt); ist er Mitglied, kann das als Stärke hervorgehoben werden. ` +
+    `Gespraechsansatz (Empfehlung zum Beitritt); ist er Mitglied, kann das als Staerke hervorgehoben werden. ` +
     (mode === "kooperation"
-      ? `Zusätzlich bekommst du den Gesamtkontext der ganzen Kooperation (alle Mitglieds-Fachhändler, nicht nur ` +
-        `die produzierenden, auf denen der statistische Vergleich oben beruht) - erwähne kurz und sachlich, wie ` +
-        `viele Mitglieder aktuell produzieren, aber überbewerte eine niedrige Teilnahmequote nicht als Vorwurf an ` +
-        `diesen einzelnen Händler. `
+      ? `Zusaetzlich bekommst du den Gesamtkontext der ganzen Kooperation (alle Mitglieds-Fachhaendler, nicht nur ` +
+        `die produzierenden, auf denen der statistische Vergleich oben beruht) - erwaehne kurz und sachlich, wie ` +
+        `viele Mitglieder aktuell produzieren, aber ueberbewerte eine niedrige Teilnahmequote nicht als Vorwurf an ` +
+        `diesen einzelnen Haendler. `
       : "") +
-    `Schreibe auf Deutsch, professionell, prägnant, ohne Floskeln. Antworte ` +
-    `ausschließlich über das Tool "generate_chefgespraech_comparison".`;
+    `Schreibe auf Deutsch, professionell, praegnant, ohne Floskeln. Antworte ` +
+    `ausschliesslich ueber das Tool "generate_chefgespraech_comparison".`;
 
   let aiRes: Response;
   try {
