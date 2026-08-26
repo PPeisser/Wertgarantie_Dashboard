@@ -502,12 +502,23 @@ document.getElementById('regForm').addEventListener('submit', async (e) => {
   submitBtn.disabled = true;
   submitBtn.textContent = 'Wird gesendet …';
 
-  const { data: inserted, error } = await sb.from('registrations').insert({
+  // ID wird clientseitig erzeugt und bewusst OHNE .select() eingefügt: die
+  // registrations-Tabelle hat aus Datenschutzgründen absichtlich keine
+  // öffentliche SELECT-Policy (nur Admins dürfen Anmeldungen lesen). Ein
+  // .select() nach dem Insert würde serverseitig einen Lesezugriff auf die
+  // gerade eingefügte Zeile erfordern und an genau dieser RLS-Regel
+  // scheitern ("Es gab ein Problem beim Absenden") - das Insert selbst
+  // klappt zwar, aber der Rückgabewert (und damit die ganze Anmeldung aus
+  // Nutzersicht) schlägt fehl. Mit vorab erzeugter ID brauchen wir diesen
+  // Rücklese-Schritt gar nicht erst.
+  const registrationId = crypto.randomUUID();
+  const { error } = await sb.from('registrations').insert({
+    id: registrationId,
     event_id: currentEvent.id,
     event_date_id: dateId,
     data,
     email: data.email || null
-  }).select('id').single();
+  });
 
   if (error){
     msgEl.className = 'msg error';
@@ -522,7 +533,7 @@ document.getElementById('regForm').addEventListener('submit', async (e) => {
       await fetch(SUPABASE_URL + '/functions/v1/event-mailer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
-        body: JSON.stringify({ type: 'confirmation', registration_id: inserted.id })
+        body: JSON.stringify({ type: 'confirmation', registration_id: registrationId })
       });
     } catch (_e) { /* Anmeldung ist trotzdem gespeichert, Mailversand best-effort */ }
   }
@@ -532,7 +543,7 @@ document.getElementById('regForm').addEventListener('submit', async (e) => {
   fetch(SUPABASE_URL + '/functions/v1/match-registration', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
-    body: JSON.stringify({ registration_id: inserted.id })
+    body: JSON.stringify({ registration_id: registrationId })
   }).catch(() => { /* best-effort, Anmeldung bleibt davon unberührt */ });
 
   const chosenDate = currentDates.find(d => d.id === dateId);
