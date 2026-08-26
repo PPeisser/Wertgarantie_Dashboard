@@ -4267,6 +4267,15 @@ function badge(diff,pct){
 }
 
 function render(){
+  // Scroll-Position sichern: render() ersetzt sehr viel DOM auf einmal (u.a.
+  // beim automatischen Hintergrund-Refresh nach visibilitychange, siehe
+  // refreshData) - bei so einem großen Reflow verliert Safari/WebKit (v.a.
+  // iPad) offenbar den Scroll-Anker und springt ungefragt an den Seitenanfang
+  // zurück (Bug-Report 26.08.2026: "springt immer selbstständig nach oben").
+  // Es gibt an keiner Stelle im Code ein absichtliches scrollTo/scrollIntoView
+  // - Wiederherstellen ist daher immer sicher (kein Fall, in dem ein
+  // "Zurück nach oben" tatsächlich gewollt war).
+  const scrollY=window.scrollY;
   const has=hasData();
   $("emptyState").classList.toggle("hidden",has);
   $("dash").classList.toggle("hidden",!has);
@@ -4287,6 +4296,7 @@ function render(){
   // 25.08.2026: "teilweise nur Nummern" im Miete-PopUp).
   if(!$("mieteListModal").classList.contains("hidden")) renderMieteListModal();
   maybeAskGoal();
+  if(window.scrollY!==scrollY) window.scrollTo(0,scrollY);
 }
 
 function renderKPIs(){
