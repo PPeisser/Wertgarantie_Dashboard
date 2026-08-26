@@ -88,7 +88,7 @@ Deno.serve(async (req) => {
   if (action === "createUser") {
     const name = String(body.name || "").trim();
     const email = String(body.email || "").trim();
-    const role = body.role === "admin" ? "admin" : "aussendienst";
+    const role = ["admin", "trainer"].includes(String(body.role)) ? String(body.role) : "aussendienst";
     if (!name || !email) return json({ error: "Name und E-Mail erforderlich" }, 400);
 
     const { data, error } = await admin.auth.admin.createUser({

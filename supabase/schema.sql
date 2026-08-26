@@ -32,13 +32,17 @@ create table if not exists public.profiles (
   id                   uuid primary key references auth.users(id) on delete cascade,
   email                text,
   name                 text,
-  role                 text not null default 'aussendienst' check (role in ('admin','aussendienst')),
+  role                 text not null default 'aussendienst' check (role in ('admin','aussendienst','trainer')),
   must_change_password boolean not null default false,
   created_at           timestamptz not null default now()
 );
 
 alter table public.profiles add column if not exists name text;
 alter table public.profiles add column if not exists must_change_password boolean not null default false;
+-- Rolle "Trainer" (wie Außendienst, aber ohne Zugriff auf den Performance
+-- Dialog - steuert der Client, siehe index.html).
+alter table public.profiles drop constraint if exists profiles_role_check;
+alter table public.profiles add constraint profiles_role_check check (role in ('admin','aussendienst','trainer'));
 
 alter table public.profiles enable row level security;
 
@@ -210,11 +214,12 @@ create table if not exists public.fh_contacts (
   plz              text,
   ort              text,
   telefon          text,
-  email            text,
+  email            text, -- "E-Mail Geschäft"
   ansprechpartner  text,
+  ansprechpartner_email text, -- getrennt von der geschäftlichen E-Mail-Adresse
   homepage         text,
-  -- Feste Segmentierung A+/A/B/C (Händlerpotenzial).
-  segmentierung    text check (segmentierung is null or segmentierung in ('A+','A','B','C')),
+  -- Feste Segmentierung A+/A/B/C+/C/D (Händlerpotenzial).
+  segmentierung    text check (segmentierung is null or segmentierung in ('A+','A','B','C+','C','D')),
   letzter_besuch   date,
   sonstige_infos   text,
   -- Monatsproduktion je Fachhändler (analog zu akp_contacts.prod_monthly),
@@ -254,10 +259,75 @@ alter table public.fh_contacts add column if not exists akq_gl text;
 -- Händler in der aktuellen täglichen FH_Liste-Auswertung keine Zeile hat
 -- (z.B. keine Tagesproduktion) und dort daher kein Name verfügbar ist.
 alter table public.fh_contacts add column if not exists akq_name text;
+-- Manueller Namens-Fallback (FH-PopUp, Nutzervorgabe 25.08.2026): fuer
+-- Haendler, die WEDER in der taeglichen FH_Liste-Einspielung, NOCH als
+-- AKP-Kontakt mit Firma, NOCH in der Akquisestaffeln-Datei (akq_name) einen
+-- Namen haben, zeigten Miete-PopUp/FH-PopUp bis dahin nur die rohe FH-Nr.
+-- an, da nirgends in der DB ein Firmenname hinterlegt war. Rein manuelles
+-- Feld (ueberschreibt NICHT die automatischen Quellen, greift nur, wenn alle
+-- anderen fehlen) - siehe fhFallbackFromAkp() in index.html.
+alter table public.fh_contacts add column if not exists name text;
+-- Miete-Report (Club Weiß, MSK_Report-Datei, Admin-Import): club_weiss_mitglied
+-- wird beim Import IMMER auf true gesetzt (jeder FH in der Datei ist Mitglied),
+-- aber nie automatisch wieder zurückgesetzt (siehe fh_sync_miete) - manuelles
+-- Zurücksetzen bleibt im FH-PopUp weiterhin möglich. miete_monthly ("YYYY-MM"
+-- -> Vertragsanzahl) und miete_sortiment (Sortiment-Name -> Anzahl) werden per
+-- JSONB-Merge aktualisiert, ältere Monate/Sortimente bleiben bei einem neuen
+-- Import erhalten, auch wenn die neue Datei sie nicht mehr enthält.
+alter table public.fh_contacts add column if not exists club_weiss_mitglied boolean not null default false;
+alter table public.fh_contacts add column if not exists club_weiss_mitgliedsnummer text;
+alter table public.fh_contacts add column if not exists miete_monthly jsonb not null default '{}'::jsonb;
+alter table public.fh_contacts add column if not exists miete_sortiment jsonb not null default '{}'::jsonb;
+-- Firmenname direkt aus dem Miete-Report (Freitagsreport, Spalte "FH Bez
+-- (ohne Nr)", Nutzer-Bestaetigung 25.08.2026) - deckt Haendler ab, die in
+-- keiner anderen Quelle (taegliche FH_Liste, AKP, Akquisestaffeln) einen
+-- Namen haben, automatisch bei jedem Miete-Import statt manueller Eingabe.
+-- Eigene Spalte (nicht die manuelle fh_contacts.name), damit ein Import den
+-- manuell im FH-PopUp eingetragenen Namen nie stillschweigend ueberschreibt.
+alter table public.fh_contacts add column if not exists miete_name text;
+
+-- Kooperation (Einkaufsverbindung) und Hauptzweig je Fachhändler (Nutzer-
+-- vorgabe 23.08.2026). Kooperation ist bewusst freier Text (kein CHECK),
+-- da künftige Kooperationslisten ohne Migration ergänzt werden können - die
+-- feste Auswahl im Dropdown lebt im Client (index.html, KOOPERATION_OPTIONS).
+-- Hauptzweig ist dagegen eine bewusst feste, kleine Liste.
+alter table public.fh_contacts add column if not exists kooperation text;
+alter table public.fh_contacts add column if not exists hauptzweig text;
+-- "Weitere Zuordnung" (Nutzervorgabe 23.08.2026) - optionales, per Haken
+-- aktivierbares Zusatzfeld. Bewusst freier Text ohne CHECK: der Client baut
+-- das Dropdown aus den bereits verwendeten DISTINCT-Werten dieser Spalte
+-- (+ dem fixen Basiswert "A1 Shop") - ein neuer Freitext-Wert wird dadurch
+-- automatisch zur Dropdown-Option für alle anderen Händler.
+alter table public.fh_contacts add column if not exists weitere_zuordnung text;
+-- "Filialbetriebe" (Nutzervorgabe 25.08.2026, umbenannt aus dem
+-- ursprünglichen zweiten "Weitere Zuordnung"-Slot, live per "alter table ...
+-- rename column" migriert): fasst FH zusammen, die zur selben
+-- Filialkette/demselben Betrieb gehören. Eigener, unabhängiger Options-Pool
+-- (NICHT der Weitere-Zuordnung-Pool), da der Wert hier direkt
+-- Gruppenzugehörigkeit für den Filial-Umschalter + das Filialgruppen-PopUp
+-- im FH-PopUp steuert (siehe loadFilialbetriebeOptions()/
+-- renderFhFilialbetriebeSwitcher()/openFilialGruppeModal() im Client).
+alter table public.fh_contacts add column if not exists filialbetriebe text;
+
+-- Jahres-Ziel/Plan je Fachhändler in Stk. (Nutzervorgabe 24.08.2026) - kommt
+-- primär aus der täglichen FH_Liste (Spalte "Plan"), ist aber auch manuell in
+-- den Stammdaten editierbar. Abweichungen zwischen Einspielung und
+-- gespeichertem Wert werden NICHT automatisch übernommen, sondern wie bei
+-- PLZ/Ort über den Stammdaten-Diff-Workflow bestätigt (siehe fhStammdatenDiff
+-- im Client). Nur sichtbar, wenn im Admin-Panel freigeschaltet
+-- (dashboard_kv-Key "fh_ziel_enabled") UND für den jeweiligen FH gesetzt.
+alter table public.fh_contacts add column if not exists ziel numeric;
 
 alter table public.fh_contacts drop constraint if exists fh_contacts_segmentierung_check;
 alter table public.fh_contacts add constraint fh_contacts_segmentierung_check
-  check (segmentierung is null or segmentierung in ('A+','A','B','C'));
+  check (segmentierung is null or segmentierung in ('A+','A','B','C+','C','D'));
+
+alter table public.fh_contacts drop constraint if exists fh_contacts_hauptzweig_check;
+alter table public.fh_contacts add constraint fh_contacts_hauptzweig_check
+  check (hauptzweig is null or hauptzweig in (
+    'Vollsortiment','Mobilfunk','IT','Kundendienst','Industrie','Akustik',
+    'Optik','Küchenhandel','Uhrenhandel','Grüne Ware','Makler','Projekt','Sonstiges'
+  ));
 
 alter table public.fh_contacts enable row level security;
 
@@ -278,31 +348,110 @@ create policy "Authenticated update fh_contacts"
   using (true)
   with check (true);
 
+-- Für FH, die aus einer Kooperationsliste bekannt sind, aber noch keine
+-- fh_contacts-Zeile haben (siehe Kooperations-Bulk-Import 23.08.2026) -
+-- sobald der Händler über die tägliche Einspielung (fh_sync_daily) zum
+-- ersten Mal angelegt wird, bekommt er die hinterlegte Kooperation
+-- automatisch mit. Einmalig "konsumiert" (Zeile wird danach gelöscht).
+create table if not exists public.fh_kooperation_pending (
+  fh_nr        text primary key,
+  kooperation  text not null,
+  created_at   timestamptz not null default now()
+);
+
+alter table public.fh_kooperation_pending enable row level security;
+
+create policy "Authenticated read fh_kooperation_pending"
+  on public.fh_kooperation_pending for select
+  to authenticated
+  using (true);
+
+create policy "Authenticated insert fh_kooperation_pending"
+  on public.fh_kooperation_pending for insert
+  to authenticated
+  with check (true);
+
+create policy "Authenticated delete fh_kooperation_pending"
+  on public.fh_kooperation_pending for delete
+  to authenticated
+  using (true);
+
 -- Hält fh_contacts.prod_monthly bei jeder täglichen Einspielung aktuell
 -- (analog zu akp_sync_daily) - schreibt den laufenden Monat mit dem
--- kumulierten Monatswert aus der FH-Liste fest.
+-- kumulierten Monatswert aus der FH-Liste fest. Erkennt außerdem, ob eine
+-- Zeile NEU angelegt wird (statt eines Updates auf einen bereits bekannten
+-- Händler) und übernimmt in dem Fall eine vorgemerkte Kooperation aus
+-- fh_kooperation_pending, falls vorhanden.
 create or replace function public.fh_sync_daily(rows jsonb) returns void
 language plpgsql security definer set search_path = public as $$
 declare
-  r jsonb; mval int; mkey text; monthjson jsonb;
+  r jsonb; mval int; mkey text; monthjson jsonb; fhnr text;
+  is_new boolean; pending_koop text;
 begin
   for r in select * from jsonb_array_elements(rows) loop
-    if coalesce(r->>'nr','') = '' then continue; end if;
+    fhnr := r->>'nr';
+    if coalesce(fhnr,'') = '' then continue; end if;
     mkey := r->>'mk';
     mval := coalesce((r->>'mv')::int, 0);
     monthjson := case when mkey is not null and mval <> 0 then jsonb_build_object(mkey, mval) else '{}'::jsonb end;
 
+    is_new := not exists (select 1 from public.fh_contacts where fh_nr = fhnr);
+
     insert into public.fh_contacts (fh_nr, prod_monthly)
-    values (r->>'nr', monthjson)
+    values (fhnr, monthjson)
     on conflict (fh_nr) do update set
       prod_monthly = coalesce(fh_contacts.prod_monthly,'{}'::jsonb) || excluded.prod_monthly,
       updated_at = now();
+
+    if is_new then
+      select kooperation into pending_koop from public.fh_kooperation_pending where fh_nr = fhnr;
+      if pending_koop is not null then
+        update public.fh_contacts set kooperation = pending_koop where fh_nr = fhnr;
+        delete from public.fh_kooperation_pending where fh_nr = fhnr;
+      end if;
+    end if;
   end loop;
 end;
 $$;
 
 revoke execute on function public.fh_sync_daily(jsonb) from public;
 grant execute on function public.fh_sync_daily(jsonb) to authenticated;
+
+-- Schreibt Miete-Report-Daten (Club Weiß) je Fachhändler: monatliche
+-- Vertragsanzahl und Sortiments-Aufstellung werden per JSONB-Merge auf den
+-- bestehenden Stand aufgesetzt (analog fh_sync_daily) - ein erneuter Import
+-- überschreibt nur die im neuen Report enthaltenen Monate/Sortimente, ältere
+-- bleiben erhalten. club_weiss_mitglied wird beim Import IMMER auf true
+-- gesetzt (jeder FH in der Datei ist Mitglied), aber nie automatisch wieder
+-- auf false zurückgesetzt - ein manuelles Zurücksetzen bleibt im FH-PopUp
+-- weiterhin möglich (Stammdaten-Bearbeiten-Formular).
+create or replace function public.fh_sync_miete(rows jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  r jsonb; monthlyj jsonb; sortimentj jsonb; clubnr text; mietename text;
+begin
+  for r in select * from jsonb_array_elements(rows) loop
+    if coalesce(r->>'fh_nr','') = '' then continue; end if;
+    monthlyj := coalesce(r->'monthly','{}'::jsonb);
+    sortimentj := coalesce(r->'sortiment','{}'::jsonb);
+    clubnr := r->>'club_nr';
+    mietename := nullif(r->>'name','');
+
+    insert into public.fh_contacts (fh_nr, miete_monthly, miete_sortiment, club_weiss_mitglied, club_weiss_mitgliedsnummer, miete_name)
+    values (r->>'fh_nr', monthlyj, sortimentj, true, clubnr, mietename)
+    on conflict (fh_nr) do update set
+      miete_monthly = coalesce(fh_contacts.miete_monthly,'{}'::jsonb) || excluded.miete_monthly,
+      miete_sortiment = coalesce(fh_contacts.miete_sortiment,'{}'::jsonb) || excluded.miete_sortiment,
+      club_weiss_mitglied = true,
+      club_weiss_mitgliedsnummer = coalesce(excluded.club_weiss_mitgliedsnummer, fh_contacts.club_weiss_mitgliedsnummer),
+      miete_name = coalesce(excluded.miete_name, fh_contacts.miete_name),
+      updated_at = now();
+  end loop;
+end;
+$$;
+
+revoke execute on function public.fh_sync_miete(jsonb) from public;
+grant execute on function public.fh_sync_miete(jsonb) to authenticated;
 
 -- Pro-Nutzer-Einstellungen (Passwort-Bereich separat über auth.updateUser,
 -- hier nur Benachrichtigungs-Präferenzen). Anders als alle bisherigen
@@ -418,6 +567,99 @@ select cron.schedule(
   $$
   select net.http_post(
     url := '<SUPABASE_PROJECT_URL>/functions/v1/dashboard-mail-poller',
+    headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'),
+    body := jsonb_build_object('trigger','cron'),
+    timeout_milliseconds := 55000
+  );
+  $$
+);
+
+-- ---------- Performance Dialog (monatlicher Zielgespräch-Bericht je Mitarbeiter) ----------
+
+-- Monatlicher Performance-Dialog je Mitarbeiter: ein Bericht pro
+-- Mitarbeiter/Jahr/Monat (Monat = der berichtete Vormonat, nicht der
+-- Einreichungsmonat). "goals" speichert je zutreffendem Ziel sowohl den
+-- Auswertungs-Snapshot (Zahlen zum Zeitpunkt der Abgabe - bewusst
+-- eingefroren, damit der Bericht ein fixer historischer Datensatz bleibt
+-- und sich nicht rückwirkend ändert, wenn sich die Statistik später
+-- weiterentwickelt) als auch die vier Freitextantworten.
+-- is_draft=true + submitted_at=null: Zwischenstand, den der Mitarbeiter noch
+-- nicht abgeschickt hat (Autosave nach jedem Wizard-Schritt) - wird NICHT
+-- als PDF versendet und zaehlt in Admin-Uebersicht/Erinnerungsmails/
+-- Jahresbericht nicht als abgegeben. Erst der finale "Abschliessen und
+-- absenden"-Klick setzt is_draft=false + submitted_at.
+create table if not exists public.performance_dialog_reports (
+  id           uuid primary key default gen_random_uuid(),
+  employee     text not null,
+  year         int not null,
+  month        int not null check (month between 1 and 12),
+  goals        jsonb not null default '[]'::jsonb,
+  is_draft     boolean not null default false,
+  submitted_at timestamptz,
+  submitted_by uuid references auth.users(id),
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+  unique (employee, year, month)
+);
+
+alter table public.performance_dialog_reports enable row level security;
+
+-- Persönliche Reflexionsantworten (u.a. "Wo brauche ich Unterstützung") sind
+-- sensibler als reine Produktionszahlen - anders als bei den team-weit
+-- lesbaren Tabellen (fh_contacts, akp_contacts) darf hier jeder Mitarbeiter
+-- nur seinen eigenen Bericht sehen/schreiben, Admin sieht/schreibt alle
+-- (für die Admin-Übersicht + Sammel-PDF). Trainer hat KEINEN Sonderzugriff
+-- (steuert der Client über das Fehlen des Performance-Dialog-Buttons, aber
+-- RLS blockt zusätzlich serverseitig).
+create policy "Own or admin read performance_dialog_reports"
+  on public.performance_dialog_reports for select
+  to authenticated
+  using (
+    public.is_admin()
+    or employee = (select name from public.profiles where id = auth.uid())
+  );
+
+create policy "Own or admin insert performance_dialog_reports"
+  on public.performance_dialog_reports for insert
+  to authenticated
+  with check (
+    public.is_admin()
+    or employee = (select name from public.profiles where id = auth.uid())
+  );
+
+create policy "Own or admin update performance_dialog_reports"
+  on public.performance_dialog_reports for update
+  to authenticated
+  using (
+    public.is_admin()
+    or employee = (select name from public.profiles where id = auth.uid())
+  )
+  with check (
+    public.is_admin()
+    or employee = (select name from public.profiles where id = auth.uid())
+  );
+
+-- Nur Admin darf Berichte löschen (Performance Dialog – ADMIN PopUp,
+-- "Zurücksetzen"-Button je Mitarbeiter) - ein Mitarbeiter darf seinen
+-- eigenen abgegebenen Bericht nicht selbst wieder entfernen.
+create policy "Admin delete performance_dialog_reports"
+  on public.performance_dialog_reports for delete
+  to authenticated
+  using (public.is_admin());
+
+create index if not exists performance_dialog_reports_employee_idx
+  on public.performance_dialog_reports (employee, year, month);
+
+-- pg_cron-Job: ruft die Edge Function performance-dialog-reminder täglich um
+-- 07:00 Uhr auf (UTC - Deno.env-getriebene Datumslogik in der Function
+-- selbst entscheidet Freitag/15. anhand der Europe/Vienna-Zeitzone).
+-- <CRON_SECRET> durch denselben Wert wie oben ersetzen.
+select cron.schedule(
+  'performance-dialog-reminder-daily',
+  '0 6 * * *',
+  $$
+  select net.http_post(
+    url := '<SUPABASE_PROJECT_URL>/functions/v1/performance-dialog-reminder',
     headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'),
     body := jsonb_build_object('trigger','cron'),
     timeout_milliseconds := 55000
