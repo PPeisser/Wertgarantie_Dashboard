@@ -184,6 +184,9 @@ create table if not exists public.registrations (
   email                 text,
   consent_at            timestamptz not null default now(),
   confirmation_sent_at  timestamptz,
+  -- Gesetzt, sobald der automatische 48h-Vorher-Reminder verschickt wurde
+  -- (siehe event-mailer action "reminders"); verhindert Doppelversand.
+  reminder_sent_at      timestamptz,
   -- Ergebnis des serverseitigen AKP/FH-Datenabgleichs mit dem
   -- Dashboard-Projekt (siehe supabase/functions/match-registration und
   -- lookup-akp im Dashboard-Projekt). Wird nicht im Anmeldeschritt
@@ -317,6 +320,36 @@ select cron.schedule(
     url := '<SUPABASE_PROJECT_URL>/functions/v1/event-mailer',
     headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'),
     body := jsonb_build_object('type','report','frequency','weekly')
+  );
+  $$
+);
+
+select cron.schedule(
+  'event-monthly-report',
+  '0 6 1 * *',
+  $$
+  select net.http_post(
+    url := '<SUPABASE_PROJECT_URL>/functions/v1/event-mailer',
+    headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'),
+    body := jsonb_build_object('type','report','frequency','monthly')
+  );
+  $$
+);
+
+-- ---------- Automatischer 48h-Vorher-Reminder (pg_cron + pg_net) ----------
+-- Stündlicher Check: verschickt an jede Anmeldung mit E-Mail, deren Termin
+-- innerhalb der nächsten 48h liegt und die noch keinen Reminder bekommen
+-- hat, eine Erinnerungsmail (Betreff "Reminder: ..."). reminder_sent_at
+-- verhindert Doppelversand über mehrere Cron-Läufe hinweg.
+
+select cron.schedule(
+  'event-reminder-check',
+  '0 * * * *',
+  $$
+  select net.http_post(
+    url := '<SUPABASE_PROJECT_URL>/functions/v1/event-mailer',
+    headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'),
+    body := jsonb_build_object('type','reminders')
   );
   $$
 );
