@@ -47,6 +47,17 @@ body{
 }
 .wrap{max-width:1440px;margin:0 auto;padding:16px 20px 40px}
 
+/* Bug-Report 26.08.2026 (iPad Safari): Seite springt beim Scrollen
+   selbstständig nach oben. Ursache: viele Listen (Beobachtungen, AKQ,
+   9-Wochen, Benachrichtigungen, ...) sind feste Boxen mit
+   overflow:auto/overflow-y:auto. Swiped man auf iOS über den Rand so
+   einer inneren Box hinaus weiter, "verschluckt" WebKit den Schwung
+   nicht sauber, sondern gibt ihn an die äußere Seite weiter, die dann
+   springt. overscroll-behavior:contain stoppt genau diese Weitergabe. */
+[style*="overflow:auto"],[style*="overflow-y:auto"],[style*="overflow: auto"],[style*="overflow-y: auto"]{
+  overscroll-behavior:contain;
+}
+
 /* ---------- Header ---------- */
 header{
   background:var(--card);
@@ -168,7 +179,7 @@ h2.sec small{font-weight:600;text-transform:none;color:var(--muted);letter-spaci
 .sp-row{display:flex;justify-content:space-between;align-items:center;padding:8px 4px;border-bottom:1px solid #ECF2F6;font-size:13px}
 .sp-row:last-of-type{border-bottom:none}
 .sp-row b{font-size:16px;font-weight:900;color:var(--wg-navy)}
-.modal.wide{max-width:760px;max-height:85vh;overflow:auto}
+.modal.wide{max-width:760px;max-height:85vh;overflow:auto;overscroll-behavior:contain}
 .akp-h:first-child{margin-top:2px}
 .tabs.mini{padding:3px;border-radius:10px}
 .tabs.mini button{padding:4px 10px;font-size:11px;border-radius:7px}
@@ -275,7 +286,7 @@ td .betr{font-size:11px;color:var(--muted)}
   padding:9px 10px;border-radius:12px;margin-bottom:7px;
 }
 .obs-item.up{background:var(--pos-bg)} .obs-item.down{background:var(--neg-bg)}
-#obsList{max-height:650px;overflow:auto}
+#obsList{max-height:650px;overflow:auto;overscroll-behavior:contain}
 .obs-item .ic{font-size:16px;line-height:1.3}
 .obs-item .t{font-size:12.5px;min-width:0;flex:1}
 .obs-item .t>b{display:block}
@@ -406,7 +417,7 @@ td .betr{font-size:11px;color:var(--muted)}
 #fhSearchResults:not(:empty){
   position:absolute;left:0;right:0;top:100%;margin-top:6px;
   background:var(--card);border:1px solid var(--line);border-radius:10px;
-  max-height:min(320px,60vh);overflow-y:auto;padding:2px 10px;
+  max-height:min(320px,60vh);overflow-y:auto;overscroll-behavior:contain;padding:2px 10px;
   box-shadow:0 10px 28px rgba(6,42,63,.18);z-index:60;
 }
 .ac-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px}
@@ -4267,15 +4278,6 @@ function badge(diff,pct){
 }
 
 function render(){
-  // Scroll-Position sichern: render() ersetzt sehr viel DOM auf einmal (u.a.
-  // beim automatischen Hintergrund-Refresh nach visibilitychange, siehe
-  // refreshData) - bei so einem großen Reflow verliert Safari/WebKit (v.a.
-  // iPad) offenbar den Scroll-Anker und springt ungefragt an den Seitenanfang
-  // zurück (Bug-Report 26.08.2026: "springt immer selbstständig nach oben").
-  // Es gibt an keiner Stelle im Code ein absichtliches scrollTo/scrollIntoView
-  // - Wiederherstellen ist daher immer sicher (kein Fall, in dem ein
-  // "Zurück nach oben" tatsächlich gewollt war).
-  const scrollY=window.scrollY;
   const has=hasData();
   $("emptyState").classList.toggle("hidden",has);
   $("dash").classList.toggle("hidden",!has);
@@ -4296,7 +4298,6 @@ function render(){
   // 25.08.2026: "teilweise nur Nummern" im Miete-PopUp).
   if(!$("mieteListModal").classList.contains("hidden")) renderMieteListModal();
   maybeAskGoal();
-  if(window.scrollY!==scrollY) window.scrollTo(0,scrollY);
 }
 
 function renderKPIs(){
