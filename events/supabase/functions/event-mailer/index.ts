@@ -96,15 +96,33 @@ function getSmtpClient() {
   });
 }
 
+// denomailer 1.6.0 kodiert Nicht-ASCII-Zeichen (Umlaute, Gedankenstrich, ...)
+// in Subject/From-Headern fehlerhaft (RFC-2047-widriges "encoded word" mit
+// rohen Leerzeichen darin) - Mail-Clients wie Apple Mail geben dadurch den
+// kompletten Header auf: Betreff erscheint als kryptischer Rohtext, Absender
+// als "Kein Absender". Betrifft nur die Kopfzeilen, nicht den HTML-Body
+// (der hat eine eigene, korrekt funktionierende UTF-8-Kodierung). Fix:
+// Subject/From-Anzeigename vor dem Versand auf reines ASCII transliterieren,
+// damit denomailer sie gar nicht erst als "encoded word" kodieren muss.
+function asciiHeader(s: string): string {
+  return s
+    .replace(/ß/g, "ss")
+    .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue")
+    .replace(/Ä/g, "Ae").replace(/Ö/g, "Oe").replace(/Ü/g, "Ue")
+    .replace(/[–—]/g, "-")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^\x20-\x7E]/g, "");
+}
+
 async function sendMail(subject: string, to: string, html: string) {
   const fromEmail = Deno.env.get("SMTP_FROM_EMAIL")!;
-  const fromName = Deno.env.get("SMTP_FROM_NAME") || "Wertgarantie Veranstaltungen";
+  const fromName = asciiHeader(Deno.env.get("SMTP_FROM_NAME") || "Wertgarantie Events Austria");
   const client = getSmtpClient();
   try {
     await client.send({
       from: `${fromName} <${fromEmail}>`,
       to,
-      subject,
+      subject: asciiHeader(subject),
       html,
       content: "Bitte verwenden Sie einen E-Mail-Client mit HTML-Unterstützung.",
     });
