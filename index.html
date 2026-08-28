@@ -1523,10 +1523,10 @@ const ZIEL_FIRMA = 109500;   // PLAN 2026 (Firmenvorgabe)
 const Q4_ANTEIL = 0.29;      // Saisonalität: 71 % bis 30.9., 29 % der Jahresproduktion in Q4
 const AT_MONATSZIELE = {1:9867,2:8679,3:9284,4:8998,5:8998,6:8998,7:10175,8:9856,9:10318,10:10318,11:12452,12:12452}; // Persönliches Monatsziel Österreich gesamt (fest)
 const PERS_JAHRESZIELE = {
-  "Klaus Witting":20000,"Florian Hasibeder":17000,"Thomas Eitzinger":15000,
+  "Klaus Witting":20000,"Florian Hasibeder":15000,"Thomas Eitzinger":15000,
   "Dominik Szendi":55000,"Helmut Otto":7000,"Peter Peißer":7000
 };
-PERS_JAHRESZIELE[AT_GESAMT]=Object.values(PERS_JAHRESZIELE).reduce((a,b)=>a+b,0); // 121.000
+PERS_JAHRESZIELE[AT_GESAMT]=Object.values(PERS_JAHRESZIELE).reduce((a,b)=>a+b,0); // 119.000
 // Miete-Jahresziel (Club.Weiss) - lt. Nutzervorgabe 18.08.2026: Österreich
 // gesamt 3.000 Verträge/Jahr, gleichmäßig auf die 4 Mitarbeiter mit
 // Club.Weiss-Ziel verteilt (Witting, Otto, Hasibeder, Peißer - je 750,
@@ -2144,7 +2144,7 @@ let fhContactsBulkIndex=null;
 // alle vier Indizes gleichzeitig. Eigene Funktion, damit sie unabhängig von
 // sb/Netzwerk direkt testbar ist.
 function buildFhContactsIndices(rows){
-  const bulkIdx={}, mieteIdx={}, erledigt=new Set(), akqIdx={}, manualNameIdx={}, mieteNameIdx={};
+  const bulkIdx={}, mieteIdx={}, erledigt=new Set(), akqIdx={}, manualNameIdx={}, mieteNameIdx={}, allIdx={};
   for(const r of rows){
     if(!r.fh_nr) continue;
     bulkIdx[r.fh_nr]=r.prod_monthly||{};
@@ -2153,8 +2153,12 @@ function buildFhContactsIndices(rows){
     if(r.akq_punkte!=null||(r.akq_staffeln&&r.akq_staffeln.length)) akqIdx[r.fh_nr]={punkte:r.akq_punkte,staffeln:r.akq_staffeln||[],gl:r.akq_gl||null,name:r.akq_name||null};
     if(r.name) manualNameIdx[r.fh_nr]=r.name;
     if(r.miete_name) mieteNameIdx[r.fh_nr]=r.miete_name;
+    // Jede fh_contacts-Zeile fließt hier ein, auch ganz ohne Akquise-/Miete-/
+    // manuellen Namen (dann bleibt name null, Aufrufer fallen auf die FH-Nr
+    // zurück) - Priorität wie in fhFallbackFromAkp: akq_name > miete_name > name.
+    allIdx[r.fh_nr]={name:r.akq_name||r.miete_name||r.name||null,ort:r.ort||null,gl:r.akq_gl||null};
   }
-  return {bulkIdx,mieteIdx,erledigt,akqIdx,manualNameIdx,mieteNameIdx};
+  return {bulkIdx,mieteIdx,erledigt,akqIdx,manualNameIdx,mieteNameIdx,allIdx};
 }
 let fhContactsIndicesLoading=null;
 async function loadFhContactsIndicesAll(){
@@ -2167,7 +2171,7 @@ async function loadFhContactsIndicesAll(){
       for(;;){
         guard++;
         const {data,error}=await sb.from("fh_contacts")
-          .select("fh_nr,prod_monthly,miete_monthly,neunwochen_erledigt,akq_punkte,akq_staffeln,akq_gl,akq_name,name,miete_name")
+          .select("fh_nr,ort,prod_monthly,miete_monthly,neunwochen_erledigt,akq_punkte,akq_staffeln,akq_gl,akq_name,name,miete_name")
           .range(from,from+999);
         if(error){ console.error("loadFhContactsIndicesAll:",error.message||error); break; }
         if(!data||!data.length) break;
@@ -2175,13 +2179,14 @@ async function loadFhContactsIndicesAll(){
         from+=data.length;
         if(guard>50) break;
       }
-      const {bulkIdx,mieteIdx,erledigt,akqIdx,manualNameIdx,mieteNameIdx}=buildFhContactsIndices(allRows);
+      const {bulkIdx,mieteIdx,erledigt,akqIdx,manualNameIdx,mieteNameIdx,allIdx}=buildFhContactsIndices(allRows);
       fhContactsBulkIndex=bulkIdx;
       fhMieteIndex=mieteIdx;
       fhErledigtSet=erledigt;
       fhAkqIndex=akqIdx;
       fhManualNameIndex=manualNameIdx;
       fhMieteNameIndex=mieteNameIdx;
+      fhContactsAllIndex=allIdx;
       if(hasData()) render();
       // Direkt (statt nur über render()) - falls IRGENDEINE andere
       // render()-Teilfunktion bei ungewöhnlichen Live-Daten wirft, würde das
@@ -3188,6 +3193,12 @@ let fhMieteNameIndex={};
 // Kachel und FH-PopUp ohne Einzelabfrage je Händler rendern können.
 let fhAkqIndex={};
 async function loadFhAkqIndex(){ await loadFhContactsIndicesAll(); }
+// Alle in fh_contacts bekannten Händler (Ort + bestmöglicher Name je Zeile),
+// unabhängig davon ob sie heute Produktion hatten - Bug-Report 27.08.2026:
+// Händler ganz ohne Produktion (heuer oder insgesamt, z.B. frisch akquiriert)
+// fehlten in Fachhändlersuche & Co., weil diese bisher ausschließlich
+// state.latest.fh (heutige Tagesproduktion) durchsuchten. Siehe fhAllKnownList().
+let fhContactsAllIndex={};
 // Miete-Produktion je Fachhändler (Club.Weiss, siehe parseMieteReport) -
 // komplett geladen (analog fhAkqIndex), damit die Miete-Kachel bei "Ziele &
 // Hochrechnung" ohne Einzelabfrage je Händler über alle FH aggregieren kann.
@@ -4963,31 +4974,57 @@ function openAkpModal(){
 // aktuellen Tag keine Produktion hatte und daher nicht in state.latest.fh
 // steht - sonst zeigt das Popup weder Name noch Ort (z.B. Bug bei "KURTZ").
 function fhFallbackFromAkp(fhNr){
+  // fh_contacts-Fallback (Ort + bestmöglicher Name: akq_name > miete_name >
+  // manueller Name, siehe fhContactsAllIndex/buildFhContactsIndices) - EINE
+  // Quelle statt vormals drei getrennt geprüfter Indizes (fhAkqIndex/
+  // fhMieteNameIndex/fhManualNameIndex einzeln), da fhAkqIndex nur bei
+  // vorhandenen Akquisestaffel-Punkten befüllt wird und daher einen Namen
+  // liefern konnte, den fhContactsAllIndex bereits kannte, dieser Fallback
+  // hier aber nicht fand (Bug im eigenen Test beim Beheben von Bug-Report
+  // 27.08.2026 "SCD, Krumbach & SCD, Wiener Neudorf" entdeckt).
+  const rec=fhContactsAllIndex&&fhContactsAllIndex[fhNr];
+  const fallbackOrt=(rec&&rec.ort)||null;
   if(akpContactsIndex){
     for(const a of Object.values(akpContactsIndex)){
-      if(a.fh_nr===fhNr&&a.firma) return {name:a.firma,ort:a.ort||null};
+      if(a.fh_nr===fhNr&&a.firma) return {name:a.firma,ort:a.ort||fallbackOrt};
     }
   }
-  // Zusätzlicher Fallback über die Akquisestaffeln-Datei (Spalte "FH Bez
-  // (ohne Nr)", siehe akq_name/fhAkqIndex) - deckt Händler ab, die weder
-  // heute produziert haben (state.latest.fh) noch einen AKP-Ansprechpartner
-  // mit Firmenfeld besitzen. Kein Ort in dieser Quelle enthalten. Bug-Report
-  // 25.08.2026: im Miete-PopUp standen bei einigen Händlern weiterhin nur
-  // Nummern statt Namen, obwohl der AKP-Fallback bereits vorhanden war.
-  const akq=fhAkqIndex&&fhAkqIndex[fhNr];
-  if(akq&&akq.name) return {name:akq.name,ort:null};
-  // Weiterer automatischer Fallback über den Miete-Report (Spalte "FH Bez
-  // (ohne Nr)", siehe miete_name/fhMieteNameIndex) - deckt Händler ab, die
-  // NUR über Miete-Produktion bekannt sind, sonst in keiner Quelle vorkommen
-  // (konkrete Beispiele aus Nutzer-Report 25.08.2026: 205027/208006/213022).
-  const mieteName=fhMieteNameIndex&&fhMieteNameIndex[fhNr];
-  if(mieteName) return {name:mieteName,ort:null};
-  // Letzte Instanz: manuell im FH-PopUp hinterlegter Name (fh_contacts.name)
-  // - für Händler, die in KEINER der obigen (automatischen) Quellen
-  // vorkommen.
-  const manual=fhManualNameIndex&&fhManualNameIndex[fhNr];
-  if(manual) return {name:manual,ort:null};
+  if(rec&&(rec.name||rec.ort)) return {name:rec.name||null,ort:rec.ort||null};
   return null;
+}
+// Alle bekannten Fachhändler für Suche/Auswahl (FH-Suche, Chefgespräch-/
+// Auswertung-Suche): heutige Tagesproduktion (state.latest.fh, beste Daten)
+// plus jede zusätzliche fh_contacts-Zeile, die dort NICHT vorkommt - deckt
+// Händler ohne jegliche Produktion heuer bzw. insgesamt ab, die nur aus
+// Akquisestaffeln-/Miete-/Segmentierungs-Import bekannt sind (Bug-Report
+// 27.08.2026: "SCD, Krumbach & SCD, Wiener Neudorf" fehlten überall im
+// Dashboard, obwohl beide Einspielungen sie enthielten).
+function fhAllKnownList(){
+  const out=[], seen=new Set();
+  Object.entries(state.latest.fh||{}).forEach(([nr,f])=>{
+    seen.add(nr);
+    out.push({nr,name:f.name,ort:f.ort,emp:f.emp});
+  });
+  Object.entries(fhContactsAllIndex||{}).forEach(([nr,r])=>{
+    if(seen.has(nr)) return;
+    seen.add(nr);
+    out.push({nr,name:r.name||nr,ort:r.ort||null,emp:matchEmployee(r.gl||"")||null});
+  });
+  return out;
+}
+// Name/Ort zu einer FH-Nr auflösen, egal ob der Händler heute Tagesproduktion
+// hatte oder nur aus fh_contacts (Akquisestaffeln/Miete/manuell) bekannt ist -
+// gleiches Fallback-Muster wie in openFhModal(), zentral für die Anzeigestellen
+// (PDF-Dateiname, Kooperationsgespräch-Mitgliederliste, Auswertung-Chips/-Einheiten).
+// Bewusst NICHT "fhNameOrt" genannt - dieser Name ist bereits für den
+// weiter unten definierten Formatier-Helfer fhNameOrt(name,ort) vergeben
+// ("Name, Ort" als String); eine gleichnamige zweite Funktionsdeklaration
+// hätte diesen sonst überschrieben (in genau dieser Datei entdeckt, siehe
+// Playwright-Test zu Bug-Report 27.08.2026).
+function fhResolveNameOrt(fhNr){
+  const f=state.latest.fh&&state.latest.fh[fhNr];
+  const fb=f?null:fhFallbackFromAkp(fhNr);
+  return {name:(f&&f.name)||(fb&&fb.name)||fhNr, ort:(f&&f.ort)||(fb&&fb.ort)||null};
 }
 let fhModalCurrent=null;
 async function openFhModal(fhNr){
@@ -5532,11 +5569,10 @@ function openChefgespraechModal(){
 // Chips der bereits ausgewählten Filialen (für Chefgespräche über mehrere Standorte).
 function renderChefgespraechChips(){
   const box=$("chefgespraechChips");
-  const fhMap=(state.latest&&state.latest.fh)||{};
   box.innerHTML=chefgespraechFhNrs.map(nr=>{
-    const f=fhMap[nr]||{};
+    const f=fhResolveNameOrt(nr);
     return `<span data-fh-nr="${escapeHtml(nr)}" style="display:inline-flex;align-items:center;gap:6px;background:rgba(127,127,127,.15);border:1px solid var(--line);border-radius:999px;padding:5px 10px;font-size:12px;font-weight:700;color:var(--ink)">
-      ${escapeHtml(f.name||nr)}${f.ort?" · "+escapeHtml(f.ort):""}
+      ${escapeHtml(f.name)}${f.ort?" · "+escapeHtml(f.ort):""}
       <button type="button" data-remove-fh="${escapeHtml(nr)}" style="border:none;background:none;cursor:pointer;font-size:14px;line-height:1;color:var(--muted);padding:0">✕</button>
     </span>`;
   }).join("");
@@ -5560,10 +5596,8 @@ function renderFhSearch(){
   const box=$("fhSearchResults");
   if(!q){ box.innerHTML=""; return; }
   if(!hasData()){ box.innerHTML=""; return; }
-  const fhMap=state.latest.fh||{};
-  const rows=Object.entries(fhMap)
-    .filter(([nr,f])=>currentEmp===AT_GESAMT||f.emp===currentEmp)
-    .map(([nr,f])=>({nr,...f}))
+  const rows=fhAllKnownList()
+    .filter(f=>currentEmp===AT_GESAMT||f.emp===currentEmp)
     .filter(f=>(f.name||"").toLowerCase().includes(q)||(f.ort||"").toLowerCase().includes(q)||f.nr.toLowerCase().includes(q))
     .slice(0,20);
   if(!rows.length){ box.innerHTML=`<div class="empty-note">Kein Fachhändler gefunden.</div>`; return; }
@@ -5583,10 +5617,8 @@ function renderChefgespraechSearch(){
   const box=$("chefgespraechSearchResults");
   if(!q){ box.innerHTML=""; return; }
   if(!hasData()){ box.innerHTML=""; return; }
-  const fhMap=state.latest.fh||{};
-  const rows=Object.entries(fhMap)
-    .filter(([nr,f])=>currentEmp===AT_GESAMT||f.emp===currentEmp)
-    .map(([nr,f])=>({nr,...f}))
+  const rows=fhAllKnownList()
+    .filter(f=>currentEmp===AT_GESAMT||f.emp===currentEmp)
     .filter(f=>!chefgespraechFhNrs.includes(f.nr))
     .filter(f=>(f.name||"").toLowerCase().includes(q)||(f.ort||"").toLowerCase().includes(q)||f.nr.toLowerCase().includes(q))
     .slice(0,25);
@@ -5619,10 +5651,9 @@ async function selectChefgespraechFh(fhNr){
 // "Drucken oder Versenden" bereits korrekt befüllt ist.
 async function proceedChefgespraechToChoice(){
   if(!chefgespraechFhNrs.length) return;
-  const fhMap=state.latest.fh||{};
   $("chefgespraechFhHeader").textContent=chefgespraechFhNrs.map(nr=>{
-    const f=fhMap[nr]||{};
-    return (f.name||nr)+(f.ort?" · "+f.ort:"")+" · FH-Nr. "+nr;
+    const f=fhResolveNameOrt(nr);
+    return f.name+(f.ort?" · "+f.ort:"")+" · FH-Nr. "+nr;
   }).join("  •  ");
   $("chefgespraechSearchStep").classList.add("hidden");
   $("chefgespraechChoiceStep").classList.remove("hidden");
@@ -5750,8 +5781,7 @@ async function pdfBoxRenderToPdf(box){
 // Dateiname für ein Chefgespräch-PDF - bei mehreren Filialen wird der erste
 // Händlername + Anzahl weiterer Filialen verwendet.
 function chefgespraechPdfFilename(prefix,fhNrs){
-  const fhMap=state.latest.fh||{};
-  const firstName=(fhMap[fhNrs[0]]||{}).name||fhNrs[0];
+  const firstName=fhResolveNameOrt(fhNrs[0]).name;
   const suffix=fhNrs.length>1?"_und_"+(fhNrs.length-1)+"_weitere":"";
   return prefix+"_"+asciiFilenamePart(firstName)+suffix+".pdf";
 }
@@ -6385,7 +6415,6 @@ async function buildKooperationsgespraechUnterlagenPdfDoc(koop){
   if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)) throw new Error("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals versuchen.");
   const agg=await loadKooperationAggregate(koop);
   const nowStr=fmtNowDateTime();
-  const fhMap=state.latest.fh||{};
 
   const years=agg.years.slice(-5);
   const prodChart=years.length?svgBarChart(years,[
@@ -6394,8 +6423,8 @@ async function buildKooperationsgespraechUnterlagenPdfDoc(koop){
   const yearRows=years.map(y=>`<tr><td>${y}</td><td class="r">${fmt(agg.byYear[y]||0)}</td></tr>`).join("");
 
   const memberRows=[...agg.perFh].sort((a,b)=>(b.byYear[agg.curYear]||0)-(a.byYear[agg.curYear]||0)).map(m=>{
-    const f=fhMap[m.fh_nr]||{};
-    return `<tr><td>${escapeHtml(f.name||m.fh_nr)}</td><td>${escapeHtml(f.ort||"–")}</td><td>${escapeHtml(m.fh_nr)}</td><td class="r">${fmt(m.byYear[agg.curYear]||0)}</td><td class="r">${m.akq_punkte!=null?fmt(Math.round(m.akq_punkte)):"–"}</td><td style="text-align:center">${m.club_weiss_mitglied?"✓":"–"}</td></tr>`;
+    const f=fhResolveNameOrt(m.fh_nr);
+    return `<tr><td>${escapeHtml(f.name)}</td><td>${escapeHtml(f.ort||"–")}</td><td>${escapeHtml(m.fh_nr)}</td><td class="r">${fmt(m.byYear[agg.curYear]||0)}</td><td class="r">${m.akq_punkte!=null?fmt(Math.round(m.akq_punkte)):"–"}</td><td style="text-align:center">${m.club_weiss_mitglied?"✓":"–"}</td></tr>`;
   }).join("");
 
   const kennzahl=(lbl,val)=>`<div style="text-align:center"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284">${lbl}</div><div style="font-size:18px;font-weight:900;color:#062A3F;margin-top:2px">${val}</div></div>`;
@@ -6556,8 +6585,8 @@ function openAuswertungModal(){
 }
 function auswertungEntityLabel(key){
   if(auswertungTyp==="fachhaendler"){
-    const f=(state.latest.fh||{})[key]||{};
-    return (f.name||key)+(f.ort?" · "+f.ort:"");
+    const f=fhResolveNameOrt(key);
+    return f.name+(f.ort?" · "+f.ort:"");
   }
   if(auswertungTyp==="akp"){
     const a=akpContactsIndex&&akpContactsIndex[key];
@@ -6635,10 +6664,9 @@ function renderAuswertungMultiSearch(){
   let rows=[];
   if(auswertungTyp==="fachhaendler"){
     if(!hasData()){ box.innerHTML=""; return; }
-    const fhMap=state.latest.fh||{};
-    rows=Object.entries(fhMap)
-      .filter(([nr,f])=>currentEmp===AT_GESAMT||f.emp===currentEmp)
-      .map(([nr,f])=>({key:nr,label:f.name||nr,sub:(f.ort||"")+" · FH-Nr. "+nr+(f.emp?" · "+f.emp:"")}))
+    rows=fhAllKnownList()
+      .filter(f=>currentEmp===AT_GESAMT||f.emp===currentEmp)
+      .map(f=>({key:f.nr,label:f.name||f.nr,sub:(f.ort||"")+" · FH-Nr. "+f.nr+(f.emp?" · "+f.emp:"")}))
       .filter(r=>!auswertungMultiKeys.includes(r.key))
       .filter(r=>r.label.toLowerCase().includes(q)||r.sub.toLowerCase().includes(q))
       .slice(0,25);
@@ -6809,8 +6837,9 @@ async function auswertungLoadUnits(typ,singleVal,multiKeys){
   if(error) throw new Error(error.message||String(error));
   let units=(data||[]).map(r=>{
     const f=fhMap[r.fh_nr]||{};
+    const no=fhResolveNameOrt(r.fh_nr);
     return {
-      key:r.fh_nr, kind:"fh", name:f.name||r.fh_nr, ort:f.ort||"", fhNr:r.fh_nr,
+      key:r.fh_nr, kind:"fh", name:no.name, ort:no.ort||"", fhNr:r.fh_nr,
       monthlyWg:mergedMonthlyFromDaily(state.dailyFH[r.fh_nr],r.prod_monthly),
       monthlyMiete:r.miete_monthly||{},
       dailyWg:state.dailyFH[r.fh_nr]||{}, dailyMiete:{},
