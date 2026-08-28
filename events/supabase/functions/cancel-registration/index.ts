@@ -1,9 +1,18 @@
 // Selbst-Abmeldung: der unauffällige Link am Ende der Bestätigungs-/
 // Reminder-Mail (siehe event-mailer/cancelLinkHtml) führt hierher.
-// Öffentlich per GET aufrufbar (E-Mail-Clients folgen Links nur per GET,
-// kein Auth-Header vorhanden) - die registration_id in der URL ist eine
-// UUID und dient als Zugriffs-Token. Löscht die Anmeldung unwiderruflich,
-// aber nur bis 48h vor dem Termin; danach nur noch über den Veranstalter.
+//
+// WICHTIG: GET führt NUR eine Bestätigungsseite mit einem "Ja, abmelden"-
+// Button an, POST löscht wirklich. Viele Firmen-Mailserver/Security-Gateways
+// rufen jeden Link in eingehenden Mails automatisch per GET ab, um ihn auf
+// Schadsoftware zu prüfen ("Link-Prefetching") - würde ein bloßes GET schon
+// abmelden, würde das die Anmeldung löschen, bevor die Person die Mail
+// überhaupt gesehen hat (das ist real passiert). Ein Formular-POST wird von
+// solchen Scannern nicht ausgelöst, nur von einem echten Klick auf den
+// Button im Browser.
+//
+// Die registration_id in der URL ist eine UUID und dient als Zugriffs-Token
+// (kein Login nötig). Löscht die Anmeldung unwiderruflich, aber nur bis 48h
+// vor dem Termin; danach nur noch über den Veranstalter.
 //
 // Läuft serverseitig, nutzt den service_role Key nur hier, nie im Browser.
 
@@ -15,7 +24,7 @@ function escapeHtml(s: unknown) {
   ));
 }
 
-function page(title: string, message: string) {
+function page(title: string, message: string, bodyExtra = "") {
   const html = `<!doctype html>
 <html lang="de">
 <head>
@@ -32,6 +41,12 @@ function page(title: string, message: string) {
          color:#fff;font-weight:800;font-size:15px;margin-bottom:20px}
   h1{font-size:19px;margin:0 0 10px;color:#062A3F}
   p{color:#5D7284;font-size:14.5px;line-height:1.6;margin:0}
+  .termin{background:#F0FAFF;border:1px solid #009FE3;border-radius:12px;padding:14px 16px;margin:18px 0;
+          text-align:left;font-size:14px;color:#062A3F;font-weight:600}
+  .btn{display:inline-block;border:none;border-radius:10px;padding:12px 22px;font-size:14.5px;font-weight:700;
+       font-family:inherit;cursor:pointer;margin-top:20px}
+  .btn-danger{background:#E0234E;color:#fff}
+  .btn-ghost{background:#EEF3F7;color:#5D7284;margin-top:10px}
 </style>
 </head>
 <body>
@@ -39,6 +54,7 @@ function page(title: string, message: string) {
     <div class="badge">Wertgarantie</div>
     <h1>${escapeHtml(title)}</h1>
     <p>${message}</p>
+    ${bodyExtra}
   </div>
 </body>
 </html>`;
@@ -55,6 +71,11 @@ function viennaLocalToUtc(dateStr: string, timeStr: string): Date {
   const tzName = parts.find((p) => p.type === "timeZoneName")?.value || "GMT+1";
   const offsetHours = parseInt(tzName.replace("GMT", "") || "1", 10);
   return new Date(naiveUtc.getTime() - offsetHours * 3600000);
+}
+function fmtDate(d: string) {
+  return new Date(d + "T00:00:00").toLocaleDateString("de-AT", {
+    weekday: "long", day: "2-digit", month: "2-digit", year: "numeric",
+  });
 }
 
 Deno.serve(async (req) => {
@@ -89,6 +110,31 @@ Deno.serve(async (req) => {
     );
   }
 
-  await admin.from("registrations").delete().eq("id", id);
-  return page("Du wurdest abgemeldet", "Deine Anmeldung wurde storniert. Schade, dass es diesmal nicht klappt – vielleicht bei einer der nächsten Veranstaltungen!");
+  if (req.method === "POST") {
+    await admin.from("registrations").delete().eq("id", id);
+    return page("Du wurdest abgemeldet", "Deine Anmeldung wurde storniert. Schade, dass es diesmal nicht klappt – vielleicht bei einer der nächsten Veranstaltungen!");
+  }
+
+  // GET zeigt nur eine Bestätigungsseite, löscht aber noch nichts (siehe
+  // Kommentar oben - schützt vor automatischem Link-Prefetching durch
+  // Mail-Security-Gateways).
+  const { data: event } = await admin.from("events").select("title").eq("id", reg.event_id).maybeSingle();
+  const terminInfo = `
+    <div class="termin">
+      ${event ? escapeHtml(event.title) + "<br>" : ""}
+      ${escapeHtml(fmtDate(eventDate.event_date))}${eventDate.location ? " · " + escapeHtml(eventDate.location) : ""}
+    </div>`;
+  // url.href zeigt innerhalb der Edge Function auf die interne Routing-URL
+  // (http://<project>.supabase.co/cancel-registration?id=...), nicht auf die
+  // öffentliche URL - deshalb die action explizit aus SUPABASE_URL bauen.
+  const actionUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/cancel-registration?id=${encodeURIComponent(id)}`;
+  const form = `
+    <form method="POST" action="${escapeHtml(actionUrl)}">
+      <button type="submit" class="btn btn-danger">Ja, endgültig abmelden</button>
+    </form>`;
+  return page(
+    "Wirklich abmelden?",
+    "Möchtest du deine Anmeldung zu dieser Veranstaltung stornieren?" + terminInfo,
+    form,
+  );
 });
