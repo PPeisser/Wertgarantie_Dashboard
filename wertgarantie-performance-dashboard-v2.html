@@ -2890,7 +2890,14 @@ function parseMieteReport(wb){
     const idxFh=header.findIndex(h=>h==="Fachhändler Nr geliefert");
     const idxClubNr=header.findIndex(h=>h==="Händler Nr geliefert");
     const idxDatum=header.findIndex(h=>h==="Datum");
-    const idxSortiment=header.findIndex(h=>h==="Sortiment");
+    // Kategorie-Spalte (Weiße/Braune Ware) hieß in älteren Jahresblättern
+    // "Sortiment", heißt ab AT_2026 "Gerät Bez" - "Sortiment" zeigt dort auf
+    // eine andere Spalte (Auftrags-/Produktcodes wie "R260081", Nutzer-
+    // Bestätigung 30.08.2026). Je Jahresblatt eigenständig gesucht (idxSortiment
+    // wird pro Sheet neu ermittelt), damit ältere Blätter mit "Sortiment" als
+    // echter Kategoriespalte weiter korrekt funktionieren.
+    let idxSortiment=header.findIndex(h=>h==="Gerät Bez");
+    if(idxSortiment<0) idxSortiment=header.findIndex(h=>h==="Sortiment");
     const idxAnzahl=header.findIndex(h=>h==="Anzahl Produktion Mietverträge");
     // Firmenname (Nutzer-Bestätigung 25.08.2026) - deckt Händler ab, die in
     // keiner anderen Quelle (tägliche FH_Liste, AKP, Akquisestaffeln) einen
