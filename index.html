@@ -2910,7 +2910,17 @@ function parseMieteReport(wb){
       if(!byFh[fhNr]) byFh[fhNr]={monthly:{},sortiment:{},clubNr:null,name:null};
       byFh[fhNr].monthly[ym]=(byFh[fhNr].monthly[ym]||0)+count;
       const sort=idxSortiment>-1?String(r[idxSortiment]??"").trim():"";
-      if(sort) byFh[fhNr].sortiment[sort]=(byFh[fhNr].sortiment[sort]||0)+count;
+      // Pro Jahr gebucketet (Nutzervorgabe 30.08.2026: "Verkauftes Sortiment"
+      // soll sich immer nur auf das aktuelle Jahr beziehen) - wie monthly oben,
+      // aber eine Ebene höher, da Sortiment keine Monats-, nur Jahresgranularität
+      // hat. Jeder Import liefert laut Report je Jahresblatt bereits den
+      // vollständigen Jahresstand, ein Ersetzen des jeweiligen Jahres-Buckets
+      // beim Merge (siehe fh_sync_miete, JSONB `||`) ist daher korrekt.
+      if(sort){
+        const year=ym.slice(0,4);
+        if(!byFh[fhNr].sortiment[year]) byFh[fhNr].sortiment[year]={};
+        byFh[fhNr].sortiment[year][sort]=(byFh[fhNr].sortiment[year][sort]||0)+count;
+      }
       const clubNr=idxClubNr>-1?String(r[idxClubNr]??"").trim():"";
       if(clubNr) byFh[fhNr].clubNr=clubNr;
       const bez=idxBez>-1?String(r[idxBez]??"").trim():"";
@@ -7385,7 +7395,10 @@ function renderFhMieteSection(){
   const c=fhContactCurrent;
   if(!c||!c.club_weiss_mitglied){ box.innerHTML=""; return; }
   const monthly=c.miete_monthly||{};
-  const sortiment=c.miete_sortiment||{};
+  // Verkauftes Sortiment bezieht sich immer nur auf das aktuelle Jahr
+  // (Nutzervorgabe 30.08.2026) - miete_sortiment ist seitdem pro Jahr
+  // gebucketet ({"<Jahr>":{"<Kategorie>":Anzahl}}, siehe parseMieteReport).
+  const sortiment=(c.miete_sortiment||{})[String(state.latest.jahr)]||{};
   const years=[...new Set(Object.keys(monthly).map(k=>k.slice(0,4)))].sort();
   const monthlyTbl=years.length
     ?`<div style="overflow:auto"><table class="ac-month-table"><thead><tr><th>Jahr</th>${MONTH_LABELS.map(m=>`<th>${m}</th>`).join("")}<th>Summe</th></tr></thead><tbody>`+
