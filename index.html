@@ -5002,24 +5002,31 @@ function openAkpModal(){
 /* ---------- Fachhändler PopUp (Liste der AKP eines Händlers, Test) ---------- */
 // Fällt auf die AKP-Kontaktdatenbank (Firma/Ort) zurück, wenn ein Händler am
 // aktuellen Tag keine Produktion hatte und daher nicht in state.latest.fh
-// steht - sonst zeigt das Popup weder Name noch Ort (z.B. Bug bei "KURTZ").
+// steht - sonst zeigt das Popup weder Name noch Ort (z.B. urspr. Bug bei
+// "KURTZ", als fh_contacts.akq_name für diesen Händler noch fehlte).
 function fhFallbackFromAkp(fhNr){
-  // fh_contacts-Fallback (Ort + bestmöglicher Name: akq_name > miete_name >
-  // manueller Name, siehe fhContactsAllIndex/buildFhContactsIndices) - EINE
-  // Quelle statt vormals drei getrennt geprüfter Indizes (fhAkqIndex/
-  // fhMieteNameIndex/fhManualNameIndex einzeln), da fhAkqIndex nur bei
-  // vorhandenen Akquisestaffel-Punkten befüllt wird und daher einen Namen
-  // liefern konnte, den fhContactsAllIndex bereits kannte, dieser Fallback
-  // hier aber nicht fand (Bug im eigenen Test beim Beheben von Bug-Report
-  // 27.08.2026 "SCD, Krumbach & SCD, Wiener Neudorf" entdeckt).
+  // fh_contacts-Name (akq_name > miete_name > manueller Name, siehe
+  // fhContactsAllIndex/buildFhContactsIndices) hat Vorrang vor der rohen
+  // AKP-Kontaktdatenbank-Firma: Der AKP-Datensatz kombiniert oft einen
+  // internen Kurzcode + den vollen Namen in einem Feld (z.B. "KURTZ Kurtz
+  // Bernhard" statt "KURTZ") und erzeugte dadurch für denselben Händler je
+  // nach Ansicht zwei unterschiedliche Schreibweisen, die wie zwei
+  // verschiedene Fachhändler wirkten (Nutzer-Bug-Report 30.08.2026). Der
+  // AKP-Fallback bleibt nur für Händler ohne jeglichen fh_contacts-Namen
+  // (der urspr. Grund für diesen Fallback).
   const rec=fhContactsAllIndex&&fhContactsAllIndex[fhNr];
+  if(rec&&rec.name){
+    let akpOrt=null;
+    if(akpContactsIndex) for(const a of Object.values(akpContactsIndex)){ if(a.fh_nr===fhNr&&a.ort){ akpOrt=a.ort; break; } }
+    return {name:rec.name,ort:rec.ort||akpOrt||null};
+  }
   const fallbackOrt=(rec&&rec.ort)||null;
   if(akpContactsIndex){
     for(const a of Object.values(akpContactsIndex)){
       if(a.fh_nr===fhNr&&a.firma) return {name:a.firma,ort:a.ort||fallbackOrt};
     }
   }
-  if(rec&&(rec.name||rec.ort)) return {name:rec.name||null,ort:rec.ort||null};
+  if(rec&&rec.ort) return {name:null,ort:rec.ort};
   return null;
 }
 // Alle bekannten Fachhändler für Suche/Auswahl (FH-Suche, Chefgespräch-/
@@ -7412,12 +7419,19 @@ function renderFhMieteSection(){
   // Sortiment-Spalte im Miete-Report enthaelt bei einzelnen Zeilen statt einer
   // Kategorie (z.B. "Weiße Ware") einen Auftrags-/Produktcode (z.B. "R260081") -
   // Datenqualitaet des Reports, nicht der Parser (der liest die Spalte korrekt).
-  // Echte Kategorienamen enthalten keine Ziffern, Codes immer - damit gefiltert,
-  // statt die Codes als bedeutungslose Chips anzuzeigen.
-  const sortimentEntries=Object.entries(sortiment).filter(([name])=>!/\d/.test(name)).sort((a,b)=>b[1]-a[1]);
-  const sortimentList=sortimentEntries.length
-    ?`<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px">`+sortimentEntries.map(([name,cnt])=>
-        `<span class="pill neu" style="font-size:11px;padding:4px 10px">${escapeHtml(name)}: <b>${fmt(cnt)}</b></span>`).join("")+`</div>`
+  // Echte Kategorienamen enthalten keine Ziffern, Codes immer. Die einzelnen
+  // Codes bleiben trotzdem echte Verträge (Nutzer-Bug-Report 30.08.2026: Summe
+  // der Kategorien passte nicht zur Produktion) - deshalb nicht mehr komplett
+  // ausgeblendet, sondern zu einem "nicht kategorisiert"-Sammelwert
+  // zusammengefasst, statt Dutzende bedeutungslose Einzel-Code-Chips zu zeigen.
+  const rawSortimentEntries=Object.entries(sortiment);
+  const sortimentEntries=rawSortimentEntries.filter(([name])=>!/\d/.test(name)).sort((a,b)=>b[1]-a[1]);
+  const sortimentUnkategorisiert=rawSortimentEntries.filter(([name])=>/\d/.test(name)).reduce((s,[,v])=>s+(v||0),0);
+  const sortimentList=(sortimentEntries.length||sortimentUnkategorisiert>0)
+    ?`<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px">`+
+      sortimentEntries.map(([name,cnt])=>`<span class="pill neu" style="font-size:11px;padding:4px 10px">${escapeHtml(name)}: <b>${fmt(cnt)}</b></span>`).join("")+
+      (sortimentUnkategorisiert>0?`<span class="pill" style="font-size:11px;padding:4px 10px;background:rgba(127,127,127,.15);color:var(--muted)" title="Verträge, bei denen der Miete-Report statt einer Kategorie einen Auftrags-/Produktcode geliefert hat">Sonstiges (nicht kategorisiert): <b>${fmt(sortimentUnkategorisiert)}</b></span>`:"")+
+      `</div>`
     :`<div class="empty-note">Kein Sortiment erfasst.</div>`;
   box.innerHTML=`<h4 style="margin:18px 0 4px;color:var(--wg-navy);font-size:13px">Produktion Miete (Club.Weiss)</h4>
     ${monthlyTbl}
