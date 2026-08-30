@@ -2589,6 +2589,11 @@ function parseAuswertung(wb){
     for(let i=fhi+1;i<fh.length;i++){
       const r=fh[i]; if(!r||r[0]==null) continue;
       const nr=String(r[0]).trim(); if(!nr) continue;
+      // Nur echte (rein numerische) FH-Nummern übernehmen - Summen-/Fußzeilen
+      // wie "Auswertung" oder "Seite 1" landen sonst als Phantom-Fachhändler
+      // in fh_contacts (deren Zeilenwerte oft Gesamtsummen statt Einzelwerte
+      // sind) und verfälschen glPlan[AT_KEY]/die Monatsproduktion.
+      if(!/^\d+$/.test(nr)) continue;
       const glRaw=String(r[5]||"").trim();
       snap.fh[nr]={ name:String(r[1]||"").trim(), plz:String(r[2]||""), ort:String(r[3]||"").trim(),
         gl:glRaw, emp:matchEmployee(glRaw),
@@ -2776,6 +2781,10 @@ function parseAkquiseStaffeln(wb){
   for(let i=1;i<rows.length;i++){
     const r=rows[i]; if(!r) continue;
     const fhNr=r[idxFh]; if(fhNr==null||fhNr==="") continue;
+    // Nur echte (rein numerische) FH-Nummern übernehmen - Platzhalter-/
+    // Beispielzeilen (z.B. "x") landen sonst als Phantom-Fachhändler in
+    // fh_contacts (siehe gleicher Guard in parseAuswertung).
+    if(!/^\d+$/.test(String(fhNr).trim())) continue;
     const name=idxBez>-1?String(r[idxBez]??"").trim()||null:null;
     const gl=idxGl>-1?String(r[idxGl]??"").trim()||null:null;
     const punkte=idxPunkte>-1?num(r[idxPunkte]):null;
@@ -2816,6 +2825,9 @@ function parseFhSegmentierung(wb){
   for(let i=hi+1;i<rows.length;i++){
     const r=rows[i]; if(!r||r[idxFh]==null||r[idxFh]==="") continue;
     const fhNr=String(r[idxFh]).trim(); if(!fhNr) continue;
+    // Nur echte (rein numerische) FH-Nummern übernehmen (siehe gleicher Guard
+    // in parseAuswertung/parseAkquiseStaffeln).
+    if(!/^\d+$/.test(fhNr)) continue;
     const seg=String(r[idxSeg]??"").trim();
     out.push({ fh_nr:fhNr, segmentierung:VALID.has(seg)?seg:null });
   }
@@ -2888,6 +2900,10 @@ function parseMieteReport(wb){
     for(let i=1;i<rows.length;i++){
       const r=rows[i]; if(!r||r[idxFh]==null||r[idxFh]==="") continue;
       const fhNr=String(r[idxFh]).trim(); if(!fhNr) continue;
+      // Nur echte (rein numerische) FH-Nummern übernehmen (siehe gleicher Guard
+      // in parseAuswertung/parseAkquiseStaffeln) - sonst können Summen-/
+      // Fußzeilen als Phantom-Fachhändler landen.
+      if(!/^\d+$/.test(fhNr)) continue;
       const datum=cellDate(r[idxDatum]); if(!datum) continue;
       const ym=datum.slice(0,7);
       const count=idxAnzahl>-1?(num(r[idxAnzahl])||1):1;
@@ -3008,7 +3024,7 @@ async function handleFiles(files){
     const buf=await file.arrayBuffer();
     const wb=XLSX.read(buf,{type:"array",cellDates:true});
     const snap=parseAuswertung(wb);
-    if(snap){ mergeSnapshot(snap); syncAkpContacts(snap); syncFhContacts(snap); okCount++; }
+    if(snap){ mergeSnapshot(snap); await syncAkpContacts(snap); await syncFhContacts(snap); okCount++; }
   }
   if(!okCount){ toast("Format nicht erkannt – bitte die Auswertung_TAG-Datei mit den Blättern FH_Liste, AKP Liste, AKQ-Liste einspielen."); return; }
   await saveData();
@@ -3042,7 +3058,7 @@ async function processPendingImports(){
         const wb=XLSX.read(buf,{type:"array",cellDates:true});
         const snap=parseAuswertung(wb);
         if(snap){
-          mergeSnapshot(snap); syncAkpContacts(snap); syncFhContacts(snap);
+          mergeSnapshot(snap); await syncAkpContacts(snap); await syncFhContacts(snap);
           snapCount++;
         }else{
           // Kein Auswertung_TAG-Format - könnte die "Händlersegmentierung
@@ -3333,7 +3349,7 @@ function aktivierungsquoteFor(emp,year){
     if(seen.has(a.nr)) continue; seen.add(a.nr);
     angelegt++;
     const fh=s.fh[a.nr];
-    if(fh&&fh.jahr>0) aktiv++;
+    if(fh&&fh.lj>0) aktiv++;
   }
   return {angelegt,aktiv,quote:angelegt>0?aktiv/angelegt:null};
 }
@@ -5222,8 +5238,14 @@ async function loadFhContact(fhNr){
   fhContactCurrent={fh_nr:fhNr,strasse:null,plz:null,ort:null,telefon:null,email:null,ansprechpartner:null,ansprechpartner_email:null,homepage:null,segmentierung:null,letzter_besuch:null,sonstige_infos:null,neunwochen_erledigt:false,club_weiss_mitglied:false,club_weiss_mitgliedsnummer:null,miete_monthly:{},miete_sortiment:{}};
   try{
     const {data,error}=await sb.from("fh_contacts").select("*").eq("fh_nr",fhNr).maybeSingle();
+    // Falls der User inzwischen einen anderen Fachhändler geöffnet hat, ist
+    // diese Antwort veraltet - fhContactCurrent NICHT überschreiben, sonst
+    // landen bei "Bearbeiten"/"Speichern" die Stammdaten von fhNr im falschen,
+    // inzwischen geöffneten Händler (stille Datenkorruption).
+    if(fhModalCurrent!==fhNr) return;
     if(!error&&data) fhContactCurrent=data;
   }catch(e){}
+  if(fhModalCurrent!==fhNr) return;
   // "Alte Händler" (kein aktueller 9-Wochen-Beginn in der Akquiseliste) gelten
   // automatisch als erledigt - einmalig festschreiben, damit der Status auch
   // ohne "bearbeiten" korrekt angezeigt wird und die Liste konsistent bleibt.
@@ -7544,6 +7566,7 @@ async function exportFhPdf(includeAkp){
 
 /* ---------- AKP-Kontakt PopUp (Stammdaten, Kontakt, Aktionsteilnahme, Profi-Training) ---------- */
 let akpContactCurrent=null;
+let akpContactModalCurrent=null;
 const MONTH_LABELS=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
 function akpLastProdDay(nr){
   const map=(state.dailyAKP||{})[nr]; if(!map) return null;
@@ -7553,6 +7576,7 @@ function akpLastProdDay(nr){
 }
 async function openAkpContact(nr,fallbackName){
   if(!nr) return;
+  akpContactModalCurrent=nr;
   akpContactCurrent={nr,vorname:null,nachname:null,firma:null,telefon:null,email:null,geburtsdatum:null,aktionsteilnahme:null,profi_training:null,prod_monthly:{},prod_monthly_other:{}};
   $("acName").textContent=fallbackName||nr;
   $("acMeta").textContent="AKP-Nr. "+nr+" · lädt …";
@@ -7561,8 +7585,14 @@ async function openAkpContact(nr,fallbackName){
   $("akpContactModal").classList.remove("hidden");
   try{
     const {data,error}=await sb.from("akp_contacts").select("*").eq("nr",nr).maybeSingle();
+    // Falls der User inzwischen einen anderen AKP-Kontakt geöffnet hat, ist
+    // diese Antwort veraltet - akpContactCurrent NICHT überschreiben, sonst
+    // landen bei "Bearbeiten"/"Speichern" die Daten von nr im falschen,
+    // inzwischen geöffneten Kontakt (stille Datenkorruption).
+    if(akpContactModalCurrent!==nr) return;
     if(!error&&data) akpContactCurrent=data;
   }catch(e){}
+  if(akpContactModalCurrent!==nr) return;
   const c=akpContactCurrent;
   const name=(c.vorname||c.nachname)?[c.vorname,c.nachname].filter(Boolean).join(" "):(fallbackName||nr);
   $("acName").textContent=name;
