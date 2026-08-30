@@ -5016,6 +5016,15 @@ function openAkpModal(){
   $("akpModal").classList.remove("hidden");
 }
 
+// Liefert den AKQ-Liste-Eintrag (state.latest.akq, Adresse/Telefon/Beginn/
+// Besuche) für eine FH-Nr, falls vorhanden - die AKQ-Nr entspricht der
+// Fachhändler-Nr. Zentraler Fallback für Stammdaten (Adresse/Telefon) bei
+// frisch akquirierten Händlern, die noch nie in fh_contacts geschrieben
+// wurden (kein Import synchronisiert die AKQ-Liste dorthin, nur
+// Akquisestaffeln/Miete-Report/tägliche FH_Liste).
+function akqLeadFor(fhNr){
+  return (state.latest&&state.latest.akq||[]).find(a=>a.nr===fhNr)||null;
+}
 /* ---------- Fachhändler PopUp (Liste der AKP eines Händlers, Test) ---------- */
 // Fällt auf die AKP-Kontaktdatenbank (Firma/Ort) zurück, wenn ein Händler am
 // aktuellen Tag keine Produktion hatte und daher nicht in state.latest.fh
@@ -5043,7 +5052,12 @@ function fhFallbackFromAkp(fhNr){
       if(a.fh_nr===fhNr&&a.firma) return {name:a.firma,ort:a.ort||fallbackOrt};
     }
   }
+  // Letzter Fallback: AKQ-Liste (frisch akquirierte Händler, oft weder in
+  // fh_contacts noch in der AKP-Kontaktdatenbank bekannt, siehe akqLeadFor).
+  const akq=akqLeadFor(fhNr);
+  if(akq&&akq.name) return {name:akq.name,ort:akq.ort||fallbackOrt};
   if(rec&&rec.ort) return {name:null,ort:rec.ort};
+  if(akq&&akq.ort) return {name:null,ort:akq.ort};
   return null;
 }
 // Alle bekannten Fachhändler für Suche/Auswahl (FH-Suche, Chefgespräch-/
@@ -5312,11 +5326,17 @@ async function loadFhContact(fhNr){
 function renderFhContactView(){
   const c=fhContactCurrent||{};
   const f=state.latest.fh[fhModalCurrent];
+  // Frisch akquirierte Händler ohne jegliche Produktion (siehe "Akquise ohne
+  // Produktion") haben oft noch keine fh_contacts-Stammdaten (kein Import
+  // schreibt Adresse/Telefon dorthin), obwohl die AKQ-Liste (state.latest.akq)
+  // sie längst mitbringt - Fallback darauf, statt ein leeres PopUp zu zeigen
+  // (Nutzer-Bug-Report 30.08.2026, analog fhFallbackFromAkp für Name/Ort).
+  const akq=akqLeadFor(fhModalCurrent);
   $("fhManualNameViewRow").classList.toggle("hidden",!c.name);
   $("fhManualNameView").textContent=c.name||"–";
-  const addr=[c.strasse,[c.plz,c.ort||(f&&f.ort)].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  const addr=[c.strasse||(akq&&akq.strasse),[c.plz||(akq&&akq.plz),c.ort||(f&&f.ort)||(akq&&akq.ort)].filter(Boolean).join(" ")].filter(Boolean).join(", ");
   $("fhAddrView").textContent=addr||"–";
-  $("fhTelefonView").textContent=c.telefon||"–";
+  $("fhTelefonView").textContent=c.telefon||(akq&&akq.tel)||"–";
   $("fhEmailView").textContent=c.email||"–";
   $("fhAnsprechpartnerView").textContent=c.ansprechpartner||"–";
   $("fhEmailApView").textContent=c.ansprechpartner_email||"–";
@@ -5898,7 +5918,10 @@ async function chefgespraechFhContactFor(fhNr){
 // vernünftig eingebaut werden. Ziel nur wenn im Admin-Panel freigeschaltet
 // und für diesen FH gesetzt (gleiche Regel wie im FH-Popup).
 function chefgespraechStammdatenCardHtml(fhNr,f,c){
-  const addr=[c.strasse,[c.plz,c.ort||f.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ")||"–";
+  // Fallback auf die AKQ-Liste bei frisch akquirierten Händlern ohne
+  // fh_contacts-Stammdaten (siehe renderFhContactView/akqLeadFor).
+  const akq=akqLeadFor(fhNr);
+  const addr=[c.strasse||(akq&&akq.strasse),[c.plz||(akq&&akq.plz),c.ort||f.ort||(akq&&akq.ort)].filter(Boolean).join(" ")].filter(Boolean).join(", ")||"–";
   const gebietsleiter=f.emp||f.gl||null;
   const stamRow=(lbl,val)=>`<div style="min-width:170px"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284;margin-bottom:2px">${lbl}</div><div style="font-size:12px;font-weight:700;color:#10202C">${val}</div></div>`;
   let zielRow="";
@@ -5912,7 +5935,7 @@ function chefgespraechStammdatenCardHtml(fhNr,f,c){
     <div style="display:flex;flex-wrap:wrap;gap:14px 26px">
       ${stamRow("Adresse",escapeHtml(addr))}
       ${stamRow("Gebietsleiter",gebietsleiter?escapeHtml(gebietsleiter):"–")}
-      ${stamRow("Telefon",c.telefon?escapeHtml(c.telefon):"–")}
+      ${stamRow("Telefon",(c.telefon||(akq&&akq.tel))?escapeHtml(c.telefon||akq.tel):"–")}
       ${stamRow("Ansprechpartner",c.ansprechpartner?escapeHtml(c.ansprechpartner):"–")}
       ${stamRow("E-Mail",c.email?escapeHtml(c.email):"–")}
       ${stamRow("Club Weiss",c.club_weiss_mitglied?"✓ Mitglied"+(c.club_weiss_mitgliedsnummer?" · Nr. "+escapeHtml(c.club_weiss_mitgliedsnummer):""):"Kein Mitglied")}
@@ -7547,6 +7570,15 @@ async function saveFhContact(){
   // loadFhContactsIndicesAll-Refresh) - sonst zeigt z.B. das Miete-PopUp den
   // gerade eingetragenen Namen erst nach einem Reload.
   if(name) fhManualNameIndex[fhNr]=name; else delete fhManualNameIndex[fhNr];
+  // fhContactsAllIndex (fhMatchesSearch/fhAllKnownList) ebenso live nachziehen -
+  // sonst findet die FH-/Chefgespräch-/Auswertung-Suche einen gerade erst
+  // eingetragenen "Weitere Zuordnung"/Filialbetriebe-Wert (z.B. "A1 Shop")
+  // erst nach einem Reload (Nutzer-Bug-Report 30.08.2026: "A1 Liezen" fand
+  // die soeben getaggte Filiale nicht).
+  if(!fhContactsAllIndex[fhNr]) fhContactsAllIndex[fhNr]={name:null,ort:null,gl:null,filialbetriebe:null,weitereZuordnung:null};
+  fhContactsAllIndex[fhNr].ort=ort;
+  fhContactsAllIndex[fhNr].filialbetriebe=filialbetriebe;
+  fhContactsAllIndex[fhNr].weitereZuordnung=weitere_zuordnung;
   if(!(state.latest.fh[fhNr]&&state.latest.fh[fhNr].name)) $("fhName").textContent=name||fhNr;
   if(neunwochen_erledigt) fhErledigtSet.add(fhNr); else fhErledigtSet.delete(fhNr);
   renderFhContactView();
@@ -7568,6 +7600,9 @@ async function exportFhPdf(includeAkp){
   const fhNr=fhModalCurrent; if(!fhNr) return;
   const f=state.latest.fh[fhNr]||{};
   const c=fhContactCurrent||{};
+  // Fallback auf die AKQ-Liste bei frisch akquirierten Händlern ohne
+  // fh_contacts-Stammdaten (siehe renderFhContactView/akqLeadFor).
+  const akq=akqLeadFor(fhNr);
   fhPdfBusy=true;
   // Fenster synchron im Klick öffnen statt erst nach dem await für html2canvas -
   // sonst werten Browser das spätere window.open() als Popup außerhalb einer
@@ -7579,7 +7614,7 @@ async function exportFhPdf(includeAkp){
   const box=document.createElement("div");
   try{
     const field=(lbl,val)=>`<div><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#5D7284;margin-bottom:3px">${lbl}</div><div style="font-size:14px;font-weight:700;color:#10202C">${val}</div></div>`;
-    const addr=[c.strasse,[c.plz,c.ort||f.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ")||"–";
+    const addr=[c.strasse||(akq&&akq.strasse),[c.plz||(akq&&akq.plz),c.ort||f.ort||(akq&&akq.ort)].filter(Boolean).join(" ")].filter(Boolean).join(", ")||"–";
     let akpHtml="";
     if(includeAkp){
       // Alle AKP des Händlers auflisten (nicht mehr gekappt) - notfalls über
@@ -7617,7 +7652,7 @@ async function exportFhPdf(includeAkp){
       </div>
       <div class="pdf-block" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px;margin-bottom:18px">
         ${field("Adresse",escapeHtml(addr))}
-        ${field("Telefon",escapeHtml(c.telefon||"–"))}
+        ${field("Telefon",escapeHtml(c.telefon||(akq&&akq.tel)||"–"))}
         ${field("E-Mail Geschäft",escapeHtml(c.email||"–"))}
         ${field("Ansprechpartner",escapeHtml(c.ansprechpartner||"–"))}
         ${field("E-Mail Ansprechpartner",escapeHtml(c.ansprechpartner_email||"–"))}
