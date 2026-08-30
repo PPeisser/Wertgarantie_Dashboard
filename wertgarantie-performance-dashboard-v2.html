@@ -7301,7 +7301,12 @@ function renderFhMieteSection(){
     yearlyTbl=`<h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:13px">Jahresvergleich Miete</h4>
       <table class="ac-yearly-table"><thead><tr><th>Jahr</th><th>Summe</th><th>vs. Vorjahr</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
-  const sortimentEntries=Object.entries(sortiment).sort((a,b)=>b[1]-a[1]);
+  // Sortiment-Spalte im Miete-Report enthaelt bei einzelnen Zeilen statt einer
+  // Kategorie (z.B. "Weiße Ware") einen Auftrags-/Produktcode (z.B. "R260081") -
+  // Datenqualitaet des Reports, nicht der Parser (der liest die Spalte korrekt).
+  // Echte Kategorienamen enthalten keine Ziffern, Codes immer - damit gefiltert,
+  // statt die Codes als bedeutungslose Chips anzuzeigen.
+  const sortimentEntries=Object.entries(sortiment).filter(([name])=>!/\d/.test(name)).sort((a,b)=>b[1]-a[1]);
   const sortimentList=sortimentEntries.length
     ?`<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px">`+sortimentEntries.map(([name,cnt])=>
         `<span class="pill neu" style="font-size:11px;padding:4px 10px">${escapeHtml(name)}: <b>${fmt(cnt)}</b></span>`).join("")+`</div>`
