@@ -2156,7 +2156,7 @@ function buildFhContactsIndices(rows){
     // Jede fh_contacts-Zeile fließt hier ein, auch ganz ohne Akquise-/Miete-/
     // manuellen Namen (dann bleibt name null, Aufrufer fallen auf die FH-Nr
     // zurück) - Priorität wie in fhFallbackFromAkp: akq_name > miete_name > name.
-    allIdx[r.fh_nr]={name:r.akq_name||r.miete_name||r.name||null,ort:r.ort||null,gl:r.akq_gl||null};
+    allIdx[r.fh_nr]={name:r.akq_name||r.miete_name||r.name||null,ort:r.ort||null,gl:r.akq_gl||null,filialbetriebe:r.filialbetriebe||null,weitereZuordnung:r.weitere_zuordnung||null};
   }
   return {bulkIdx,mieteIdx,erledigt,akqIdx,manualNameIdx,mieteNameIdx,allIdx};
 }
@@ -2171,7 +2171,7 @@ async function loadFhContactsIndicesAll(){
       for(;;){
         guard++;
         const {data,error}=await sb.from("fh_contacts")
-          .select("fh_nr,ort,prod_monthly,miete_monthly,neunwochen_erledigt,akq_punkte,akq_staffeln,akq_gl,akq_name,name,miete_name")
+          .select("fh_nr,ort,prod_monthly,miete_monthly,neunwochen_erledigt,akq_punkte,akq_staffeln,akq_gl,akq_name,name,miete_name,filialbetriebe,weitere_zuordnung")
           .range(from,from+999);
         if(error){ console.error("loadFhContactsIndicesAll:",error.message||error); break; }
         if(!data||!data.length) break;
@@ -3226,12 +3226,25 @@ async function loadFhMieteIndex(){ await loadFhContactsIndicesAll(); }
 // FH->Mitarbeiter-Zuordnung wie die tägliche Auswertung (state.latest.fh),
 // nicht eine eigene aus der Miete-Datei - konsistent mit dem restlichen
 // Dashboard.
+// Betreuer für einen FH: bevorzugt aus der heutigen Tages-Auswertung
+// (state.latest.fh), sonst Fallback auf fh_contacts.akq_gl (gleiche
+// Priorität wie fhAllKnownList) - sonst verschwinden/verlieren Händler ohne
+// heutige Produktion ihren Betreuer in allen Miete-Ansichten, obwohl er in
+// fh_contacts längst hinterlegt ist (Bug-Report 30.08.2026: SCD Wiener
+// Neudorf/Deutschmann KG zeigten in der Miete-Liste "ohne Betreuer", obwohl
+// akq_gl gesetzt war).
+function fhEmpFor(nr){
+  const fh=state.latest&&state.latest.fh[nr];
+  if(fh&&fh.emp) return fh.emp;
+  const rec=fhContactsAllIndex&&fhContactsAllIndex[nr];
+  return (rec&&matchEmployee(rec.gl||""))||null;
+}
 function mieteJahrFor(emp,year){
   const s=state.latest; if(!s) return 0;
   const y=year||s.jahr;
   let sum=0;
   for(const [nr,rec] of Object.entries(fhMieteIndex)){
-    if(emp!==AT_GESAMT){ const fh=s.fh[nr]; if(!fh||fh.emp!==emp) continue; }
+    if(emp!==AT_GESAMT&&fhEmpFor(nr)!==emp) continue;
     for(const [ym,v] of Object.entries(rec.monthly||{})) if(ym.slice(0,4)===String(y)) sum+=v;
   }
   return sum;
@@ -3247,13 +3260,14 @@ function mieteListRows(period){
   const rows=[];
   for(const [nr,rec] of Object.entries(fhMieteIndex)){
     const fh=s.fh[nr];
-    if(currentEmp!==AT_GESAMT&&(!fh||fh.emp!==currentEmp)) continue;
+    const emp=fhEmpFor(nr);
+    if(currentEmp!==AT_GESAMT&&emp!==currentEmp) continue;
     let val=0;
     if(period==="monat") val=(rec.monthly||{})[mk]||0;
     else for(const [ym,v] of Object.entries(rec.monthly||{})) if(ym.slice(0,4)===String(s.jahr)) val+=v;
     if(val<=0) continue;
     const fb=fh?null:fhFallbackFromAkp(nr);
-    rows.push({fhNr:nr,name:(fh&&fh.name)||(fb&&fb.name)||nr,ort:(fh&&fh.ort)||(fb&&fb.ort)||"",emp:(fh&&fh.emp)||"",val});
+    rows.push({fhNr:nr,name:(fh&&fh.name)||(fb&&fb.name)||nr,ort:(fh&&fh.ort)||(fb&&fb.ort)||"",emp:emp||"",val});
   }
   rows.sort((a,b)=>b.val-a.val);
   return rows;
@@ -5017,16 +5031,32 @@ function fhFallbackFromAkp(fhNr){
 // Dashboard, obwohl beide Einspielungen sie enthielten).
 function fhAllKnownList(){
   const out=[], seen=new Set();
+  // filialbetriebe/weitere_zuordnung kommen nur aus fh_contacts (manuell
+  // gepflegt, kein Teil der täglichen Auswertung) - deshalb für JEDEN
+  // Treffer (auch die mit heutiger Tagesproduktion) separat nachgeladen,
+  // damit die Suche unten auch danach filtern kann (z.B. "A1 Hartberg").
   Object.entries(state.latest.fh||{}).forEach(([nr,f])=>{
     seen.add(nr);
-    out.push({nr,name:f.name,ort:f.ort,emp:f.emp});
+    const rec=fhContactsAllIndex&&fhContactsAllIndex[nr];
+    out.push({nr,name:f.name,ort:f.ort,emp:f.emp,filialbetriebe:(rec&&rec.filialbetriebe)||null,weitereZuordnung:(rec&&rec.weitereZuordnung)||null});
   });
   Object.entries(fhContactsAllIndex||{}).forEach(([nr,r])=>{
     if(seen.has(nr)) return;
     seen.add(nr);
-    out.push({nr,name:r.name||nr,ort:r.ort||null,emp:matchEmployee(r.gl||"")||null});
+    out.push({nr,name:r.name||nr,ort:r.ort||null,emp:matchEmployee(r.gl||"")||null,filialbetriebe:r.filialbetriebe||null,weitereZuordnung:r.weitereZuordnung||null});
   });
   return out;
+}
+// Sucht über Name, Ort, Filialbetriebe, Weitere Zuordnung UND FH-Nr.
+// gemeinsam statt nur ein einzelnes Feld: die Suchanfrage wird in Wörter
+// zerlegt, jedes Wort muss irgendwo in der Kombination vorkommen - deckt
+// Eingaben wie "Hus Klagenfurt" (Name-Teil + Ort) oder "A1 Hartberg"
+// (Weitere-Zuordnung-Tag + Ort) ab, die vorher nur ein einzelnes Feld
+// durchsuchten und deshalb leer blieben, obwohl der Händler existiert.
+function fhMatchesSearch(f,q){
+  if(!q) return true;
+  const haystack=[f.name,f.ort,f.filialbetriebe,f.weitereZuordnung,f.nr].filter(Boolean).join(" ").toLowerCase();
+  return q.split(/\s+/).filter(Boolean).every(w=>haystack.includes(w));
 }
 // Name/Ort zu einer FH-Nr auflösen, egal ob der Händler heute Tagesproduktion
 // hatte oder nur aus fh_contacts (Akquisestaffeln/Miete/manuell) bekannt ist -
@@ -5629,11 +5659,11 @@ function renderFhSearch(){
     // Mitarbeiter-Ansicht sichtbar statt komplett zu verschwinden - sonst
     // findet sie niemand, weil sich keiner zuständig fühlen kann.
     .filter(f=>currentEmp===AT_GESAMT||f.emp===currentEmp||f.emp==null)
-    .filter(f=>(f.name||"").toLowerCase().includes(q)||(f.ort||"").toLowerCase().includes(q)||f.nr.toLowerCase().includes(q))
+    .filter(f=>fhMatchesSearch(f,q))
     .slice(0,20);
   if(!rows.length){ box.innerHTML=`<div class="empty-note">Kein Fachhändler gefunden.</div>`; return; }
   box.innerHTML=rows.map(f=>`<div class="akp-search-row" style="cursor:pointer" data-fh-nr="${escapeHtml(f.nr)}">
-      <span><b>${escapeHtml(f.name||f.nr)}</b><span class="betr">${escapeHtml(f.ort||"")} · FH-Nr. ${escapeHtml(f.nr)} · ${f.emp?escapeHtml(f.emp):"keine Zuordnung"}</span></span>
+      <span><b>${escapeHtml(f.name||f.nr)}</b><span class="betr">${escapeHtml(f.ort||"")} · FH-Nr. ${escapeHtml(f.nr)} · ${f.emp?escapeHtml(f.emp):"keine Zuordnung"}${f.weitereZuordnung?" · "+escapeHtml(f.weitereZuordnung):""}</span></span>
     </div>`).join("");
   box.querySelectorAll("[data-fh-nr]").forEach(row=>{
     row.onclick=()=>{
@@ -5653,11 +5683,11 @@ function renderChefgespraechSearch(){
     // Ansicht anzeigen statt zu verstecken.
     .filter(f=>currentEmp===AT_GESAMT||f.emp===currentEmp||f.emp==null)
     .filter(f=>!chefgespraechFhNrs.includes(f.nr))
-    .filter(f=>(f.name||"").toLowerCase().includes(q)||(f.ort||"").toLowerCase().includes(q)||f.nr.toLowerCase().includes(q))
+    .filter(f=>fhMatchesSearch(f,q))
     .slice(0,25);
   if(!rows.length){ box.innerHTML=`<div class="empty-note">Kein Fachhändler gefunden.</div>`; return; }
   box.innerHTML=rows.map(f=>`<div class="akp-search-row" style="cursor:pointer" data-fh-nr="${escapeHtml(f.nr)}">
-      <span><b>${escapeHtml(f.name||f.nr)}</b><span class="betr">${escapeHtml(f.ort||"")} · FH-Nr. ${escapeHtml(f.nr)} · ${f.emp?escapeHtml(f.emp):"keine Zuordnung"}</span></span>
+      <span><b>${escapeHtml(f.name||f.nr)}</b><span class="betr">${escapeHtml(f.ort||"")} · FH-Nr. ${escapeHtml(f.nr)} · ${f.emp?escapeHtml(f.emp):"keine Zuordnung"}${f.weitereZuordnung?" · "+escapeHtml(f.weitereZuordnung):""}</span></span>
     </div>`).join("");
   box.querySelectorAll("[data-fh-nr]").forEach(row=>{
     row.onclick=()=>selectChefgespraechFh(row.dataset.fhNr);
@@ -6722,9 +6752,9 @@ function renderAuswertungMultiSearch(){
       // Siehe renderFhSearch: unzugeordnete Händler auch in der Mitarbeiter-
       // Ansicht anzeigen statt zu verstecken.
       .filter(f=>currentEmp===AT_GESAMT||f.emp===currentEmp||f.emp==null)
-      .map(f=>({key:f.nr,label:f.name||f.nr,sub:(f.ort||"")+" · FH-Nr. "+f.nr+" · "+(f.emp||"keine Zuordnung")}))
-      .filter(r=>!auswertungMultiKeys.includes(r.key))
-      .filter(r=>r.label.toLowerCase().includes(q)||r.sub.toLowerCase().includes(q))
+      .filter(f=>!auswertungMultiKeys.includes(f.nr))
+      .filter(f=>fhMatchesSearch(f,q))
+      .map(f=>({key:f.nr,label:f.name||f.nr,sub:(f.ort||"")+" · FH-Nr. "+f.nr+" · "+(f.emp||"keine Zuordnung")+(f.weitereZuordnung?" · "+f.weitereZuordnung:"")}))
       .slice(0,25);
   }else if(auswertungTyp==="akp"){
     if(!akpContactsIndex){ box.innerHTML=`<div class="empty-note">AKP-Kontaktdatenbank lädt noch …</div>`; return; }
