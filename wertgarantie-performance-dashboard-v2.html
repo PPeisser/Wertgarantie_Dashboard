@@ -5418,8 +5418,11 @@ async function renderFhFilialbetriebeSwitcher(){
   if(!siblings.length){ row.classList.add("hidden"); $("fhFilialbetriebeSiblings").innerHTML=""; return; }
   row.classList.remove("hidden");
   $("fhFilialbetriebeSiblings").innerHTML=siblings.map(nr=>{
-    const f=state.latest.fh[nr];
-    const label=f?fhNameOrt(f.name,f.ort):nr;
+    // fhResolveNameOrt statt nur state.latest.fh: sonst zeigen Filialen ohne
+    // heutige Produktion (z.B. "ABS Telekommunikations GmbH") nur die
+    // bloße FH-Nr statt des Namens (Nutzer-Bug-Report 30.08.2026).
+    const r=fhResolveNameOrt(nr);
+    const label=fhNameOrt(r.name,r.ort);
     return `<button type="button" class="btn btn-ghost fh-filial-switch-btn" data-fh-nr="${escapeHtml(nr)}" style="padding:5px 10px;font-size:12.5px">${escapeHtml(label)}</button>`;
   }).join("");
 }
@@ -5459,8 +5462,12 @@ function filialGruppeCompute(members){
   const perFiliale=members.map(m=>{
     const merged=fhMonthlyMerged(m.fh_nr,{prod_monthly:m.prod_monthly||{}});
     const total=Object.entries(merged).reduce((a,[k,v])=>k.slice(0,4)===year?a+v:a,0);
-    const f=state.latest.fh[m.fh_nr];
-    return { fhNr:m.fh_nr, name:(f&&f.name)||m.fh_nr, ort:(f&&f.ort)||"", merged, total };
+    // fhResolveNameOrt statt nur state.latest.fh (siehe
+    // renderFhFilialbetriebeSwitcher) - sonst zeigt die Filialgruppen-
+    // Übersicht (Bildschirm + PDF) für Filialen ohne heutige Produktion nur
+    // die bloße FH-Nr.
+    const r=fhResolveNameOrt(m.fh_nr);
+    return { fhNr:m.fh_nr, name:r.name, ort:r.ort||"", merged, total };
   }).sort((a,b)=>b.total-a.total);
   const gesamt=perFiliale.reduce((a,f)=>a+f.total,0);
   const mergedAll={};
@@ -6352,7 +6359,7 @@ async function buildChefgespraechKiPdfDoc(fhNrs,dataList){
   // Filiale mit ihrer Vergleichsgruppe je Modus, danach je Filiale eine
   // eigene Seite mit Zusammenfassung + Vergleich (wie bisher).
   if(fhNrs.length>1){
-    const fhNames=fhNrs.map(nr=>(state.latest.fh[nr]||{}).name||nr);
+    const fhNames=fhNrs.map(nr=>fhResolveNameOrt(nr).name);
     const targets=dataList.map(mr=>((mr[0]&&mr[0].data&&mr[0].data.metrics)||{}).target||{});
     const clubCount=targets.filter(t=>t.clubWeiss).length;
     const kennzahl=(lbl,val)=>`<div style="text-align:center"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284">${lbl}</div><div style="font-size:18px;font-weight:900;color:#062A3F;margin-top:2px">${val}</div></div>`;
