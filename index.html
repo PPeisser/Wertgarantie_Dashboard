@@ -3363,12 +3363,31 @@ function akqStaffelnInJahrFor(emp,year){
   const yy=String(year).slice(2);
   let alle=0,erst=0;
   for(const [fhNr,rec] of Object.entries(fhAkqIndex)){
-    const fh=state.latest.fh[fhNr];
-    if(!fh||fh.emp!==emp) continue;
+    // fhEmpFor() statt nur state.latest.fh[fhNr].emp - sonst fehlen im
+    // Mitarbeitergespräch (Ziel 2) alle Staffeln von Händlern ohne heutige
+    // Tagesproduktion, obwohl der Betreuer in fh_contacts.akq_gl längst
+    // bekannt ist (gleicher Bug wie bei der Miete-Liste, hier aber in der
+    // Zielberechnung selbst - Nutzeranfrage 30.08.2026 "Daten nicht 0").
+    if(fhEmpFor(fhNr)!==emp) continue;
     const staffeln=rec.staffeln||[];
     staffeln.forEach((d,i)=>{ if(!d||String(d).slice(3,5)!==yy) return; alle++; if(i===0) erst++; });
   }
   return {alle,erst};
+}
+// Ob ein FH im gegebenen Jahr mind. 1 Vertrag produziert hat: bevorzugt aus
+// der heutigen Tages-Auswertung (f.lj = Jahresproduktion laut FH_Liste),
+// sonst Fallback auf die durable fh_contacts.prod_monthly-Summe des Jahres
+// (fhContactsBulkIndex) - sonst gilt ein Händler ohne HEUTIGE Produktion
+// als "nicht aktiviert", selbst wenn er dieses Jahr bereits produziert hat
+// (Nutzeranfrage 30.08.2026: Aktivierungsquote im Mitarbeitergespräch nicht
+// künstlich niedrig durch reine Tageszufälligkeit).
+function fhActiveThisYear(nr,year){
+  const fh=state.latest.fh[nr];
+  if(fh) return fh.lj>0;
+  const pm=fhContactsBulkIndex&&fhContactsBulkIndex[nr];
+  if(!pm) return false;
+  const prefix=String(year);
+  return Object.entries(pm).some(([k,v])=>k.startsWith(prefix)&&(v||0)>0);
 }
 const AKTIVIERUNGSQUOTE_JAHRE=[2024,2025,2026]; // fix lt. Zieldefinition, nicht automatisch rollierend
 function aktivierungsquoteFor(emp,year){
@@ -3379,8 +3398,7 @@ function aktivierungsquoteFor(emp,year){
     if(!AKTIVIERUNGSQUOTE_JAHRE.includes(a.beginnJahr)) continue;
     if(seen.has(a.nr)) continue; seen.add(a.nr);
     angelegt++;
-    const fh=s.fh[a.nr];
-    if(fh&&fh.lj>0) aktiv++;
+    if(fhActiveThisYear(a.nr,year)) aktiv++;
   }
   return {angelegt,aktiv,quote:angelegt>0?aktiv/angelegt:null};
 }
@@ -3398,7 +3416,10 @@ function mieteMonatFor(emp,year,month){
   const key=year+"-"+String(month).padStart(2,"0");
   let sum=0;
   for(const [nr,rec] of Object.entries(fhMieteIndex)){
-    const fh=s.fh[nr]; if(!fh||fh.emp!==emp) continue;
+    // fhEmpFor() statt nur state.latest.fh[nr].emp (siehe akqStaffelnInJahrFor)
+    // - sonst fehlt im Mitarbeitergespräch (Ziel 3) die Miete-Produktion aller
+    // Händler ohne heutige Tagesproduktion.
+    if(fhEmpFor(nr)!==emp) continue;
     sum+=(rec.monthly||{})[key]||0;
   }
   return sum;
@@ -3408,7 +3429,7 @@ function mieteNeuGewonnenFor(emp,year,month){
   const reportKey=year+"-"+String(month).padStart(2,"0");
   let jahr=0,vormonat=0;
   for(const [nr,rec] of Object.entries(fhMieteIndex)){
-    const fh=s.fh[nr]; if(!fh||fh.emp!==emp) continue;
+    if(fhEmpFor(nr)!==emp) continue;
     const months=Object.keys(rec.monthly||{}); if(!months.length) continue;
     const first=[...months].sort()[0];
     if(first.slice(0,4)===String(year)) jahr++;
@@ -5022,8 +5043,21 @@ function openAkpModal(){
 // frisch akquirierten Händlern, die noch nie in fh_contacts geschrieben
 // wurden (kein Import synchronisiert die AKQ-Liste dorthin, nur
 // Akquisestaffeln/Miete-Report/tägliche FH_Liste).
+// Map-Cache statt Array.find() bei jedem Aufruf - fhAllKnownList() ruft
+// dies bei jedem Tastendruck in der Suche für JEDEN fh_contacts-Eintrag
+// ohne heutige Produktion auf (Stresstest 30.08.2026: bei ~10-facher realer
+// Datenmenge sonst ~36ms/Tastendruck statt <5ms). Der Cache wird pro neuer
+// state.latest.akq-Arrayreferenz (also pro Import) einmal neu aufgebaut.
+let akqLeadIndexCache=null, akqLeadIndexCacheSrc=null;
 function akqLeadFor(fhNr){
-  return (state.latest&&state.latest.akq||[]).find(a=>a.nr===fhNr)||null;
+  const arr=state.latest&&state.latest.akq;
+  if(!arr) return null;
+  if(akqLeadIndexCacheSrc!==arr){
+    akqLeadIndexCache=new Map();
+    for(const a of arr) if(a.nr) akqLeadIndexCache.set(a.nr,a);
+    akqLeadIndexCacheSrc=arr;
+  }
+  return akqLeadIndexCache.get(fhNr)||null;
 }
 /* ---------- Fachhändler PopUp (Liste der AKP eines Händlers, Test) ---------- */
 // Fällt auf die AKP-Kontaktdatenbank (Firma/Ort) zurück, wenn ein Händler am
