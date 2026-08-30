@@ -5062,11 +5062,16 @@ function fhFallbackFromAkp(fhNr){
 }
 // Alle bekannten Fachhändler für Suche/Auswahl (FH-Suche, Chefgespräch-/
 // Auswertung-Suche): heutige Tagesproduktion (state.latest.fh, beste Daten)
-// plus jede zusätzliche fh_contacts-Zeile, die dort NICHT vorkommt - deckt
-// Händler ohne jegliche Produktion heuer bzw. insgesamt ab, die nur aus
-// Akquisestaffeln-/Miete-/Segmentierungs-Import bekannt sind (Bug-Report
-// 27.08.2026: "SCD, Krumbach & SCD, Wiener Neudorf" fehlten überall im
-// Dashboard, obwohl beide Einspielungen sie enthielten).
+// plus jede zusätzliche fh_contacts-Zeile, die dort NICHT vorkommt, plus
+// jeder AKQ-Liste-Eintrag, der in keiner der beiden vorkommt - deckt Händler
+// ohne jegliche Produktion heuer bzw. insgesamt ab, die nur aus
+// Akquisestaffeln-/Miete-/Segmentierungs-Import ODER nur aus der frischen
+// AKQ-Liste bekannt sind (Bug-Report 27.08.2026: "SCD, Krumbach & SCD,
+// Wiener Neudorf" fehlten überall im Dashboard; Bug-Report 30.08.2026:
+// "PhiSchcom GmbH" hatte in fh_contacts nur weitere_zuordnung gesetzt, aber
+// keinen akq_name - die Suche kannte den Namen deshalb nicht, obwohl das
+// FH-PopUp ihn über akqLeadFor längst korrekt anzeigte - Namensauflösung
+// jetzt überall gleich: fh_contacts-Name > AKQ-Liste-Name > FH-Nr).
 function fhAllKnownList(){
   const out=[], seen=new Set();
   // filialbetriebe/weitere_zuordnung kommen nur aus fh_contacts (manuell
@@ -5081,7 +5086,13 @@ function fhAllKnownList(){
   Object.entries(fhContactsAllIndex||{}).forEach(([nr,r])=>{
     if(seen.has(nr)) return;
     seen.add(nr);
-    out.push({nr,name:r.name||nr,ort:r.ort||null,emp:matchEmployee(r.gl||"")||null,filialbetriebe:r.filialbetriebe||null,weitereZuordnung:r.weitereZuordnung||null});
+    const akq=akqLeadFor(nr);
+    out.push({nr,name:r.name||(akq&&akq.name)||nr,ort:r.ort||(akq&&akq.ort)||null,emp:matchEmployee(r.gl||"")||(akq&&akq.emp)||null,filialbetriebe:r.filialbetriebe||null,weitereZuordnung:r.weitereZuordnung||null});
+  });
+  (state.latest.akq||[]).forEach(a=>{
+    if(seen.has(a.nr)) return;
+    seen.add(a.nr);
+    out.push({nr:a.nr,name:a.name||a.nr,ort:a.ort||null,emp:a.emp||null,filialbetriebe:null,weitereZuordnung:null});
   });
   return out;
 }
