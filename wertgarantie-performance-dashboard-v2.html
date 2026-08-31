@@ -851,7 +851,15 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div id="fhFilialbetriebeSiblings" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
       </div>
       <div style="margin-top:14px"><span class="ac-lbl">Sonstige Infos</span><div class="ac-val" id="fhInfosView" style="font-weight:600;white-space:pre-wrap">–</div></div>
-      <button class="btn btn-blue" id="fhEditBtn" style="margin-top:14px">✎ Stammdaten bearbeiten</button>
+      <div id="fhGesperrtNotice" class="hidden" style="margin-top:14px;border-left:4px solid var(--neg);background:#FDF1F4;border-radius:8px;padding:10px 14px">
+        <div style="font-weight:800;color:var(--neg);font-size:12px">🔒 Datensatz gesperrt (DSGVO)</div>
+        <div id="fhGesperrtText" style="font-size:11.5px;color:var(--muted);margin-top:2px"></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+        <button class="btn btn-blue" id="fhEditBtn">✎ Stammdaten bearbeiten</button>
+        <button class="btn btn-ghost" id="fhSperrenBtn" style="border-color:var(--neg);color:var(--neg)">🔒 Datensatz sperren (DSGVO)</button>
+        <button class="btn btn-ghost hidden" id="fhEntsperrenBtn">🔓 Entsperren (Admin)</button>
+      </div>
     </div>
 
     <div id="fhEditMode" class="hidden">
@@ -1109,7 +1117,15 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div><span class="ac-lbl">Profi-Training</span><div class="ac-val" id="acTrainView">–</div></div>
         <div><span class="ac-lbl">Letzte Produktion</span><div class="ac-val" id="acLastProdView">–</div></div>
       </div>
-      <button class="btn btn-blue" id="acEditBtn" style="margin-top:14px">✎ Kontaktdaten bearbeiten</button>
+      <div id="acGesperrtNotice" class="hidden" style="margin-top:14px;border-left:4px solid var(--neg);background:#FDF1F4;border-radius:8px;padding:10px 14px">
+        <div style="font-weight:800;color:var(--neg);font-size:12px">🔒 Datensatz gesperrt (DSGVO)</div>
+        <div id="acGesperrtText" style="font-size:11.5px;color:var(--muted);margin-top:2px"></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+        <button class="btn btn-blue" id="acEditBtn">✎ Kontaktdaten bearbeiten</button>
+        <button class="btn btn-ghost" id="acSperrenBtn" style="border-color:var(--neg);color:var(--neg)">🔒 Datensatz sperren (DSGVO)</button>
+        <button class="btn btn-ghost hidden" id="acEntsperrenBtn">🔓 Entsperren (Admin)</button>
+      </div>
     </div>
 
     <div id="acEditMode" class="hidden">
@@ -5348,7 +5364,7 @@ function fhHasRecentAkqBeginn(fhNr){
   return (s.akq||[]).some(a=>a.nr===fhNr&&a.beginn&&a.beginn>=grenze);
 }
 async function loadFhContact(fhNr){
-  fhContactCurrent={fh_nr:fhNr,strasse:null,plz:null,ort:null,telefon:null,email:null,ansprechpartner:null,ansprechpartner_email:null,homepage:null,segmentierung:null,letzter_besuch:null,sonstige_infos:null,neunwochen_erledigt:false,club_weiss_mitglied:false,club_weiss_mitgliedsnummer:null,miete_monthly:{},miete_sortiment:{}};
+  fhContactCurrent={fh_nr:fhNr,strasse:null,plz:null,ort:null,telefon:null,email:null,ansprechpartner:null,ansprechpartner_email:null,homepage:null,segmentierung:null,letzter_besuch:null,sonstige_infos:null,neunwochen_erledigt:false,club_weiss_mitglied:false,club_weiss_mitgliedsnummer:null,miete_monthly:{},miete_sortiment:{},gesperrt_am:null};
   try{
     const {data,error}=await sb.from("fh_contacts").select("*").eq("fh_nr",fhNr).maybeSingle();
     // Falls der User inzwischen einen anderen Fachhändler geöffnet hat, ist
@@ -5417,6 +5433,16 @@ function renderFhContactView(){
   const poTxt=(f&&f.poQuote!=null)?(f.poQuote*100).toFixed(1).replace(".",",")+" %":"–";
   const f2Txt=(f&&f.q3fuer2!=null)?(f.q3fuer2*100).toFixed(1).replace(".",",")+" %":"–";
   $("fhQuotesInfo").textContent=`PO-Quote (LJ): ${poTxt} · 3-für-2-Quote (LJ): ${f2Txt}`;
+  // DSGVO-Sperrung (Nutzervorgabe 31.08.2026): gesperrte Datensätze können
+  // von jeder Rolle gesperrt, aber nur von Admins wieder entsperrt werden
+  // (technisch über den DB-Trigger trg_protect_fh_gesperrt erzwungen -
+  // hier nur die passende Button-/Hinweis-Anzeige dazu).
+  const isGesperrt=!!c.gesperrt_am;
+  $("fhGesperrtNotice").classList.toggle("hidden",!isGesperrt);
+  if(isGesperrt) $("fhGesperrtText").textContent="Gesperrt am "+fmtDate(c.gesperrt_am.slice(0,10))+" – Name, Adresse, Kontakt- und Ansprechpartnerdaten wurden gelöscht. FH-Nummer und Produktionszahlen bleiben für Auswertungen erhalten.";
+  $("fhEditBtn").classList.toggle("hidden",isGesperrt);
+  $("fhSperrenBtn").classList.toggle("hidden",isGesperrt);
+  $("fhEntsperrenBtn").classList.toggle("hidden",!isGesperrt||myRole!=="admin");
 }
 // Filialbetriebe: zeigt Umschalt-Buttons zu anderen FH derselben Gruppe im
 // FH-PopUp an, damit man zwischen den Filialen hin- und herschalten kann
@@ -7640,6 +7666,35 @@ async function saveFhContact(){
   toggleFhEdit(false);
   toast("Händlerdaten gespeichert ✓");
 }
+// DSGVO-Sperren/Anonymisieren (Nutzervorgabe 31.08.2026, DSGVO-Prüfprotokoll
+// Befund H-1): jede Rolle darf einen Datensatz sperren, da das Bearbeiten
+// derselben Felder ohnehin schon für alle offen ist (fh_contacts-RLS) - der
+// eigentliche Schutz vor "aus Versehen/mutwillig entsperren" liegt im
+// DB-Trigger trg_protect_fh_gesperrt, nicht in dieser Client-Prüfung.
+// akq_name/miete_name werden mitgeleert, weil fhResolveNameOrt/fhFallbackFromAkp
+// sonst über diese Felder doch wieder einen Namen anzeigen würden.
+async function lockFhContact(){
+  const fhNr=fhModalCurrent; if(!fhNr) return;
+  if(!confirm("Diesen Fachhändler-Datensatz wirklich sperren?\n\nName, Adresse, Telefon, E-Mail, Ansprechpartner und Homepage werden dauerhaft gelöscht. FH-Nummer und Produktionszahlen bleiben für Auswertungen erhalten.\n\nDas kann nur noch von einem Admin rückgängig gemacht werden.")) return;
+  const patch={fh_nr:fhNr,name:null,akq_name:null,miete_name:null,strasse:null,plz:null,ort:null,telefon:null,email:null,ansprechpartner:null,ansprechpartner_email:null,homepage:null,sonstige_infos:null,gesperrt_am:new Date().toISOString(),updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()};
+  const {error}=await sb.from("fh_contacts").upsert(patch,{onConflict:"fh_nr"});
+  if(error){ toast("Fehler beim Sperren: "+error.message); return; }
+  Object.assign(fhContactCurrent,patch);
+  if(fhContactsAllIndex[fhNr]) fhContactsAllIndex[fhNr].name=null;
+  delete fhManualNameIndex[fhNr];
+  $("fhName").textContent="Gesperrt (FH-Nr. "+fhNr+")";
+  renderFhContactView();
+  toast("Datensatz gesperrt ✓");
+}
+async function unlockFhContact(){
+  const fhNr=fhModalCurrent; if(!fhNr||myRole!=="admin") return;
+  if(!confirm("Sperre für diesen Fachhändler aufheben?\n\nDie Stammdaten können danach wieder neu erfasst werden.")) return;
+  const {error}=await sb.from("fh_contacts").upsert({fh_nr:fhNr,gesperrt_am:null,updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()},{onConflict:"fh_nr"});
+  if(error){ toast("Fehler beim Entsperren: "+error.message); return; }
+  fhContactCurrent.gesperrt_am=null;
+  renderFhContactView();
+  toast("Datensatz entsperrt ✓");
+}
 let fhPdfBusy=false;
 // includeAkp: true/false - Auswahl aus #fhPdfChoiceModal ("Mit AKP"/"Ohne AKP").
 async function exportFhPdf(includeAkp){
@@ -7784,7 +7839,7 @@ function akpLastProdDay(nr){
 async function openAkpContact(nr,fallbackName){
   if(!nr) return;
   akpContactModalCurrent=nr;
-  akpContactCurrent={nr,vorname:null,nachname:null,firma:null,telefon:null,email:null,geburtsdatum:null,aktionsteilnahme:null,profi_training:null,prod_monthly:{},prod_monthly_other:{}};
+  akpContactCurrent={nr,vorname:null,nachname:null,firma:null,telefon:null,email:null,geburtsdatum:null,aktionsteilnahme:null,profi_training:null,prod_monthly:{},prod_monthly_other:{},gesperrt_am:null};
   $("acName").textContent=fallbackName||nr;
   $("acMeta").textContent="AKP-Nr. "+nr+" · lädt …";
   $("acMonthly").innerHTML="";
@@ -7825,6 +7880,13 @@ function renderAkpContactView(){
   const poTxt=(snapAkp&&snapAkp.poQuote!=null)?(snapAkp.poQuote*100).toFixed(1).replace(".",",")+" %":"–";
   const f2Txt=(snapAkp&&snapAkp.q3fuer2!=null)?(snapAkp.q3fuer2*100).toFixed(1).replace(".",",")+" %":"–";
   $("acQuotesInfo").textContent=`PO-Quote (LJ): ${poTxt} · 3-für-2-Quote (LJ): ${f2Txt}`;
+  // DSGVO-Sperrung (Nutzervorgabe 31.08.2026, analog Fachhändler-PopUp).
+  const isGesperrt=!!c.gesperrt_am;
+  $("acGesperrtNotice").classList.toggle("hidden",!isGesperrt);
+  if(isGesperrt) $("acGesperrtText").textContent="Gesperrt am "+fmtDate(c.gesperrt_am.slice(0,10))+" – Name, Kontakt- und Geburtsdatum wurden gelöscht. AKP-Nummer und Produktionszahlen bleiben für Auswertungen erhalten.";
+  $("acEditBtn").classList.toggle("hidden",isGesperrt);
+  $("acSperrenBtn").classList.toggle("hidden",isGesperrt);
+  $("acEntsperrenBtn").classList.toggle("hidden",!isGesperrt||myRole!=="admin");
 }
 function renderAkpMonthly(){
   const c=akpContactCurrent;
@@ -8238,6 +8300,29 @@ async function saveAkpContact(){
   renderAkpContactView();
   toggleAkpEdit(false);
   toast("Kontaktdaten gespeichert ✓");
+}
+// DSGVO-Sperren/Anonymisieren (Nutzervorgabe 31.08.2026, analog
+// Fachhändler-PopUp/lockFhContact) - Schutz vor erneutem Befüllen durch
+// künftige Importe liegt im DB-Trigger trg_protect_akp_gesperrt.
+async function lockAkpContact(){
+  const nr=akpContactCurrent&&akpContactCurrent.nr; if(!nr) return;
+  if(!confirm("Diesen Ansprechpartner wirklich sperren?\n\nVorname, Nachname, Firma, Adresse, Telefon, E-Mail und Geburtsdatum werden dauerhaft gelöscht. AKP-Nummer und Produktionszahlen bleiben für Auswertungen erhalten.\n\nDas kann nur noch von einem Admin rückgängig gemacht werden.")) return;
+  const patch={nr,vorname:null,nachname:null,firma:null,strasse:null,plz:null,ort:null,telefon:null,email:null,geburtsdatum:null,gesperrt_am:new Date().toISOString(),updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()};
+  const {error}=await sb.from("akp_contacts").upsert(patch,{onConflict:"nr"});
+  if(error){ toast("Fehler beim Sperren: "+error.message); return; }
+  Object.assign(akpContactCurrent,patch);
+  $("acName").textContent="Gesperrt (AKP-Nr. "+nr+")";
+  renderAkpContactView();
+  toast("Datensatz gesperrt ✓");
+}
+async function unlockAkpContact(){
+  const nr=akpContactCurrent&&akpContactCurrent.nr; if(!nr||myRole!=="admin") return;
+  if(!confirm("Sperre für diesen Ansprechpartner aufheben?\n\nDie Kontaktdaten können danach wieder neu erfasst werden.")) return;
+  const {error}=await sb.from("akp_contacts").upsert({nr,gesperrt_am:null,updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()},{onConflict:"nr"});
+  if(error){ toast("Fehler beim Entsperren: "+error.message); return; }
+  akpContactCurrent.gesperrt_am=null;
+  renderAkpContactView();
+  toast("Datensatz entsperrt ✓");
 }
 document.addEventListener("click",e=>{
   const btn=e.target.closest(".akp-name-link");
@@ -8850,10 +8935,14 @@ $("amPeriodTabs").addEventListener("click",e=>{
 $("acEditBtn").onclick=()=>toggleAkpEdit(true);
 $("acCancelBtn").onclick=()=>toggleAkpEdit(false);
 $("acSaveBtn").onclick=saveAkpContact;
+$("acSperrenBtn").onclick=lockAkpContact;
+$("acEntsperrenBtn").onclick=unlockAkpContact;
 $("acPdfBtn").onclick=()=>openPdfTargetChoice(()=>exportAkpPdf());
 $("fhEditBtn").onclick=()=>toggleFhEdit(true);
 $("fhCancelBtn").onclick=()=>toggleFhEdit(false);
 $("fhSaveBtn").onclick=saveFhContact;
+$("fhSperrenBtn").onclick=lockFhContact;
+$("fhEntsperrenBtn").onclick=unlockFhContact;
 // Ein "aktivieren"-Haken + Auswahl/Neu-Feldpaar (Weitere Zuordnung 1/3,
 // Filialbetriebe) einheitlich verdrahten: Haken blendet die Felder live
 // ein/aus, "Neu" und "Auswahl" schließen sich gegenseitig aus.
