@@ -4784,10 +4784,21 @@ const OBS_CATEGORIES=[
   {cat:"akqbesuch",label:jahr=>`AKQ ohne Besuch ${jahr}`},
   {cat:"neuprod",label:()=>"Neuer Produzent"},
   {cat:"einbruch",label:()=>"Jahresproduktion bricht ein"},
+  {cat:"akptrend",label:()=>"AKP-Produktion bricht ein"},
   {cat:"ueberschnitt",label:()=>"deutlich über dem Monatsschnitt"},
   {cat:"tagesabweichung",label:()=>"Veränderung zu Schnitt pro Tag"},
   {cat:"akqohnezuordnung",label:()=>"AKQ ohne Zuordnung"},
 ];
+// Schwellen für die AKP-Einbruch-Erkennung (rollierendes 3-Monats-Fenster,
+// siehe akpQuarterSum). Die FH-Kategorie "einbruch" arbeitet mit -30%/vj>=100
+// auf Jahresbasis - für AKP passt das nicht: das kürzere 3-Monats-Fenster ist
+// volatiler (Urlaub/Krankheit einzelner Personen), die Stückzahlen liegen
+// ein bis zwei Größenordnungen darunter. Deshalb steilerer Schwellwert und
+// ein absoluter Boden, sonst kippt ein einzelner Ausfallmonat den
+// Prozentwert beliebig (3 -> 1 sind -67%, aber vertrieblich bedeutungslos).
+// Beide Werte sind bewusst Tuning-Kandidaten nach erstem Praxis-Feedback.
+const AKP_TREND_DROP_PCT=-40;   // Rückgang letzte 3 Monate ggü. den 3 Monaten davor
+const AKP_TREND_MIN_PREV=15;    // Mindestproduktion im Vorquartal (≈5/Monat)
 function renderObs(){
   const s=state.latest, showGL=currentEmp===AT_GESAMT;
   const items=[];
@@ -4803,6 +4814,23 @@ function renderObs(){
     if(yDev!=null&&yDev<=-30&&f.vj>=100) items.push({f,type:"down",prio:1,cat:"einbruch",sev:-yDev,txt:`Jahresproduktion bricht ein: <b>${fmt(f.lj)}</b> statt ${fmt(f.vj)} im Vorjahr (<b class="neg-t">${fmtPct(yDev)}</b>)`});
     if(f.vj===0&&f.lj>=100) items.push({f,type:"up",prio:1,cat:"neuprod",sev:f.lj,txt:`Neuer Produzent: bereits <b>${fmt(f.lj)}</b> Verträge im Jahr – im Vorjahr noch 0`});
   });
+  // AKP-Einbruch: rollierendes 3-Monats-Fenster (akpQuarterSum) statt reinem
+  // Jahresvergleich, damit ein aktuell abrutschender Verkäufer auffällt,
+  // bevor sich das erst im Jahresvergleich zeigt. Braucht akpContactsIndex
+  // (Monatshistorie) - vor dessen Laden wird die Schleife übersprungen und
+  // holt sich beim nächsten render() automatisch nach.
+  if(akpContactsIndex) akpFullList(s)
+    .filter(a=>a.nr&&(currentEmp===AT_GESAMT||a.emp===currentEmp))
+    .forEach(a=>{
+      const q=akpQuarterSum(akpContactsIndex[a.nr],s.jahr,s.monat);
+      if(!q||!(q.prev>=AKP_TREND_MIN_PREV)) return;
+      const dev=pctOf(q.cur,q.prev);
+      if(dev==null||dev>AKP_TREND_DROP_PCT) return;
+      items.push({f:{name:a.name,nr:a.nr,ort:a.ort,emp:a.emp,gl:a.glRaw},
+        type:"down",prio:1,cat:"akptrend",sev:-dev,ic:"📉",layout:"akp",
+        firma:a.firma,fhNr:a.fhNr,
+        txt:`Produktion der letzten 3 Monate: <b>${fmt(q.cur)}</b> statt ${fmt(q.prev)} im Quartal davor (<b class="neg-t">${fmtPct(dev)}</b>)`});
+    });
   // Akquisekunden ohne einzigen Besuch in 2026 (Spalten P+Q = 0)
   (state.latest.akq||[]).filter(a=>(currentEmp===AT_GESAMT||a.emp===currentEmp)&&(a.besP||0)===0&&(a.besT||0)===0)
     .sort((a,b)=>b.p2026-a.p2026)
@@ -4844,6 +4872,20 @@ function renderObs(){
   $("obsList").innerHTML=filtered.length?filtered.map((o,i)=>{
     const cls=`obs-item ${o.type}${i>=16?" pcap":""}`;
     const ic=o.ic||(o.type==="up"?"🚀":"⚠️");
+    if(o.layout==="akp"){
+      // Eigenes 3-Zeilen-Layout mit Dual-Link (AKP + dessen Fachhändler,
+      // analog zur akp-row-Vorlage in renderAKP): 1) AKP-Name · AKP-Nr.
+      // (· Betreuer)  2) Firma · Ort  3) Kennzahl-Text. Klick auf den
+      // AKP-Namen öffnet direkt den Peer-Vergleich (renderAkpPeerCompare).
+      return `<div class="${cls}">
+      <div class="ic">${ic}</div>
+      <div class="t">
+        <b class="obs-name" title="${escapeHtml(o.f.name)} · AKP-Nr. ${escapeHtml(o.f.nr||"")}"><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(o.f.nr||"")}">${escapeHtml(o.f.name)}</button> <span style="font-weight:600;color:var(--muted)">· AKP-Nr. ${escapeHtml(o.f.nr||"")}${showGL&&(o.f.emp||o.f.gl)?" · "+escapeHtml(o.f.emp||o.f.gl):""}</span></b>
+        <span class="obs-sub">${o.fhNr?`<button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(o.fhNr)}">${escapeHtml(o.firma||o.fhNr)}</button>`:escapeHtml(o.firma||"")}${o.f.ort?" · "+escapeHtml(o.f.ort):""}</span>
+        <span class="obs-sub">${o.txt}</span>
+      </div>
+    </div>`;
+    }
     if(o.layout==="akq"){
       // Eigenes 3-Zeilen-Layout: 1) Firma · AKQ-Nr. · Ort  2) Betreuer · AKQ ohne Besuch  3) Jahresproduktion.
       // Fett nur bei Firmenname und Vertragszahl, alles einzeilig (keine variable Zeilenhöhe).
