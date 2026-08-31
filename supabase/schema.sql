@@ -146,6 +146,24 @@ create table if not exists public.akp_contacts (
 
 alter table public.akp_contacts add column if not exists prod_monthly_other jsonb not null default '{}'::jsonb;
 
+-- PO-Quote und 3-fuer-2-Quote gab es bisher nur als EIN aktueller LJ-Snapshot
+-- (state.latest.akp[].poQuote/.q3fuer2 aus dem Tagesimport), keine Historie wie
+-- bei prod_monthly. Seit Migration akp_contacts_quota_monthly_snapshots wird
+-- pro Kalendermonat der zuletzt bekannte Stand mitgeschrieben.
+--
+-- WICHTIG - andere Semantik als prod_monthly: prod_monthly[YYYY-MM] ist eine
+-- additive, bereits kumulierte Monats-STUECKZAHL (jeder Import ueberschreibt
+-- den Schluessel, am Monatsende steht der Endwert). poquote_monthly[YYYY-MM] /
+-- q3fuer2_monthly[YYYY-MM] sind dagegen Verhaeltniszahlen (Jahres-kumulativer
+-- Anteil, als Bruch z.B. 0.483 = 48,3%) - "Summe eines Monats" ist dafuer
+-- bedeutungslos. Hier gilt: der ZULETZT BEKANNTE WERT innerhalb dieses
+-- Kalendermonats (jeder Import ueberschreibt den Schluessel des laufenden
+-- Monats; am Monatsende bleibt der Stand per Monatsultimo stehen). Ein
+-- "Monatswert" ist also ein Stand zum Monatsende, KEIN Monatsanteil -
+-- rueckwirkend nicht verfuegbar, waechst erst ab jetzt.
+alter table public.akp_contacts add column if not exists poquote_monthly jsonb not null default '{}'::jsonb;
+alter table public.akp_contacts add column if not exists q3fuer2_monthly jsonb not null default '{}'::jsonb;
+
 alter table public.akp_contacts enable row level security;
 
 -- Kontaktdaten sind Team-Arbeitswerkzeug: jeder eingeloggte Nutzer (jede Rolle)
@@ -177,6 +195,7 @@ create or replace function public.akp_sync_daily(rows jsonb) returns void
 language plpgsql security definer set search_path = public as $$
 declare
   r jsonb; nm text; vn text; nn text; sp int; mval int; mkey text; monthjson jsonb;
+  poval numeric; f2val numeric; pojson jsonb; f2json jsonb;
 begin
   for r in select * from jsonb_array_elements(rows) loop
     if coalesce(r->>'nr','') = '' then continue; end if;
@@ -190,14 +209,23 @@ begin
     mkey := r->>'mk';
     mval := coalesce((r->>'mv')::int, 0);
     monthjson := case when mkey is not null and mval <> 0 then jsonb_build_object(mkey, mval) else '{}'::jsonb end;
+    -- po/f2: zuletzt bekannter Stand des Kalendermonats, siehe Spaltenkommentar
+    -- oben - kein Additions-/Ist-0-Filter wie bei mval, da 0 ein gueltiger
+    -- Quotenwert ist (nur explizites null im Import ueberspringen).
+    poval := nullif(r->>'po','')::numeric;
+    f2val := nullif(r->>'f2','')::numeric;
+    pojson := case when mkey is not null and poval is not null then jsonb_build_object(mkey, poval) else '{}'::jsonb end;
+    f2json := case when mkey is not null and f2val is not null then jsonb_build_object(mkey, f2val) else '{}'::jsonb end;
 
-    insert into public.akp_contacts (nr, fh_nr, vorname, nachname, firma, ort, prod_monthly)
-    values (r->>'nr', coalesce(r->>'fh',''), vn, nn, r->>'fi', r->>'or', monthjson)
+    insert into public.akp_contacts (nr, fh_nr, vorname, nachname, firma, ort, prod_monthly, poquote_monthly, q3fuer2_monthly)
+    values (r->>'nr', coalesce(r->>'fh',''), vn, nn, r->>'fi', r->>'or', monthjson, pojson, f2json)
     on conflict (nr) do update set
       fh_nr = excluded.fh_nr,
       firma = coalesce(excluded.firma, akp_contacts.firma),
       ort = coalesce(excluded.ort, akp_contacts.ort),
       prod_monthly = coalesce(akp_contacts.prod_monthly,'{}'::jsonb) || excluded.prod_monthly,
+      poquote_monthly = coalesce(akp_contacts.poquote_monthly,'{}'::jsonb) || excluded.poquote_monthly,
+      q3fuer2_monthly = coalesce(akp_contacts.q3fuer2_monthly,'{}'::jsonb) || excluded.q3fuer2_monthly,
       updated_at = now();
   end loop;
 end;

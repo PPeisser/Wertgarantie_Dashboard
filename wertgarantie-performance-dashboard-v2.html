@@ -423,6 +423,13 @@ td .betr{font-size:11px;color:var(--muted)}
 .ac-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px}
 .ac-lbl{display:block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:3px}
 .ac-val{font-size:14px;font-weight:700;color:var(--ink)}
+/* AKP-Peer-Vergleich (renderAkpPeerCompare) */
+.acp-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
+.acp-card{border:1px solid #ECF2F6;border-radius:8px;padding:10px 12px}
+.acp-lbl{display:block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:3px}
+.acp-val{font-size:16px;font-weight:800;color:var(--ink)}
+.acp-sub{font-size:10.5px;color:var(--muted);margin-top:4px;font-weight:600}
+@media (max-width:640px){.acp-grid{grid-template-columns:1fr}}
 #akpContactModal input,#akpContactModal select{font:inherit;font-size:14px;font-weight:600;text-align:left;text-transform:none;width:100%;border:2px solid var(--line);border-radius:10px;padding:8px 10px;outline:none}
 #akpContactModal input:focus,#akpContactModal select:focus{border-color:var(--wg-blue)}
 #akpContactModal .error{color:var(--neg);font-size:12.5px;margin-top:8px;min-height:16px}
@@ -1135,6 +1142,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div id="acQuotesInfo" style="font-size:12px;color:var(--muted);font-weight:600;margin-bottom:8px"></div>
     <div id="acMonthly"></div>
     <div id="acYearlyTrend"></div>
+    <div id="acPeerCompare"></div>
 
     <div class="actions" style="margin-top:18px;justify-content:flex-start">
       <button class="btn btn-ghost no-print" id="acPdfBtn">⬇ Datenblatt als PDF</button>
@@ -1315,6 +1323,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
         <input type="checkbox" id="fhSearchEnabledChk" style="width:17px;height:17px;flex-shrink:0">
         Fachhändlersuche (Header)
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+        <input type="checkbox" id="akpPeerCompareEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+        AKP-Vergleich (PopUp)
       </label>
     </div>
 
@@ -1615,6 +1627,12 @@ let fhZielEnabled = false;
 // Rolleneinschränkung wie bei Chefgespräch/Auswertung. Standardmäßig aus,
 // bis Wert aus der DB geladen wurde.
 let fhSearchEnabled = false;
+// Globaler Ein/Aus-Schalter für den "Vergleich mit anderen AKP" im AKP-PopUp
+// (dashboard_kv-Key "akp_peer_compare_enabled", per Schalter im normalen
+// ADMIN-Panel gesetzt, Nutzervorgabe 31.08.2026 - beim Quartal fehlt der
+// Vergleichsgruppe anfangs noch ausreichend Historie). Standardmäßig aus,
+// bis Wert aus der DB geladen wurde.
+let akpPeerCompareEnabled = false;
 // Zeitpunkt der letzten Miete-Report-Einspielung (dashboard_kv-Key
 // "miete_last_import", von upsertMieteData() bei jedem Import gesetzt -
 // deckt sowohl den Admin-Panel-Upload als auch den automatischen
@@ -1993,6 +2011,7 @@ function openAdminModal(){
   $("fhZielEnabledChk").checked=fhZielEnabled;
   $("perfDialogAdminEnabledChk").checked=perfDialogAdminEnabled;
   $("fhSearchEnabledChk").checked=fhSearchEnabled;
+  $("akpPeerCompareEnabledChk").checked=akpPeerCompareEnabled;
 }
 async function togglePerfDialogAdminEnabled(){
   const on=$("perfDialogAdminEnabledChk").checked;
@@ -2055,6 +2074,21 @@ async function toggleFhSearchEnabled(){
   try{
     await stSet("fh_search_enabled",on?"1":"0");
     toast(on?"Fachhändlersuche aktiviert ✓":"Fachhändlersuche deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
+async function toggleAkpPeerCompareEnabled(){
+  const on=$("akpPeerCompareEnabledChk").checked;
+  akpPeerCompareEnabled=on;
+  // Ist gerade ein AKP-PopUp offen, Abschnitt sofort nachziehen statt erst
+  // beim nächsten Öffnen (analog zum sofortigen Refresh bei loadAkpContactsIndex).
+  if(!$("akpContactModal").classList.contains("hidden")){
+    try{ renderAkpPeerCompare(); }catch(e){ console.error("renderAkpPeerCompare (toggle):",e); }
+  }
+  try{
+    await stSet("akp_peer_compare_enabled",on?"1":"0");
+    toast(on?"AKP-Vergleich aktiviert ✓":"AKP-Vergleich deaktiviert");
   }catch(e){
     toast("Speichern fehlgeschlagen: "+(e.message||e));
   }
@@ -3152,7 +3186,12 @@ async function syncAkpContacts(snap){
   if(!(sb&&supaUser&&snap&&snap.akp&&snap.akp.length)) return;
   try{
     const mk=snap.jahr+"-"+String(snap.monat).padStart(2,"0");
-    const rows=snap.akp.filter(a=>a.nr).map(a=>({nr:a.nr,fh:a.fhNr,nm:a.name,fi:a.firma,or:a.ort,mk,mv:a.monat||0}));
+    // po/f2 (PO-Quote/3-für-2-Quote): Snapshot des zuletzt bekannten Standes je
+    // Kalendermonat (siehe Migration akp_contacts_quota_monthly_snapshots) -
+    // KEIN Monatsanteil wie mv, sondern ein Verhältniswert, der jeden Import
+    // überschreibt. Rückwirkend nicht verfügbar, wächst erst ab jetzt.
+    const rows=snap.akp.filter(a=>a.nr).map(a=>({nr:a.nr,fh:a.fhNr,nm:a.name,fi:a.firma,or:a.ort,mk,mv:a.monat||0,
+      po:(a.poQuote==null?null:a.poQuote),f2:(a.q3fuer2==null?null:a.q3fuer2)}));
     if(rows.length) await sb.rpc("akp_sync_daily",{rows});
   }catch(e){}
 }
@@ -3179,7 +3218,7 @@ async function loadAkpContactsIndex(){
     for(;;){
       guard++;
       const {data,error}=await sb.from("akp_contacts")
-        .select("nr,vorname,nachname,firma,ort,fh_nr,prod_monthly,prod_monthly_other")
+        .select("nr,vorname,nachname,firma,ort,fh_nr,prod_monthly,prod_monthly_other,poquote_monthly,q3fuer2_monthly")
         .order("nr")
         .range(from,from+999);
       if(error){ console.error("loadAkpContactsIndex:",error.message||error); break; }
@@ -3200,6 +3239,11 @@ async function loadAkpContactsIndex(){
     // loadFhContactsIndicesAll.
     if(!$("mieteListModal").classList.contains("hidden")){
       try{ renderMieteListModal(); }catch(e){ console.error("renderMieteListModal (akpContactsIndex):",e); }
+    }
+    // Analog: falls das AKP-PopUp offen ist, hing sein Peer-Vergleich (Quartal
+    // braucht akpContactsIndex) bis jetzt an "wird geladen …" fest.
+    if(!$("akpContactModal").classList.contains("hidden")){
+      try{ renderAkpPeerCompare(); }catch(e){ console.error("renderAkpPeerCompare (akpContactsIndex):",e); }
     }
   }catch(e){ console.error("loadAkpContactsIndex failed:",e); }
 }
@@ -4279,6 +4323,7 @@ async function loadAll(){
   try{ auswertungEnabled=(await stGet("auswertung_enabled"))==="1"; }catch(e){}
   try{ fhZielEnabled=(await stGet("fh_ziel_enabled"))==="1"; }catch(e){}
   try{ fhSearchEnabled=(await stGet("fh_search_enabled"))==="1"; }catch(e){}
+  try{ akpPeerCompareEnabled=(await stGet("akp_peer_compare_enabled"))==="1"; }catch(e){}
   try{ mieteLastImport=await stGet("miete_last_import"); }catch(e){}
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
@@ -4350,6 +4395,27 @@ function sumWeek(map,anyDayISO){
 const $=id=>document.getElementById(id);
 function toast(m){ const t=$("toast"); t.textContent=m; t.classList.add("show"); clearTimeout(t._x); t._x=setTimeout(()=>t.classList.remove("show"),4500); }
 function pctOf(cur,prev){ return prev>0?(cur-prev)/prev*100:(cur>0?null:0); }
+// Statistik-Helfer für den AKP-Peer-Vergleich (renderAkpPeerCompare) - bewusst
+// mit stat*-Präfix statt bloß median/percentile, um in dieser sehr langen
+// Datei keine Namenskollision zu riskieren. Logik zeichenidentisch zu den
+// gleichnamigen Helfern in supabase/functions/chefgespraech-ai-comparison,
+// damit Client-Zahlen und die spätere KI-Zusammenfassung nie auseinanderlaufen.
+function statMedian(arr){
+  if(!arr.length) return null;
+  const s=[...arr].sort((a,b)=>a-b), mid=Math.floor(s.length/2);
+  return s.length%2?s[mid]:(s[mid-1]+s[mid])/2;
+}
+function statPercentile(arr,p){
+  if(!arr.length) return null;
+  const s=[...arr].sort((a,b)=>a-b);
+  const idx=(p/100)*(s.length-1), lo=Math.floor(idx), hi=Math.ceil(idx);
+  if(lo===hi) return s[lo];
+  return s[lo]+(s[hi]-s[lo])*(idx-lo);
+}
+function statRankPercentile(arr,value){
+  if(!arr.length||value==null) return null;
+  return arr.filter(v=>v<value).length/arr.length;
+}
 function badge(diff,pct){
   if(diff==null) return `<span class="badge neu">erste Erfassung</span>`;
   const c=diff>0?"pos":(diff<0?"neg":"neu");
@@ -4813,10 +4879,21 @@ const OBS_CATEGORIES=[
   {cat:"akqbesuch",label:jahr=>`AKQ ohne Besuch ${jahr}`},
   {cat:"neuprod",label:()=>"Neuer Produzent"},
   {cat:"einbruch",label:()=>"Jahresproduktion bricht ein"},
+  {cat:"akptrend",label:()=>"AKP-Produktion bricht ein"},
   {cat:"ueberschnitt",label:()=>"deutlich über dem Monatsschnitt"},
   {cat:"tagesabweichung",label:()=>"Veränderung zu Schnitt pro Tag"},
   {cat:"akqohnezuordnung",label:()=>"AKQ ohne Zuordnung"},
 ];
+// Schwellen für die AKP-Einbruch-Erkennung (rollierendes 3-Monats-Fenster,
+// siehe akpQuarterSum). Die FH-Kategorie "einbruch" arbeitet mit -30%/vj>=100
+// auf Jahresbasis - für AKP passt das nicht: das kürzere 3-Monats-Fenster ist
+// volatiler (Urlaub/Krankheit einzelner Personen), die Stückzahlen liegen
+// ein bis zwei Größenordnungen darunter. Deshalb steilerer Schwellwert und
+// ein absoluter Boden, sonst kippt ein einzelner Ausfallmonat den
+// Prozentwert beliebig (3 -> 1 sind -67%, aber vertrieblich bedeutungslos).
+// Beide Werte sind bewusst Tuning-Kandidaten nach erstem Praxis-Feedback.
+const AKP_TREND_DROP_PCT=-40;   // Rückgang letzte 3 Monate ggü. den 3 Monaten davor
+const AKP_TREND_MIN_PREV=15;    // Mindestproduktion im Vorquartal (≈5/Monat)
 function renderObs(){
   const s=state.latest, showGL=currentEmp===AT_GESAMT;
   const items=[];
@@ -4832,6 +4909,23 @@ function renderObs(){
     if(yDev!=null&&yDev<=-30&&f.vj>=100) items.push({f,type:"down",prio:1,cat:"einbruch",sev:-yDev,txt:`Jahresproduktion bricht ein: <b>${fmt(f.lj)}</b> statt ${fmt(f.vj)} im Vorjahr (<b class="neg-t">${fmtPct(yDev)}</b>)`});
     if(f.vj===0&&f.lj>=100) items.push({f,type:"up",prio:1,cat:"neuprod",sev:f.lj,txt:`Neuer Produzent: bereits <b>${fmt(f.lj)}</b> Verträge im Jahr – im Vorjahr noch 0`});
   });
+  // AKP-Einbruch: rollierendes 3-Monats-Fenster (akpQuarterSum) statt reinem
+  // Jahresvergleich, damit ein aktuell abrutschender Verkäufer auffällt,
+  // bevor sich das erst im Jahresvergleich zeigt. Braucht akpContactsIndex
+  // (Monatshistorie) - vor dessen Laden wird die Schleife übersprungen und
+  // holt sich beim nächsten render() automatisch nach.
+  if(akpContactsIndex) akpFullList(s)
+    .filter(a=>a.nr&&(currentEmp===AT_GESAMT||a.emp===currentEmp))
+    .forEach(a=>{
+      const q=akpQuarterSum(akpContactsIndex[a.nr],s.jahr,s.monat);
+      if(!q||!(q.prev>=AKP_TREND_MIN_PREV)) return;
+      const dev=pctOf(q.cur,q.prev);
+      if(dev==null||dev>AKP_TREND_DROP_PCT) return;
+      items.push({f:{name:a.name,nr:a.nr,ort:a.ort,emp:a.emp,gl:a.glRaw},
+        type:"down",prio:1,cat:"akptrend",sev:-dev,ic:"📉",layout:"akp",
+        firma:a.firma,fhNr:a.fhNr,
+        txt:`Produktion der letzten 3 Monate: <b>${fmt(q.cur)}</b> statt ${fmt(q.prev)} im Quartal davor (<b class="neg-t">${fmtPct(dev)}</b>)`});
+    });
   // Akquisekunden ohne einzigen Besuch in 2026 (Spalten P+Q = 0)
   (state.latest.akq||[]).filter(a=>(currentEmp===AT_GESAMT||a.emp===currentEmp)&&(a.besP||0)===0&&(a.besT||0)===0)
     .sort((a,b)=>b.p2026-a.p2026)
@@ -4873,6 +4967,20 @@ function renderObs(){
   $("obsList").innerHTML=filtered.length?filtered.map((o,i)=>{
     const cls=`obs-item ${o.type}${i>=16?" pcap":""}`;
     const ic=o.ic||(o.type==="up"?"🚀":"⚠️");
+    if(o.layout==="akp"){
+      // Eigenes 3-Zeilen-Layout mit Dual-Link (AKP + dessen Fachhändler,
+      // analog zur akp-row-Vorlage in renderAKP): 1) AKP-Name · AKP-Nr.
+      // (· Betreuer)  2) Firma · Ort  3) Kennzahl-Text. Klick auf den
+      // AKP-Namen öffnet direkt den Peer-Vergleich (renderAkpPeerCompare).
+      return `<div class="${cls}">
+      <div class="ic">${ic}</div>
+      <div class="t">
+        <b class="obs-name" title="${escapeHtml(o.f.name)} · AKP-Nr. ${escapeHtml(o.f.nr||"")}"><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(o.f.nr||"")}">${escapeHtml(o.f.name)}</button> <span style="font-weight:600;color:var(--muted)">· AKP-Nr. ${escapeHtml(o.f.nr||"")}${showGL&&(o.f.emp||o.f.gl)?" · "+escapeHtml(o.f.emp||o.f.gl):""}</span></b>
+        <span class="obs-sub">${o.fhNr?`<button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(o.fhNr)}">${escapeHtml(o.firma||o.fhNr)}</button>`:escapeHtml(o.firma||"")}${o.f.ort?" · "+escapeHtml(o.f.ort):""}</span>
+        <span class="obs-sub">${o.txt}</span>
+      </div>
+    </div>`;
+    }
     if(o.layout==="akq"){
       // Eigenes 3-Zeilen-Layout: 1) Firma · AKQ-Nr. · Ort  2) Betreuer · AKQ ohne Besuch  3) Jahresproduktion.
       // Fett nur bei Firmenname und Vertragszahl, alles einzeilig (keine variable Zeilenhöhe).
@@ -7774,6 +7882,18 @@ async function exportFhPdf(includeAkp){
 /* ---------- AKP-Kontakt PopUp (Stammdaten, Kontakt, Aktionsteilnahme, Profi-Training) ---------- */
 let akpContactCurrent=null;
 let akpContactModalCurrent=null;
+// AKP-Peer-Vergleich (renderAkpPeerCompare): Modus-Strings sind bewusst
+// identisch mit den fh_contacts-Spaltennamen, damit .eq(mode,value) direkt
+// funktioniert - AKP_PEER_MODES ist zugleich die Whitelist dagegen, dass ein
+// beliebiger Spaltenname durchgereicht wird. "kooperation" war nicht Teil des
+// Nutzerwunsches (Händler/Filialbetrieb/Hauptzweig/weitere Zuordnung), kostet
+// aber nichts als fünfter Tab.
+const AKP_PEER_MODES=["fh","filialbetriebe","hauptzweig","weitere_zuordnung","kooperation"];
+const AKP_PEER_MODE_LABELS={fh:"Gleicher Händler",filialbetriebe:"Filialbetrieb",hauptzweig:"Hauptzweig",weitere_zuordnung:"Weitere Zuordnung",kooperation:"Kooperation"};
+const AKP_PEER_SMALL_GROUP=5;   // darunter Warnhinweis "statistisch wenig aussagekräftig"
+const AKP_PEER_DROP_STRONG=0.75, AKP_PEER_DROP_WEAK=0.25; // Perzentil-Schwellen Stärke/Schwäche
+let akpPeerMode="fh", akpPeerPeriod="monat";
+let akpPeerFhContact=null, akpPeerFhNrsCache={}, akpPeerLoadingNr=null, akpPeerLastData=null;
 const MONTH_LABELS=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
 function akpLastProdDay(nr){
   const map=(state.dailyAKP||{})[nr]; if(!map) return null;
@@ -7781,13 +7901,280 @@ function akpLastProdDay(nr){
   for(const [d,v] of Object.entries(map)){ if(v>0&&(!best||d>best)) best=d; }
   return best;
 }
+
+/* ---------- AKP-Peer-Vergleich (Stärken/Schwächen ggü. Vergleichsgruppe) ---------- */
+// Kleiner, generischer Helfer (analog zu akpQuarterSum's interner keysBack,
+// hier aber auch für den Vorjahres-Quartalsvergleich gebraucht).
+function akpKeysBack(y,m,n){ const out=[]; for(let i=0;i<n;i++){ out.push(y+"-"+String(m).padStart(2,"0")); m--; if(m<1){m=12;y--;} } return out; }
+function akpMergedMonthly(rec){
+  const pm={...((rec&&rec.prod_monthly)||{})};
+  for(const [k,v] of Object.entries((rec&&rec.prod_monthly_other)||{})) pm[k]=(pm[k]||0)+v;
+  return pm;
+}
+// Peer-Gruppe für einen Vergleichsmodus auflösen (Zwei-Hop: AKP -> fh_nr ->
+// fh_contacts.<mode> = Wert -> alle FH mit diesem Wert). "fh" ist der einzige
+// Modus ohne DB-Query (der Zielhändler selbst). Ergebnis pro Modus gecacht,
+// damit ein Tab-Wechsel hin und zurück keine erneute Query auslöst - der
+// Cache wird in openAkpContact bei jedem neu geöffneten AKP geleert.
+async function akpPeerFhNrs(mode){
+  if(mode==="fh"){
+    const fhNr=akpContactCurrent&&akpContactCurrent.fh_nr;
+    return fhNr?{fhNrs:[fhNr],value:fhNr,label:"Ansprechpartner desselben Händlers"}
+                :{fhNrs:[],value:null,label:"Kein Fachhändler hinterlegt"};
+  }
+  const value=((akpPeerFhContact&&akpPeerFhContact[mode])||"").trim();
+  if(!value) return {fhNrs:[],value:null,label:(AKP_PEER_MODE_LABELS[mode]||mode)+" beim Händler nicht hinterlegt"};
+  if(akpPeerFhNrsCache[mode]) return akpPeerFhNrsCache[mode];
+  const fhNrs=[]; let from=0, guard=0;
+  for(;;){
+    guard++;
+    const {data,error}=await sb.from("fh_contacts").select("fh_nr").eq(mode,value).range(from,from+999);
+    if(error){ console.error("akpPeerFhNrs:",error.message||error); break; }
+    if(!data||!data.length) break;
+    for(const r of data) if(r.fh_nr) fhNrs.push(r.fh_nr);
+    from+=data.length;
+    if(guard>50) break; // Sicherheitsnetz gegen Endlosschleifen
+  }
+  const result={fhNrs,value,label:(AKP_PEER_MODE_LABELS[mode]||mode)+" „"+value+"“"};
+  akpPeerFhNrsCache[mode]=result;
+  return result;
+}
+// Alle AKP der übergebenen FH-Nummern - bewusst OHNE currentEmp-Filter: der
+// Vergleich ist fachlich (gleicher Händler/Filialbetrieb/Hauptzweig/weitere
+// Zuordnung), nicht durch die aktuell gewählte Mitarbeiteransicht verzerrt.
+function akpPeerRows(fhNrs){
+  const fhSet=new Set(fhNrs);
+  return akpFullList(state.latest).filter(r=>r.nr&&fhSet.has(r.fhNr||""));
+}
+// Kennzahlen eines AKP für einen Zeitraum. Produktion nutzt dieselbe Basis wie
+// akpRanked's valFor (Monat: heutiger Snapshot-Wert, Jahr: row.lj, Quartal:
+// akpQuarterSum) - akpRanked selbst wird bewusst NICHT aufgerufen, da es
+// zusätzlich Tag/Woche trägt und keine zeitraumgleiche VJ-Basis für Monat/
+// Quartal liefert. PO-/3-für-2-Quote nur auf Jahresebene (siehe
+// Migrationskommentar akp_contacts_quota_monthly_snapshots - Monat/Quartal
+// dieser beiden Quoten existiert historisch nicht).
+function akpPeerMetricsFor(row,period,s){
+  const rec=akpContactsIndex&&akpContactsIndex[row.nr];
+  const pm=akpMergedMonthly(rec);
+  let prod=0, yoy=null;
+  if(period==="monat"){
+    const mk=s.jahr+"-"+String(s.monat).padStart(2,"0");
+    const pk=(s.jahr-1)+"-"+String(s.monat).padStart(2,"0");
+    prod=row.monat||0;
+    const cur=pm[mk]||0, prev=pm[pk]||0;
+    yoy=prev>0?pctOf(cur,prev):(cur>0?null:0);
+  }else if(period==="quartal"){
+    const q=akpQuarterSum(rec,s.jahr,s.monat);
+    prod=(q&&q.cur)||0;
+    const prev=akpKeysBack(s.jahr-1,s.monat,3).reduce((t,k)=>t+(pm[k]||0),0);
+    yoy=prev>0?pctOf(prod,prev):(prod>0?null:0);
+  }else{ // jahr
+    prod=row.lj!=null?row.lj:0;
+    const prev=row.vj!=null?row.vj:0;
+    yoy=prev>0?pctOf(prod,prev):(prod>0?null:0);
+  }
+  let po=null, q3f2=null;
+  if(period==="jahr"){
+    po=row.poQuote!=null?row.poQuote:akpLatestYearQuota(rec&&rec.poquote_monthly,s.jahr);
+    q3f2=row.q3fuer2!=null?row.q3fuer2:akpLatestYearQuota(rec&&rec.q3fuer2_monthly,s.jahr);
+  }
+  return {prod,yoy,po,q3f2};
+}
+// Reine Berechnungsfunktion (kein DOM-Zugriff) - von Bildschirm-Rendering UND
+// vom AKP-Datenblatt-PDF (exportAkpPdf) genutzt.
+function akpPeerCompute(row,peerRows,period,s){
+  const own=akpPeerMetricsFor(row,period,s);
+  const others=peerRows.filter(r=>r.nr!==row.nr);
+  const peers=others.map(r=>akpPeerMetricsFor(r,period,s));
+  const peerFhSet=new Set(others.map(r=>r.fhNr).filter(Boolean));
+  const metricEntry=(key,label,unit,ownVal,peerVals,available,note)=>{
+    const vals=peerVals.filter(v=>v!=null);
+    return {key,label,unit,
+      value:ownVal, median:statMedian(vals), p75:statPercentile(vals,75),
+      rank:(available&&ownVal!=null)?statRankPercentile(vals,ownVal):null,
+      available, note, peerCount:vals.length};
+  };
+  const metrics=[
+    metricEntry("prod","Produktion","Stk.",own.prod,peers.map(p=>p.prod),true,null),
+    metricEntry("yoy","Steigerung/Verlust ggü. Vorjahr","%",own.yoy,peers.map(p=>p.yoy),true,null),
+    metricEntry("po","PO-Quote","%",own.po,peers.map(p=>p.po),period==="jahr","PO-Quote liegt historisch nur als Jahreswert vor."),
+    metricEntry("q3f2","3-für-2-Quote","%",own.q3f2,peers.map(p=>p.q3f2),period==="jahr","3-für-2-Quote liegt historisch nur als Jahreswert vor."),
+  ];
+  return {peerCount:others.length, peerFhCount:peerFhSet.size, metrics};
+}
+function akpPeerMetricValStr(m){
+  if(m.value==null) return "–";
+  if(m.unit==="%") return (m.value>=0?"+":"")+m.value.toFixed(1).replace(".",",")+" %";
+  return fmt(m.value);
+}
+let akpPeerLastGroupLabel="";
+// Reiner String-Builder aus einem akpPeerCompute-Ergebnis - wiederverwendbar
+// für Bildschirm (Tabs/AI-Button aktiv), PDF-Datenblatt (opts.controls:false,
+// da .no-print bei html2canvas nicht greift) und Phase-3-KI-PDF.
+function akpPeerCompareHtml(data,opts){
+  opts=opts||{};
+  if(!data) return "";
+  const {peerCount,peerFhCount,metrics}=data;
+  const modeTabs=opts.controls===false?"":`<span class="tabs mini no-print" id="acPeerModeTabs">`+
+    AKP_PEER_MODES.map(m=>{
+      const has=m==="fh"?true:!!(akpPeerFhContact&&akpPeerFhContact[m]);
+      return `<button type="button" data-mode="${m}" class="${akpPeerMode===m?"on":""}"${has?"":" disabled"} title="${has?"":"Beim Händler ist keine "+escapeHtml(AKP_PEER_MODE_LABELS[m])+" hinterlegt"}">${escapeHtml(AKP_PEER_MODE_LABELS[m])}</button>`;
+    }).join("")+`</span>`;
+  const periodTabs=opts.controls===false?"":`<span class="tabs mini no-print" id="acPeerPeriodTabs">`+
+    [["monat","Monat"],["quartal","Quartal"],["jahr","Jahr"]].map(([p,lbl])=>
+      `<button type="button" data-p="${p}" class="${akpPeerPeriod===p?"on":""}">${lbl}</button>`).join("")+`</span>`;
+  const aiBtn=opts.aiButton?`<button type="button" class="btn btn-ghost no-print" id="acPeerAiBtn" style="padding:5px 10px;font-size:12px">🤖 KI-Zusammenfassung als PDF</button>`:"";
+  const heading=`<h4 style="margin:20px 0 4px;color:var(--wg-navy);font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">Vergleich mit anderen AKP ${aiBtn}</h4>`;
+  if(peerCount===0){
+    return `${heading}${modeTabs}${periodTabs}<div class="empty-note">Keine Vergleichs-AKP in dieser Gruppe.</div>`;
+  }
+  const smallGroupPill=peerCount<AKP_PEER_SMALL_GROUP?` <span class="pill neu">kleine Gruppe – statistisch wenig aussagekräftig</span>`:"";
+  const groupLine=opts.groupLine===false?"":`<div class="mix-sub" style="margin:4px 0 8px">Vergleichsgruppe: ${escapeHtml(akpPeerLastGroupLabel)} · ${fmt(peerCount)} AKP bei ${fmt(peerFhCount)} Händlern${smallGroupPill}</div>`;
+  const strengths=metrics.filter(m=>m.available&&m.rank!=null&&m.rank>=AKP_PEER_DROP_STRONG);
+  const weaknesses=metrics.filter(m=>m.available&&m.rank!=null&&m.rank<=AKP_PEER_DROP_WEAK);
+  const chipsLine=(strengths.length||weaknesses.length)?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">`+
+    strengths.map(m=>`<span class="pill pos">💪 ${escapeHtml(m.label)}</span>`).join("")+
+    weaknesses.map(m=>`<span class="pill neg">⚠️ ${escapeHtml(m.label)}</span>`).join("")+`</div>`:"";
+  const cards=`<div class="acp-grid">`+metrics.map(m=>{
+    if(!m.available){
+      return `<div class="acp-card" style="opacity:.55"><div class="acp-lbl">${escapeHtml(m.label)}</div><div class="acp-sub">${escapeHtml(m.note||"")}</div></div>`;
+    }
+    const rankPct=m.rank==null?null:Math.round(m.rank*100);
+    const fillColor=m.rank==null?"var(--muted)":(m.rank>=0.6?"var(--pos)":(m.rank<=0.3?"var(--neg)":"var(--wg-blue)"));
+    return `<div class="acp-card">
+      <div class="acp-lbl">${escapeHtml(m.label)}</div>
+      <div class="acp-val">${akpPeerMetricValStr(m)}</div>
+      <div class="bar"><div class="fill" style="width:${rankPct==null?0:rankPct}%;background:${fillColor}"></div><div class="soll" style="left:50%"></div></div>
+      <div class="acp-sub">${rankPct==null?"Kein Vergleichswert":"Besser als "+rankPct+" % der Vergleichsgruppe"} · Median ${m.median==null?"–":akpPeerMetricValStr({...m,value:m.median})} · Top 25 % ab ${m.p75==null?"–":akpPeerMetricValStr({...m,value:m.p75})} (n = ${m.peerCount})</div>
+    </div>`;
+  }).join("")+`</div>`;
+  const periodNote=akpPeerPeriod!=="jahr"?`<div class="mix-sub" style="margin-top:10px">PO-Quote und 3-für-2-Quote liegen historisch nur als Jahreswert vor. Seit ${MONTH_LABELS[state.latest.monat-1]} ${state.latest.jahr} wird der Monatsstand mitgeschrieben – ein Monats-/Quartalsvergleich wird möglich, sobald genügend Stände vorliegen.</div>`:"";
+  return `${heading}${modeTabs}${periodTabs}${groupLine}${chipsLine}${cards}${periodNote}`;
+}
+// Orchestriert Peer-Auflösung + Berechnung + Rendering für den aktuell
+// geöffneten AKP (akpContactCurrent) im gewählten Modus/Zeitraum
+// (akpPeerMode/akpPeerPeriod). Wird von openAkpContact, dem Tab-Klick-Handler
+// und - falls das PopUp beim Fertigladen der Kontaktdatenbank offen ist -
+// von loadAkpContactsIndex aufgerufen.
+async function renderAkpPeerCompare(){
+  const box=$("acPeerCompare");
+  if(!box||!akpContactCurrent) return;
+  // Per ADMIN-Panel-Schalter aus-/einblendbar (Nutzervorgabe 31.08.2026 -
+  // beim Quartal fehlt der Vergleichsgruppe anfangs noch Historie, siehe
+  // Migration akp_contacts_quota_monthly_snapshots).
+  if(!akpPeerCompareEnabled){ box.innerHTML=""; akpPeerLastData=null; return; }
+  const nr=akpContactCurrent.nr;
+  const {fhNrs,label}=await akpPeerFhNrs(akpPeerMode);
+  if(akpPeerLoadingNr!==nr) return; // währenddessen anderen AKP geöffnet
+  akpPeerLastGroupLabel=label;
+  const peerRows=akpPeerRows(fhNrs);
+  const c=akpContactCurrent;
+  const row=peerRows.find(r=>r.nr===nr)||
+    {nr, name:[c.vorname,c.nachname].filter(Boolean).join(" ")||nr, fhNr:c.fh_nr||"",
+     firma:c.firma||"", ort:c.ort||"", monat:0, lj:0, vj:0, poQuote:null, q3fuer2:null};
+  const data=akpPeerCompute(row,peerRows,akpPeerPeriod,state.latest);
+  akpPeerLastData=data;
+  box.innerHTML=akpPeerCompareHtml(data,{controls:true,aiButton:true,groupLine:true});
+}
+// Ruft die Edge Function akp-peer-ai-comparison auf - gleiches Muster wie
+// callChefgespraechAiComparison (rohes fetch + Bearer-Token aus der Session,
+// nicht sb.functions.invoke).
+async function callAkpPeerAiComparison(nr,mode){
+  const { data:{ session } } = await sb.auth.getSession();
+  const res = await fetch(SUPABASE_URL+"/functions/v1/akp-peer-ai-comparison", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+session.access_token },
+    body: JSON.stringify({ akp_nr: nr, mode: mode||"fh" })
+  });
+  return await res.json();
+}
+let akpPeerAiBusy=false;
+// "AKP-Vergleich KI-Zusammenfassung": ruft akp-peer-ai-comparison auf und baut
+// daraus ein PDF mit Diagrammen (dieser AKP vs. Median/Top-25% der
+// Vergleichsgruppe) - gleiches Off-Screen-Box/html2canvas/jsPDF-Muster wie
+// exportChefgespraechKiPdf, Texte bewusst über escapeHtml() + pre-wrap
+// (kein Markdown), da die KI-Antwort reiner Text ist.
+async function exportAkpPeerAiPdf(){
+  if(akpPeerAiBusy) return;
+  if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)){
+    toast("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals klicken.");
+    return;
+  }
+  const c=akpContactCurrent; if(!c||!c.nr) return;
+  akpPeerAiBusy=true;
+  toast("KI-Vergleich wird erstellt … das kann bis zu einer Minute dauern.");
+  const box=document.createElement("div");
+  try{
+    const data=await callAkpPeerAiComparison(c.nr,akpPeerMode);
+    if(!data||data.error) throw new Error((data&&data.error)||"unbekannter Fehler");
+    const rep=data.report||{};
+    const name=(c.vorname||c.nachname)?[c.vorname,c.nachname].filter(Boolean).join(" "):c.nr;
+    const m=data.metrics||{target:{},peers:{}};
+    const t=m.target||{}, p=m.peers||{};
+    const barRow=(lbl,tv,pv)=>svgBarChart(["Dieser AKP","Median VG","Top 25 % VG"],
+      [{name:lbl,color:"#0B5A8A",values:[tv||0,(pv&&pv.median)||0,(pv&&pv.p75)||0]}],{width:340,height:130});
+    box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
+    box.innerHTML=`
+      <div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:18px">
+        <div>
+          <div style="font-size:21px;font-weight:900;color:#062A3F">${escapeHtml(name)}</div>
+          <div style="font-size:12px;color:#5D7284;margin-top:3px">AKP-Nr. ${escapeHtml(c.nr)}${c.fh_nr?" · FH "+escapeHtml(c.fh_nr):""} · Vergleichsgruppe: ${escapeHtml(data.groupLabel||"")} (${fmt(data.peerCount||0)} AKP bei ${fmt(data.peerFhCount||0)} Händlern)</div>
+        </div>
+        <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>AKP-Vergleich · KI-Zusammenfassung</div>
+      </div>
+      <div class="pdf-block" style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin-bottom:18px">
+        <div>${barRow("Produktion Monat",t.prod&&t.prod.monat,p.prod&&p.prod.monat)}</div>
+        <div>${barRow("Produktion Quartal",t.prod&&t.prod.quartal,p.prod&&p.prod.quartal)}</div>
+        <div>${barRow("Produktion Jahr",t.prod&&t.prod.jahr,p.prod&&p.prod.jahr)}</div>
+        <div>${barRow("Steigerung/Verlust Jahr (%)",t.yoy&&t.yoy.jahr,p.yoy&&p.yoy.jahr)}</div>
+      </div>
+      <div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:18px;background:#F5F9FC">
+        <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Zusammenfassung</div>
+        <div style="font-size:12px;color:#10202C;white-space:pre-wrap;line-height:1.5">${escapeHtml(rep.summary||"")}</div>
+      </div>
+      ${rep.trend_warning?`<div class="pdf-block" style="border:1px solid #F6C6C6;border-radius:8px;padding:14px 16px;margin-bottom:18px;background:#FDF1F1">
+        <div style="font-size:13px;font-weight:800;color:#B3261E;margin-bottom:6px">⚠️ Trend-Hinweis</div>
+        <div style="font-size:12px;color:#10202C;white-space:pre-wrap;line-height:1.5">${escapeHtml(rep.trend_warning)}</div>
+      </div>`:""}
+      <div class="pdf-block" style="margin-bottom:18px">
+        <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Stärken</div>
+        <ul style="margin:0;padding-left:18px;font-size:12px;color:#10202C">${(rep.strengths||[]).map(s=>`<li style="margin-bottom:6px">${escapeHtml(s)}</li>`).join("")||"<li>–</li>"}</ul>
+      </div>
+      <div class="pdf-block" style="margin-bottom:18px">
+        <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Schwächen</div>
+        <ul style="margin:0;padding-left:18px;font-size:12px;color:#10202C">${(rep.weaknesses||[]).map(s=>`<li style="margin-bottom:6px">${escapeHtml(s)}</li>`).join("")||"<li>–</li>"}</ul>
+      </div>
+      <div class="pdf-block" style="margin-bottom:18px">
+        <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Einordnung je Kennzahl</div>
+        ${(rep.comparisons||[]).map(c2=>`<div style="margin-bottom:10px"><b style="color:#062A3F">${escapeHtml(c2.metric)} (${escapeHtml(c2.period||"")}):</b> <span style="color:#10202C">${escapeHtml(c2.assessment)}</span></div>`).join("")}
+      </div>
+      <div class="pdf-block">
+        <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Empfehlungen</div>
+        <ul style="margin:0;padding-left:18px;font-size:12px;color:#10202C">${(rep.recommendations||[]).map(r=>`<li style="margin-bottom:6px">${escapeHtml(r)}</li>`).join("")}</ul>
+      </div>
+    `;
+    document.body.appendChild(box);
+    await new Promise(r=>setTimeout(r,30));
+    const pdf=await pdfBoxRenderToPdf(box);
+    await finalizePdf(pdf,"AKP_Vergleich_"+asciiFilenamePart(c.nr||"Datenblatt")+".pdf");
+  }catch(e){
+    console.error("exportAkpPeerAiPdf failed:",e);
+    toast("KI-Vergleich fehlgeschlagen: "+(e.message||e));
+  }finally{
+    if(box.parentNode) box.parentNode.removeChild(box);
+    akpPeerAiBusy=false;
+  }
+}
+
 async function openAkpContact(nr,fallbackName){
   if(!nr) return;
   akpContactModalCurrent=nr;
-  akpContactCurrent={nr,vorname:null,nachname:null,firma:null,telefon:null,email:null,geburtsdatum:null,aktionsteilnahme:null,profi_training:null,prod_monthly:{},prod_monthly_other:{}};
+  akpContactCurrent={nr,vorname:null,nachname:null,firma:null,telefon:null,email:null,geburtsdatum:null,aktionsteilnahme:null,profi_training:null,prod_monthly:{},prod_monthly_other:{},poquote_monthly:{},q3fuer2_monthly:{}};
+  akpPeerFhNrsCache={}; akpPeerFhContact=null; akpPeerLoadingNr=nr;
   $("acName").textContent=fallbackName||nr;
   $("acMeta").textContent="AKP-Nr. "+nr+" · lädt …";
   $("acMonthly").innerHTML="";
+  $("acPeerCompare").innerHTML="";
   toggleAkpEdit(false);
   $("akpContactModal").classList.remove("hidden");
   try{
@@ -7807,6 +8194,18 @@ async function openAkpContact(nr,fallbackName){
   renderAkpContactView();
   renderAkpMonthly();
   renderAkpYearlyTrend();
+  $("acPeerCompare").innerHTML='<div class="empty-note">Vergleichsgruppe wird geladen …</div>';
+  if(c.fh_nr){
+    try{
+      const {data}=await sb.from("fh_contacts").select("fh_nr,kooperation,hauptzweig,weitere_zuordnung,filialbetriebe").eq("fh_nr",c.fh_nr).maybeSingle();
+      if(data) akpPeerFhContact=data;
+    }catch(e){}
+  }
+  if(akpPeerLoadingNr!==nr) return; // Nutzer hat inzwischen einen anderen AKP geöffnet
+  // Gewählter Vergleichsmodus bleibt zwischen AKP erhalten, fällt aber auf
+  // "fh" zurück, wenn der Händler des neuen AKP diese Dimension nicht hat.
+  if(akpPeerMode!=="fh"&&!(akpPeerFhContact&&akpPeerFhContact[akpPeerMode])) akpPeerMode="fh";
+  await renderAkpPeerCompare();
 }
 function renderAkpContactView(){
   const c=akpContactCurrent;
@@ -7822,9 +8221,24 @@ function renderAkpContactView(){
   // Produktion (nicht im editierbar wirkenden Stammdaten-Grid oben) und
   // nirgends als Eingabefeld, da diese Zahl nicht bearbeitbar sein darf.
   const snapAkp=(state.latest&&state.latest.akp||[]).find(a=>a.nr===c.nr);
-  const poTxt=(snapAkp&&snapAkp.poQuote!=null)?(snapAkp.poQuote*100).toFixed(1).replace(".",",")+" %":"–";
-  const f2Txt=(snapAkp&&snapAkp.q3fuer2!=null)?(snapAkp.q3fuer2*100).toFixed(1).replace(".",",")+" %":"–";
+  // Fallback für AKP ohne heutige Tageszeile (z.B. wenn nur über die
+  // Kontaktdatenbank geöffnet): jüngster Schlüssel des laufenden Jahres aus
+  // den seit Migration akp_contacts_quota_monthly_snapshots mitgeschriebenen
+  // Monatsständen (siehe akpLatestYearQuota) - kein Ersatz für alte Jahre.
+  const poVal=snapAkp&&snapAkp.poQuote!=null?snapAkp.poQuote:akpLatestYearQuota(c.poquote_monthly,state.latest.jahr);
+  const f2Val=snapAkp&&snapAkp.q3fuer2!=null?snapAkp.q3fuer2:akpLatestYearQuota(c.q3fuer2_monthly,state.latest.jahr);
+  const poTxt=poVal!=null?(poVal*100).toFixed(1).replace(".",",")+" %":"–";
+  const f2Txt=f2Val!=null?(f2Val*100).toFixed(1).replace(".",",")+" %":"–";
   $("acQuotesInfo").textContent=`PO-Quote (LJ): ${poTxt} · 3-für-2-Quote (LJ): ${f2Txt}`;
+}
+// Jüngster Monatsstand eines *_monthly-Quoten-Objekts innerhalb eines Jahres
+// (Stand per Monatsultimo, siehe Migrationskommentar) - für Anzeige/Fallback,
+// wenn keine heutige Tageszeile vorliegt. null bei fehlender Historie.
+function akpLatestYearQuota(monthlyObj,jahr){
+  if(!monthlyObj) return null;
+  const keys=Object.keys(monthlyObj).filter(k=>k.startsWith(jahr+"-")).sort();
+  if(!keys.length) return null;
+  return monthlyObj[keys[keys.length-1]];
 }
 function renderAkpMonthly(){
   const c=akpContactCurrent;
@@ -7916,6 +8330,7 @@ async function exportAkpPdf(){
       <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Monatsproduktion</div>
       ${$("acMonthly").innerHTML}
       ${$("acYearlyTrend").innerHTML}
+      ${akpPeerCompareHtml(akpPeerLastData,{controls:false,aiButton:false,groupLine:true})}
     `;
     document.body.appendChild(box);
     await new Promise(r=>setTimeout(r,30));
@@ -8244,6 +8659,11 @@ document.addEventListener("click",e=>{
   if(btn){ openAkpContact(btn.dataset.akpNr,btn.textContent); return; }
   const fhBtn=e.target.closest(".fh-name-link");
   if(fhBtn){ openFhModal(fhBtn.dataset.fhNr); return; }
+  const pmBtn=e.target.closest("#acPeerModeTabs button");
+  if(pmBtn&&!pmBtn.disabled){ akpPeerMode=pmBtn.dataset.mode; renderAkpPeerCompare(); return; }
+  const ppBtn=e.target.closest("#acPeerPeriodTabs button");
+  if(ppBtn){ akpPeerPeriod=ppBtn.dataset.p; renderAkpPeerCompare(); return; }
+  if(e.target.closest("#acPeerAiBtn")){ exportAkpPeerAiPdf(); return; }
   if(e.target.closest("#akqStaffelnDetailBtn")){ openAkqStaffelnModal(); return; }
   if(e.target.closest("#fhStammdatenDiffApply")){ applyFhStammdatenDiff(); return; }
   const obsFilterBtn=e.target.closest("#obsFilters button");
@@ -8640,6 +9060,7 @@ $("kooperationsgespraechEnabledChk").onchange=toggleKooperationsgespraechEnabled
 $("auswertungEnabledChk").onchange=toggleAuswertungEnabled;
 $("fhZielEnabledChk").onchange=toggleFhZielEnabled;
 $("fhSearchEnabledChk").onchange=toggleFhSearchEnabled;
+$("akpPeerCompareEnabledChk").onchange=toggleAkpPeerCompareEnabled;
 $("perfDialogAdminEnabledChk").onchange=togglePerfDialogAdminEnabled;
 $("chefgespraechBtn").onclick=openChefgespraechModal;
 $("chefgespraechClose").onclick=()=>$("chefgespraechModal").classList.add("hidden");
