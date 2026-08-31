@@ -1324,6 +1324,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <input type="checkbox" id="fhSearchEnabledChk" style="width:17px;height:17px;flex-shrink:0">
         Fachhändlersuche (Header)
       </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+        <input type="checkbox" id="akpPeerCompareEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+        AKP-Vergleich (PopUp)
+      </label>
     </div>
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
@@ -1623,6 +1627,12 @@ let fhZielEnabled = false;
 // Rolleneinschränkung wie bei Chefgespräch/Auswertung. Standardmäßig aus,
 // bis Wert aus der DB geladen wurde.
 let fhSearchEnabled = false;
+// Globaler Ein/Aus-Schalter für den "Vergleich mit anderen AKP" im AKP-PopUp
+// (dashboard_kv-Key "akp_peer_compare_enabled", per Schalter im normalen
+// ADMIN-Panel gesetzt, Nutzervorgabe 31.08.2026 - beim Quartal fehlt der
+// Vergleichsgruppe anfangs noch ausreichend Historie). Standardmäßig aus,
+// bis Wert aus der DB geladen wurde.
+let akpPeerCompareEnabled = false;
 // Zeitpunkt der letzten Miete-Report-Einspielung (dashboard_kv-Key
 // "miete_last_import", von upsertMieteData() bei jedem Import gesetzt -
 // deckt sowohl den Admin-Panel-Upload als auch den automatischen
@@ -2001,6 +2011,7 @@ function openAdminModal(){
   $("fhZielEnabledChk").checked=fhZielEnabled;
   $("perfDialogAdminEnabledChk").checked=perfDialogAdminEnabled;
   $("fhSearchEnabledChk").checked=fhSearchEnabled;
+  $("akpPeerCompareEnabledChk").checked=akpPeerCompareEnabled;
 }
 async function togglePerfDialogAdminEnabled(){
   const on=$("perfDialogAdminEnabledChk").checked;
@@ -2063,6 +2074,21 @@ async function toggleFhSearchEnabled(){
   try{
     await stSet("fh_search_enabled",on?"1":"0");
     toast(on?"Fachhändlersuche aktiviert ✓":"Fachhändlersuche deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
+async function toggleAkpPeerCompareEnabled(){
+  const on=$("akpPeerCompareEnabledChk").checked;
+  akpPeerCompareEnabled=on;
+  // Ist gerade ein AKP-PopUp offen, Abschnitt sofort nachziehen statt erst
+  // beim nächsten Öffnen (analog zum sofortigen Refresh bei loadAkpContactsIndex).
+  if(!$("akpContactModal").classList.contains("hidden")){
+    try{ renderAkpPeerCompare(); }catch(e){ console.error("renderAkpPeerCompare (toggle):",e); }
+  }
+  try{
+    await stSet("akp_peer_compare_enabled",on?"1":"0");
+    toast(on?"AKP-Vergleich aktiviert ✓":"AKP-Vergleich deaktiviert");
   }catch(e){
     toast("Speichern fehlgeschlagen: "+(e.message||e));
   }
@@ -4229,6 +4255,7 @@ async function loadAll(){
   try{ auswertungEnabled=(await stGet("auswertung_enabled"))==="1"; }catch(e){}
   try{ fhZielEnabled=(await stGet("fh_ziel_enabled"))==="1"; }catch(e){}
   try{ fhSearchEnabled=(await stGet("fh_search_enabled"))==="1"; }catch(e){}
+  try{ akpPeerCompareEnabled=(await stGet("akp_peer_compare_enabled"))==="1"; }catch(e){}
   try{ mieteLastImport=await stGet("miete_last_import"); }catch(e){}
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
@@ -7797,6 +7824,10 @@ function akpPeerCompareHtml(data,opts){
 async function renderAkpPeerCompare(){
   const box=$("acPeerCompare");
   if(!box||!akpContactCurrent) return;
+  // Per ADMIN-Panel-Schalter aus-/einblendbar (Nutzervorgabe 31.08.2026 -
+  // beim Quartal fehlt der Vergleichsgruppe anfangs noch Historie, siehe
+  // Migration akp_contacts_quota_monthly_snapshots).
+  if(!akpPeerCompareEnabled){ box.innerHTML=""; akpPeerLastData=null; return; }
   const nr=akpContactCurrent.nr;
   const {fhNrs,label}=await akpPeerFhNrs(akpPeerMode);
   if(akpPeerLoadingNr!==nr) return; // währenddessen anderen AKP geöffnet
@@ -8787,6 +8818,7 @@ $("kooperationsgespraechEnabledChk").onchange=toggleKooperationsgespraechEnabled
 $("auswertungEnabledChk").onchange=toggleAuswertungEnabled;
 $("fhZielEnabledChk").onchange=toggleFhZielEnabled;
 $("fhSearchEnabledChk").onchange=toggleFhSearchEnabled;
+$("akpPeerCompareEnabledChk").onchange=toggleAkpPeerCompareEnabled;
 $("perfDialogAdminEnabledChk").onchange=togglePerfDialogAdminEnabled;
 $("chefgespraechBtn").onclick=openChefgespraechModal;
 $("chefgespraechClose").onclick=()=>$("chefgespraechModal").classList.add("hidden");
