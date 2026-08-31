@@ -864,7 +864,6 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
         <button class="btn btn-blue" id="fhEditBtn">✎ Stammdaten bearbeiten</button>
-        <button class="btn btn-ghost" id="fhSperrenBtn" style="border-color:var(--neg);color:var(--neg)">🔒 Datensatz sperren (DSGVO)</button>
         <button class="btn btn-ghost hidden" id="fhEntsperrenBtn">🔓 Entsperren (Admin)</button>
       </div>
     </div>
@@ -949,9 +948,12 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <label class="ac-lbl" for="fhInfosEdit">Sonstige Infos</label>
         <textarea id="fhInfosEdit" rows="3"></textarea>
       </div>
-      <div class="actions" style="margin-top:14px">
-        <button class="btn btn-ghost" id="fhCancelBtn">Abbrechen</button>
-        <button class="btn btn-blue" id="fhSaveBtn">Speichern</button>
+      <div class="actions" style="margin-top:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <button class="btn btn-ghost" id="fhSperrenBtn" style="border-color:var(--neg);color:var(--neg)">🔒 Datensatz sperren (DSGVO)</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost" id="fhCancelBtn">Abbrechen</button>
+          <button class="btn btn-blue" id="fhSaveBtn">Speichern</button>
+        </div>
       </div>
       <div class="error" id="fhSaveHint"></div>
     </div>
@@ -1130,7 +1132,6 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
         <button class="btn btn-blue" id="acEditBtn">✎ Kontaktdaten bearbeiten</button>
-        <button class="btn btn-ghost" id="acSperrenBtn" style="border-color:var(--neg);color:var(--neg)">🔒 Datensatz sperren (DSGVO)</button>
         <button class="btn btn-ghost hidden" id="acEntsperrenBtn">🔓 Entsperren (Admin)</button>
       </div>
     </div>
@@ -1147,9 +1148,12 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
           <select id="acTrainEdit"><option value="">Keines</option><option value="1">Stufe 1</option><option value="2">Stufe 2</option><option value="3">Stufe 3</option><option value="erledigt">erledigt</option><option value="500">500 Verträge</option></select>
         </div>
       </div>
-      <div class="actions" style="margin-top:14px">
-        <button class="btn btn-ghost" id="acCancelBtn">Abbrechen</button>
-        <button class="btn btn-blue" id="acSaveBtn">Speichern</button>
+      <div class="actions" style="margin-top:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <button class="btn btn-ghost" id="acSperrenBtn" style="border-color:var(--neg);color:var(--neg)">🔒 Datensatz sperren (DSGVO)</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost" id="acCancelBtn">Abbrechen</button>
+          <button class="btn btn-blue" id="acSaveBtn">Speichern</button>
+        </div>
       </div>
       <div class="error" id="acSaveHint"></div>
     </div>
@@ -5549,7 +5553,6 @@ function renderFhContactView(){
   $("fhGesperrtNotice").classList.toggle("hidden",!isGesperrt);
   if(isGesperrt) $("fhGesperrtText").textContent="Gesperrt am "+fmtDate(c.gesperrt_am.slice(0,10))+" – Name, Adresse, Kontakt- und Ansprechpartnerdaten wurden gelöscht. FH-Nummer und Produktionszahlen bleiben für Auswertungen erhalten.";
   $("fhEditBtn").classList.toggle("hidden",isGesperrt);
-  $("fhSperrenBtn").classList.toggle("hidden",isGesperrt);
   $("fhEntsperrenBtn").classList.toggle("hidden",!isGesperrt||myRole!=="admin");
 }
 // Filialbetriebe: zeigt Umschalt-Buttons zu anderen FH derselben Gruppe im
@@ -7781,6 +7784,8 @@ async function saveFhContact(){
 // DB-Trigger trg_protect_fh_gesperrt, nicht in dieser Client-Prüfung.
 // akq_name/miete_name werden mitgeleert, weil fhResolveNameOrt/fhFallbackFromAkp
 // sonst über diese Felder doch wieder einen Namen anzeigen würden.
+// Button sitzt bewusst im Bearbeiten-Modus (Nutzervorgabe 31.08.2026), nicht
+// in der normalen Ansicht.
 async function lockFhContact(){
   const fhNr=fhModalCurrent; if(!fhNr) return;
   if(!confirm("Diesen Fachhändler-Datensatz wirklich sperren?\n\nName, Adresse, Telefon, E-Mail, Ansprechpartner und Homepage werden dauerhaft gelöscht. FH-Nummer und Produktionszahlen bleiben für Auswertungen erhalten.\n\nDas kann nur noch von einem Admin rückgängig gemacht werden.")) return;
@@ -7791,6 +7796,7 @@ async function lockFhContact(){
   if(fhContactsAllIndex[fhNr]) fhContactsAllIndex[fhNr].name=null;
   delete fhManualNameIndex[fhNr];
   $("fhName").textContent="Gesperrt (FH-Nr. "+fhNr+")";
+  toggleFhEdit(false);
   renderFhContactView();
   toast("Datensatz gesperrt ✓");
 }
@@ -8290,7 +8296,6 @@ function renderAkpContactView(){
   $("acGesperrtNotice").classList.toggle("hidden",!isGesperrt);
   if(isGesperrt) $("acGesperrtText").textContent="Gesperrt am "+fmtDate(c.gesperrt_am.slice(0,10))+" – Name, Kontakt- und Geburtsdatum wurden gelöscht. AKP-Nummer und Produktionszahlen bleiben für Auswertungen erhalten.";
   $("acEditBtn").classList.toggle("hidden",isGesperrt);
-  $("acSperrenBtn").classList.toggle("hidden",isGesperrt);
   $("acEntsperrenBtn").classList.toggle("hidden",!isGesperrt||myRole!=="admin");
 }
 // Jüngster Monatsstand eines *_monthly-Quoten-Objekts innerhalb eines Jahres
@@ -8719,6 +8724,8 @@ async function saveAkpContact(){
 // DSGVO-Sperren/Anonymisieren (Nutzervorgabe 31.08.2026, analog
 // Fachhändler-PopUp/lockFhContact) - Schutz vor erneutem Befüllen durch
 // künftige Importe liegt im DB-Trigger trg_protect_akp_gesperrt.
+// Button sitzt bewusst im Bearbeiten-Modus (Nutzervorgabe 31.08.2026), nicht
+// in der normalen Ansicht.
 async function lockAkpContact(){
   const nr=akpContactCurrent&&akpContactCurrent.nr; if(!nr) return;
   if(!confirm("Diesen Ansprechpartner wirklich sperren?\n\nVorname, Nachname, Firma, Adresse, Telefon, E-Mail und Geburtsdatum werden dauerhaft gelöscht. AKP-Nummer und Produktionszahlen bleiben für Auswertungen erhalten.\n\nDas kann nur noch von einem Admin rückgängig gemacht werden.")) return;
@@ -8727,6 +8734,7 @@ async function lockAkpContact(){
   if(error){ toast("Fehler beim Sperren: "+error.message); return; }
   Object.assign(akpContactCurrent,patch);
   $("acName").textContent="Gesperrt (AKP-Nr. "+nr+")";
+  toggleAkpEdit(false);
   renderAkpContactView();
   toast("Datensatz gesperrt ✓");
 }
