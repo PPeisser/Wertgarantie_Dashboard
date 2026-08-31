@@ -7810,6 +7810,95 @@ async function renderAkpPeerCompare(){
   akpPeerLastData=data;
   box.innerHTML=akpPeerCompareHtml(data,{controls:true,aiButton:true,groupLine:true});
 }
+// Ruft die Edge Function akp-peer-ai-comparison auf - gleiches Muster wie
+// callChefgespraechAiComparison (rohes fetch + Bearer-Token aus der Session,
+// nicht sb.functions.invoke).
+async function callAkpPeerAiComparison(nr,mode){
+  const { data:{ session } } = await sb.auth.getSession();
+  const res = await fetch(SUPABASE_URL+"/functions/v1/akp-peer-ai-comparison", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+session.access_token },
+    body: JSON.stringify({ akp_nr: nr, mode: mode||"fh" })
+  });
+  return await res.json();
+}
+let akpPeerAiBusy=false;
+// "AKP-Vergleich KI-Zusammenfassung": ruft akp-peer-ai-comparison auf und baut
+// daraus ein PDF mit Diagrammen (dieser AKP vs. Median/Top-25% der
+// Vergleichsgruppe) - gleiches Off-Screen-Box/html2canvas/jsPDF-Muster wie
+// exportChefgespraechKiPdf, Texte bewusst über escapeHtml() + pre-wrap
+// (kein Markdown), da die KI-Antwort reiner Text ist.
+async function exportAkpPeerAiPdf(){
+  if(akpPeerAiBusy) return;
+  if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)){
+    toast("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals klicken.");
+    return;
+  }
+  const c=akpContactCurrent; if(!c||!c.nr) return;
+  akpPeerAiBusy=true;
+  toast("KI-Vergleich wird erstellt … das kann bis zu einer Minute dauern.");
+  const box=document.createElement("div");
+  try{
+    const data=await callAkpPeerAiComparison(c.nr,akpPeerMode);
+    if(!data||data.error) throw new Error((data&&data.error)||"unbekannter Fehler");
+    const rep=data.report||{};
+    const name=(c.vorname||c.nachname)?[c.vorname,c.nachname].filter(Boolean).join(" "):c.nr;
+    const m=data.metrics||{target:{},peers:{}};
+    const t=m.target||{}, p=m.peers||{};
+    const barRow=(lbl,tv,pv)=>svgBarChart(["Dieser AKP","Median VG","Top 25 % VG"],
+      [{name:lbl,color:"#0B5A8A",values:[tv||0,(pv&&pv.median)||0,(pv&&pv.p75)||0]}],{width:340,height:130});
+    box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
+    box.innerHTML=`
+      <div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:18px">
+        <div>
+          <div style="font-size:21px;font-weight:900;color:#062A3F">${escapeHtml(name)}</div>
+          <div style="font-size:12px;color:#5D7284;margin-top:3px">AKP-Nr. ${escapeHtml(c.nr)}${c.fh_nr?" · FH "+escapeHtml(c.fh_nr):""} · Vergleichsgruppe: ${escapeHtml(data.groupLabel||"")} (${fmt(data.peerCount||0)} AKP bei ${fmt(data.peerFhCount||0)} Händlern)</div>
+        </div>
+        <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>AKP-Vergleich · KI-Zusammenfassung</div>
+      </div>
+      <div class="pdf-block" style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin-bottom:18px">
+        <div>${barRow("Produktion Monat",t.prod&&t.prod.monat,p.prod&&p.prod.monat)}</div>
+        <div>${barRow("Produktion Quartal",t.prod&&t.prod.quartal,p.prod&&p.prod.quartal)}</div>
+        <div>${barRow("Produktion Jahr",t.prod&&t.prod.jahr,p.prod&&p.prod.jahr)}</div>
+        <div>${barRow("Steigerung/Verlust Jahr (%)",t.yoy&&t.yoy.jahr,p.yoy&&p.yoy.jahr)}</div>
+      </div>
+      <div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:18px;background:#F5F9FC">
+        <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Zusammenfassung</div>
+        <div style="font-size:12px;color:#10202C;white-space:pre-wrap;line-height:1.5">${escapeHtml(rep.summary||"")}</div>
+      </div>
+      ${rep.trend_warning?`<div class="pdf-block" style="border:1px solid #F6C6C6;border-radius:8px;padding:14px 16px;margin-bottom:18px;background:#FDF1F1">
+        <div style="font-size:13px;font-weight:800;color:#B3261E;margin-bottom:6px">⚠️ Trend-Hinweis</div>
+        <div style="font-size:12px;color:#10202C;white-space:pre-wrap;line-height:1.5">${escapeHtml(rep.trend_warning)}</div>
+      </div>`:""}
+      <div class="pdf-block" style="margin-bottom:18px">
+        <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Stärken</div>
+        <ul style="margin:0;padding-left:18px;font-size:12px;color:#10202C">${(rep.strengths||[]).map(s=>`<li style="margin-bottom:6px">${escapeHtml(s)}</li>`).join("")||"<li>–</li>"}</ul>
+      </div>
+      <div class="pdf-block" style="margin-bottom:18px">
+        <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Schwächen</div>
+        <ul style="margin:0;padding-left:18px;font-size:12px;color:#10202C">${(rep.weaknesses||[]).map(s=>`<li style="margin-bottom:6px">${escapeHtml(s)}</li>`).join("")||"<li>–</li>"}</ul>
+      </div>
+      <div class="pdf-block" style="margin-bottom:18px">
+        <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Einordnung je Kennzahl</div>
+        ${(rep.comparisons||[]).map(c2=>`<div style="margin-bottom:10px"><b style="color:#062A3F">${escapeHtml(c2.metric)} (${escapeHtml(c2.period||"")}):</b> <span style="color:#10202C">${escapeHtml(c2.assessment)}</span></div>`).join("")}
+      </div>
+      <div class="pdf-block">
+        <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Empfehlungen</div>
+        <ul style="margin:0;padding-left:18px;font-size:12px;color:#10202C">${(rep.recommendations||[]).map(r=>`<li style="margin-bottom:6px">${escapeHtml(r)}</li>`).join("")}</ul>
+      </div>
+    `;
+    document.body.appendChild(box);
+    await new Promise(r=>setTimeout(r,30));
+    const pdf=await pdfBoxRenderToPdf(box);
+    await finalizePdf(pdf,"AKP_Vergleich_"+asciiFilenamePart(c.nr||"Datenblatt")+".pdf");
+  }catch(e){
+    console.error("exportAkpPeerAiPdf failed:",e);
+    toast("KI-Vergleich fehlgeschlagen: "+(e.message||e));
+  }finally{
+    if(box.parentNode) box.parentNode.removeChild(box);
+    akpPeerAiBusy=false;
+  }
+}
 
 async function openAkpContact(nr,fallbackName){
   if(!nr) return;
@@ -8301,6 +8390,7 @@ document.addEventListener("click",e=>{
   if(pmBtn&&!pmBtn.disabled){ akpPeerMode=pmBtn.dataset.mode; renderAkpPeerCompare(); return; }
   const ppBtn=e.target.closest("#acPeerPeriodTabs button");
   if(ppBtn){ akpPeerPeriod=ppBtn.dataset.p; renderAkpPeerCompare(); return; }
+  if(e.target.closest("#acPeerAiBtn")){ exportAkpPeerAiPdf(); return; }
   if(e.target.closest("#akqStaffelnDetailBtn")){ openAkqStaffelnModal(); return; }
   if(e.target.closest("#fhStammdatenDiffApply")){ applyFhStammdatenDiff(); return; }
   const obsFilterBtn=e.target.closest("#obsFilters button");
