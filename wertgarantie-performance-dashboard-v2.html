@@ -1409,6 +1409,8 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <h3 style="margin:0">Performance Dialog – Admin-Übersicht</h3>
       <span style="display:flex;gap:8px">
         <button class="btn btn-ghost no-print" id="perfAdminPdfBtn" style="padding:7px 12px">⬇ Gesamt-PDF freigeschalteter Monat</button>
+        <select id="perfKiMonthSel" title="Monat für den KI-Monatsbericht" style="border:2px solid var(--line);border-radius:8px;padding:4px 8px;font:inherit;font-weight:600"></select>
+        <button class="btn btn-ghost no-print" id="perfMonthlySummaryBtn" style="padding:7px 12px">🧠 Monatsbericht (KI-Zusammenfassung)</button>
         <button class="btn btn-ghost no-print" id="perfAnnualSummaryBtn" style="padding:7px 12px">🧠 Jahresbericht (KI-Zusammenfassung)</button>
         <button class="btn btn-ghost" id="perfAdminClose" style="padding:7px 12px">✕ Schließen</button>
       </span>
@@ -4105,8 +4107,22 @@ async function openPerfAdminModal(){
   await loadPerfActivePeriod();
   renderPerfActivePeriodUI();
   renderPerfAdminYearTabs();
+  renderPerfKiMonthSel();
   await loadPerfAdminReports();
   renderPerfAdminGrid();
+}
+// Monat-Auswahl für den KI-Monatsbericht (Punkt "Performance Dialog: KI-
+// Zusammenfassung Jahres-/Monatsbericht", 01.09.2026) - alle 12 Monate frei
+// wählbar, Jahr kommt aus den bereits vorhandenen "Jahr:"-Tabs (perfAdminYear,
+// wird auch vom Jahresbericht-Button genutzt). Default: der aktuell
+// freigeschaltete Berichtsmonat (meist der mit den meisten abgegebenen
+// Protokollen), falls im gleichen Jahr wie perfAdminYear, sonst der
+// laufende Kalendermonat.
+function renderPerfKiMonthSel(){
+  const active=perfActivePeriod();
+  const now=new Date();
+  const def=(active&&active.year===perfAdminYear)?active.month:(now.getFullYear()===perfAdminYear?now.getMonth()+1:12);
+  $("perfKiMonthSel").innerHTML=MONATE.map((m,i)=>`<option value="${i+1}"${i+1===def?" selected":""}>${m}</option>`).join("");
 }
 // Befüllt die Jahr/Monat-Auswahl für den freigeschalteten Berichtsmonat und
 // zeigt den aktuell aktiven Monat als Text an (siehe perfActivePeriod()).
@@ -4136,7 +4152,7 @@ function renderPerfAdminYearTabs(){
   const years=[new Date().getFullYear()];
   $("perfAdminYearBtns").innerHTML=years.map(y=>`<button data-y="${y}" class="${y===perfAdminYear?"on":""}">${y}</button>`).join("");
   $("perfAdminYearBtns").querySelectorAll("button").forEach(b=>{
-    b.onclick=async()=>{ perfAdminYear=+b.dataset.y; renderPerfAdminYearTabs(); await loadPerfAdminReports(); renderPerfAdminGrid(); };
+    b.onclick=async()=>{ perfAdminYear=+b.dataset.y; renderPerfAdminYearTabs(); renderPerfKiMonthSel(); await loadPerfAdminReports(); renderPerfAdminGrid(); };
   });
 }
 async function loadPerfAdminReports(){
@@ -4383,6 +4399,93 @@ async function exportPerfAnnualSummaryPdf(year){
   }catch(e){
     console.error("exportPerfAnnualSummaryPdf failed:",e);
     toast("KI-Jahresbericht fehlgeschlagen: "+(e.message||e));
+    pdfSendTarget=null;
+  }
+}
+// KI-Monatsbericht (01.09.2026): dieselbe Edge Function wie der Jahresbericht,
+// aber mit zusätzlichem "month"-Parameter - dort verzweigt der Server auf
+// Query/Tool-Schema/Prompt für genau EINEN Monat statt eine Jahres-Trend-
+// Analyse. Antwortform ist deshalb flacher (keine months[]-Unterliste je
+// Mitarbeiter, kein yearSummary), siehe buildMonthlySummaryPdfDoc.
+async function callPerfMonthlySummary(year,month){
+  const { data:{ session } } = await sb.auth.getSession();
+  const res = await fetch(SUPABASE_URL+"/functions/v1/performance-dialog-annual-summary", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+session.access_token },
+    body: JSON.stringify({ year, month })
+  });
+  return await res.json();
+}
+function buildMonthlySummaryPdfDoc(year,month,report){
+  if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)) throw new Error("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals versuchen.");
+  return (async()=>{
+    const nowStr=fmtNowDateTime();
+    const monatLbl=MONATE[month-1]+" "+year;
+    const box=document.createElement("div");
+    box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
+    const empSections=(report.employees||[]).map(emp=>`
+      <div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:14px;font-size:11px">
+        <div style="font-size:15px;font-weight:900;color:#062A3F;margin-bottom:8px">${escapeHtml(emp.employee)}</div>
+        <div style="font-size:11.5px;color:#10202C;white-space:pre-wrap;line-height:1.4">${escapeHtml(emp.summary||"")}</div>
+      </div>`).join("");
+    box.innerHTML=`
+      <div class="pdf-block" style="border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:8px">
+        <div style="font-size:21px;font-weight:900;color:#062A3F">Performance Dialog – KI-Monatsbericht</div>
+        <div style="font-size:12px;color:#5D7284;margin-top:3px">${escapeHtml(monatLbl)} · ${(report.employees||[]).length} Mitarbeiter · Erstellt am: ${nowStr}</div>
+      </div>
+      <div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:14px;font-size:11px;background:#F5F9FC">
+        <div style="font-size:14px;font-weight:900;color:#062A3F;margin-bottom:10px">Unternehmensweite Zusammenfassung ${escapeHtml(monatLbl)}</div>
+        <div style="font-size:11.5px;color:#10202C;white-space:pre-wrap;line-height:1.4">${escapeHtml(report.companySummary||"")}</div>
+      </div>
+      ${empSections}
+    `;
+    document.body.appendChild(box);
+    await new Promise(r=>setTimeout(r,30));
+    try{
+      const blocks=[...box.querySelectorAll(".pdf-block")];
+      const blockEndsBoxPx=blocks.map(b=>b.offsetTop+b.offsetHeight);
+      const canvas=await html2canvas(box,{scale:2,backgroundColor:"#ffffff",useCORS:true,logging:false});
+      const {jsPDF}=window.jspdf;
+      const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+      const pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), margin=10;
+      const imgW=pw-2*margin;
+      const canvasPxPerBoxPx=canvas.width/box.offsetWidth;
+      const blockEndsCanvasPx=blockEndsBoxPx.map(px=>px*canvasPxPerBoxPx);
+      const pageContentPxCanvas=(ph-2*margin)*canvas.width/imgW;
+      let renderedPx=0,pageIdx=0;
+      while(renderedPx<canvas.height-1&&pageIdx<200){
+        let cutoff=Math.min(renderedPx+pageContentPxCanvas,canvas.height);
+        if(cutoff<canvas.height){
+          let best=null;
+          for(const b of blockEndsCanvasPx){ if(b>renderedPx&&b<=cutoff) best=b; }
+          if(best!=null) cutoff=best;
+        }
+        const sliceH=Math.max(1,Math.round(cutoff-renderedPx));
+        const sliceCanvas=document.createElement("canvas");
+        sliceCanvas.width=canvas.width; sliceCanvas.height=sliceH;
+        sliceCanvas.getContext("2d").drawImage(canvas,0,renderedPx,canvas.width,sliceH,0,0,canvas.width,sliceH);
+        const sliceImgH=sliceH*imgW/canvas.width;
+        if(pageIdx>0) pdf.addPage();
+        pdf.addImage(sliceCanvas.toDataURL("image/jpeg",0.95),"JPEG",margin,margin,imgW,sliceImgH);
+        renderedPx+=sliceH; pageIdx++;
+      }
+      const filename="PerformanceDialog_Monatsbericht_KI_"+year+"-"+String(month).padStart(2,"0")+".pdf";
+      return {pdf,filename};
+    }finally{
+      if(box.parentNode) box.parentNode.removeChild(box);
+    }
+  })();
+}
+async function exportPerfMonthlySummaryPdf(year,month){
+  toast("KI-Monatsbericht wird erstellt … das kann bis zu einer Minute dauern.");
+  try{
+    const res=await callPerfMonthlySummary(year,month);
+    if(!res||res.error) throw new Error((res&&res.error)||"unbekannter Fehler");
+    const {pdf,filename}=await buildMonthlySummaryPdfDoc(year,month,res.report);
+    await finalizePdf(pdf,filename);
+  }catch(e){
+    console.error("exportPerfMonthlySummaryPdf failed:",e);
+    toast("KI-Monatsbericht fehlgeschlagen: "+(e.message||e));
     pdfSendTarget=null;
   }
 }
@@ -9201,6 +9304,12 @@ $("perfAdminPdfBtn").onclick=()=>openPdfTargetChoice(()=>exportPerfAllReportsPdf
 $("perfAnnualSummaryBtn").onclick=()=>{
   if(!confirm("KI-Jahresbericht "+perfAdminYear+" jetzt erstellen?\n\nFasst alle im gewählten Jahr abgegebenen Performance-Dialog-Protokolle je Mitarbeiter/Monat sowie unternehmensweit zusammen. Dies kann bis zu einer Minute dauern und ersetzt NICHT die einzelnen Monatsprotokolle.")) return;
   openPdfTargetChoice(()=>exportPerfAnnualSummaryPdf(perfAdminYear));
+};
+$("perfMonthlySummaryBtn").onclick=()=>{
+  const month=+$("perfKiMonthSel").value;
+  const monatLbl=MONATE[month-1]+" "+perfAdminYear;
+  if(!confirm("KI-Monatsbericht "+monatLbl+" jetzt erstellen?\n\nFasst alle für "+monatLbl+" abgegebenen Performance-Dialog-Protokolle je Mitarbeiter sowie unternehmensweit zusammen. Dies kann bis zu einer Minute dauern und ersetzt NICHT die einzelnen Monatsprotokolle.")) return;
+  openPdfTargetChoice(()=>exportPerfMonthlySummaryPdf(perfAdminYear,month));
 };
 $("perfDialogEnabledChk").onchange=togglePerfDialogEnabled;
 $("perfActivePeriodSetBtn").onclick=async()=>{
