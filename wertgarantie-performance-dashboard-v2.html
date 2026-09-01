@@ -613,6 +613,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       </button>
       <button class="btn btn-ghost hidden" id="settingsBtn" title="Einstellungen">⚙ Einstellungen</button>
       <button class="btn btn-ghost hidden" id="adminBtn" title="Admin-Panel">⚙ Admin</button>
+      <button class="btn btn-ghost no-print" id="privacyBtn" title="Datenschutzhinweis" style="padding:11px 13px">ℹ Datenschutz</button>
       <button class="btn btn-ghost hidden" id="logoutBtn" title="Abmelden" style="margin-left:18px">Abmelden</button>
      </div>
      <div class="controls-row">
@@ -817,6 +818,30 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <button class="btn btn-ghost" id="notifClose" style="padding:7px 12px">✕ Schließen</button>
     </div>
     <div id="notifBody" style="max-height:65vh;overflow:auto"></div>
+  </div>
+</div>
+
+<!-- Datenschutzhinweis (DSGVO-Prüfprotokoll, Befund M-3) -->
+<div class="modal-bg hidden" id="privacyModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
+      <h3 style="margin:0">ℹ Datenschutzhinweis</h3>
+      <button class="btn btn-ghost" id="privacyClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+    <div style="font-size:12.5px;line-height:1.6">
+      <p>Im Rahmen Ihrer Nutzung dieses Dashboards werden folgende Daten über Sie verarbeitet:</p>
+      <ul style="margin:6px 0;padding-left:20px">
+        <li>Name und E-Mail-Adresse (Ihr Zugangskonto)</li>
+        <li>Ihre Rolle (Außendienst / Trainer / Admin)</li>
+        <li>Ihre Vertriebs- und Leistungsdaten (Produktionszahlen, Zielerreichung, ggf. Angaben aus dem Performance-Dialog)</li>
+      </ul>
+      <p><strong>Zweck:</strong> Steuerung und Auswertung des Vertriebs sowie Vorbereitung von Chef-/Kooperationsgesprächen,
+      teils unter Einsatz einer KI-gestützten Zusammenfassung (Anbieter: Anthropic, USA – hierfür liegt ein
+      Auftragsverarbeitungsvertrag inkl. EU-Standardvertragsklauseln vor).</p>
+      <p><strong>Speicherort:</strong> Die Daten liegen auf Servern von Supabase in der EU (Frankfurt) und sind nur für
+      angemeldete Dashboard-Nutzer einsehbar.</p>
+      <p><strong>Fragen oder Auskunftsersuchen:</strong> Konstantin Scheiermann &amp; Peter Peißer.</p>
+    </div>
   </div>
 </div>
 
@@ -9277,6 +9302,8 @@ $("setPwBtn").onclick=doSettingsPasswordChange;
 $("setSaveBtn").onclick=doSaveSettings;
 $("setCheckNowBtn").onclick=doCheckNow;
 $("notifClose").onclick=()=>$("notifModal").classList.add("hidden");
+$("privacyBtn").onclick=()=>$("privacyModal").classList.remove("hidden");
+$("privacyClose").onclick=()=>$("privacyModal").classList.add("hidden");
 // Datenstand (Excel-Auswertung + Ziele) wird nur einmal beim Start geladen
 // und danach nur noch aus dem lokalen Speicher gelesen. Beim Wechsel der
 // Mitarbeiter-Ansicht oder per Klick auf "Aktualisieren" frisch aus der
