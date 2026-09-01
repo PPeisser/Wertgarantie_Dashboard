@@ -2745,6 +2745,7 @@ function parseAuswertung(wb){
   if(ze[21]){
     const bikeVal=num(ze[21][15]);
     console.log("[Import] ZE_Region Bike (P22):", ze[21][15], "→", bikeVal, "| Label A22:", ze[21][0]);
+    if(!snap.sparten) snap.sparten={};
     if(!snap.sparten[AT_KEY]) snap.sparten[AT_KEY]={};
     snap.sparten[AT_KEY].bike=bikeVal;
   }
@@ -2798,6 +2799,47 @@ function parseAuswertung(wb){
       if(/^(auswertung|gesamt|summe|total)$/i.test(name)) continue;
       snap.gwQuote[matchEmployee(name)||("x_"+name)]={lj:num(r[q]),vj:qv>-1?num(r[qv]):0};
     }
+  })();
+
+  /* --- Bugfix 01.09.2026: "Prod Monat VJ" je GL (rec.monatVJ oben, aus der
+     sichtbaren Region_nach_GL-Pivot-Spalte D) liefert im Tagesreport-Export
+     systematisch 0 für JEDE Zeile (auch "Auswertung") - anhand eines echten
+     Tagesreports geprüft: die Kopfzeile/Spaltenindizes oben (r[1..7]) sind
+     korrekt, "Prod VJ" (Jahr, Spalte H) ist ebenfalls korrekt befüllt, nur
+     die Monats-VJ-Spalte der PIVOT-ANSICHT selbst ist leer/0 - kein Bug im
+     Parser, sondern in der Report-Vorlage. Die korrekten Werte liegen
+     (analog zur Gebrauchtgeräte-Quote oben) in einem Pivot-Hilfsblatt
+     ("data_Region_nach_GL_...") unter der Kopfzeile "Vertriebsproduktion_
+     VJ" - wird hier gesucht und overschreibt rec.monatVJ je GL. Für
+     Österreich gesamt (AT_KEY) gibt es in diesem Hilfsblatt keine
+     Summenzeile - dort stattdessen der bereits weiter oben aus ZE_Region
+     K12 ermittelte Wert (snap.zeAtMonatVJ, "Ist VJ Summe" der Zeile
+     "Auswertung") verwendet, falls vorhanden. */
+  (function(){
+    let hi=-1,vjCol=-1,foundRows=null;
+    for(const n of wb.SheetNames){
+      if(!n.toLowerCase().startsWith("data_")) continue;
+      const rows=toRowsIgnoringRef(wb.Sheets[n]);
+      hi=-1; vjCol=-1;
+      for(let i=0;i<rows.length;i++){
+        const r=rows[i]; if(!r) continue;
+        for(let j=0;j<r.length;j++){
+          if(String(r[j]||"").trim().toLowerCase().replace(/\s+/g,"")==="vertriebsproduktion_vj"){ hi=i; vjCol=j; }
+        }
+        if(hi>-1) break;
+      }
+      if(hi>-1){ foundRows=rows; break; }
+    }
+    if(hi>-1&&foundRows){
+      for(let i=hi+1;i<foundRows.length;i++){
+        const r=foundRows[i]; if(!r||r[0]==null) continue;
+        const name=String(r[0]).trim();
+        if(/^(auswertung|gesamt|summe|total)$/i.test(name)) continue;
+        const key=matchEmployee(name)||("x_"+name);
+        if(snap.gl[key]) snap.gl[key].monatVJ=num(r[vjCol]);
+      }
+    }
+    if(snap.gl[AT_KEY]&&snap.zeAtMonatVJ!=null) snap.gl[AT_KEY].monatVJ=snap.zeAtMonatVJ;
   })();
 
   const ok=Object.keys(snap.gl).length>0||Object.keys(snap.fh).length>0;
