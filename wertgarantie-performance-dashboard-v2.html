@@ -647,6 +647,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 
     <h2 class="sec"><svg class="arr" viewBox="0 0 60 30"><path d="M4 22 C 20 10, 35 8, 48 12" fill="none" stroke="#009FE3" stroke-width="6" stroke-linecap="round"/><path d="M39 4 L 56 13 L 37 20 Z" fill="#009FE3"/></svg> Ziele &amp; Hochrechnung <small>Soll-Linie = erwarteter Stand · Jahresziele saisonal gerechnet (71 % bis 30.9., 29 % der Produktion in Q4) · Monat lt. „Tage Ist von Soll"</small></h2>
     <div class="goals" id="goalCards"></div>
+    <div id="empRankingBlock"></div>
     <div id="akqStaffelBar"></div>
 
     <h2 class="sec"><svg class="arr" viewBox="0 0 60 30"><path d="M4 22 C 20 10, 35 8, 48 12" fill="none" stroke="#009FE3" stroke-width="6" stroke-linecap="round"/><path d="M39 4 L 56 13 L 37 20 Z" fill="#009FE3"/></svg> Produktmix &amp; Sparten</h2>
@@ -4572,7 +4573,7 @@ function render(){
   const s=state.latest;
   $("datenstand").innerHTML=`Auswertung vom <b>${fmtDate(s.date)}</b> · Produktionsstand (Vortag): <b>${fmtDate(s.vortag)}</b> · Ansicht: <b>${currentEmp}</b>`;
   $("secKpiWho").textContent="– "+currentEmp;
-  renderGoals(); renderAkqStaffelBar(); renderMix(); renderGW(); renderPO(); renderSparten();
+  renderGoals(); renderEmpRanking(); renderAkqStaffelBar(); renderMix(); renderGW(); renderPO(); renderSparten();
   renderKPIs(); renderTopFlop(); renderObs(); renderAKP(); renderAKQ();
   renderAkqOhneProd(); renderNeunWochen();
   if($("akpSearchInput")) renderAkpSearch();
@@ -4828,6 +4829,34 @@ function akqStaffelnInJahr(){
     });
   }
   return {alle,erst};
+}
+// Mitarbeiter-Ranking nach aktueller pers. Jahreszielerreichung (Punkt 1,
+// 01.09.2026) - nur in der Österreich-gesamt-Ansicht sichtbar, zwischen den
+// Ziel-Kacheln und den Akquisestufen. "Sergej Eigenseer" ist bewusst kein
+// employees-Eintrag (Login-User ohne Mitarbeiterseite) und taucht hier
+// deshalb nie auf - kein expliziter Ausschluss im Code nötig. Zielerreichung
+// = ist/ziel*100, exakt dieselbe Formel wie goalCard()s große Prozentzahl -
+// bewusst NICHT pctOf() (das berechnet eine Wachstumsrate zwischen zwei
+// Werten, keine Zielerreichung).
+function renderEmpRanking(){
+  const box=$("empRankingBlock"); if(!box) return;
+  if(currentEmp!==AT_GESAMT){ box.innerHTML=""; return; }
+  const s=state.latest; if(!s){ box.innerHTML=""; return; }
+  const rows=EMPLOYEES.map(emp=>{
+    const ist=glRow(emp).jahr, ziel=PERS_JAHRESZIELE[emp]||0;
+    return {emp, ist, ziel, pct: ziel>0?ist/ziel*100:null};
+  }).filter(r=>r.ziel>0).sort((a,b)=>(b.pct??-1)-(a.pct??-1));
+  if(!rows.length){ box.innerHTML=""; return; }
+  box.innerHTML=`<div class="panel" style="margin:14px 0">
+    <h3><span class="dot" style="background:var(--wg-blue)"></span>Mitarbeiter-Ranking · pers. Jahreszielerreichung ${s.jahr}</h3>
+    ${rows.map((r,i)=>`
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 0${i<rows.length-1?';border-bottom:1px solid var(--line)':""}">
+        <span style="width:20px;flex:none;font-weight:800;color:var(--muted)">${i+1}.</span>
+        <span style="flex:1;font-weight:700">${escapeHtml(r.emp)}</span>
+        <div class="bar" style="flex:2;height:10px"><div class="fill" style="width:${Math.min(r.pct,100)}%;background:${r.pct>=100?"var(--pos)":"var(--wg-blue)"}"></div></div>
+        <b style="width:60px;text-align:right;flex:none">${r.pct.toFixed(1).replace(".",",")+" %"}</b>
+      </div>`).join("")}
+  </div>`;
 }
 function renderAkqStaffelBar(){
   const box=$("akqStaffelBar"); if(!box) return;
