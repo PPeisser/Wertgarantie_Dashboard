@@ -358,7 +358,15 @@ td .betr{font-size:11px;color:var(--muted)}
    Akquiseliste, weil #fhModal im HTML vor #akqStaffelnModal steht). Höherer
    z-index stellt sicher, dass diese beiden Detail-PopUps immer VOR jedem
    anderen PopUp liegen, unabhängig von der Öffnungsreihenfolge. */
-#fhModal,#akpContactModal{z-index:60}
+#fhModal{z-index:60}
+/* akpModal (Top/Flop-AKP-PopUp) wird u.a. AUS #fhModal heraus geöffnet
+   (Button "Top & Flop AKP dieses Händlers") und muss - wie
+   #filialGruppeModal unten - darüber liegen, sonst öffnet es sich sichtbar
+   dahinter (Bug-Report 01.09.2026). akpContactModal gehört in dieselbe
+   Stufe, weil es sowohl direkt als auch AUS akpModal heraus (Klick auf
+   einen AKP-Namen in der Top/Flop-Liste) geöffnet werden kann - sonst
+   entstünde derselbe Bug eine Ebene tiefer. */
+#akpModal,#akpContactModal{z-index:65}
 /* pdfTargetModal/pdfSendModal/fhPdfChoiceModal sind die "Drucken oder
    Versenden"-Auswahldialoge (siehe openPdfTargetChoice()) - diese werden u.a.
    AUS #fhModal heraus geöffnet (⬇ Datenblatt als PDF), während #fhModal dabei
@@ -882,7 +890,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
           <select id="fhKooperationEdit"></select>
         </div>
         <div><label class="ac-lbl" for="fhHauptzweigEdit">Hauptzweig</label>
-          <select id="fhHauptzweigEdit"><option value="">–</option><option value="Vollsortiment">Vollsortiment</option><option value="Mobilfunk">Mobilfunk</option><option value="IT">IT</option><option value="Kundendienst">Kundendienst</option><option value="Industrie">Industrie</option><option value="Akustik">Akustik</option><option value="Optik">Optik</option><option value="Küchenhandel">Küchenhandel</option><option value="Uhrenhandel">Uhrenhandel</option><option value="Grüne Ware">Grüne Ware</option><option value="Makler">Makler</option><option value="Projekt">Projekt</option><option value="Sonstiges">Sonstiges</option></select>
+          <select id="fhHauptzweigEdit"><option value="">–</option><option value="Akustik">Akustik</option><option value="Grüne Ware">Grüne Ware</option><option value="Industrie">Industrie</option><option value="IT">IT</option><option value="Küchenhandel">Küchenhandel</option><option value="Kundendienst">Kundendienst</option><option value="Makler">Makler</option><option value="Mobilfunk">Mobilfunk</option><option value="Optik">Optik</option><option value="Projekt">Projekt</option><option value="Sonstiges">Sonstiges</option><option value="Uhrenhandel">Uhrenhandel</option><option value="Vollsortiment">Vollsortiment</option></select>
         </div>
         <div><label class="ac-lbl" for="fhBesuchEdit">Letzter Besuch</label><input id="fhBesuchEdit" type="date"></div>
         <div><span class="ac-lbl">9-Wochen-Plan</span>
@@ -2670,7 +2678,7 @@ function parseAuswertung(wb){
         beginn, beginnJahr:beginn?parseInt(beginn.slice(0,4),10):null,
         glRaw, emp:matchEmployee(glRaw),
         p2024:num(r[10]), p2025:num(r[11]), p2026:num(r[12]),
-        produzent:String(r[13]||"").trim().toUpperCase()==="JA", kw:num(r[14]), besP:num(r[15]), besT:num(r[16]) });
+        produzent:String(r[13]||"").trim().toUpperCase()==="JA", kw:num(r[14]), besP:num(r[15]), besT:num(r[16]), besG:num(r[17]) });
     }
   }
 
@@ -4567,16 +4575,18 @@ function renderGoals(){
     null,
     "Zahlen aus Freitagsreport, letzte Einspielung: "+(fmtWeekdayDate(mieteLastImport)||MIETE_REPORT_STAND_FALLBACK)
   ).replace('class="goal"','class="goal goal-miete" style="cursor:pointer" onclick="openMieteListModal()"');
-  // Nur für Österreich gesamt und die Mitarbeiter mit Club.Weiss-Ziel
-  // anzeigen - Szendi und Eitzinger haben keines (mieteTarget=0), bei ihnen
-  // soll die Kachel komplett ausgeblendet werden statt "kein Jahresziel
-  // hinterlegt" zu zeigen (lt. Nutzervorgabe 18.08.2026).
-  if(isATv||mieteTarget>0) cards.push(mieteCard);
+  // Reihenfolge (Nutzervorgabe 01.09.2026): Persönliches Jahresziel VOR der
+  // Miete-Kachel - deshalb wird hier zuerst das Jahresziel gepusht.
   if(!isATv){
     cards.push(goalCard("🏁 Persönliches Jahresziel "+s.jahr+"<br><span style='font-weight:600;font-size:11px;color:var(--muted)'>"+currentEmp+" · fest hinterlegt</span>",
       persJZ, me.jahr, persJZ*share, `Soll & Hochrechnung saisonal (${Math.round(Q4_ANTEIL*100)} % in Q4)`, false,
       persJZ>0?{val:hrMeJahr,lbl:"Jahresende (saisonal)",stand:standJ}:null));
   }
+  // Nur für Österreich gesamt und die Mitarbeiter mit Club.Weiss-Ziel
+  // anzeigen - Szendi und Eitzinger haben keines (mieteTarget=0), bei ihnen
+  // soll die Kachel komplett ausgeblendet werden statt "kein Jahresziel
+  // hinterlegt" zu zeigen (lt. Nutzervorgabe 18.08.2026).
+  if(isATv||mieteTarget>0) cards.push(mieteCard);
   // AT-Ansicht: 4 WG-Karten + Miete = 5 Karten (passt in die normale
   // 5-spaltige .goals-Grid, kein cols4 mehr nötig). Mitarbeiter-Ansicht: 5 +
   // Persönliches Jahresziel + Miete = 6 Karten -> eigene 3-spaltige
@@ -5201,7 +5211,7 @@ function populateFhKooperationSelect(current){
   const opts=["<option value=\"\">–</option>"];
   const known=new Set(KOOPERATION_OPTIONS);
   if(current&&!known.has(current)) opts.push(`<option value="${escapeHtml(current)}">${escapeHtml(current)}</option>`);
-  KOOPERATION_OPTIONS.forEach(k=>opts.push(`<option value="${escapeHtml(k)}">${escapeHtml(k)}</option>`));
+  [...KOOPERATION_OPTIONS].sort((a,b)=>a.localeCompare(b,"de")).forEach(k=>opts.push(`<option value="${escapeHtml(k)}">${escapeHtml(k)}</option>`));
   $("fhKooperationEdit").innerHTML=opts.join("");
 }
 // "Weitere Zuordnung" (Nutzervorgabe 23.08.2026): optionales Zusatzfeld je
@@ -8606,7 +8616,7 @@ function renderNeunWochen(){
       <td><b><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(a.nr||"")}">${escapeHtml(a.name)}</button></b><br><span class="betr">${escapeHtml(a.nr)} · ${escapeHtml(a.ort)}${showGL?" · "+escapeHtml(a.emp||a.glRaw||"–"):""}</span></td>
       <td class="r" style="font-weight:800;${a.resttage<=14?"color:var(--neg)":""}">${a.resttage}</td>
       <td>${fmtDate(a.beginn)}</td>
-      <td class="r" style="font-weight:800;${a.termine<5?"color:var(--neg)":""}">${fmt(a.termine)} <span class="betr">(${fmt(a.besP)} p. / ${fmt(a.besT)} tel.)</span></td>
+      <td class="r" style="font-weight:800;${a.termine<5?"color:var(--neg)":""}">${fmt(a.termine)} <span class="betr">(${fmt(a.besP)} p. / ${fmt(a.besT)} t. / ${fmt(a.besG)} g.)</span></td>
       <td class="r" style="font-weight:800;${(a.p2026||0)<20?"color:var(--neg)":""}">${fmt(a.p2026)}</td>
     </tr>`).join("")+`</tbody></table>
     <div class="mix-sub" style="margin-top:6px">Resttage = 63 minus Tage seit Beginn · ⚠️ = weniger als 5 Termine (persönlich + telefonisch) UND weniger als 20 Verträge</div>`;
