@@ -1357,6 +1357,33 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Nutzerübersicht</h4>
     <div id="adUserList" style="max-height:340px;overflow:auto"></div>
+
+    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Mitarbeiterverwaltung</h4>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input type="text" id="empName" placeholder="Name" autocomplete="off" style="flex:1;min-width:150px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <input type="number" id="empJahresziel" placeholder="Jahresziel Produktion" style="width:170px;font-size:14px;font-weight:600;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <input type="number" id="empMieteziel" placeholder="Miete-Jahresziel (optional)" style="width:190px;font-size:14px;font-weight:600;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <input type="number" id="empAkqZiel" placeholder="Akquisestufen-Ziel" style="width:170px;font-size:14px;font-weight:600;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+    </div>
+    <div style="display:flex;gap:12px;align-items:center;margin-top:10px;flex-wrap:wrap;font-size:12.5px">
+      <span style="color:var(--muted);font-weight:700">Performance-Ziele:</span>
+      <label style="display:flex;align-items:center;gap:5px"><input type="checkbox" class="empGoalChk" value="1" checked> 1 Produktion</label>
+      <label style="display:flex;align-items:center;gap:5px"><input type="checkbox" class="empGoalChk" value="2"> 2 Akquise</label>
+      <label style="display:flex;align-items:center;gap:5px"><input type="checkbox" class="empGoalChk" value="3"> 3 Miete</label>
+      <label style="display:flex;align-items:center;gap:5px"><input type="checkbox" class="empGoalChk" value="4"> 4 PO-Quote Telekom <span style="color:var(--muted)">(Sondervertrieb, braucht Code-Anpassung)</span></label>
+      <label style="display:flex;align-items:center;gap:5px"><input type="checkbox" class="empGoalChk" value="5"> 5 Gebrauchtgeräte <span style="color:var(--muted)">(Sondervertrieb, braucht Code-Anpassung)</span></label>
+    </div>
+    <div style="margin-top:10px">
+      <input type="text" id="empAliases" placeholder="Namensvarianten für den Tagesreport-Abgleich, mit Komma getrennt (optional)" autocomplete="off" style="width:100%;font-size:13px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+    </div>
+    <div style="margin-top:10px">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12.5px"><input type="checkbox" id="empAdminOnly"> nur im Admin-Zugang sichtbar (virtueller Analyse-Mitarbeiter, z. B. für Sammelposten)</label>
+    </div>
+    <button class="btn btn-blue" id="empCreateBtn" style="margin-top:10px">Mitarbeiter anlegen</button>
+    <div class="error" id="empCreateHint"></div>
+
+    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Mitarbeiterübersicht</h4>
+    <div id="empList" style="max-height:340px;overflow:auto"></div>
   </div>
 </div>
 
@@ -1538,18 +1565,20 @@ const INITIAL_DATA={"latest":{"date":"2026-07-22","vortag":"2026-07-21","jahr":2
    AKQ-Liste, Region_nach_GL, ZE_Region)
    ========================================================= */
 
-const EMPLOYEES = ["Klaus Witting","Florian Hasibeder","Dominik Szendi","Helmut Otto","Peter Peißer","Thomas Eitzinger"];
+// EMPLOYEES/PERS_JAHRESZIELE/PERS_MIETEZIELE/AKQ_STAFFEL_ZIEL/
+// PERF_GOALS_BY_EMPLOYEE/EMP_NORM/ADMIN_ONLY_EMPLOYEES sind seit Punkt 10
+// (01.09.2026) NICHT mehr hartcodiert, sondern werden aus der Supabase-
+// Tabelle "employees" geladen (siehe loadEmployees(), aufgerufen in init()
+// vor dem ersten render()) - hier nur als leere Platzhalter deklariert,
+// damit alle Lesestellen im Code unverändert bleiben können.
+let EMPLOYEES = [];
 const AT_GESAMT = "Österreich gesamt";
 const AT_KEY = "__AT__";
 const ZIEL_AT = 120000;      // Jahresziel (Österreich)
 const ZIEL_FIRMA = 109500;   // PLAN 2026 (Firmenvorgabe)
 const Q4_ANTEIL = 0.29;      // Saisonalität: 71 % bis 30.9., 29 % der Jahresproduktion in Q4
 const AT_MONATSZIELE = {1:9867,2:8679,3:9284,4:8998,5:8998,6:8998,7:10175,8:9856,9:10318,10:10318,11:12452,12:12452}; // Persönliches Monatsziel Österreich gesamt (fest)
-const PERS_JAHRESZIELE = {
-  "Klaus Witting":20000,"Florian Hasibeder":15000,"Thomas Eitzinger":15000,
-  "Dominik Szendi":55000,"Helmut Otto":7000,"Peter Peißer":7000
-};
-PERS_JAHRESZIELE[AT_GESAMT]=Object.values(PERS_JAHRESZIELE).reduce((a,b)=>a+b,0); // 119.000
+let PERS_JAHRESZIELE = {};
 // Miete-Jahresziel (Club.Weiss) - lt. Nutzervorgabe 18.08.2026: Österreich
 // gesamt 3.000 Verträge/Jahr, gleichmäßig auf die 4 Mitarbeiter mit
 // Club.Weiss-Ziel verteilt (Witting, Otto, Hasibeder, Peißer - je 750,
@@ -1557,9 +1586,7 @@ PERS_JAHRESZIELE[AT_GESAMT]=Object.values(PERS_JAHRESZIELE).reduce((a,b)=>a+b,0)
 // Kaufen"). Szendi und Eitzinger haben keine Club.Weiss-Ziele (0 = "kein
 // Jahresziel hinterlegt", siehe renderGoals).
 const ZIEL_MIETE_AT = 3000;
-const PERS_MIETEZIELE = {
-  "Klaus Witting":750, "Helmut Otto":750, "Florian Hasibeder":750, "Peter Peißer":750
-};
+let PERS_MIETEZIELE = {};
 // Monatsziel ist bewusst FLACH (3.000 ÷ 12 = 250, nicht saisonal Q4-
 // gewichtet wie ZIEL_AT) - siehe mieteShare/yearFrac() in renderGoals.
 const ZIEL_MIETE_MONAT = 250;
@@ -1582,11 +1609,7 @@ const AKQ_OHNE_ZUORDNUNG_GL=["Technischer GL CE DE","Ohne Zuordnung RB"];
 // Mitarbeiter in diesem Jahr. "Erststaffeln" (Staffel 1 = FH erstmals aktiv/
 // akquiriert) werden zusätzlich als Teilmenge ausgewiesen, zählen aber mit
 // in dieses Gesamtziel - siehe Erklärung des Nutzers vom 14.08.2026.
-const AKQ_STAFFEL_ZIEL = {
-  "Klaus Witting":30,"Florian Hasibeder":30,"Thomas Eitzinger":0,
-  "Dominik Szendi":0,"Helmut Otto":30,"Peter Peißer":30
-};
-AKQ_STAFFEL_ZIEL[AT_GESAMT]=Object.values(AKQ_STAFFEL_ZIEL).reduce((a,b)=>a+b,0);
+let AKQ_STAFFEL_ZIEL = {};
 
 /* ---------- Supabase Konfiguration ---------- */
 const SUPABASE_URL = "https://gfyjftwlombhmwirbyse.supabase.co";
@@ -2014,8 +2037,73 @@ async function createAdminUser(){
   toast("Nutzer angelegt: "+email+" (Erstpasswort: WertGARANTIE)");
   loadAdminUsers();
 }
+// Mitarbeiterverwaltung (Punkt 10, 01.09.2026): CRUD-Vorbild 1:1 aus
+// loadAdminUsers()/createAdminUser() oben übernommen, aber OHNE Edge
+// Function - reine Tabellenoperation ohne Auth-Provisioning. Nach jeder
+// Änderung wird loadEmployees() neu aufgerufen, damit EMPLOYEES/
+// PERS_JAHRESZIELE/... sofort konsistent bleiben (z.B. fürs Ranking oder
+// die Ziel-Kacheln, ohne dass ein Reload nötig wäre).
+async function loadEmployeesAdmin(){
+  const box=$("empList");
+  box.innerHTML="<p style='color:var(--muted)'>Lädt …</p>";
+  const { data, error } = await sb.from("employees").select("*").order("sort_order").order("name");
+  if(error||!data){ box.innerHTML="<p style='color:var(--muted)'>Fehler beim Laden.</p>"; return; }
+  box.innerHTML = data.map(e=>`
+    <div data-id="${e.id}" style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
+      <input class="em-name" value="${escapeHtml(e.name)}" placeholder="Name" style="flex:1;min-width:130px;font-weight:700;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
+      <input class="em-jz" type="number" value="${e.pers_jahresziel}" title="Jahresziel Produktion" style="width:110px;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
+      <input class="em-mz" type="number" value="${e.miete_jahresziel??""}" title="Miete-Jahresziel" style="width:110px;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
+      <input class="em-az" type="number" value="${e.akq_staffel_ziel}" title="Akquisestufen-Ziel" style="width:110px;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
+      <span style="font-size:11px;color:${e.active?"var(--pos)":"var(--neg)"}">${e.active?"aktiv":"deaktiviert"}${e.admin_only?" · admin-only":""}</span>
+      <button class="btn btn-ghost em-toggle" style="padding:6px 10px;font-size:12px">${e.active?"Deaktivieren":"Aktivieren"}</button>
+    </div>
+  `).join("") || "<p style='color:var(--muted)'>Keine Mitarbeiter.</p>";
+  box.querySelectorAll(".em-name,.em-jz,.em-mz,.em-az").forEach(inp=>{
+    inp.addEventListener("change",async e=>{
+      const id=e.target.closest("[data-id]").dataset.id;
+      const patch={};
+      if(e.target.classList.contains("em-name")) patch.name=e.target.value.trim();
+      if(e.target.classList.contains("em-jz")) patch.pers_jahresziel=+e.target.value||0;
+      if(e.target.classList.contains("em-mz")) patch.miete_jahresziel=e.target.value===""?null:+e.target.value;
+      if(e.target.classList.contains("em-az")) patch.akq_staffel_ziel=+e.target.value||0;
+      const { error } = await sb.from("employees").update(patch).eq("id",id);
+      if(!error) await loadEmployees();
+      toast(error?("Fehler: "+error.message):"Gespeichert");
+    });
+  });
+  box.querySelectorAll(".em-toggle").forEach(btn=>{
+    btn.onclick=async e=>{
+      const row=e.target.closest("[data-id]");
+      const { data:cur } = await sb.from("employees").select("active").eq("id",row.dataset.id).single();
+      const { error } = await sb.from("employees").update({active:!(cur&&cur.active)}).eq("id",row.dataset.id);
+      if(!error){ await loadEmployees(); buildMitarbeiterDropdown(); loadEmployeesAdmin(); }
+      toast(error?("Fehler: "+error.message):"Status geändert");
+    };
+  });
+}
+async function createEmployee(){
+  const name=$("empName").value.trim();
+  if(!name){ $("empCreateHint").textContent="Bitte Namen eingeben."; return; }
+  const goalIds=[...document.querySelectorAll(".empGoalChk:checked")].map(c=>+c.value);
+  const aliases=$("empAliases").value.split(",").map(s=>s.trim()).filter(Boolean);
+  const adminOnly=$("empAdminOnly").checked;
+  $("empCreateBtn").disabled=true;
+  const { error } = await sb.from("employees").insert({
+    name, pers_jahresziel:+$("empJahresziel").value||0,
+    miete_jahresziel:$("empMieteziel").value===""?null:+$("empMieteziel").value,
+    akq_staffel_ziel:+$("empAkqZiel").value||0,
+    perf_goal_ids:goalIds, match_aliases:aliases, admin_only:adminOnly
+  });
+  $("empCreateBtn").disabled=false;
+  if(error){ $("empCreateHint").textContent=error.message; return; }
+  $("empCreateHint").textContent="";
+  $("empName").value=""; $("empJahresziel").value=""; $("empMieteziel").value=""; $("empAkqZiel").value=""; $("empAliases").value=""; $("empAdminOnly").checked=false;
+  document.querySelectorAll(".empGoalChk").forEach(c=>c.checked=(c.value==="1"));
+  await loadEmployees(); buildMitarbeiterDropdown(); loadEmployeesAdmin();
+  toast("Mitarbeiter angelegt: "+name);
+}
 function openAdminModal(){
-  $("adminModal").classList.remove("hidden"); loadAdminUsers();
+  $("adminModal").classList.remove("hidden"); loadAdminUsers(); loadEmployeesAdmin();
   $("chefgespraechEnabledChk").checked=chefgespraechEnabled;
   $("kooperationsgespraechEnabledChk").checked=kooperationsgespraechEnabled;
   $("auswertungEnabledChk").checked=auswertungEnabled;
@@ -2456,7 +2544,8 @@ function normName(s){
     .replace(/ß/g,"ss").replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue")
     .replace(/[^a-z ]/g," ").split(/\s+/).filter(Boolean).sort().join(" ");
 }
-const EMP_NORM = {}; EMPLOYEES.forEach(e=>EMP_NORM[normName(e)]=e);
+let EMP_NORM = {}; // wird komplett in loadEmployees() befüllt (auch admin-only)
+let ADMIN_ONLY_EMPLOYEES = []; // [{name}] – für die Dropdown-Gruppe "Admin: Analyse" (Punkt 9)
 function matchEmployee(gl){
   if(!gl) return null;
   const n=normName(gl);
@@ -2466,6 +2555,55 @@ function matchEmployee(gl){
     if(toks.every(t=>n.includes(t))) return e;
   }
   return null; // z. B. "ohne Zuordnung", "Technischer GL CE DE", "Akquise" → nur Österreich gesamt
+}
+// Lädt die Mitarbeiterstammdaten aus Supabase (Tabelle "employees", Punkt 10
+// 01.09.2026) und befüllt damit EMPLOYEES/PERS_JAHRESZIELE/PERS_MIETEZIELE/
+// AKQ_STAFFEL_ZIEL/PERF_GOALS_BY_EMPLOYEE/EMP_NORM/ADMIN_ONLY_EMPLOYEES neu -
+// einmalig in init() vor dem ersten render() aufgerufen, danach erneut nach
+// jeder Änderung im Admin-Panel (siehe loadEmployeesAdmin()/createEmployee()),
+// damit die App sofort konsistent bleibt. EMP_NORM wird bewusst aus ALLEN
+// aktiven Zeilen aufgebaut (auch admin_only!): registriert man deren
+// match_aliases (roher GL-Text aus dem Tagesreport) hier, matcht
+// matchEmployee() sie automatisch auf den virtuellen Mitarbeiternamen -
+// dadurch funktionieren glKey()/glRow()/fhFor() und alle ".emp===currentEmp"-
+// Filter im ganzen Dashboard ohne jede weitere Anpassung (siehe Punkt 9).
+async function loadEmployees(){
+  if(!sb){
+    // Ohne Supabase-Verbindung (Demo-/Offline-Modus mit INITIAL_DATA, siehe
+    // initAuth() "if(!sb) return true;") auf die früheren, hartcodierten
+    // Werte zurückfallen, damit Dropdown/Matching/Ziel-Kacheln in diesem
+    // Fallback-Modus weiter benutzbar bleiben - analog zum Muster anderer
+    // Loader wie loadAkpContactsIndex() ("if(!(sb&&supaUser)) return;").
+    EMPLOYEES=["Klaus Witting","Florian Hasibeder","Dominik Szendi","Helmut Otto","Peter Peißer","Thomas Eitzinger"];
+    PERS_JAHRESZIELE={"Klaus Witting":20000,"Florian Hasibeder":15000,"Thomas Eitzinger":15000,"Dominik Szendi":55000,"Helmut Otto":7000,"Peter Peißer":7000};
+    PERS_JAHRESZIELE[AT_GESAMT]=Object.values(PERS_JAHRESZIELE).reduce((a,b)=>a+b,0);
+    PERS_MIETEZIELE={"Klaus Witting":750,"Helmut Otto":750,"Florian Hasibeder":750,"Peter Peißer":750};
+    AKQ_STAFFEL_ZIEL={"Klaus Witting":30,"Florian Hasibeder":30,"Thomas Eitzinger":0,"Dominik Szendi":0,"Helmut Otto":30,"Peter Peißer":30};
+    AKQ_STAFFEL_ZIEL[AT_GESAMT]=Object.values(AKQ_STAFFEL_ZIEL).reduce((a,b)=>a+b,0);
+    PERF_GOALS_BY_EMPLOYEE={"Klaus Witting":[1,2,3],"Florian Hasibeder":[1,2,3],"Peter Peißer":[1,2,3],"Helmut Otto":[1,2,3],"Dominik Szendi":[1,4,5],"Thomas Eitzinger":[1]};
+    EMP_NORM={}; EMPLOYEES.forEach(e=>EMP_NORM[normName(e)]=e);
+    ADMIN_ONLY_EMPLOYEES=[];
+    return;
+  }
+  const { data, error } = await sb.from("employees").select("*").eq("active",true).order("sort_order").order("name");
+  if(error||!data){ console.error("loadEmployees fehlgeschlagen:",error); return; }
+  const real=data.filter(e=>!e.admin_only);
+  EMPLOYEES=real.map(e=>e.name);
+  PERS_JAHRESZIELE={}; PERS_MIETEZIELE={}; AKQ_STAFFEL_ZIEL={}; PERF_GOALS_BY_EMPLOYEE={};
+  for(const e of real){
+    PERS_JAHRESZIELE[e.name]=Number(e.pers_jahresziel)||0;
+    if(e.miete_jahresziel!=null) PERS_MIETEZIELE[e.name]=Number(e.miete_jahresziel);
+    AKQ_STAFFEL_ZIEL[e.name]=Number(e.akq_staffel_ziel)||0;
+    PERF_GOALS_BY_EMPLOYEE[e.name]=e.perf_goal_ids||[];
+  }
+  PERS_JAHRESZIELE[AT_GESAMT]=Object.values(PERS_JAHRESZIELE).reduce((a,b)=>a+b,0);
+  AKQ_STAFFEL_ZIEL[AT_GESAMT]=Object.values(AKQ_STAFFEL_ZIEL).reduce((a,b)=>a+b,0);
+  EMP_NORM={};
+  for(const e of data){
+    EMP_NORM[normName(e.name)]=e.name;
+    for(const alias of (e.match_aliases||[])) EMP_NORM[normName(alias)]=e.name;
+  }
+  ADMIN_ONLY_EMPLOYEES=data.filter(e=>e.admin_only).map(e=>({name:e.name}));
 }
 
 /* ---------- Datenmodell ----------
@@ -3388,11 +3526,7 @@ function renderMieteListModal(){
 // 18.08.2026. Ziel 1 (Produktion) für alle 6, Ziel 2+3 (Akquise/Miete) für
 // die vier "klassischen" Außendienstler, Ziel 4+5 (PO-Quote Telekom/
 // Gebrauchtgeräte) nur für Szendi (eigene Zielstruktur, Sondervertrieb).
-const PERF_GOALS_BY_EMPLOYEE = {
-  "Klaus Witting":[1,2,3], "Florian Hasibeder":[1,2,3], "Peter Peißer":[1,2,3], "Helmut Otto":[1,2,3],
-  "Dominik Szendi":[1,4,5],
-  "Thomas Eitzinger":[1]
-};
+let PERF_GOALS_BY_EMPLOYEE = {};
 const PERF_GOAL_TITLES = {
   1:"Persönliches Produktionsziel",
   2:"Persönliches Akquise-Ziel",
@@ -9053,6 +9187,7 @@ $("fhSegmentFileInput").onchange=async e=>{ if(e.target.files.length){ await han
 $("adminMieteUploadBtn").onclick=()=>$("mieteFileInput").click();
 $("mieteFileInput").onchange=async e=>{ if(e.target.files.length){ await handleMieteFile([...e.target.files]); e.target.value=""; } };
 $("adCreateBtn").onclick=createAdminUser;
+$("empCreateBtn").onclick=createEmployee;
 $("settingsBtn").onclick=showSettingsModal;
 $("settingsClose").onclick=hideSettingsModal;
 $("setPwBtn").onclick=doSettingsPasswordChange;
@@ -9204,11 +9339,27 @@ document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==
 window.addEventListener("pageshow",e=>{ if(e.persisted&&hasData()) refreshData(true); });
 
 /* ---------- Init ---------- */
-(async function init(){
+// Baut das Haupt-Mitarbeiter-Dropdown - ersetzt den früheren, direkt in
+// init() eingebetteten Aufbau. Muss NACH initAuth() (myRole bekannt) UND
+// NACH loadEmployees() (EMPLOYEES/ADMIN_ONLY_EMPLOYEES befüllt) laufen,
+// deshalb eigene Funktion statt Inline-Code in init(). Admin-only Einträge
+// (Punkt 9) werden per DOM-Gate statt CSS-Verstecken ausgeblendet - kein
+// Risiko, dass sie über DevTools/CSS für Nicht-Admins sichtbar werden.
+function buildMitarbeiterDropdown(){
   const sel=$("mitarbeiter");
+  sel.innerHTML="";
   [AT_GESAMT,...EMPLOYEES].forEach(n=>{ const o=document.createElement("option"); o.value=n; o.textContent=n; sel.appendChild(o); });
+  if(myRole==="admin"&&ADMIN_ONLY_EMPLOYEES.length){
+    const grp=document.createElement("optgroup"); grp.label="Admin: Analyse";
+    ADMIN_ONLY_EMPLOYEES.forEach(a=>{ const o=document.createElement("option"); o.value=a.name; o.textContent=a.name; grp.appendChild(o); });
+    sel.appendChild(grp);
+  }
+}
+(async function init(){
   const authed = await initAuth();
   if(authed){
+    await loadEmployees();
+    buildMitarbeiterDropdown();
     await loadAll(); showRoleBadge(); render();
     await Promise.all([loadAkpContactsIndex(), loadFhContactsIndicesAll()]);
     await processPendingImports();

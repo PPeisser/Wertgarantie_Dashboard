@@ -694,3 +694,72 @@ select cron.schedule(
   );
   $$
 );
+
+-- ==========================================================================
+-- Mitarbeiterstammdaten (Punkt 10, 01.09.2026): ersetzt die frueher
+-- hartcodierten Konstanten EMPLOYEES/PERS_JAHRESZIELE/PERS_MIETEZIELE/
+-- AKQ_STAFFEL_ZIEL/PERF_GOALS_BY_EMPLOYEE im Client. Neue Mitarbeiter
+-- (inkl. Zielwerten) werden ab jetzt ueber das Admin-Panel angelegt statt
+-- per Code-Deployment. Wird einmalig pro Session via loadEmployees() im
+-- Client geladen, vor dem ersten Rendern.
+create table if not exists public.employees (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  pers_jahresziel numeric not null default 0,
+  miete_jahresziel numeric,
+  akq_staffel_ziel numeric not null default 0,
+  perf_goal_ids jsonb not null default '[1,2,3]'::jsonb,
+  match_aliases text[] not null default '{}',
+  admin_only boolean not null default false,
+  active boolean not null default true,
+  sort_order int not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+comment on column public.employees.name is
+  'Kanonischer Anzeigename. Wird auch als Matching-Ziel in EMP_NORM registriert (siehe matchEmployee() im Client) - der Tagesreport-Rohtext muss exakt oder ueber match_aliases hierauf normalisieren.';
+comment on column public.employees.match_aliases is
+  'Alternative/rohe Schreibweisen aus dem Tagesreport fuer matchEmployee()-Matching. Wird u.a. genutzt, um die admin-only Analyse-Eintraege ("Technischer GL", "ohne Zuordnung") auf ihre rohen GL-Label-Texte im Tagesreport zu matchen, sodass Region_nach_GL/FH_Liste/Sparten/AKQ-Parsing diese automatisch unter dem virtuellen Mitarbeiternamen ablegen - keine Sonderbehandlung an anderer Stelle im Code noetig.';
+comment on column public.employees.admin_only is
+  'true = nur im Admin-Dropdown waehlbar (virtuelle Analyse-Mitarbeiter wie "Technischer GL"/"ohne Zuordnung"), nicht Teil der normalen EMPLOYEES-Liste/Benachrichtigungen/Ranking.';
+comment on column public.employees.active is
+  'Soft-Delete-Flag. Historische Daten (snap.gl/snap.fh/state.dailyGL) haengen am Namen - deshalb bewusst kein Hard-Delete im Standardfall.';
+comment on column public.employees.perf_goal_ids is
+  'Welche der 5 Performance-Dialog-Ziele gelten (siehe PERF_GOALS_BY_EMPLOYEE/PERF_GOAL_TITLES im Client). Ziele 4/5 (PO-Quote Telekom, Gebrauchtgeraete-Quote) sind aktuell Dominik-Szendi-spezifische Sondervertriebs-Snapshot-Berechnungen - ein neuer Mitarbeiter mit diesen Zielen braucht weiterhin Code-Anpassung.';
+
+alter table public.employees enable row level security;
+
+-- Jeder eingeloggte Nutzer braucht die Liste (Dropdown, Ranking, Ziel-
+-- Kacheln, Matching) - analog profiles. Schreiben nur Admin, bewusst NICHT
+-- wie fh_contacts/akp_contacts (dort duerfen alle pflegen): Mitarbeiter-
+-- Zielwerte sind sensibler und laut Nutzervorgabe exklusiv ueber das
+-- Admin-UI zu verwalten.
+create policy "Authenticated read employees" on public.employees
+  for select to authenticated using (true);
+create policy "Admins can insert employees" on public.employees
+  for insert to authenticated with check (public.is_admin());
+create policy "Admins can update employees" on public.employees
+  for update to authenticated using (public.is_admin()) with check (public.is_admin());
+create policy "Admins can delete employees" on public.employees
+  for delete to authenticated using (public.is_admin());
+
+create index if not exists employees_active_idx on public.employees (active, sort_order);
+
+-- Seed: bestehende 6 Mitarbeiter 1:1 aus den bisherigen Code-Konstanten.
+insert into public.employees (name, pers_jahresziel, miete_jahresziel, akq_staffel_ziel, perf_goal_ids, sort_order) values
+  ('Klaus Witting',20000,750,30,'[1,2,3]','1'),
+  ('Florian Hasibeder',15000,750,30,'[1,2,3]','2'),
+  ('Dominik Szendi',55000,null,0,'[1,4,5]','3'),
+  ('Helmut Otto',7000,750,30,'[1,2,3]','4'),
+  ('Peter Peißer',7000,750,30,'[1,2,3]','5'),
+  ('Thomas Eitzinger',15000,null,0,'[1]','6')
+on conflict (name) do nothing;
+
+-- Punkt 9: virtuelle, admin-only Analyse-Eintraege. match_aliases = exakter
+-- GL-Rohtext aus dem Tagesreport, damit matchEmployee() sie automatisch auf
+-- diesen Mitarbeiternamen matcht.
+insert into public.employees (name, admin_only, match_aliases, sort_order) values
+  ('Technischer GL', true, '{"Technischer GL CE DE"}', 100),
+  ('ohne Zuordnung', true, '{}', 101)
+on conflict (name) do nothing;
