@@ -1301,10 +1301,8 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 
     <h4 style="margin:16px 0 8px;color:var(--wg-navy);font-size:14px">Daten</h4>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-blue" id="adminUploadBtn">📤 Excel einspielen</button>
-      <button class="btn btn-blue" id="adminAkqUploadBtn">📊 Akquisestaffeln einspielen</button>
-      <button class="btn btn-blue" id="adminFhSegmentUploadBtn">🗂️ Händlersegmentierung einspielen</button>
-      <button class="btn btn-blue" id="adminMieteUploadBtn">🏠 Miete einspielen</button>
+      <button class="btn btn-blue" id="adminImportBtn">📤 Datei einspielen</button>
+      <button class="btn btn-blue" id="adminEmployeesBtn">👥 Mitarbeiterverwaltung</button>
     </div>
     <input type="file" id="akqFileInput" accept=".xlsx,.xls" class="hidden">
     <input type="file" id="fhSegmentFileInput" accept=".xlsx,.xls" class="hidden">
@@ -1358,8 +1356,35 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Nutzerübersicht</h4>
     <div id="adUserList" style="max-height:340px;overflow:auto"></div>
+  </div>
+</div>
 
-    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Mitarbeiterverwaltung</h4>
+<!-- Admin: Auswahl-PopUp "Datei einspielen" - bündelt die früher einzelnen
+     Einspielen-Buttons, damit das Admin-Panel selbst nicht weiter wächst. -->
+<div class="modal-bg hidden" id="adminImportChoiceModal">
+  <div class="modal">
+    <h3>Datei einspielen</h3>
+    <p>Welche Einspielung möchtest du vornehmen?</p>
+    <div style="display:flex;flex-direction:column;gap:8px;margin:14px 0">
+      <button class="btn btn-blue" id="adminImportChooseTagesreport" style="text-align:left">📊 Tagesreport <span style="font-weight:600;opacity:.75;font-size:12px">(Auswertung_TAG.xlsx)</span></button>
+      <button class="btn btn-blue" id="adminImportChooseAkq" style="text-align:left">🎯 Akquisestaffeln</button>
+      <button class="btn btn-blue" id="adminImportChooseFhSegment" style="text-align:left">🗂️ Händlersegmentierung</button>
+      <button class="btn btn-blue" id="adminImportChooseMiete" style="text-align:left">🏠 Miete</button>
+    </div>
+    <button class="btn btn-ghost" id="adminImportChoiceClose" style="width:100%">Abbrechen</button>
+  </div>
+</div>
+
+<!-- Admin: Mitarbeiterverwaltung - eigenes PopUp statt im Admin-Panel
+     inline (das wurde dort zunehmend unübersichtlich, Nutzervorgabe
+     01.09.2026). Inhaltlich unverändert gegenüber vorher. -->
+<div class="modal-bg hidden" id="adminEmployeesModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:10px">
+      <h3 style="margin:0">Mitarbeiterverwaltung</h3>
+      <button class="btn btn-ghost" id="adminEmployeesClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+    <h4 style="margin:8px 0;color:var(--wg-navy);font-size:14px">Neuen Mitarbeiter anlegen</h4>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <input type="text" id="empName" placeholder="Name" autocomplete="off" style="flex:1;min-width:150px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
       <input type="number" id="empJahresziel" placeholder="Jahresziel Produktion" style="width:170px;font-size:14px;font-weight:600;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
@@ -2106,7 +2131,7 @@ async function createEmployee(){
   toast("Mitarbeiter angelegt: "+name);
 }
 function openAdminModal(){
-  $("adminModal").classList.remove("hidden"); loadAdminUsers(); loadEmployeesAdmin();
+  $("adminModal").classList.remove("hidden"); loadAdminUsers();
   $("chefgespraechEnabledChk").checked=chefgespraechEnabled;
   $("kooperationsgespraechEnabledChk").checked=kooperationsgespraechEnabled;
   $("auswertungEnabledChk").checked=auswertungEnabled;
@@ -4945,17 +4970,28 @@ function renderEmpRanking(){
   const box=$("empRankingBlock"); if(!box) return;
   if(currentEmp!==AT_GESAMT){ box.innerHTML=""; return; }
   const s=state.latest; if(!s){ box.innerHTML=""; return; }
+  // Hochrechnung Jahresende (saisonal) - dieselbe Logik wie bei den Ziel-
+  // Kacheln (goalCard()/renderGoals(), hrJahr=at.jahr/share) - Nutzervorgabe
+  // 01.09.2026: Zielzahl, Stand und Hochrechnung (±% zum Ziel) zusätzlich
+  // zur Zielerreichung anzeigen. Als Unterzeile unter dem Namen (nicht als
+  // weitere Spalte VOR dem Balken), damit der Balken nicht schmäler wird.
+  const share=seasonShare(s.vortag,s.jahr);
   const rows=EMPLOYEES.map(emp=>{
     const ist=glRow(emp).jahr, ziel=PERS_JAHRESZIELE[emp]||0;
-    return {emp, ist, ziel, pct: ziel>0?ist/ziel*100:null};
+    const hr=share>0?ist/share:null;
+    const hrDelta=(ziel>0&&hr!=null)?(hr/ziel-1)*100:null;
+    return {emp, ist, ziel, hr, hrDelta, pct: ziel>0?ist/ziel*100:null};
   }).filter(r=>r.ziel>0).sort((a,b)=>(b.pct??-1)-(a.pct??-1));
   if(!rows.length){ box.innerHTML=""; return; }
   box.innerHTML=`<div class="panel" style="margin:14px 0">
     <h3><span class="dot" style="background:var(--wg-blue)"></span>Mitarbeiter-Ranking · pers. Jahreszielerreichung ${s.jahr}</h3>
     ${rows.map((r,i)=>`
-      <div style="display:flex;align-items:center;gap:10px;padding:6px 0${i<rows.length-1?';border-bottom:1px solid var(--line)':""}">
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0${i<rows.length-1?';border-bottom:1px solid var(--line)':""}">
         <span style="width:20px;flex:none;font-weight:800;color:var(--muted)">${i+1}.</span>
-        <span style="flex:1;font-weight:700">${escapeHtml(r.emp)}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700">${escapeHtml(r.emp)}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Ziel ${fmt(r.ziel)} · Stand ${fmt(r.ist)} · Hochr. ${fmt(r.hr)} <span style="color:${r.hrDelta==null?"var(--muted)":r.hrDelta>=0?"var(--pos)":"var(--neg)"};font-weight:700">(${fmtPct(r.hrDelta)})</span></div>
+        </div>
         <div class="bar" style="flex:2;height:10px"><div class="fill" style="width:${Math.min(r.pct,100)}%;background:${r.pct>=100?"var(--pos)":"var(--wg-blue)"}"></div></div>
         <b style="width:60px;text-align:right;flex:none">${r.pct.toFixed(1).replace(".",",")+" %"}</b>
       </div>`).join("")}
@@ -8925,14 +8961,22 @@ function renderPO(){
 /* Sparten lfd. Monat: Optik (Brille), Akustik (Hörgeräte), Uhren, Küchen */
 function renderSparten(){
   const s=state.latest;
-  if(!s.sparten){ $("spBody").innerHTML=`<div class="empty-note">Sparten-Daten in dieser Einspielung nicht enthalten – bitte Auswertung mit dieser Version neu einspielen.</div>`; return; }
-  const rec=s.sparten[glKey(currentEmp)];
+  const rec=s.sparten&&s.sparten[glKey(currentEmp)];
   const defs=[["👓 Optik (Brille)","brille"],["👂 Akustik (Hörgeräte)","hoer"],["⌚ Uhren","uhren"],["🍳 Küchen","kueche"]];
   // Bike nur in der Gesamtübersicht - kommt aus ZE_Region (nicht aus der
   // Region_nach_GL-Sparten-Nebentabelle wie die anderen 4) und liegt daher
   // nur als AT-Gesamtwert vor, keine Aufschlüsselung je GL/FH möglich.
   if(currentEmp===AT_GESAMT) defs.push(["🚲 Bike","bike"]);
-  if(!rec){ $("spBody").innerHTML=`<div class="empty-note">Für ${currentEmp} in der Sparten-Tabelle (Region_nach_GL) nicht angeführt.</div>`; return; }
+  // Bugfix 01.09.2026: die Region_nach_GL-Sparten-Nebentabelle (Brille/
+  // Hörgeräte/Küche/Uhren) enthält im aktuellen Tagesreport-Format nur noch
+  // eine verwaiste Spaltenüberschrift ohne Datenzeilen dahinter - der
+  // Label-Suchcode im Parser "findet" diese trotzdem und hinterlässt ein
+  // leeres {} statt gar keines Eintrags. Ein bloßes "gibt es rec?"-Check
+  // (früher: if(!rec)) erkennt das nicht und zeigte fälschlich ein leeres
+  // Widget statt des Hinweises. Deshalb hier zusätzlich prüfen, ob rec
+  // tatsächlich mindestens einen Wert für eine der angezeigten Sparten hat.
+  const hasAny=rec&&defs.some(([,k])=>rec[k]!=null);
+  if(!hasAny){ $("spBody").innerHTML=`<div class="empty-note">Sparten-Daten in dieser Einspielung nicht enthalten – bitte Auswertung mit dieser Version neu einspielen.</div>`; return; }
   $("spBody").innerHTML=defs.map(([lbl,k])=>{
     const v=rec[k];
     const txt=(v==null)?"–":(typeof v==="number"?fmt(v):`<span style="font-size:11px;color:var(--muted)">${v}</span>`);
@@ -9317,13 +9361,22 @@ $("perfActivePeriodSetBtn").onclick=async()=>{
   await setPerfActivePeriod(year,month);
   renderPerfActivePeriodUI();
 };
-$("adminUploadBtn").onclick=pickFiles;
-$("adminAkqUploadBtn").onclick=()=>$("akqFileInput").click();
 $("akqFileInput").onchange=async e=>{ if(e.target.files.length){ await handleAkqStaffelFile([...e.target.files]); e.target.value=""; } };
-$("adminFhSegmentUploadBtn").onclick=()=>$("fhSegmentFileInput").click();
 $("fhSegmentFileInput").onchange=async e=>{ if(e.target.files.length){ await handleFhSegmentFile([...e.target.files]); e.target.value=""; } };
-$("adminMieteUploadBtn").onclick=()=>$("mieteFileInput").click();
 $("mieteFileInput").onchange=async e=>{ if(e.target.files.length){ await handleMieteFile([...e.target.files]); e.target.value=""; } };
+// Admin: "Datei einspielen"-Auswahl-PopUp (bündelt die früher 4 einzelnen
+// Einspielen-Buttons, Nutzervorgabe 01.09.2026 - Admin-Panel wurde
+// zunehmend unübersichtlich).
+$("adminImportBtn").onclick=()=>$("adminImportChoiceModal").classList.remove("hidden");
+$("adminImportChoiceClose").onclick=()=>$("adminImportChoiceModal").classList.add("hidden");
+$("adminImportChooseTagesreport").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); pickFiles(); };
+$("adminImportChooseAkq").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); $("akqFileInput").click(); };
+$("adminImportChooseFhSegment").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); $("fhSegmentFileInput").click(); };
+$("adminImportChooseMiete").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); $("mieteFileInput").click(); };
+// Admin: Mitarbeiterverwaltung als eigenes PopUp (vorher inline im
+// Admin-Panel, Nutzervorgabe 01.09.2026).
+$("adminEmployeesBtn").onclick=()=>{ $("adminEmployeesModal").classList.remove("hidden"); loadEmployeesAdmin(); };
+$("adminEmployeesClose").onclick=()=>$("adminEmployeesModal").classList.add("hidden");
 $("adCreateBtn").onclick=createAdminUser;
 $("empCreateBtn").onclick=createEmployee;
 $("settingsBtn").onclick=showSettingsModal;
