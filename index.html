@@ -730,11 +730,14 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       </div>
       <div class="panel">
         <h3 style="justify-content:space-between"><span style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--wg-navy)"></span>Top 20 AKQ</span>
+          <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           <span class="tabs mini no-print" id="akqYearTabs">
             <button data-y="alle" class="on">gesamt</button>
             <button data-y="2024">2024</button>
             <button data-y="2025">2025</button>
             <button data-y="2026">2026</button>
+          </span>
+          <button type="button" class="btn btn-ghost no-print" id="akqShowAllBtn" style="padding:5px 10px;font-size:11px;border-radius:9px" title="Alle akquiserelevanten Fachhändler mit ihrer Vortagsproduktion anzeigen">Alle · nach Vortag ⤢</button>
           </span></h3>
         <div style="font-size:11px;color:var(--muted);margin:-2px 0 6px" id="akqWho"></div>
         <div id="akqList" style="max-height:650px;overflow:auto"></div>
@@ -2731,6 +2734,29 @@ function parseAuswertung(wb){
     }
   })();
 
+  // ZE_Region: Sparte "Bike" (fix P22, Nutzervorgabe 01.09.2026) - anders
+  // als der Rest dieses Parsers bewusst positional statt labelbasiert, da
+  // keine robuste Kopfzeile für diese Einzelzahl bekannt ist. Zeile 22 ->
+  // Index 21, Spalte P -> Index 15 (0-indiziert, ze=toRows(...) mit
+  // header:1). Logging der Nachbarzelle zur Kontrolle bei künftigen
+  // Layout-Verschiebungen im Tagesreport. Muss NACH der Sparten-
+  // Nebentabelle oben stehen, sonst überschreibt snap.sparten[AT_KEY]=rec
+  // dieses Feld wieder.
+  if(ze[21]){
+    const bikeVal=num(ze[21][15]);
+    console.log("[Import] ZE_Region Bike (P22):", ze[21][15], "→", bikeVal, "| Label A22:", ze[21][0]);
+    if(!snap.sparten[AT_KEY]) snap.sparten[AT_KEY]={};
+    snap.sparten[AT_KEY].bike=bikeVal;
+  }
+  // ZE_Region: AT-Vorjahresvergleich Monat (fix K12, Nutzervorgabe
+  // 01.09.2026) - siehe Kommentar beim Bike-Wert zur Begründung des
+  // positionalen Zugriffs. Zeile 12 -> Index 11, Spalte K -> Index 10.
+  if(ze[11]){
+    const monatVJAT=num(ze[11][10]);
+    console.log("[Import] ZE_Region AT-Monatsvergleich VJ (K12):", ze[11][10], "→", monatVJAT, "| Label A12:", ze[11][0]);
+    snap.zeAtMonatVJ=monatVJAT;
+  }
+
   /* --- Gebrauchtgeräte-Quote LJ/VJ je GL: liegt in einem der "data_"-Hilfsblätter
      hinter dem sichtbaren Region_nach_GL-Tab (Excel-PivotTable-Cache). Welches
      data_-Blatt das genau ist (z. B. "_3" vs. "_4"), verschiebt sich je nach
@@ -4556,6 +4582,20 @@ function renderGoals(){
       g>0?`Tag ${s.tageIst} von ${s.tageSoll} Arbeitstagen`:(isATv?"kein Monatsziel hinterlegt":`<button class="edit no-print" onclick="openGoalModal(true)" style="background:none;border:none;color:var(--wg-blue);font-weight:700;cursor:pointer;font-size:12px">Jetzt Ziel festlegen →</button>`), g>0&&!isATv,
       g>0?{val:hrMe,lbl:"Monatsende",stand:standM}:null)
   ];
+  // Vorjahresvergleich Monat für Österreich gesamt (Nutzervorgabe
+  // 01.09.2026, "wie bei Mitarbeiter") - card3 zeigt bei AT-gesamt bereits
+  // "PLAN Monat" (beide Infos sind wertvoll), deshalb eine zusätzliche
+  // Karte statt Ersatz. Quelle: ZE_Region (siehe snap.zeAtMonatVJ im
+  // Parser), nicht Region_nach_GL wie bei Mitarbeitern - dort steht kein
+  // AT-Gesamt-Vorjahreswert je Monat zur Verfügung.
+  if(isATv&&s.zeAtMonatVJ!=null){
+    cards.splice(3,0, goalCard("📊 Vorjahresvergleich · "+MONATE[s.monat-1]+"<br><span style='font-weight:600;font-size:11px;color:var(--muted)'>Österreich gesamt · Vorjahresmonat gleicher Zeitraum (ZE_Region)</span>",
+      s.zeAtMonatVJ, at.monat, s.zeAtMonatVJ,
+      `Vorjahr bis Tag ${s.tageIst}: ${fmt(s.zeAtMonatVJ)} Verträge`, false,
+      s.zeAtMonatVJ>0&&s.tageIst>0?{val:hrMe,lbl:"Monatsende",stand:standM,
+        target:s.zeAtMonatVJ/s.tageIst*s.tageSoll,vsLbl:"vom VJ-Monatsende"}:null,
+      {ahead:"▲ über Vorjahr",behind:"▼ unter Vorjahr",target:"Vorjahr"}));
+  }
   // Miete-Kachel (Club.Weiss) - reagiert wie die persönlichen Karten auf den
   // Mitarbeiter-Filter (mieteJahrFor), nicht wie Jahresziel/PLAN Jahr immer
   // auf Österreich gesamt. Soll-Balkenmarker/-Pille und die absolute
@@ -4591,7 +4631,7 @@ function renderGoals(){
   // 5-spaltige .goals-Grid, kein cols4 mehr nötig). Mitarbeiter-Ansicht: 5 +
   // Persönliches Jahresziel + Miete = 6 Karten -> eigene 3-spaltige
   // (2-zeilige) Variante .cols3, siehe CSS.
-  $("goalCards").classList.toggle("cols3",!isATv);
+  $("goalCards").classList.toggle("cols3", !isATv||cards.length>5);
   $("goalCards").innerHTML=cards.join("");
 }
 // Zählt Staffel-Erreichungen (skaliert auf currentEmp) im aktuell gezeigten
@@ -8448,13 +8488,34 @@ document.addEventListener("click",e=>{
 
 /* Top 20 AKQ · Filter: Akquise-Jahrgang */
 let akqJahrFilter="alle";
+let akqShowAll=false;
 function renderAKQ(){
   const s=state.latest, showGL=currentEmp===AT_GESAMT;
-  $("akqWho").textContent=currentEmp+" · nach Produktion "+s.jahr+(akqJahrFilter==="alle"?"":" · Akquise "+akqJahrFilter);
-  const rows=s.akq.filter(a=>currentEmp===AT_GESAMT||a.emp===currentEmp)
-    .filter(a=>akqJahrFilter==="alle"||a.beginnJahr===+akqJahrFilter)
-    .sort((a,b)=>b.p2026-a.p2026||b.kw-a.kw).slice(0,20);
+  $("akqYearTabs").classList.toggle("hidden",akqShowAll);
+  let rows=s.akq.filter(a=>currentEmp===AT_GESAMT||a.emp===currentEmp);
+  if(akqShowAll){
+    // Alle akquiserelevanten FH, sortiert nach Vortagsproduktion (aus
+    // state.latest.fh[nr].vt - steht NICHT in akq[] selbst) - bewusst ohne
+    // die sonstige Top-20-Begrenzung, um jeden Akquise-Produzenten des
+    // Vortags sehen zu können (Nutzervorgabe 01.09.2026).
+    $("akqWho").textContent=currentEmp+" · alle · nach Vortagsproduktion";
+    rows=rows.sort((a,b)=>(s.fh[b.nr]?.vt||0)-(s.fh[a.nr]?.vt||0));
+  }else{
+    $("akqWho").textContent=currentEmp+" · nach Produktion "+s.jahr+(akqJahrFilter==="alle"?"":" · Akquise "+akqJahrFilter);
+    rows=rows.filter(a=>akqJahrFilter==="alle"||a.beginnJahr===+akqJahrFilter)
+      .sort((a,b)=>b.p2026-a.p2026||b.kw-a.kw).slice(0,20);
+  }
   if(!rows.length){ $("akqList").innerHTML=`<div class="empty-note">Keine Akquisekunden für diese Ansicht in der AKQ-Liste.</div>`; return; }
+  if(akqShowAll){
+    $("akqList").innerHTML=`<table><thead><tr><th></th><th>Akquisekunde${showGL?" / Betreuer":""}</th><th class="r">${s.jahr}</th><th class="r">Vortag</th></tr></thead><tbody>`+
+      rows.map((r,i)=>{ const vt=s.fh[r.nr]?.vt||0; return `<tr>
+      <td><span class="rank">${i+1}</span></td>
+      <td><b><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.nr||"")}">${escapeHtml(r.name)}</button></b><br><span class="betr">${escapeHtml(r.nr)} · ${escapeHtml(r.ort)}${showGL?" · "+escapeHtml(r.emp||r.glRaw||"–"):""}${r.produzent?"":" · <span style='color:var(--neg)'>kein Produzent</span>"}</span></td>
+      <td class="r" style="font-weight:900;font-size:14px">${fmt(r.p2026)}</td>
+      <td class="r">${vt>0?`<span class="pill pos">+${fmt(vt)}</span>`:`<span class="pill neu">0</span>`}</td>
+    </tr>`;}).join("")+`</tbody></table>`;
+    return;
+  }
   const max=Math.max(rows[0].p2026,1);
   $("akqList").innerHTML=`<table><thead><tr><th></th><th>Akquisekunde${showGL?" / Betreuer":""}</th><th class="r">${s.jahr}</th><th class="r">akt. KW</th></tr></thead><tbody>`+
     rows.map((r,i)=>`<tr>
@@ -8559,6 +8620,10 @@ function renderSparten(){
   if(!s.sparten){ $("spBody").innerHTML=`<div class="empty-note">Sparten-Daten in dieser Einspielung nicht enthalten – bitte Auswertung mit dieser Version neu einspielen.</div>`; return; }
   const rec=s.sparten[glKey(currentEmp)];
   const defs=[["👓 Optik (Brille)","brille"],["👂 Akustik (Hörgeräte)","hoer"],["⌚ Uhren","uhren"],["🍳 Küchen","kueche"]];
+  // Bike nur in der Gesamtübersicht - kommt aus ZE_Region (nicht aus der
+  // Region_nach_GL-Sparten-Nebentabelle wie die anderen 4) und liegt daher
+  // nur als AT-Gesamtwert vor, keine Aufschlüsselung je GL/FH möglich.
+  if(currentEmp===AT_GESAMT) defs.push(["🚲 Bike","bike"]);
   if(!rec){ $("spBody").innerHTML=`<div class="empty-note">Für ${currentEmp} in der Sparten-Tabelle (Region_nach_GL) nicht angeführt.</div>`; return; }
   $("spBody").innerHTML=defs.map(([lbl,k])=>{
     const v=rec[k];
@@ -9011,6 +9076,7 @@ document.querySelectorAll("#akpTabs button").forEach(b=>{
 document.querySelectorAll("#akqYearTabs button").forEach(b=>{
   b.onclick=()=>{ document.querySelectorAll("#akqYearTabs button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); akqJahrFilter=b.dataset.y; renderAKQ(); };
 });
+$("akqShowAllBtn").onclick=()=>{ akqShowAll=!akqShowAll; $("akqShowAllBtn").classList.toggle("on",akqShowAll); renderAKQ(); };
 $("akpMoreBtn").onclick=()=>{ fhAkpFilter=null; openAkpModal(); };
 $("akpSearchInput").oninput=()=>renderAkpSearch();
 $("fhSearchInput").oninput=()=>renderFhSearch();
