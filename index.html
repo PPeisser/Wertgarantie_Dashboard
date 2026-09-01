@@ -1411,7 +1411,8 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
       Zeigt Fachhändler und AKP-Kontakte ohne Produktion im gewählten Zeitraum – zur manuellen Prüfung, ob
       „Sperren/Anonymisieren" (DSGVO) sinnvoll ist. Es wird nichts automatisch gelöscht; die Entscheidung trifft
-      immer ein Mensch, Datensatz für Datensatz.
+      immer ein Mensch, Datensatz für Datensatz. Mit „Alle behalten" wird die Prüfung für das laufende Kalenderjahr
+      abgeschlossen (mit Datum/Person dokumentiert) – die Liste erscheint automatisch erst wieder im nächsten Jahr.
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px">
       <label for="karteileichenJahreInput" style="font-weight:700;font-size:13px">Zeitraum ohne Produktion (Kalenderjahre, inkl. laufendem Jahr):</label>
@@ -1712,6 +1713,13 @@ let akpPeerCompareEnabled = false;
 // Vorschlagsfilter für die manuelle Prüfung, keine automatische Löschregel.
 // Standardwert 3, bis Wert aus der DB geladen wurde bzw. frei einstellbar.
 let karteileichenJahre = 3;
+// Jahres-Prüfstatus für die Karteileichen-Review-Liste (dashboard_kv-Keys
+// "karteileichen_review_fh"/"karteileichen_review_akp") - je
+// {year,reviewed_at,reviewed_by,count}, gesetzt über den "Alle behalten"-
+// Button. Null, solange für das laufende Kalenderjahr noch nicht geprüft
+// wurde bzw. der Wert noch nicht aus der DB geladen ist.
+let fhKarteileichenReview = null;
+let akpKarteileichenReview = null;
 // Zeitpunkt der letzten Miete-Report-Einspielung (dashboard_kv-Key
 // "miete_last_import", von upsertMieteData() bei jedem Import gesetzt -
 // deckt sowohl den Admin-Panel-Upload als auch den automatischen
@@ -2157,6 +2165,35 @@ function karteileichenGroupHtml(list,type,openByDefault){
       <div style="max-height:220px;overflow:auto">${karteileichenRowsHtml(never,type)}</div>
     </details>`;
 }
+// Jährliche Prüfung statt Einmalklick (Nutzervorgabe 01.09.2026): sobald ein
+// Admin "Alle behalten" klickt, gilt der Typ (FH/AKP) für das laufende
+// Kalenderjahr als geprüft - die Liste erscheint erst im nächsten Jahr
+// wieder automatisch (Jahresvergleich, kein Cron nötig). Es wird dabei
+// dokumentiert WER WANN WIE VIELE Kandidaten geprüft und bewusst behalten
+// hat (Nachweisbarkeit "regelmäßige Erforderlichkeitsprüfung", Art. 5 Abs. 1
+// lit. e DSGVO) - eine reine, stillschweigend geleerte Liste wäre dafür kein
+// ausreichender Nachweis. "Trotzdem jetzt anzeigen" erlaubt jederzeit einen
+// Blick auf die aktuellen Kandidaten, ohne den Prüfstatus zu verändern.
+function karteileichenTypeBlockHtml(type,label,list,years,review,openByDefault,forceShow){
+  const cy=new Date().getFullYear();
+  const already=review&&review.year===cy;
+  if(already&&!forceShow){
+    const when=fmtDate((review.reviewed_at||"").slice(0,10))||review.reviewed_at||"–";
+    return `
+      <h4 style="margin:14px 0 6px;color:var(--wg-navy);font-size:13.5px">${label} ohne Produktion seit ${years.size} Jahren</h4>
+      <div class="box tip" style="margin:0 0 8px">
+        ✓ Für ${cy} geprüft am ${escapeHtml(when)} von ${escapeHtml(review.reviewed_by||"–")} –
+        ${review.count} Kandidat(en) bewusst behalten. Nächste automatische Prüfung: ${cy+1}.
+        <button class="btn btn-ghost karteileichen-forceshow" data-type="${type}" style="margin-left:8px;padding:3px 9px;font-size:11px">Trotzdem jetzt anzeigen</button>
+      </div>`;
+  }
+  return `
+    <h4 style="margin:14px 0 6px;color:var(--wg-navy);font-size:13.5px">${label} ohne Produktion seit ${years.size} Jahren (${list.length})</h4>
+    ${karteileichenGroupHtml(list,type,openByDefault)}
+    ${list.length?`<button class="btn btn-blue karteileichen-keepall" data-type="${type}" data-count="${list.length}" style="margin-top:8px">✓ Alle behalten (Prüfung ${cy} abschließen)</button>`:""}
+  `;
+}
+let karteileichenForceShow={fh:false,akp:false};
 async function runKarteileichenScan(){
   $("karteileichenBody").innerHTML="<p style='color:var(--muted)'>Lädt …</p>";
   if(!fhContactsAllIndex||!fhContactsBulkIndex) await loadFhContactsIndicesAll();
@@ -2164,21 +2201,35 @@ async function runKarteileichenScan(){
   const years=karteileichenYearsSet(karteileichenJahre);
   const fhList=fhKarteileichenCandidates(years);
   const akpList=akpKarteileichenCandidates(years);
-  $("karteileichenBody").innerHTML=`
-    <h4 style="margin:14px 0 6px;color:var(--wg-navy);font-size:13.5px">Fachhändler ohne Produktion seit ${years.size} Jahren (${fhList.length})</h4>
-    ${karteileichenGroupHtml(fhList,"fh",true)}
-    <h4 style="margin:18px 0 6px;color:var(--wg-navy);font-size:13.5px">AKP ohne Produktion seit ${years.size} Jahren (${akpList.length})</h4>
-    ${karteileichenGroupHtml(akpList,"akp",false)}
-  `;
+  $("karteileichenBody").innerHTML=
+    karteileichenTypeBlockHtml("fh","Fachhändler",fhList,years,fhKarteileichenReview,true,karteileichenForceShow.fh)+
+    karteileichenTypeBlockHtml("akp","AKP",akpList,years,akpKarteileichenReview,false,karteileichenForceShow.akp);
   $("karteileichenBody").querySelectorAll(".karteileichen-open").forEach(btn=>{
     btn.onclick=()=>{
       const nr=btn.dataset.nr;
       if(btn.dataset.type==="fh") openFhModal(nr); else openAkpContact(nr);
     };
   });
+  $("karteileichenBody").querySelectorAll(".karteileichen-forceshow").forEach(btn=>{
+    btn.onclick=()=>{ karteileichenForceShow[btn.dataset.type]=true; runKarteileichenScan(); };
+  });
+  $("karteileichenBody").querySelectorAll(".karteileichen-keepall").forEach(btn=>{
+    btn.onclick=()=>keepAllKarteileichen(btn.dataset.type,+btn.dataset.count);
+  });
+}
+async function keepAllKarteileichen(type,count){
+  const label=type==="fh"?"Fachhändler":"AKP";
+  if(!confirm(`Prüfung für ${label} (${new Date().getFullYear()}) abschließen und alle ${count} Kandidaten behalten?\n\nEs wird nichts gelöscht oder gesperrt - die Liste erscheint erst wieder im nächsten Kalenderjahr.`)) return;
+  const review={year:new Date().getFullYear(),reviewed_at:new Date().toISOString(),reviewed_by:myName||(supaUser&&supaUser.email)||"–",count};
+  try{ await stSet("karteileichen_review_"+type,JSON.stringify(review)); }catch(e){ toast("Fehler beim Speichern: "+(e.message||e)); return; }
+  if(type==="fh") fhKarteileichenReview=review; else akpKarteileichenReview=review;
+  karteileichenForceShow[type]=false;
+  toast("Prüfung abgeschlossen ✓");
+  await runKarteileichenScan();
 }
 async function openKarteileichenModal(){
   $("karteileichenJahreInput").value=karteileichenJahre;
+  karteileichenForceShow={fh:false,akp:false};
   $("karteileichenModal").classList.remove("hidden");
   await runKarteileichenScan();
 }
@@ -4502,6 +4553,8 @@ async function loadAll(){
   try{ fhSearchEnabled=(await stGet("fh_search_enabled"))==="1"; }catch(e){}
   try{ akpPeerCompareEnabled=(await stGet("akp_peer_compare_enabled"))==="1"; }catch(e){}
   try{ karteileichenJahre=parseInt(await stGet("karteileichen_jahre"))||3; }catch(e){}
+  try{ const r=await stGet("karteileichen_review_fh"); fhKarteileichenReview=r?JSON.parse(r):null; }catch(e){}
+  try{ const r=await stGet("karteileichen_review_akp"); akpKarteileichenReview=r?JSON.parse(r):null; }catch(e){}
   try{ mieteLastImport=await stGet("miete_last_import"); }catch(e){}
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
