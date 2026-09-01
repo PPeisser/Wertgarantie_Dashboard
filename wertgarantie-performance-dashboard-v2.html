@@ -613,6 +613,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       </button>
       <button class="btn btn-ghost hidden" id="settingsBtn" title="Einstellungen">⚙ Einstellungen</button>
       <button class="btn btn-ghost hidden" id="adminBtn" title="Admin-Panel">⚙ Admin</button>
+      <button class="btn btn-ghost no-print" id="privacyBtn" title="Datenschutzhinweis" style="padding:11px 13px">ℹ Datenschutz</button>
       <button class="btn btn-ghost hidden" id="logoutBtn" title="Abmelden" style="margin-left:18px">Abmelden</button>
      </div>
      <div class="controls-row">
@@ -817,6 +818,30 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <button class="btn btn-ghost" id="notifClose" style="padding:7px 12px">✕ Schließen</button>
     </div>
     <div id="notifBody" style="max-height:65vh;overflow:auto"></div>
+  </div>
+</div>
+
+<!-- Datenschutzhinweis (DSGVO-Prüfprotokoll, Befund M-3) -->
+<div class="modal-bg hidden" id="privacyModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
+      <h3 style="margin:0">ℹ Datenschutzhinweis</h3>
+      <button class="btn btn-ghost" id="privacyClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+    <div style="font-size:12.5px;line-height:1.6">
+      <p>Im Rahmen Ihrer Nutzung dieses Dashboards werden folgende Daten über Sie verarbeitet:</p>
+      <ul style="margin:6px 0;padding-left:20px">
+        <li>Name und E-Mail-Adresse (Ihr Zugangskonto)</li>
+        <li>Ihre Rolle (Außendienst / Trainer / Admin)</li>
+        <li>Ihre Vertriebs- und Leistungsdaten (Produktionszahlen, Zielerreichung, ggf. Angaben aus dem Performance-Dialog)</li>
+      </ul>
+      <p><strong>Zweck:</strong> Steuerung und Auswertung des Vertriebs sowie Vorbereitung von Chef-/Kooperationsgesprächen,
+      teils unter Einsatz einer KI-gestützten Zusammenfassung (Anbieter: Anthropic, USA – hierfür liegt ein
+      Auftragsverarbeitungsvertrag inkl. EU-Standardvertragsklauseln vor).</p>
+      <p><strong>Speicherort:</strong> Die Daten liegen auf Servern von Supabase in der EU (Frankfurt) und sind nur für
+      angemeldete Dashboard-Nutzer einsehbar.</p>
+      <p><strong>Fragen oder Auskunftsersuchen:</strong> Konstantin Scheiermann &amp; Peter Peißer.</p>
+    </div>
   </div>
 </div>
 
@@ -1350,6 +1375,11 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       </label>
     </div>
 
+    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Datenqualität (DSGVO)</h4>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-ghost" id="karteileichenBtn">🗂 Review-Liste: FH/AKP ohne Produktion</button>
+    </div>
+
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <input type="text" id="adName" placeholder="Name" autocomplete="off" style="flex:1;min-width:150px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
@@ -1366,6 +1396,30 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Nutzerübersicht</h4>
     <div id="adUserList" style="max-height:340px;overflow:auto"></div>
+  </div>
+</div>
+
+<!-- Karteileichen-Review (DSGVO-Prüfprotokoll, Befund N-2: ereignisbasierter
+     Ansatz statt starrer Aufbewahrungsfrist - reine Review-Liste als
+     Vorschlagsfilter, keine automatische Löschung) -->
+<div class="modal-bg hidden" id="karteileichenModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
+      <h3 style="margin:0">🗂 Review-Liste: FH/AKP ohne Produktion</h3>
+      <button class="btn btn-ghost" id="karteileichenClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+      Zeigt Fachhändler und AKP-Kontakte ohne Produktion im gewählten Zeitraum – zur manuellen Prüfung, ob
+      „Sperren/Anonymisieren" (DSGVO) sinnvoll ist. Es wird nichts automatisch gelöscht; die Entscheidung trifft
+      immer ein Mensch, Datensatz für Datensatz. Mit „Alle behalten" wird die Prüfung für das laufende Kalenderjahr
+      abgeschlossen (mit Datum/Person dokumentiert) – die Liste erscheint automatisch erst wieder im nächsten Jahr.
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px">
+      <label for="karteileichenJahreInput" style="font-weight:700;font-size:13px">Zeitraum ohne Produktion (Kalenderjahre, inkl. laufendem Jahr):</label>
+      <input type="number" id="karteileichenJahreInput" min="1" max="15" step="1" style="width:60px;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
+      <button class="btn btn-blue" id="karteileichenApplyBtn" style="padding:6px 14px">Übernehmen</button>
+    </div>
+    <div id="karteileichenBody"><p style="color:var(--muted)">Lädt …</p></div>
   </div>
 </div>
 
@@ -1653,6 +1707,19 @@ let fhSearchEnabled = false;
 // Vergleichsgruppe anfangs noch ausreichend Historie). Standardmäßig aus,
 // bis Wert aus der DB geladen wurde.
 let akpPeerCompareEnabled = false;
+// Zeitraum (Kalenderjahre inkl. laufendem Jahr) ohne Produktion, ab dem ein
+// FH/AKP in der Karteileichen-Review-Liste (Admin-Panel, DSGVO-Befund N-2)
+// als Kandidat auftaucht (dashboard_kv-Key "karteileichen_jahre") - rein ein
+// Vorschlagsfilter für die manuelle Prüfung, keine automatische Löschregel.
+// Standardwert 3, bis Wert aus der DB geladen wurde bzw. frei einstellbar.
+let karteileichenJahre = 3;
+// Jahres-Prüfstatus für die Karteileichen-Review-Liste (dashboard_kv-Keys
+// "karteileichen_review_fh"/"karteileichen_review_akp") - je
+// {year,reviewed_at,reviewed_by,count}, gesetzt über den "Alle behalten"-
+// Button. Null, solange für das laufende Kalenderjahr noch nicht geprüft
+// wurde bzw. der Wert noch nicht aus der DB geladen ist.
+let fhKarteileichenReview = null;
+let akpKarteileichenReview = null;
 // Zeitpunkt der letzten Miete-Report-Einspielung (dashboard_kv-Key
 // "miete_last_import", von upsertMieteData() bei jedem Import gesetzt -
 // deckt sowohl den Admin-Panel-Upload als auch den automatischen
@@ -2033,6 +2100,147 @@ function openAdminModal(){
   $("fhSearchEnabledChk").checked=fhSearchEnabled;
   $("akpPeerCompareEnabledChk").checked=akpPeerCompareEnabled;
 }
+// ---------- Karteileichen-Review (DSGVO-Prüfprotokoll, Befund N-2) ----------
+// Ereignisbasierter statt zeitbasierter Ansatz (Nutzervorgabe 01.09.2026):
+// keine automatische Löschfrist, sondern eine für Admins sichtbare
+// Review-Liste als Vorschlagsfilter - die eigentliche Entscheidung (Sperren
+// über den bereits vorhandenen Button, siehe lockFhContact/lockAkpContact)
+// bleibt beim Admin, Datensatz für Datensatz. Nutzt bewusst die ohnehin
+// bereits geladenen Indizes (fhContactsBulkIndex/fhContactsAllIndex,
+// akpContactsIndex) statt eines eigenen Bulk-Requests.
+function karteileichenYearsSet(n){
+  const cy=new Date().getFullYear();
+  const s=new Set();
+  for(let i=0;i<n;i++) s.add(cy-i);
+  return s;
+}
+function karteileichenSumInYears(pm,years){
+  let sum=0;
+  for(const [k,v] of Object.entries(pm||{})) if(years.has(+k.slice(0,4))) sum+=(Number(v)||0);
+  return sum;
+}
+function fhKarteileichenCandidates(years){
+  const out=[];
+  for(const f of fhAllKnownList()){
+    const rec=fhContactsAllIndex&&fhContactsAllIndex[f.nr];
+    if(rec&&rec.gesperrt_am) continue;
+    const pm=(fhContactsBulkIndex&&fhContactsBulkIndex[f.nr])||{};
+    if(karteileichenSumInYears(pm,years)>0) continue;
+    out.push({nr:f.nr,name:f.name||f.nr,last:lastMonthKeyOf(pm)});
+  }
+  return out.sort((a,b)=>(a.name||"").localeCompare(b.name||"","de"));
+}
+function akpKarteileichenCandidates(years){
+  const out=[];
+  for(const [nr,a] of Object.entries(akpContactsIndex||{})){
+    if(a.gesperrt_am) continue;
+    const pm={...(a.prod_monthly||{}),...(a.prod_monthly_other||{})};
+    if(karteileichenSumInYears(pm,years)>0) continue;
+    const name=[a.vorname,a.nachname].filter(Boolean).join(" ")||a.firma||nr;
+    out.push({nr,name,last:lastMonthKeyOf(pm)});
+  }
+  return out.sort((a,b)=>(a.name||"").localeCompare(b.name||"","de"));
+}
+function karteileichenRowsHtml(list,type){
+  const MAXROWS=500;
+  const shown=list.slice(0,MAXROWS);
+  if(!shown.length) return "<div class='empty-note'>Keine Einträge.</div>";
+  const rows=shown.map(x=>`
+    <tr>
+      <td>${escapeHtml(x.nr)}</td>
+      <td>${escapeHtml(x.name)}</td>
+      <td>${x.last?auswertungMonthLabel(x.last):"nie"}</td>
+      <td><button class="btn btn-ghost karteileichen-open" data-type="${type}" data-nr="${escapeHtml(x.nr)}" style="padding:4px 10px;font-size:11.5px">Öffnen ⤢</button></td>
+    </tr>`).join("");
+  const more=list.length>MAXROWS?`<div class="hint" style="margin-top:6px">… und ${list.length-MAXROWS} weitere. Zeitraum verkürzen, um die Liste einzugrenzen.</div>`:"";
+  return `<table><tr><th>Nr.</th><th>Name</th><th>Letzte Produktion</th><th></th></tr>${rows}</table>${more}`;
+}
+function karteileichenGroupHtml(list,type,openByDefault){
+  const active=list.filter(x=>x.last), never=list.filter(x=>!x.last);
+  return `
+    <details ${openByDefault?"open":""}><summary style="cursor:pointer;font-weight:700;font-size:12.5px;margin-bottom:6px">War früher aktiv, jetzt ruhend (${active.length})</summary>
+      <div style="max-height:220px;overflow:auto">${karteileichenRowsHtml(active,type)}</div>
+    </details>
+    <details><summary style="cursor:pointer;font-weight:700;font-size:12.5px;margin:8px 0 6px">Nie produziert (${never.length})</summary>
+      <div style="max-height:220px;overflow:auto">${karteileichenRowsHtml(never,type)}</div>
+    </details>`;
+}
+// Jährliche Prüfung statt Einmalklick (Nutzervorgabe 01.09.2026): sobald ein
+// Admin "Alle behalten" klickt, gilt der Typ (FH/AKP) für das laufende
+// Kalenderjahr als geprüft - die Liste erscheint erst im nächsten Jahr
+// wieder automatisch (Jahresvergleich, kein Cron nötig). Es wird dabei
+// dokumentiert WER WANN WIE VIELE Kandidaten geprüft und bewusst behalten
+// hat (Nachweisbarkeit "regelmäßige Erforderlichkeitsprüfung", Art. 5 Abs. 1
+// lit. e DSGVO) - eine reine, stillschweigend geleerte Liste wäre dafür kein
+// ausreichender Nachweis. "Trotzdem jetzt anzeigen" erlaubt jederzeit einen
+// Blick auf die aktuellen Kandidaten, ohne den Prüfstatus zu verändern.
+function karteileichenTypeBlockHtml(type,label,list,years,review,openByDefault,forceShow){
+  const cy=new Date().getFullYear();
+  const already=review&&review.year===cy;
+  if(already&&!forceShow){
+    const when=fmtDate((review.reviewed_at||"").slice(0,10))||review.reviewed_at||"–";
+    return `
+      <h4 style="margin:14px 0 6px;color:var(--wg-navy);font-size:13.5px">${label} ohne Produktion seit ${years.size} Jahren</h4>
+      <div class="box tip" style="margin:0 0 8px">
+        ✓ Für ${cy} geprüft am ${escapeHtml(when)} von ${escapeHtml(review.reviewed_by||"–")} –
+        ${review.count} Kandidat(en) bewusst behalten. Nächste automatische Prüfung: ${cy+1}.
+        <button class="btn btn-ghost karteileichen-forceshow" data-type="${type}" style="margin-left:8px;padding:3px 9px;font-size:11px">Trotzdem jetzt anzeigen</button>
+      </div>`;
+  }
+  return `
+    <h4 style="margin:14px 0 6px;color:var(--wg-navy);font-size:13.5px">${label} ohne Produktion seit ${years.size} Jahren (${list.length})</h4>
+    ${karteileichenGroupHtml(list,type,openByDefault)}
+    ${list.length?`<button class="btn btn-blue karteileichen-keepall" data-type="${type}" data-count="${list.length}" style="margin-top:8px">✓ Alle behalten (Prüfung ${cy} abschließen)</button>`:""}
+  `;
+}
+let karteileichenForceShow={fh:false,akp:false};
+async function runKarteileichenScan(){
+  $("karteileichenBody").innerHTML="<p style='color:var(--muted)'>Lädt …</p>";
+  if(!fhContactsAllIndex||!fhContactsBulkIndex) await loadFhContactsIndicesAll();
+  if(!akpContactsIndex) await loadAkpContactsIndex();
+  const years=karteileichenYearsSet(karteileichenJahre);
+  const fhList=fhKarteileichenCandidates(years);
+  const akpList=akpKarteileichenCandidates(years);
+  $("karteileichenBody").innerHTML=
+    karteileichenTypeBlockHtml("fh","Fachhändler",fhList,years,fhKarteileichenReview,true,karteileichenForceShow.fh)+
+    karteileichenTypeBlockHtml("akp","AKP",akpList,years,akpKarteileichenReview,false,karteileichenForceShow.akp);
+  $("karteileichenBody").querySelectorAll(".karteileichen-open").forEach(btn=>{
+    btn.onclick=()=>{
+      const nr=btn.dataset.nr;
+      if(btn.dataset.type==="fh") openFhModal(nr); else openAkpContact(nr);
+    };
+  });
+  $("karteileichenBody").querySelectorAll(".karteileichen-forceshow").forEach(btn=>{
+    btn.onclick=()=>{ karteileichenForceShow[btn.dataset.type]=true; runKarteileichenScan(); };
+  });
+  $("karteileichenBody").querySelectorAll(".karteileichen-keepall").forEach(btn=>{
+    btn.onclick=()=>keepAllKarteileichen(btn.dataset.type,+btn.dataset.count);
+  });
+}
+async function keepAllKarteileichen(type,count){
+  const label=type==="fh"?"Fachhändler":"AKP";
+  if(!confirm(`Prüfung für ${label} (${new Date().getFullYear()}) abschließen und alle ${count} Kandidaten behalten?\n\nEs wird nichts gelöscht oder gesperrt - die Liste erscheint erst wieder im nächsten Kalenderjahr.`)) return;
+  const review={year:new Date().getFullYear(),reviewed_at:new Date().toISOString(),reviewed_by:myName||(supaUser&&supaUser.email)||"–",count};
+  try{ await stSet("karteileichen_review_"+type,JSON.stringify(review)); }catch(e){ toast("Fehler beim Speichern: "+(e.message||e)); return; }
+  if(type==="fh") fhKarteileichenReview=review; else akpKarteileichenReview=review;
+  karteileichenForceShow[type]=false;
+  toast("Prüfung abgeschlossen ✓");
+  await runKarteileichenScan();
+}
+async function openKarteileichenModal(){
+  $("karteileichenJahreInput").value=karteileichenJahre;
+  karteileichenForceShow={fh:false,akp:false};
+  $("karteileichenModal").classList.remove("hidden");
+  await runKarteileichenScan();
+}
+async function applyKarteileichenJahre(){
+  const parsed=parseInt($("karteileichenJahreInput").value);
+  const n=Math.max(1,Math.min(15,Number.isFinite(parsed)?parsed:3));
+  $("karteileichenJahreInput").value=n;
+  karteileichenJahre=n;
+  try{ await stSet("karteileichen_jahre",String(n)); }catch(e){}
+  await runKarteileichenScan();
+}
 async function togglePerfDialogAdminEnabled(){
   const on=$("perfDialogAdminEnabledChk").checked;
   perfDialogAdminEnabled=on;
@@ -2210,7 +2418,7 @@ function buildFhContactsIndices(rows){
     // Jede fh_contacts-Zeile fließt hier ein, auch ganz ohne Akquise-/Miete-/
     // manuellen Namen (dann bleibt name null, Aufrufer fallen auf die FH-Nr
     // zurück) - Priorität wie in fhFallbackFromAkp: akq_name > miete_name > name.
-    allIdx[r.fh_nr]={name:r.akq_name||r.miete_name||r.name||null,ort:r.ort||null,gl:r.akq_gl||null,filialbetriebe:r.filialbetriebe||null,weitereZuordnung:r.weitere_zuordnung||null};
+    allIdx[r.fh_nr]={name:r.akq_name||r.miete_name||r.name||null,ort:r.ort||null,gl:r.akq_gl||null,filialbetriebe:r.filialbetriebe||null,weitereZuordnung:r.weitere_zuordnung||null,gesperrt_am:r.gesperrt_am||null};
   }
   return {bulkIdx,mieteIdx,erledigt,akqIdx,manualNameIdx,mieteNameIdx,allIdx};
 }
@@ -2225,7 +2433,7 @@ async function loadFhContactsIndicesAll(){
       for(;;){
         guard++;
         const {data,error}=await sb.from("fh_contacts")
-          .select("fh_nr,ort,prod_monthly,miete_monthly,neunwochen_erledigt,akq_punkte,akq_staffeln,akq_gl,akq_name,name,miete_name,filialbetriebe,weitere_zuordnung")
+          .select("fh_nr,ort,prod_monthly,miete_monthly,neunwochen_erledigt,akq_punkte,akq_staffeln,akq_gl,akq_name,name,miete_name,filialbetriebe,weitere_zuordnung,gesperrt_am")
           .range(from,from+999);
         if(error){ console.error("loadFhContactsIndicesAll:",error.message||error); break; }
         if(!data||!data.length) break;
@@ -3238,7 +3446,7 @@ async function loadAkpContactsIndex(){
     for(;;){
       guard++;
       const {data,error}=await sb.from("akp_contacts")
-        .select("nr,vorname,nachname,firma,ort,fh_nr,prod_monthly,prod_monthly_other,poquote_monthly,q3fuer2_monthly")
+        .select("nr,vorname,nachname,firma,ort,fh_nr,prod_monthly,prod_monthly_other,poquote_monthly,q3fuer2_monthly,gesperrt_am")
         .order("nr")
         .range(from,from+999);
       if(error){ console.error("loadAkpContactsIndex:",error.message||error); break; }
@@ -4344,6 +4552,9 @@ async function loadAll(){
   try{ fhZielEnabled=(await stGet("fh_ziel_enabled"))==="1"; }catch(e){}
   try{ fhSearchEnabled=(await stGet("fh_search_enabled"))==="1"; }catch(e){}
   try{ akpPeerCompareEnabled=(await stGet("akp_peer_compare_enabled"))==="1"; }catch(e){}
+  try{ karteileichenJahre=parseInt(await stGet("karteileichen_jahre"))||3; }catch(e){}
+  try{ const r=await stGet("karteileichen_review_fh"); fhKarteileichenReview=r?JSON.parse(r):null; }catch(e){}
+  try{ const r=await stGet("karteileichen_review_akp"); akpKarteileichenReview=r?JSON.parse(r):null; }catch(e){}
   try{ mieteLastImport=await stGet("miete_last_import"); }catch(e){}
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
@@ -9148,6 +9359,9 @@ $("rpNew2").addEventListener("keydown",e=>{ if(e.key==="Enter") doSetNewPassword
 $("logoutBtn").onclick=doLogout;
 $("adminBtn").onclick=openAdminModal;
 $("adminClose").onclick=()=>$("adminModal").classList.add("hidden");
+$("karteileichenBtn").onclick=openKarteileichenModal;
+$("karteileichenClose").onclick=()=>$("karteileichenModal").classList.add("hidden");
+$("karteileichenApplyBtn").onclick=applyKarteileichenJahre;
 $("chefgespraechEnabledChk").onchange=toggleChefgespraechEnabled;
 $("kooperationsgespraechEnabledChk").onchange=toggleKooperationsgespraechEnabled;
 $("auswertungEnabledChk").onchange=toggleAuswertungEnabled;
@@ -9277,6 +9491,8 @@ $("setPwBtn").onclick=doSettingsPasswordChange;
 $("setSaveBtn").onclick=doSaveSettings;
 $("setCheckNowBtn").onclick=doCheckNow;
 $("notifClose").onclick=()=>$("notifModal").classList.add("hidden");
+$("privacyBtn").onclick=()=>$("privacyModal").classList.remove("hidden");
+$("privacyClose").onclick=()=>$("privacyModal").classList.add("hidden");
 // Datenstand (Excel-Auswertung + Ziele) wird nur einmal beim Start geladen
 // und danach nur noch aus dem lokalen Speicher gelesen. Beim Wechsel der
 // Mitarbeiter-Ansicht oder per Klick auf "Aktualisieren" frisch aus der
