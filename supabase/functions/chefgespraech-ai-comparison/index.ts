@@ -21,6 +21,14 @@
 // Secret: ANTHROPIC_API_KEY (bereits als Supabase-Secret hinterlegt, siehe
 // performance-dialog-annual-summary).
 //
+// Pseudonymisierung (Nutzervorgabe 01.09.2026, DSGVO): die echte
+// Fachhaendler-Nummer wird NIE an Anthropic uebermittelt. Im Prompt steht
+// stattdessen ein pro Anfrage zufaelliger Platzhalter-Code (FH_CODE); die KI
+// wird angewiesen, ausschliesslich diesen Platzhalter zu verwenden. Erst
+// NACH Erhalt der KI-Antwort (server-seitig, bevor sie ans Dashboard
+// zurückgeht) wird der Platzhalter wieder durch die echte Nummer ersetzt
+// (deepReplace ueber die komplette Antwortstruktur).
+//
 // Hinweis 25.08.2026: Kommentare/Prompt-Texte in dieser Datei sind bewusst
 // ASCII-transliteriert (ae/oe/ue/ss statt ä/ö/ü/ß) - reine Deploy-Mechanik
 // (Umlaute im MCP-Deploy-Tool-Aufruf wiederholt korrumpiert), kein Nutzer
@@ -120,6 +128,29 @@ function rankPercentile(arr: number[], value: number): number | null {
   let below = 0;
   for (const v of s) if (v < value) below++;
   return below / s.length;
+}
+
+// Kurzer, zufaelliger Platzhalter-Code pro Anfrage fuer die Fachhaendler-
+// Nummer (siehe Pseudonymisierungs-Hinweis oben) - crypto.randomUUID() ist
+// in der Deno-Runtime verfuegbar, kein zusaetzlicher Import noetig.
+function randCode(prefix: string): string {
+  return prefix + "-" + crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
+}
+
+// Ersetzt rekursiv jeden String-Wert einer (verschachtelten) Struktur ueber
+// den uebergebenen replacer - genutzt, um den Nummern-Platzhalter nach der
+// KI-Antwort wieder durch die echte Nummer zu ersetzen, unabhaengig davon,
+// in welchem Feld/welcher Verschachtelungstiefe die KI ihn verwendet hat.
+// deno-lint-ignore no-explicit-any
+function deepReplace(value: any, replacer: (s: string) => string): any {
+  if (typeof value === "string") return replacer(value);
+  if (Array.isArray(value)) return value.map((v) => deepReplace(v, replacer));
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) out[k] = deepReplace(v, replacer);
+    return out;
+  }
+  return value;
 }
 
 const PEER_SELECT_COLS = "fh_nr,prod_monthly,beitragsfrei_yearly,akq_punkte,club_weiss_mitglied";
@@ -311,8 +342,9 @@ Deno.serve(async (req) => {
   if (!apiKey) return json({ error: "ANTHROPIC_API_KEY ist nicht als Supabase-Secret hinterlegt." }, 500);
 
   const fmtPct = (v: number | null) => v == null ? "-" : (v * 100).toFixed(1).replace(".", ",") + " %";
+  const FH_CODE = randCode("FH");
   const userPrompt =
-    `Fachhaendler ${fhNr}, Vergleichsgruppe: ${groupLabel} (${peerMetrics.length} Vergleichshaendler, anonym).\n\n` +
+    `Fachhaendler ${FH_CODE}, Vergleichsgruppe: ${groupLabel} (${peerMetrics.length} Vergleichshaendler, anonym).\n\n` +
     `Kennzahlen dieses Haendlers (Jahr ${targetMetrics.curYear}):\n` +
     `- Jahresproduktion: ${targetMetrics.curProd} Vertraege\n` +
     `- Wachstum vs. Vorjahr: ${fmtPct(targetMetrics.yoy)}\n` +
@@ -347,7 +379,10 @@ Deno.serve(async (req) => {
         `viele Mitglieder aktuell produzieren, aber ueberbewerte eine niedrige Teilnahmequote nicht als Vorwurf an ` +
         `diesen einzelnen Haendler. `
       : "") +
-    `Schreibe auf Deutsch, professionell, praegnant, ohne Floskeln. Antworte ` +
+    `Schreibe auf Deutsch, professionell, praegnant, ohne Floskeln. Die echte Fachhaendler-Nummer wird dir aus ` +
+    `Datenschutzgruenden NICHT mitgeteilt - verwende in deinem GESAMTEN Antworttext (summary, comparisons, ` +
+    `recommendations) ausschliesslich den Platzhalter "${FH_CODE}" anstelle einer Nummer und erfinde oder ` +
+    `rekonstruiere KEINE echte Nummer. Antworte ` +
     `ausschliesslich ueber das Tool "generate_chefgespraech_comparison".`;
 
   let aiRes: Response;
@@ -381,6 +416,10 @@ Deno.serve(async (req) => {
   const toolUse = (aiJson.content || []).find((c: { type: string }) => c.type === "tool_use");
   if (!toolUse) return json({ error: "KI-Antwort enthielt keine strukturierte Auswertung." }, 502);
 
+  // Platzhalter erst jetzt, server-seitig vor der Antwort ans Dashboard,
+  // durch die echte Nummer ersetzen (siehe Pseudonymisierungs-Hinweis oben).
+  const report = deepReplace(toolUse.input, (s: string) => s.split(FH_CODE).join(fhNr));
+
   return json({
     ok: true,
     fh_nr: fhNr,
@@ -390,6 +429,6 @@ Deno.serve(async (req) => {
     year: targetMetrics.curYear,
     metrics: { target: targetMetrics, peers: peerStats },
     cooperationContext,
-    report: toolUse.input,
+    report,
   });
 });

@@ -29,13 +29,15 @@
 //
 // Secret: ANTHROPIC_API_KEY (bereits als Supabase-Secret hinterlegt).
 //
-// Pseudonymisierung (Nutzervorgabe 01.09.2026, DSGVO): der echte Name der
-// Zielperson wird NIE an Anthropic uebermittelt. Im Prompt steht statt des
-// Namens der Platzhalter NAME_TOKEN; die KI wird angewiesen, ausschliesslich
-// diesen Platzhalter in ihrem gesamten Antworttext zu verwenden. Erst NACH
-// Erhalt der KI-Antwort (also server-seitig hier, bevor die Antwort ueberhaupt
-// an das Dashboard zurückgeht) wird der Platzhalter wieder durch den echten
-// Namen ersetzt (deepReplace ueber die komplette Antwortstruktur).
+// Pseudonymisierung (Nutzervorgabe 01.09.2026, erweitert 01.09.2026, DSGVO):
+// weder der echte Name der Zielperson noch ihre AKP-/Fachhaendler-Nummer
+// werden an Anthropic uebermittelt. Im Prompt stehen stattdessen die
+// Platzhalter NAME_TOKEN/AKP_CODE/FH_CODE (Codes sind pro Anfrage zufaellig,
+// siehe randCode()); die KI wird angewiesen, ausschliesslich diese
+// Platzhalter in ihrem gesamten Antworttext zu verwenden. Erst NACH Erhalt
+// der KI-Antwort (also server-seitig hier, bevor die Antwort ueberhaupt an
+// das Dashboard zurückgeht) werden die Platzhalter wieder durch die echten
+// Werte ersetzt (deepReplace ueber die komplette Antwortstruktur).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -148,6 +150,13 @@ function rankPercentile(arr: number[], value: number): number | null {
   let below = 0;
   for (const v of s) if (v < value) below++;
   return below / s.length;
+}
+
+// Kurzer, zufaelliger Platzhalter-Code pro Anfrage fuer AKP-/Fachhaendler-
+// Nummern (siehe Pseudonymisierungs-Hinweis oben) - crypto.randomUUID() ist
+// in der Deno-Runtime verfuegbar, kein zusaetzlicher Import noetig.
+function randCode(prefix: string): string {
+  return prefix + "-" + crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
 }
 
 // Ersetzt rekursiv jeden String-Wert einer (verschachtelten) Struktur ueber
@@ -338,9 +347,11 @@ Deno.serve(async (req) => {
   const rankTxt = (r: number | null) => r != null ? Math.round(r * 100) + ". Perzentil" : "-";
   const name = [target.vorname, target.nachname].filter(Boolean).join(" ") || akpNr;
   const NAME_TOKEN = "AKPTARGET";
+  const AKP_CODE = randCode("AKP");
+  const FH_CODE = randCode("FH");
 
   const userPrompt =
-    `Aktivpartner ${akpNr} (${NAME_TOKEN}), Fachhaendler ${target.fh_nr || "-"}, Vergleichsgruppe: ${groupLabel} ` +
+    `Aktivpartner ${AKP_CODE} (${NAME_TOKEN}), Fachhaendler ${FH_CODE}, Vergleichsgruppe: ${groupLabel} ` +
     `(${others.length} Aktivpartner bei ${peerFhSet.size} Haendlern, anonym).\n\n` +
     `Kennzahlen dieses Aktivpartners:\n` +
     `- Produktion Monat: ${targetMetrics.prod.monat} Vertraege, Steigerung/Verlust ggue. Vorjahresmonat: ${fmtPct(targetMetrics.yoy.monat)}\n` +
@@ -373,10 +384,11 @@ Deno.serve(async (req) => {
     `statistisch wenig belastbar ist, und formuliere entsprechend vorsichtig. Erfinde keine Zahlen - nutze nur ` +
     `die uebergebenen Werte, benenne fehlende Werte als fehlend. Setze trend_warning nur, wenn der Quartalswert ` +
     `(rollierende letzte 3 Monate) einen deutlichen Einbruch zeigt, sonst null. Schreibe auf Deutsch, ` +
-    `professionell, praegnant, ohne Floskeln. Der echte Name der Zielperson wird dir aus Datenschutzgruenden ` +
-    `NICHT mitgeteilt - verwende in deinem GESAMTEN Antworttext (summary, strengths, weaknesses, comparisons, ` +
-    `recommendations, trend_warning) ausschliesslich den Platzhalter "${NAME_TOKEN}" anstelle eines Namens und ` +
-    `erfinde oder rekonstruiere KEINEN echten Namen. Antworte ausschliesslich ueber das Tool ` +
+    `professionell, praegnant, ohne Floskeln. Der echte Name der Zielperson sowie ihre AKP-/Fachhaendler-Nummer ` +
+    `werden dir aus Datenschutzgruenden NICHT mitgeteilt - verwende in deinem GESAMTEN Antworttext (summary, ` +
+    `strengths, weaknesses, comparisons, recommendations, trend_warning) ausschliesslich die Platzhalter ` +
+    `"${NAME_TOKEN}" (Name), "${AKP_CODE}" (AKP-Nummer) und "${FH_CODE}" (Fachhaendler-Nummer) und erfinde oder ` +
+    `rekonstruiere KEINEN echten Namen oder echte Nummer. Antworte ausschliesslich ueber das Tool ` +
     `"generate_akp_peer_comparison".`;
 
   let aiRes: Response;
@@ -411,8 +423,9 @@ Deno.serve(async (req) => {
   if (!toolUse) return json({ error: "KI-Antwort enthielt keine strukturierte Auswertung." }, 502);
 
   // Platzhalter erst jetzt, server-seitig vor der Antwort ans Dashboard,
-  // durch den echten Namen ersetzen (siehe Pseudonymisierungs-Hinweis oben).
-  const report = deepReplace(toolUse.input, (s: string) => s.split(NAME_TOKEN).join(name));
+  // durch die echten Werte ersetzen (siehe Pseudonymisierungs-Hinweis oben).
+  const report = deepReplace(toolUse.input, (s: string) =>
+    s.split(NAME_TOKEN).join(name).split(AKP_CODE).join(akpNr).split(FH_CODE).join(target.fh_nr || "-"));
 
   return json({
     ok: true,
