@@ -13,6 +13,16 @@
 //
 // Secret: ANTHROPIC_API_KEY (Supabase Dashboard -> Project Settings ->
 // Edge Functions -> Secrets, vom Nutzer am 22.08.2026 hinterlegt).
+//
+// Pseudonymisierung (Nutzervorgabe 01.09.2026, DSGVO): echte Mitarbeiternamen
+// werden NIE an Anthropic uebermittelt. Jeder Mitarbeiter mit Protokollen in
+// diesem Jahr bekommt einen Platzhalter-Token (z.B. "MITARBEITER_1"); dieser
+// Token ersetzt den Namen sowohl in den "### Name - Monat"-Ueberschriften als
+// auch in den Freitext-Antworten (falls dort ein Kollege namentlich erwaehnt
+// wird). Die KI wird angewiesen, ausschliesslich diese Platzhalter zu
+// verwenden. Erst NACH Erhalt der KI-Antwort (server-seitig, bevor sie ans
+// Dashboard zurückgeht) werden alle Platzhalter wieder durch die echten
+// Namen ersetzt (deepReplace ueber die komplette Antwortstruktur).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -85,16 +95,44 @@ function formatSnapshot(goalId: number, snap: any): string {
   return "(unbekanntes Ziel)";
 }
 
+// Ersetzt jedes bekannte Mitarbeiter-Namen-Vorkommen in einem Text durch den
+// zugehoerigen Platzhalter-Token (siehe Pseudonymisierungs-Hinweis oben).
+// Laengere Namen zuerst ersetzen, damit z.B. "Anna Maria" nicht schon durch
+// eine Teilersetzung von "Anna" zerstoert wird.
+function pseudonymizeText(s: string, tokenOf: Map<string, string>): string {
+  let out = s;
+  const names = [...tokenOf.keys()].sort((a, b) => b.length - a.length);
+  for (const n of names) { if (n) out = out.split(n).join(tokenOf.get(n)!); }
+  return out;
+}
+
 // deno-lint-ignore no-explicit-any
-function formatReportForPrompt(rep: any): string {
+function formatReportForPrompt(rep: any, tokenOf: Map<string, string>): string {
+  const token = tokenOf.get(rep.employee) || rep.employee;
   const goals = rep.goals || [];
   const parts = goals.map((g: any) => {
     const title = PERF_GOAL_TITLES[g.goal_id] || `Ziel ${g.goal_id}`;
     const kennzahlen = formatSnapshot(g.goal_id, g.snapshot);
-    const antworten = PERF_QUESTIONS.map(([key, label]) => `  - ${label}\n    ${(g.answers && g.answers[key]) || "(keine Antwort)"}`).join("\n");
+    const antworten = PERF_QUESTIONS.map(([key, label]) => `  - ${label}\n    ${pseudonymizeText((g.answers && g.answers[key]) || "(keine Antwort)", tokenOf)}`).join("\n");
     return `  [${title}]\n  Kennzahlen: ${kennzahlen}\n${antworten}`;
   }).join("\n\n");
-  return `### ${rep.employee} - ${MONATE[rep.month - 1]} ${rep.year}\n${parts}`;
+  return `### ${token} - ${MONATE[rep.month - 1]} ${rep.year}\n${parts}`;
+}
+
+// Ersetzt rekursiv jeden String-Wert einer (verschachtelten) Struktur ueber
+// den uebergebenen replacer - genutzt, um die Namens-Platzhalter nach der
+// KI-Antwort wieder durch die echten Namen zu ersetzen, unabhaengig davon,
+// in welchem Feld/welcher Verschachtelungstiefe die KI sie verwendet hat.
+// deno-lint-ignore no-explicit-any
+function deepReplace(value: any, replacer: (s: string) => string): any {
+  if (typeof value === "string") return replacer(value);
+  if (Array.isArray(value)) return value.map((v) => deepReplace(v, replacer));
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) out[k] = deepReplace(v, replacer);
+    return out;
+  }
+  return value;
 }
 
 const REPORT_TOOL = {
@@ -171,7 +209,10 @@ Deno.serve(async (req) => {
   if (!apiKey) return json({ error: "ANTHROPIC_API_KEY ist nicht als Supabase-Secret hinterlegt." }, 500);
 
   const employeeList = [...new Set(reports.map((r) => r.employee as string))];
-  const promptBody = reports.map(formatReportForPrompt).join("\n\n---\n\n");
+  const tokenOf = new Map<string, string>();
+  employeeList.forEach((n, i) => tokenOf.set(n, `MITARBEITER_${i + 1}`));
+  const tokenList = employeeList.map((n) => tokenOf.get(n));
+  const promptBody = reports.map((r) => formatReportForPrompt(r, tokenOf)).join("\n\n---\n\n");
 
   const systemPrompt =
     `Du erstellst einen internen Jahresbericht für das Wertgarantie Performance Dashboard auf Basis der ` +
@@ -180,11 +221,14 @@ Deno.serve(async (req) => {
     `Analysiere die Daten sachlich und konkret, erkenne Muster/Trends über die Monate hinweg (z.B. wiederkehrende ` +
     `Themen, Verbesserung/Verschlechterung der Zielerreichung, wiederholt genannter Unterstützungsbedarf). ` +
     `Schreibe auf Deutsch, professionell, prägnant, ohne Floskeln. Gehe NUR auf Monate/Mitarbeiter ein, für die ` +
-    `tatsächlich Protokolle vorliegen - erfinde nichts für fehlende Monate. Antworte ausschließlich über das ` +
-    `Tool "generate_annual_report".`;
+    `tatsächlich Protokolle vorliegen - erfinde nichts für fehlende Monate. Die echten Mitarbeiternamen werden ` +
+    `dir aus Datenschutzgründen NICHT mitgeteilt - jeder Mitarbeiter ist ausschließlich über einen Platzhalter ` +
+    `wie "MITARBEITER_1" referenziert. Verwende in deiner GESAMTEN Antwort (inkl. "employee"-Feldern) ` +
+    `ausschließlich diese Platzhalter und erfinde oder rekonstruiere KEINE echten Namen. Antworte ausschließlich ` +
+    `über das Tool "generate_annual_report".`;
 
   const userPrompt =
-    `Jahr: ${year}\nMitarbeiter mit Protokollen: ${employeeList.join(", ")}\n\n` +
+    `Jahr: ${year}\nMitarbeiter mit Protokollen: ${tokenList.join(", ")}\n\n` +
     `Rohdaten aller Protokolle dieses Jahres:\n\n${promptBody}`;
 
   let aiRes: Response;
@@ -218,5 +262,16 @@ Deno.serve(async (req) => {
   const toolUse = (aiJson.content || []).find((c: { type: string }) => c.type === "tool_use");
   if (!toolUse) return json({ error: "KI-Antwort enthielt keinen strukturierten Bericht." }, 502);
 
-  return json({ ok: true, year, report: toolUse.input });
+  // Platzhalter erst jetzt, server-seitig vor der Antwort ans Dashboard,
+  // wieder durch die echten Namen ersetzen (siehe Pseudonymisierungs-Hinweis
+  // oben). Laengere Tokens zuerst (MITARBEITER_10 vor MITARBEITER_1), damit
+  // keine Teilersetzung einen laengeren Token zerstoert.
+  const reverseTokens = [...tokenOf.entries()].sort((a, b) => b[1].length - a[1].length);
+  const report = deepReplace(toolUse.input, (s: string) => {
+    let out = s;
+    for (const [name, tok] of reverseTokens) out = out.split(tok).join(name);
+    return out;
+  });
+
+  return json({ ok: true, year, report });
 });
