@@ -893,3 +893,65 @@ $$;
 
 revoke execute on function public.fh_deckungsgrad_for(text) from public;
 grant execute on function public.fh_deckungsgrad_for(text) to authenticated;
+
+-- Root Cause (02.09.2026, real-world reproduziert): fh_deckungsgrad hat
+-- bewusst KEINE select-Policy fuer irgendeine Rolle (siehe Tabellenkommentar
+-- oben - selbst Admins duerfen die Rohwerte nie im Klartext sehen). Ein
+-- direkter Client-seitiger .upsert() ueber PostgREST verlangt aber implizit
+-- eine RETURNING-Klausel (representation), was OHNE Select-Policy IMMER mit
+-- "new row violates row-level security policy" fehlschlaegt - bestaetigt per
+-- SQL-Test: dieselbe INSERT-Anweisung MIT "returning" schlaegt fehl, OHNE
+-- "returning" gelingt sie, mit exakt derselben Fehlermeldung wie in den
+-- echten Supabase-Logs (POST 403) - unabhaengig davon, ob der aufrufende
+-- Account tatsaechlich Admin ist (is_admin() wurde separat verifiziert: true).
+--
+-- Fix nach demselben Muster wie fh_sync_daily/fh_sync_miete/akp_sync_daily:
+-- security-definer RPC-Funktion, die serverseitig upsert't und dabei NIE
+-- Daten zurueckgibt (returns void) - dadurch wird die RETURNING-Klausel nie
+-- ausgeloest und die fehlende Select-Policy bleibt unangetastet (weiterhin
+-- niemand kann die Rohwerte lesen). Da dieser Import (anders als die anderen
+-- sync-Funktionen) admin-only sein soll, wird is_admin() explizit im
+-- Funktionskoerper geprueft (grant execute geht an alle authenticated, da
+-- Postgres EXECUTE nicht rollenspezifisch feiner granular ist).
+create or replace function public.fh_deckungsgrad_upsert(rows jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  r jsonb;
+begin
+  if not public.is_admin() then
+    raise exception 'Nur für Admins';
+  end if;
+  for r in select * from jsonb_array_elements(rows) loop
+    if coalesce(r->>'fh_nr','') = '' then continue; end if;
+    insert into public.fh_deckungsgrad (
+      fh_nr, bestand, provision_lj, schaeden_lj, schadenbetrag_lj,
+      db1_lj, dg1_lj, db2_lj, dg2_lj, db1_vj, dg1_vj, db2_vj, dg2_vj,
+      imported_by, imported_at
+    ) values (
+      r->>'fh_nr',
+      (r->>'bestand')::numeric,
+      (r->>'provision_lj')::numeric,
+      (r->>'schaeden_lj')::integer,
+      (r->>'schadenbetrag_lj')::numeric,
+      (r->>'db1_lj')::numeric, (r->>'dg1_lj')::numeric,
+      (r->>'db2_lj')::numeric, (r->>'dg2_lj')::numeric,
+      (r->>'db1_vj')::numeric, (r->>'dg1_vj')::numeric,
+      (r->>'db2_vj')::numeric, (r->>'dg2_vj')::numeric,
+      auth.uid(), now()
+    )
+    on conflict (fh_nr) do update set
+      bestand = excluded.bestand,
+      provision_lj = excluded.provision_lj,
+      schaeden_lj = excluded.schaeden_lj,
+      schadenbetrag_lj = excluded.schadenbetrag_lj,
+      db1_lj = excluded.db1_lj, dg1_lj = excluded.dg1_lj,
+      db2_lj = excluded.db2_lj, dg2_lj = excluded.dg2_lj,
+      db1_vj = excluded.db1_vj, dg1_vj = excluded.dg1_vj,
+      db2_vj = excluded.db2_vj, dg2_vj = excluded.dg2_vj,
+      imported_by = excluded.imported_by, imported_at = excluded.imported_at;
+  end loop;
+end;
+$$;
+
+revoke execute on function public.fh_deckungsgrad_upsert(jsonb) from public;
+grant execute on function public.fh_deckungsgrad_upsert(jsonb) to authenticated;
