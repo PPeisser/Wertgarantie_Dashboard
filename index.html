@@ -162,7 +162,13 @@ h2.sec small{font-weight:600;text-transform:none;color:var(--muted);letter-spaci
 .goals.cols3{grid-template-columns:repeat(3,1fr);gap:14px}
 .goals.cols4 .goal,.goals.cols3 .goal{padding:16px 18px}
 .goals.cols4 .goal .pct,.goals.cols3 .goal .pct{font-size:28px}
-@media (max-width:1150px){.goals,.goals.cols4,.goals.cols3{grid-template-columns:repeat(2,1fr)}}
+/* Österreich gesamt mit 6 Karten (Nutzervorgabe 02.09.2026): bewusst EINE
+   längliche Reihe wie bei 5 Karten statt der zweizeiligen, quadratischeren
+   .cols3-Kachelform (die bei der Mitarbeiter-Ansicht mit ihren immer 6
+   Karten verwendet wird) - erbt daher die schmale .goals .goal-Kachelform
+   und wird NICHT in die cols4/cols3-Vergrößerungsregel oben aufgenommen. */
+.goals.cols6{grid-template-columns:repeat(6,1fr);gap:8px}
+@media (max-width:1150px){.goals,.goals.cols4,.goals.cols3,.goals.cols6{grid-template-columns:repeat(2,1fr)}}
 .goal .hr{
   margin-top:9px;padding-top:8px;border-top:1px dashed var(--line);
   font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:6px;flex-wrap:wrap;
@@ -545,6 +551,7 @@ body.pdf-mode .kpis{grid-template-columns:repeat(3,1fr) !important}
 body.pdf-mode .goals{grid-template-columns:repeat(5,1fr) !important}
 body.pdf-mode .goals.cols4{grid-template-columns:repeat(4,1fr) !important}
 body.pdf-mode .goals.cols3{grid-template-columns:repeat(3,1fr) !important}
+body.pdf-mode .goals.cols6{grid-template-columns:repeat(6,1fr) !important}
 body.pdf-mode .duo{grid-template-columns:1fr 1fr !important}
 body.pdf-mode .trio{grid-template-columns:1.2fr 1fr 1fr !important}
 body.pdf-mode .goals.cols4,body.pdf-mode .goals.cols3{gap:5px}
@@ -5291,10 +5298,14 @@ function renderGoals(){
   // hinterlegt" zu zeigen (lt. Nutzervorgabe 18.08.2026).
   if(isATv||mieteTarget>0) cards.push(mieteCard);
   // AT-Ansicht: 4 WG-Karten + Miete = 5 Karten (passt in die normale
-  // 5-spaltige .goals-Grid, kein cols4 mehr nötig). Mitarbeiter-Ansicht: 5 +
-  // Persönliches Jahresziel + Miete = 6 Karten -> eigene 3-spaltige
-  // (2-zeilige) Variante .cols3, siehe CSS.
-  $("goalCards").classList.toggle("cols3", !isATv||cards.length>5);
+  // 5-spaltige .goals-Grid) bzw. + VJ-Vergleich-Karte = 6 Karten -> eigene
+  // 6-spaltige (weiterhin einzeilige, "längliche") Variante .cols6, damit
+  // die AT-Ansicht optisch nicht wie die Mitarbeiter-Ansicht wirkt
+  // (Nutzervorgabe 02.09.2026). Mitarbeiter-Ansicht: 5 + Persönliches
+  // Jahresziel + Miete = 6 Karten -> eigene 3-spaltige (2-zeilige) Variante
+  // .cols3, siehe CSS.
+  $("goalCards").classList.toggle("cols3", !isATv&&cards.length>5);
+  $("goalCards").classList.toggle("cols6", isATv&&cards.length>5);
   $("goalCards").innerHTML=cards.join("");
 }
 // Zählt Staffel-Erreichungen (skaliert auf currentEmp) im aktuell gezeigten
