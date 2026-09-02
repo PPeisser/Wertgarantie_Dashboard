@@ -5409,8 +5409,12 @@ function renderGoals(){
     cards.splice(3,0, goalCard("📊 Vorjahresvergleich · "+MONATE[s.monat-1]+"<br><span style='font-weight:600;font-size:11px;color:var(--muted)'>Österreich gesamt · Vorjahresmonat gleicher Zeitraum (ZE_Region)</span>",
       s.zeAtMonatVJ, at.monat, s.zeAtMonatVJ,
       `Vorjahr bis Tag ${s.tageIst}: ${fmt(s.zeAtMonatVJ)} Verträge`, false,
-      s.zeAtMonatVJ>0&&s.tageIst>0?{val:hrMe,lbl:"Monatsende",stand:standM,
-        target:s.zeAtMonatVJ/s.tageIst*s.tageSoll,vsLbl:"vom VJ-Monatsende"}:null,
+      // Große Prozentzahl = Hochrechnung Monatsende / voller Vorjahreswert
+      // (wie bei den anderen Kacheln PLAN Monat/Jahresziel: Hochrechnung
+      // oben, Ist-Stand unten) - deshalb hier bewusst KEIN separates
+      // "target" im hr-Objekt mehr (das hätte die große Zahl auf denselben
+      // Wert wie die Ist-Stand-Zeile gezwungen). Nutzervorgabe 02.09.2026.
+      s.zeAtMonatVJ>0&&s.tageIst>0?{val:hrMe,lbl:"Monatsende",stand:standM}:null,
       {ahead:"▲ über Vorjahr",behind:"▼ unter Vorjahr",target:"Vorjahr"}));
   }
   // Miete-Kachel (Club.Weiss) - reagiert wie die persönlichen Karten auf den
@@ -5433,7 +5437,7 @@ function renderGoals(){
   const mieteHeuerBisMonat=mieteBisMonatFor(currentEmp,s.jahr,s.monat);
   const mieteVJDelta=mieteVJBisMonat>0?(mieteHeuerBisMonat-mieteVJBisMonat)/mieteVJBisMonat*100:null;
   const mieteVJLine=mieteVJBisMonat>0
-    ?`<br>Vorjahr bis ${MONATE[s.monat-1]}: <b style="font-style:normal;color:var(--ink)">${fmt(mieteVJBisMonat)}</b> Stk. · <span style="font-style:normal;font-weight:700;color:${mieteVJDelta>=0?"var(--pos)":"var(--neg)"}">${fmtPct(mieteVJDelta)}</span> zu heuer`
+    ?`<br>Vorjahr bis ${MONATE[s.monat-1]}: <b style="font-style:normal;color:var(--ink)">${fmt(mieteVJBisMonat)}</b> Stk. · <span style="font-style:normal;font-weight:700;color:${mieteVJDelta>=0?"var(--pos)":"var(--neg)"}">${fmtPct(mieteVJDelta)}</span> zum Vorjahr`
     :"";
   const mieteCard=goalCard("🏠 Miete-Jahresziel "+s.jahr, mieteTarget, mieteIst, mieteTarget*mieteShare,
     "", false,
