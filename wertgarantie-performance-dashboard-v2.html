@@ -1340,6 +1340,11 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <input type="checkbox" id="akpPeerCompareEnabledChk" style="width:17px;height:17px;flex-shrink:0">
         AKP-Vergleich (PopUp)
       </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+        <input type="checkbox" id="deckungsgradEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+        Deckungsgrad-Ampel (FH-Ansicht)
+        <button type="button" class="btn btn-ghost" id="deckungsgradVisibilityBtn" style="padding:3px 8px;font-size:11px" title="Auswählen, welche Kennzahlen als Ampel gezeigt werden">⚙ Auswahl</button>
+      </label>
     </div>
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
@@ -1375,6 +1380,31 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <button class="btn btn-blue" id="adminImportChooseDg" style="text-align:left">🛡️ Deckungsgrad <span style="font-weight:600;opacity:.75;font-size:12px">(vertraulich)</span></button>
     </div>
     <button class="btn btn-ghost" id="adminImportChoiceClose" style="width:100%">Abbrechen</button>
+  </div>
+</div>
+
+<!-- Admin: Auswahl, welche Deckungsgrad-Kennzahlen in der FH-Ansicht als
+     Ampel gezeigt werden (Nutzervorgabe 02.09.2026) - unabhängig vom
+     Master-Schalter "Deckungsgrad-Ampel (FH-Ansicht)" in "Funktionen
+     aktivieren": auch bei aktiviertem Feature lässt sich hier einzeln
+     einschränken, welche der 4 Kennzahlen sichtbar sind. -->
+<div class="modal-bg hidden" id="deckungsgradVisibilityModal">
+  <div class="modal">
+    <h3>Deckungsgrad-Ampel: Auswahl</h3>
+    <p>Welche Kennzahlen sollen als Ampel in der Fachhändler-Ansicht erscheinen?</p>
+    <div style="margin:14px 0">
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;padding:6px 0;border-bottom:1px solid var(--line);margin-bottom:6px">
+        <input type="checkbox" id="dgVisAllChk" style="width:16px;height:16px;flex-shrink:0"> Alle DG-Punkte freischalten
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 0"><input type="checkbox" class="dgVisChk" value="dg1" style="width:16px;height:16px;flex-shrink:0"> DG 1</label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 0"><input type="checkbox" class="dgVisChk" value="dg2" style="width:16px;height:16px;flex-shrink:0"> DG 2</label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 0"><input type="checkbox" class="dgVisChk" value="db1" style="width:16px;height:16px;flex-shrink:0"> DB 1</label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 0"><input type="checkbox" class="dgVisChk" value="db2" style="width:16px;height:16px;flex-shrink:0"> DB 2</label>
+    </div>
+    <div class="actions">
+      <button class="btn btn-ghost" id="dgVisCancel">Abbrechen</button>
+      <button class="btn btn-blue" id="dgVisSave">Speichern</button>
+    </div>
   </div>
 </div>
 
@@ -1700,6 +1730,13 @@ let fhSearchEnabled = false;
 // Vergleichsgruppe anfangs noch ausreichend Historie). Standardmäßig aus,
 // bis Wert aus der DB geladen wurde.
 let akpPeerCompareEnabled = false;
+// Deckungsgrad-Ampel (02.09.2026): Master-Schalter + Feinauswahl, welche der
+// 4 Kennzahlen (DG1/DG2/DB1/DB2) überhaupt als Ampel in der FH-Ansicht
+// erscheinen - unabhängig von der Sicherheitsarchitektur (Rohwerte sind
+// ohnehin nie abrufbar, siehe fh_deckungsgrad_for()), reine
+// Sichtbarkeits-/Einführungssteuerung durch den Admin.
+let deckungsgradEnabled = false;
+let dgVisibleMetrics = ["dg1","dg2","db1","db2"];
 // Zeitpunkt der letzten Miete-Report-Einspielung (dashboard_kv-Key
 // "miete_last_import", von upsertMieteData() bei jedem Import gesetzt -
 // deckt sowohl den Admin-Panel-Upload als auch den automatischen
@@ -2144,6 +2181,7 @@ function openAdminModal(){
   $("perfDialogAdminEnabledChk").checked=perfDialogAdminEnabled;
   $("fhSearchEnabledChk").checked=fhSearchEnabled;
   $("akpPeerCompareEnabledChk").checked=akpPeerCompareEnabled;
+  $("deckungsgradEnabledChk").checked=deckungsgradEnabled;
 }
 async function togglePerfDialogAdminEnabled(){
   const on=$("perfDialogAdminEnabledChk").checked;
@@ -2221,6 +2259,41 @@ async function toggleAkpPeerCompareEnabled(){
   try{
     await stSet("akp_peer_compare_enabled",on?"1":"0");
     toast(on?"AKP-Vergleich aktiviert ✓":"AKP-Vergleich deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
+async function toggleDeckungsgradEnabled(){
+  const on=$("deckungsgradEnabledChk").checked;
+  deckungsgradEnabled=on;
+  if(fhModalCurrent&&!$("fhModal").classList.contains("hidden")){
+    try{ renderFhDeckungsgradSection(); }catch(e){ console.error("renderFhDeckungsgradSection (toggle):",e); }
+  }
+  try{
+    await stSet("deckungsgrad_enabled",on?"1":"0");
+    toast(on?"Deckungsgrad-Ampel aktiviert ✓":"Deckungsgrad-Ampel deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
+function syncDgVisAllChk(){
+  const boxes=[...document.querySelectorAll(".dgVisChk")];
+  $("dgVisAllChk").checked=boxes.every(b=>b.checked);
+}
+function openDeckungsgradVisibilityModal(){
+  document.querySelectorAll(".dgVisChk").forEach(b=>{ b.checked=dgVisibleMetrics.includes(b.value); });
+  syncDgVisAllChk();
+  $("deckungsgradVisibilityModal").classList.remove("hidden");
+}
+async function saveDeckungsgradVisibility(){
+  dgVisibleMetrics=[...document.querySelectorAll(".dgVisChk")].filter(b=>b.checked).map(b=>b.value);
+  $("deckungsgradVisibilityModal").classList.add("hidden");
+  if(fhModalCurrent&&!$("fhModal").classList.contains("hidden")){
+    try{ renderFhDeckungsgradSection(); }catch(e){ console.error("renderFhDeckungsgradSection (visibility):",e); }
+  }
+  try{
+    await stSet("deckungsgrad_visible_metrics",JSON.stringify(dgVisibleMetrics));
+    toast("Auswahl gespeichert ✓");
   }catch(e){
     toast("Speichern fehlgeschlagen: "+(e.message||e));
   }
@@ -4686,6 +4759,8 @@ async function loadAll(){
   try{ fhZielEnabled=(await stGet("fh_ziel_enabled"))==="1"; }catch(e){}
   try{ fhSearchEnabled=(await stGet("fh_search_enabled"))==="1"; }catch(e){}
   try{ akpPeerCompareEnabled=(await stGet("akp_peer_compare_enabled"))==="1"; }catch(e){}
+  try{ deckungsgradEnabled=(await stGet("deckungsgrad_enabled"))==="1"; }catch(e){}
+  try{ const dgv=await stGet("deckungsgrad_visible_metrics"); if(dgv) dgVisibleMetrics=JSON.parse(dgv); }catch(e){}
   try{ mieteLastImport=await stGet("miete_last_import"); }catch(e){}
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
@@ -7929,6 +8004,7 @@ function dgAmpelPill(label,ampel,trend){
 async function renderFhDeckungsgradSection(){
   const box=$("fhDeckungsgradSection"); if(!box) return;
   const fhNr=fhModalCurrent;
+  if(!deckungsgradEnabled){ box.innerHTML=""; return; }
   if(!(sb&&supaUser)||!fhNr) return;
   try{
     const { data, error } = await sb.rpc("fh_deckungsgrad_for",{p_fh_nr:fhNr});
@@ -7936,13 +8012,17 @@ async function renderFhDeckungsgradSection(){
     if(error){ console.error("renderFhDeckungsgradSection:",error.message||error); box.innerHTML=""; return; }
     const d=data&&data[0];
     if(!d){ box.innerHTML=""; return; }
+    const pills=[
+      dgVisibleMetrics.includes("dg1")?dgAmpelPill("DG 1",d.dg1_ampel,d.dg1_trend):"",
+      dgVisibleMetrics.includes("dg2")?dgAmpelPill("DG 2",d.dg2_ampel,d.dg2_trend):"",
+      dgVisibleMetrics.includes("db1")?dgAmpelPill("DB 1",d.db1_ampel,d.db1_trend):"",
+      dgVisibleMetrics.includes("db2")?dgAmpelPill("DB 2",d.db2_ampel,d.db2_trend):""
+    ].join("");
+    if(!pills){ box.innerHTML=""; return; }
     box.innerHTML=`<h4 style="margin:18px 0 4px;color:var(--wg-navy);font-size:13px">Deckungsgrad-Auswertung</h4>
       <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Bestand: <b style="color:var(--wg-navy)">${d.bestand!=null?fmt(d.bestand):"–"}</b> · Provision (lfd. Jahr): <b style="color:var(--wg-navy)">${d.provision_lj!=null?fmt(d.provision_lj)+" €":"–"}</b> · Schäden (lfd. Jahr): <b style="color:var(--wg-navy)">${d.schaeden_lj!=null?fmt(d.schaeden_lj):"–"}${d.schadenbetrag_lj!=null?" ("+fmt(d.schadenbetrag_lj)+" €)":""}</b></div>
       <div class="ac-card" style="border:1px solid #ECF2F6;border-radius:8px;padding:6px 12px">
-        ${dgAmpelPill("DG 1",d.dg1_ampel,d.dg1_trend)}
-        ${dgAmpelPill("DG 2",d.dg2_ampel,d.dg2_trend)}
-        ${dgAmpelPill("DB 1",d.db1_ampel,d.db1_trend)}
-        ${dgAmpelPill("DB 2",d.db2_ampel,d.db2_trend)}
+        ${pills}
       </div>
       <div style="font-size:10.5px;color:var(--muted);margin-top:6px;font-style:italic">Aus Vertraulichkeitsgründen nur als Ampel (rot/gelb/grün) mit Tendenz zum Vorjahr (▲/▼/→) - kein Rohwert wird angezeigt oder übertragen. Stand: ${d.imported_at?fmtDate(d.imported_at.slice(0,10)):"–"}</div>`;
   }catch(e){
@@ -9384,6 +9464,15 @@ $("auswertungEnabledChk").onchange=toggleAuswertungEnabled;
 $("fhZielEnabledChk").onchange=toggleFhZielEnabled;
 $("fhSearchEnabledChk").onchange=toggleFhSearchEnabled;
 $("akpPeerCompareEnabledChk").onchange=toggleAkpPeerCompareEnabled;
+$("deckungsgradEnabledChk").onchange=toggleDeckungsgradEnabled;
+$("deckungsgradVisibilityBtn").onclick=openDeckungsgradVisibilityModal;
+$("dgVisAllChk").onchange=()=>{
+  const on=$("dgVisAllChk").checked;
+  document.querySelectorAll(".dgVisChk").forEach(b=>{ b.checked=on; });
+};
+document.querySelectorAll(".dgVisChk").forEach(b=>{ b.onchange=syncDgVisAllChk; });
+$("dgVisCancel").onclick=()=>$("deckungsgradVisibilityModal").classList.add("hidden");
+$("dgVisSave").onclick=saveDeckungsgradVisibility;
 $("perfDialogAdminEnabledChk").onchange=togglePerfDialogAdminEnabled;
 $("chefgespraechBtn").onclick=openChefgespraechModal;
 $("chefgespraechClose").onclick=()=>$("chefgespraechModal").classList.add("hidden");
