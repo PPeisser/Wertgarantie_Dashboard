@@ -86,6 +86,7 @@ select#mitarbeiter{
 }
 .btn:active{transform:translateY(1px)}
 .btn:hover{filter:brightness(1.06)}
+.btn:disabled{background:#DCE4EA;color:#8CA0AF;cursor:not-allowed;filter:none;transform:none}
 .btn-blue{background:var(--wg-blue);color:#fff}
 .btn-ghost{background:#EAF3F9;color:var(--wg-navy)}
 .btn svg{flex:none}
@@ -381,7 +382,7 @@ td .betr{font-size:11px;color:var(--muted)}
    durch die #fhModal-Erhöhung oben, entdeckt 22.08.2026 beim Testen des neuen
    Jahresbericht-Buttons). Gleiches gilt für alle anderen Inhalts-PopUps (z.B.
    #perfAdminModal), aus denen ein PDF-Download ausgelöst werden kann. */
-#pdfTargetModal,#pdfSendModal,#fhPdfChoiceModal,#stornoInfoModal{z-index:70}
+#pdfTargetModal,#pdfSendModal,#fhPdfChoiceModal,#stornoInfoModal,#dgAmpelInfoModal{z-index:70}
 /* Filialgruppen-PopUp wird AUS #fhModal heraus geöffnet (Button "Alle
    Filialen anzeigen") und muss - wie die PDF-Auswahldialoge oben - über
    #fhModal (60) liegen, sonst öffnet es sich sichtbar dahinter (Bug-Report
@@ -1187,16 +1188,33 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
   <div class="modal" style="max-width:540px">
     <h3 style="margin:0 0 10px">Erklärung zu den Stornoquoten</h3>
     <div style="font-size:13px;line-height:1.6;color:var(--ink)">
-      <p style="margin:0 0 10px">Alle Vertragsauflösungen aus dem laufenden Jahr werden gewertet und ins Verhältnis zum Bestand bzw. zur Produktion gesetzt (Quoten 1-3: nur Stornos innerhalb der ersten 6 Monate der Vertragslaufzeit).</p>
+      <p style="margin:0 0 10px">Alle Vertragsauflösungen aus dem laufenden Jahr werden gewertet und ins Verhältnis zum Bestand bzw. zur Produktion gesetzt (Quoten 1-2: nur Stornos innerhalb der ersten 6 Monate der Vertragslaufzeit).</p>
       <p style="margin:0 0 8px"><b>1) Widerrufene Verträge</b> – auffällig ab <b>5&nbsp;%</b>: kann ein Indiz sein, dass nicht sauber vermarktet wird.</p>
       <p style="margin:0 0 8px"><b>2) Nichtzahlung Erstprämie</b> – auffällig ab <b>10&nbsp;%</b>: vom Fachhändler nicht beeinflussbar, aber ebenfalls ein möglicher Indikator für unsaubere Vermarktung.</p>
-      <p style="margin:0 0 8px;color:var(--muted)">3) Kulanz / Wegfall versichertes Interesse (erste 6 Monate) – auffällig ab 8&nbsp;%: oft vom Fachhändler initiiert, wenn der Kunde unzufrieden ist oder der Schutz nicht gewollt war. <i>(im Dashboard nicht als eigene Kennzahl angezeigt)</i></p>
       <p style="margin:0 0 10px"><b>4) Wegfall versichertes Interesse (gesamtes laufendes Jahr)</b> – auffällig ab <b>20&nbsp;%</b>: starker Indikator für eventuellen Betrug (Verträge werden häufig mit der Begründung des AKP aufgelöst, das versicherte Gerät sei nicht mehr vorhanden) – sollte dringend mit dem AKP besprochen werden.</p>
       <p style="margin:0 0 4px;font-size:12px;color:var(--muted)">Vergleichsquoten Deutschland gesamt (alle Regionen): Widerruf 2,9&nbsp;% · Zahlungsverzug 2,3&nbsp;% · Kulanz/Wegfall vers. Interesse/Versicherungsfall 0,8&nbsp;%.</p>
       <p style="margin:0;font-size:12px;color:var(--muted)">Im Dashboard werden die Quoten 1), 2) und 4) angezeigt und bei Überschreitung des jeweiligen Schwellenwerts rot markiert.</p>
     </div>
     <div class="actions">
       <button class="btn btn-blue" id="stornoInfoClose">Verstanden</button>
+    </div>
+  </div>
+</div>
+
+<!-- Erklärung zur Deckungsgrad-Ampelregelung (02.09.2026) - für alle
+     Mitarbeiter über das ℹ️ bei "Deckungsgrad-Auswertung" im FH-PopUp
+     erreichbar, öffnet sich AUS fhModal (z-index 60) heraus. -->
+<div class="modal-bg hidden" id="dgAmpelInfoModal">
+  <div class="modal" style="max-width:540px">
+    <h3 style="margin:0 0 10px">Erklärung zur Ampelregelung</h3>
+    <div style="font-size:13px;line-height:1.6;color:var(--ink)">
+      <p style="margin:0 0 8px"><b>DG 1 / DG 2 (Deckungsgrad)</b> – feste Schwellen: unter 10&nbsp;% 🔴 rot, 10-30&nbsp;% 🟡 gelb, ab 30&nbsp;% 🟢 grün.</p>
+      <p style="margin:0 0 10px"><b>DB 1 / DB 2 (Deckungsbeitrag)</b> – relativer Rang unter allen Fachhändlern (nicht fix in Euro, da die Händlergrößen stark schwanken): unteres Drittel 🔴 rot, mittleres Drittel 🟡 gelb, oberstes Drittel 🟢 grün.</p>
+      <p style="margin:0 0 10px"><b>Tendenz-Pfeil</b> zum Vorjahr: ▲ besser, ▼ schlechter, → unverändert (DG 1/DG 2: Differenz über 0,5 Prozentpunkte; DB 1/DB 2: Veränderung über 5&nbsp;% relativ zum Vorjahreswert).</p>
+      <p style="margin:0;font-size:12px;color:var(--muted)">Aus Vertraulichkeitsgründen wird ausschließlich diese Ampel/Tendenz angezeigt – kein Rohwert wird angezeigt oder übertragen, auch nicht an Admins oder KI-Funktionen.</p>
+    </div>
+    <div class="actions">
+      <button class="btn btn-blue" id="dgAmpelInfoClose">Verstanden</button>
     </div>
   </div>
 </div>
@@ -3978,6 +3996,24 @@ function mieteJahrFor(emp,year){
   }
   return sum;
 }
+// Wie mieteJahrFor(), aber begrenzt auf die Monate 1..monat (Nutzervorgabe
+// 02.09.2026: Vorjahresproduktion + Veränderung zu heuer "tagaktuell", d.h.
+// bis zum aktuellen Kalendermonat - Vertragsdatum aus der Miete-Report-Datei,
+// nicht Einspieldatum). Granularität bleibt Monat (miete_monthly ist
+// monatsweise aggregiert, siehe parseMieteReport) - vom Nutzer als
+// "empfohlen" bestätigt statt einer echten Tagesgranularität.
+function mieteBisMonatFor(emp,year,monat){
+  const s=state.latest; if(!s) return 0;
+  let sum=0;
+  for(const [nr,rec] of Object.entries(fhMieteIndex)){
+    if(emp!==AT_GESAMT){ const fh=s.fh[nr]; if(!fh||fh.emp!==emp) continue; }
+    for(const [ym,v] of Object.entries(rec.monthly||{})){
+      const parts=ym.split("-");
+      if(+parts[0]===year&&+parts[1]<=monat) sum+=v;
+    }
+  }
+  return sum;
+}
 // Miete-PopUp (Nutzervorgabe 25.08.2026: Klick auf die Miete-Kachel öffnet
 // eine FH-Übersicht, Jahresproduktion absteigend + Umschalter auf das
 // aktuelle Monat) - dieselbe Mitarbeiter-Filterung (currentEmp/AT_GESAMT)
@@ -5390,11 +5426,20 @@ function renderGoals(){
   const mieteTarget=isATv?ZIEL_MIETE_AT:(PERS_MIETEZIELE[currentEmp]||0);
   const mieteIst=mieteJahrFor(currentEmp);
   const mieteHrJahr=mieteShare>0?mieteIst/mieteShare:0;
+  // Vorjahresproduktion + Veränderung zu heuer, jeweils bis zum aktuellen
+  // Kalendermonat (Nutzervorgabe 02.09.2026) - in derselben Kachel unter dem
+  // Freitagsreport-Hinweis angezeigt statt einer eigenen Karte.
+  const mieteVJBisMonat=mieteBisMonatFor(currentEmp,s.jahr-1,s.monat);
+  const mieteHeuerBisMonat=mieteBisMonatFor(currentEmp,s.jahr,s.monat);
+  const mieteVJDelta=mieteVJBisMonat>0?(mieteHeuerBisMonat-mieteVJBisMonat)/mieteVJBisMonat*100:null;
+  const mieteVJLine=mieteVJBisMonat>0
+    ?`<br>Vorjahr bis ${MONATE[s.monat-1]}: <b style="font-style:normal;color:var(--ink)">${fmt(mieteVJBisMonat)}</b> Stk. · <span style="font-style:normal;font-weight:700;color:${mieteVJDelta>=0?"var(--pos)":"var(--neg)"}">${fmtPct(mieteVJDelta)}</span> zu heuer`
+    :"";
   const mieteCard=goalCard("🏠 Miete-Jahresziel "+s.jahr, mieteTarget, mieteIst, mieteTarget*mieteShare,
     "", false,
     mieteTarget>0?{val:mieteHrJahr,lbl:"Jahresende (gleichmäßig)"}:null,
     null,
-    "Zahlen aus Freitagsreport, letzte Einspielung: "+(fmtWeekdayDate(mieteLastImport)||MIETE_REPORT_STAND_FALLBACK)
+    "Zahlen aus Freitagsreport, letzte Einspielung: "+(fmtWeekdayDate(mieteLastImport)||MIETE_REPORT_STAND_FALLBACK)+mieteVJLine
   ).replace('class="goal"','class="goal goal-miete" style="cursor:pointer" onclick="openMieteListModal()"');
   // Reihenfolge (Nutzervorgabe 01.09.2026): Persönliches Jahresziel VOR der
   // Miete-Kachel - deshalb wird hier zuerst das Jahresziel gepusht.
@@ -8340,8 +8385,10 @@ async function renderFhDeckungsgradSection(){
       dgVisibleMetrics.includes("db2")?dgAmpelPill("DB 2",d.db2_ampel,d.db2_trend):""
     ].join("");
     if(!pills){ box.innerHTML=""; return; }
-    box.innerHTML=`<h4 style="margin:18px 0 4px;color:var(--wg-navy);font-size:13px">Deckungsgrad-Auswertung</h4>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Bestand: <b style="color:var(--wg-navy)">${d.bestand!=null?fmt(d.bestand):"–"}</b> · Provision (lfd. Jahr): <b style="color:var(--wg-navy)">${d.provision_lj!=null?fmt(d.provision_lj)+" €":"–"}</b> · Schäden (lfd. Jahr): <b style="color:var(--wg-navy)">${d.schaeden_lj!=null?fmt(d.schaeden_lj):"–"}${d.schadenbetrag_lj!=null?" ("+fmt(d.schadenbetrag_lj)+" €)":""}</b></div>
+    box.innerHTML=`<h4 style="margin:18px 0 4px;color:var(--wg-navy);font-size:13px;display:flex;align-items:center;gap:6px">Deckungsgrad-Auswertung
+        <button type="button" id="dgAmpelInfoBtn" title="Erklärung zur Ampelregelung" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1">ℹ️</button>
+      </h4>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Bestand: <b style="color:var(--wg-navy)">${d.bestand!=null?fmt(d.bestand):"–"}</b> · Provision (lfd. Jahr): <b style="color:var(--wg-navy)">${d.provision_lj!=null?fmt(d.provision_lj)+" €":"–"}</b> · Schäden (lfd. Jahr): <b style="color:var(--wg-navy)">${d.schaeden_lj!=null?fmt(d.schaeden_lj):"–"}${d.schadenbetrag_lj!=null?" / "+fmt(d.schadenbetrag_lj)+" €":""}</b></div>
       <div class="ac-card" style="border:1px solid #ECF2F6;border-radius:8px;padding:6px 12px">
         ${pills}
       </div>
@@ -8721,7 +8768,7 @@ function akpPeerCompareHtml(data,opts){
   const periodTabs=opts.controls===false?"":`<span class="tabs mini no-print" id="acPeerPeriodTabs">`+
     [["monat","Monat"],["quartal","Quartal"],["jahr","Jahr"]].map(([p,lbl])=>
       `<button type="button" data-p="${p}" class="${akpPeerPeriod===p?"on":""}">${lbl}</button>`).join("")+`</span>`;
-  const aiBtn=opts.aiButton?`<button type="button" class="btn btn-ghost no-print" id="acPeerAiBtn" style="padding:5px 10px;font-size:12px">🤖 KI-Zusammenfassung als PDF</button>`:"";
+  const aiBtn=opts.aiButton?`<button type="button" class="btn btn-ghost no-print" id="acPeerAiBtn" style="padding:5px 10px;font-size:12px"${peerCount===0?' disabled title="Keine Vergleichsdaten vorhanden"':""}>🤖 KI-Zusammenfassung als PDF</button>`:"";
   const heading=`<h4 style="margin:20px 0 4px;color:var(--wg-navy);font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">Vergleich mit anderen AKP ${aiBtn}</h4>`;
   if(peerCount===0){
     return `${heading}${modeTabs}${periodTabs}<div class="empty-note">Keine Vergleichs-AKP in dieser Gruppe.</div>`;
@@ -9389,6 +9436,7 @@ document.addEventListener("click",e=>{
   const ppBtn=e.target.closest("#acPeerPeriodTabs button");
   if(ppBtn){ akpPeerPeriod=ppBtn.dataset.p; renderAkpPeerCompare(); return; }
   if(e.target.closest("#acPeerAiBtn")){ exportAkpPeerAiPdf(); return; }
+  if(e.target.closest("#dgAmpelInfoBtn")){ $("dgAmpelInfoModal").classList.remove("hidden"); return; }
   if(e.target.closest("#akqStaffelnDetailBtn")){ openAkqStaffelnModal(); return; }
   if(e.target.closest("#fhStammdatenDiffApply")){ applyFhStammdatenDiff(); return; }
   const obsFilterBtn=e.target.closest("#obsFilters button");
@@ -9423,25 +9471,28 @@ function renderAKQ(){
       .sort((a,b)=>b.p2026-a.p2026||b.kw-a.kw).slice(0,20);
   }
   if(!rows.length){ $("akqList").innerHTML=`<div class="empty-note">Keine Akquisekunden für diese Ansicht in der AKQ-Liste.</div>`; return; }
+  // Flexbox-Zeilen (.akp-row, wie beim Top&Flop-AKP-Panel) statt einer
+  // <table> - eine Tabelle mit fixen Spalten passt in der schmalen
+  // "Top 20 AKQ"-Panelspalte (.trio, ein Drittel der Breite) nicht ohne
+  // horizontales Scrollen; die Flex-Zeile schrumpft/kürzt Text stattdessen
+  // sauber per CSS-Ellipsis (Nutzer-Feedback 02.09.2026).
   if(akqShowAll){
-    $("akqList").innerHTML=`<table><thead><tr><th></th><th>Akquisekunde${showGL?" / Betreuer":""}</th><th class="r">${s.jahr}</th><th class="r">Vortag</th></tr></thead><tbody>`+
-      rows.map((r,i)=>{ const vt=s.fh[r.nr]?.vt||0; return `<tr>
-      <td><span class="rank">${i+1}</span></td>
-      <td><b><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.nr||"")}">${escapeHtml(r.name)}</button></b><br><span class="betr">${escapeHtml(r.nr)} · ${escapeHtml(r.ort)}${showGL?" · "+escapeHtml(r.emp||r.glRaw||"–"):""}${r.produzent?"":" · <span style='color:var(--neg)'>kein Produzent</span>"}</span></td>
-      <td class="r" style="font-weight:900;font-size:14px">${fmt(r.p2026)}</td>
-      <td class="r">${vt>0?`<span class="pill pos">+${fmt(vt)}</span>`:`<span class="pill neu">0</span>`}</td>
-    </tr>`;}).join("")+`</tbody></table>`;
+    $("akqList").innerHTML=rows.map((r,i)=>{ const vt=s.fh[r.nr]?.vt||0; return `<div class="akp-row">
+      <div class="med" style="background:#EAF3F9;color:var(--wg-navy)">${i+1}</div>
+      <div class="info"><b><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.nr||"")}">${escapeHtml(r.name)}</button></b>
+        <span>${escapeHtml(r.nr)} · ${escapeHtml(r.ort)}${showGL?" · "+escapeHtml(r.emp||r.glRaw||"–"):""}${r.produzent?"":" · <span style='color:var(--neg)'>kein Produzent</span>"}</span></div>
+      <div class="val"><span class="val-num">${fmt(r.p2026)}</span>${vt>0?`<span class="pill pos">+${fmt(vt)}</span>`:`<span class="pill neu">0</span>`}</div>
+    </div>`;}).join("");
     return;
   }
   const max=Math.max(rows[0].p2026,1);
-  $("akqList").innerHTML=`<table><thead><tr><th></th><th>Akquisekunde${showGL?" / Betreuer":""}</th><th class="r">${s.jahr}</th><th class="r">akt. KW</th></tr></thead><tbody>`+
-    rows.map((r,i)=>`<tr>
-      <td><span class="rank">${i+1}</span></td>
-      <td><b><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.nr||"")}">${escapeHtml(r.name)}</button></b><br><span class="betr">${escapeHtml(r.nr)} · ${escapeHtml(r.ort)}${showGL?" · "+escapeHtml(r.emp||r.glRaw||"–"):""}${r.produzent?"":" · <span style='color:var(--neg)'>kein Produzent</span>"}</span>
-        <div class="bar" style="height:5px;margin-top:4px;max-width:150px"><div class="fill" style="width:${r.p2026/max*100}%;background:var(--wg-blue)"></div></div></td>
-      <td class="r" style="font-weight:900;font-size:14px">${fmt(r.p2026)}</td>
-      <td class="r">${r.kw>0?`<span class="pill pos">+${fmt(r.kw)}</span>`:`<span class="pill neu">0</span>`}</td>
-    </tr>`).join("")+`</tbody></table>`;
+  $("akqList").innerHTML=rows.map((r,i)=>`<div class="akp-row">
+      <div class="med" style="background:#EAF3F9;color:var(--wg-navy)">${i+1}</div>
+      <div class="info"><b><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.nr||"")}">${escapeHtml(r.name)}</button></b>
+        <span>${escapeHtml(r.nr)} · ${escapeHtml(r.ort)}${showGL?" · "+escapeHtml(r.emp||r.glRaw||"–"):""}${r.produzent?"":" · <span style='color:var(--neg)'>kein Produzent</span>"}</span>
+        <div class="bar" style="height:5px;margin-top:4px"><div class="fill" style="width:${r.p2026/max*100}%;background:var(--wg-blue)"></div></div></div>
+      <div class="val"><span class="val-num">${fmt(r.p2026)}</span>${r.kw>0?`<span class="pill pos">+${fmt(r.kw)}</span>`:`<span class="pill neu">0</span>`}</div>
+    </div>`).join("");
 }
 
 /* Produktmix: Komplettschutz vs. Geräteschutz (Österreich, aus ZE_Region) */
@@ -10051,6 +10102,7 @@ $("aqmPdfBtn").onclick=()=>openPdfTargetChoice(()=>exportAkqStaffelnPdf());
 $("acClose").onclick=()=>$("akpContactModal").classList.add("hidden");
 $("acStornoInfoBtn").onclick=()=>$("stornoInfoModal").classList.remove("hidden");
 $("stornoInfoClose").onclick=()=>$("stornoInfoModal").classList.add("hidden");
+$("dgAmpelInfoClose").onclick=()=>$("dgAmpelInfoModal").classList.add("hidden");
 $("fhClose").onclick=()=>$("fhModal").classList.add("hidden");
 // fhModal bleibt bewusst offen (nicht ausblenden!) - akpModal legt sich als
 // Unter-PopUp darüber (DOM-Reihenfolge sorgt für die richtige Stapelung), so
