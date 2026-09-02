@@ -164,6 +164,22 @@ alter table public.akp_contacts add column if not exists prod_monthly_other json
 alter table public.akp_contacts add column if not exists poquote_monthly jsonb not null default '{}'::jsonb;
 alter table public.akp_contacts add column if not exists q3fuer2_monthly jsonb not null default '{}'::jsonb;
 
+-- Stornoquoten je AKP (02.09.2026, "Vermittlerübersicht mit Stornoquoten",
+-- siehe parseAkpStornoquoten in index.html) - EIN aktueller Snapshot, keine
+-- Historie (wie poquote_monthly), da die Quelldatei selbst bereits ein
+-- kumuliertes "laufendes Jahr bis Vormonat"-Stand ist. Werte als Bruch
+-- (nicht ×100). NICHT vertraulich - im Gegensatz zu fh_deckungsgrad für
+-- alle authentifizierten Nutzer über die bestehenden akp_contacts-Policies
+-- lesbar (siehe unten), da diese Quoten laut Nutzervorgabe für alle
+-- Mitarbeiter sichtbar sein sollen. Nur 3 der 4 Quoten aus der Quelldatei
+-- werden gespeichert (1) Widerruf, 2) Nichtzahlung Erstprämie, 4) Wegfall
+-- versichertes Interesse) - Quote 3) "Kulanz/Wegfall (erste 6 Monate)" wird
+-- im Dashboard nicht angezeigt.
+alter table public.akp_contacts add column if not exists storno_widerruf_quote numeric;
+alter table public.akp_contacts add column if not exists storno_erstpraemie_quote numeric;
+alter table public.akp_contacts add column if not exists storno_wegfall_quote numeric;
+alter table public.akp_contacts add column if not exists storno_quoten_updated_at timestamptz;
+
 alter table public.akp_contacts enable row level security;
 
 -- Kontaktdaten sind Team-Arbeitswerkzeug: jeder eingeloggte Nutzer (jede Rolle)

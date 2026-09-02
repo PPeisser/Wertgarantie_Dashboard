@@ -375,7 +375,7 @@ td .betr{font-size:11px;color:var(--muted)}
    durch die #fhModal-Erhöhung oben, entdeckt 22.08.2026 beim Testen des neuen
    Jahresbericht-Buttons). Gleiches gilt für alle anderen Inhalts-PopUps (z.B.
    #perfAdminModal), aus denen ein PDF-Download ausgelöst werden kann. */
-#pdfTargetModal,#pdfSendModal,#fhPdfChoiceModal{z-index:70}
+#pdfTargetModal,#pdfSendModal,#fhPdfChoiceModal,#stornoInfoModal{z-index:70}
 /* Filialgruppen-PopUp wird AUS #fhModal heraus geöffnet (Button "Alle
    Filialen anzeigen") und muss - wie die PDF-Auswahldialoge oben - über
    #fhModal (60) liegen, sonst öffnet es sich sichtbar dahinter (Bug-Report
@@ -1155,10 +1155,35 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div id="acQuotesInfo" style="font-size:12px;color:var(--muted);font-weight:600;margin-bottom:8px"></div>
     <div id="acMonthly"></div>
     <div id="acYearlyTrend"></div>
+    <h4 style="margin:20px 0 4px;color:var(--wg-navy);font-size:13px;display:flex;align-items:center;gap:6px">Stornoquoten
+      <button type="button" id="acStornoInfoBtn" title="Erklärung zu den Stornoquoten" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1">ℹ️</button>
+    </h4>
+    <div id="acStornoSection"></div>
     <div id="acPeerCompare"></div>
 
     <div class="actions" style="margin-top:18px;justify-content:flex-start">
       <button class="btn btn-ghost no-print" id="acPdfBtn">⬇ Datenblatt als PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- Erklärung zu den Stornoquoten (02.09.2026, aus der eingespielten
+     Auswertung übernommen) - für alle Mitarbeiter über das ℹ️ im AKP-PopUp
+     erreichbar, öffnet sich AUS akpContactModal (z-index 65) heraus. -->
+<div class="modal-bg hidden" id="stornoInfoModal">
+  <div class="modal" style="max-width:540px">
+    <h3 style="margin:0 0 10px">Erklärung zu den Stornoquoten</h3>
+    <div style="font-size:13px;line-height:1.6;color:var(--ink)">
+      <p style="margin:0 0 10px">Alle Vertragsauflösungen aus dem laufenden Jahr werden gewertet und ins Verhältnis zum Bestand bzw. zur Produktion gesetzt (Quoten 1-3: nur Stornos innerhalb der ersten 6 Monate der Vertragslaufzeit).</p>
+      <p style="margin:0 0 8px"><b>1) Widerrufene Verträge</b> – auffällig ab <b>5&nbsp;%</b>: kann ein Indiz sein, dass nicht sauber vermarktet wird.</p>
+      <p style="margin:0 0 8px"><b>2) Nichtzahlung Erstprämie</b> – auffällig ab <b>10&nbsp;%</b>: vom Fachhändler nicht beeinflussbar, aber ebenfalls ein möglicher Indikator für unsaubere Vermarktung.</p>
+      <p style="margin:0 0 8px;color:var(--muted)">3) Kulanz / Wegfall versichertes Interesse (erste 6 Monate) – auffällig ab 8&nbsp;%: oft vom Fachhändler initiiert, wenn der Kunde unzufrieden ist oder der Schutz nicht gewollt war. <i>(im Dashboard nicht als eigene Kennzahl angezeigt)</i></p>
+      <p style="margin:0 0 10px"><b>4) Wegfall versichertes Interesse (gesamtes laufendes Jahr)</b> – auffällig ab <b>20&nbsp;%</b>: starker Indikator für eventuellen Betrug (Verträge werden häufig mit der Begründung des AKP aufgelöst, das versicherte Gerät sei nicht mehr vorhanden) – sollte dringend mit dem AKP besprochen werden.</p>
+      <p style="margin:0 0 4px;font-size:12px;color:var(--muted)">Vergleichsquoten Deutschland gesamt (alle Regionen): Widerruf 2,9&nbsp;% · Zahlungsverzug 2,3&nbsp;% · Kulanz/Wegfall vers. Interesse/Versicherungsfall 0,8&nbsp;%.</p>
+      <p style="margin:0;font-size:12px;color:var(--muted)">Im Dashboard werden die Quoten 1), 2) und 4) angezeigt und bei Überschreitung des jeweiligen Schwellenwerts rot markiert.</p>
+    </div>
+    <div class="actions">
+      <button class="btn btn-blue" id="stornoInfoClose">Verstanden</button>
     </div>
   </div>
 </div>
@@ -1309,6 +1334,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <input type="file" id="fhSegmentFileInput" accept=".xlsx,.xls" class="hidden">
     <input type="file" id="mieteFileInput" accept=".xlsx,.xls" class="hidden">
     <input type="file" id="dgFileInput" accept=".xlsx,.xls" class="hidden">
+    <input type="file" id="stornoFileInput" accept=".xlsx,.xls" class="hidden">
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Funktionen aktivieren</h4>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -1345,6 +1371,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         Deckungsgrad-Ampel (FH-Ansicht)
         <button type="button" class="btn btn-ghost" id="deckungsgradVisibilityBtn" style="padding:3px 8px;font-size:11px" title="Auswählen, welche Kennzahlen als Ampel gezeigt werden">⚙ Auswahl</button>
       </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+        <input type="checkbox" id="empRankingEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+        Mitarbeiter-Ranking (Österreich gesamt)
+      </label>
     </div>
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
@@ -1378,6 +1408,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <button class="btn btn-blue" id="adminImportChooseFhSegment" style="text-align:left">🗂️ Händlersegmentierung</button>
       <button class="btn btn-blue" id="adminImportChooseMiete" style="text-align:left">🏠 Miete</button>
       <button class="btn btn-blue" id="adminImportChooseDg" style="text-align:left">🛡️ Deckungsgrad <span style="font-weight:600;opacity:.75;font-size:12px">(vertraulich)</span></button>
+      <button class="btn btn-blue" id="adminImportChooseStorno" style="text-align:left">📉 Stornoquoten AKP</button>
     </div>
     <button class="btn btn-ghost" id="adminImportChoiceClose" style="width:100%">Abbrechen</button>
   </div>
@@ -1737,6 +1768,12 @@ let akpPeerCompareEnabled = false;
 // Sichtbarkeits-/Einführungssteuerung durch den Admin.
 let deckungsgradEnabled = false;
 let dgVisibleMetrics = ["dg1","dg2","db1","db2"];
+// Mitarbeiter-Ranking (Österreich gesamt · Ziele & Hochrechnung), Admin-
+// Freischalter (02.09.2026) - Default true (nicht wie bei neuen Features
+// sonst üblich false), da das Ranking bereits produktiv sichtbar war, bevor
+// der Schalter eingeführt wurde: ein Default von false hätte es für alle
+// Nutzer unangekündigt ausgeblendet, bis ein Admin es manuell aktiviert.
+let empRankingEnabled = true;
 // Zeitpunkt der letzten Miete-Report-Einspielung (dashboard_kv-Key
 // "miete_last_import", von upsertMieteData() bei jedem Import gesetzt -
 // deckt sowohl den Admin-Panel-Upload als auch den automatischen
@@ -2182,6 +2219,7 @@ function openAdminModal(){
   $("fhSearchEnabledChk").checked=fhSearchEnabled;
   $("akpPeerCompareEnabledChk").checked=akpPeerCompareEnabled;
   $("deckungsgradEnabledChk").checked=deckungsgradEnabled;
+  $("empRankingEnabledChk").checked=empRankingEnabled;
 }
 async function togglePerfDialogAdminEnabled(){
   const on=$("perfDialogAdminEnabledChk").checked;
@@ -2294,6 +2332,17 @@ async function saveDeckungsgradVisibility(){
   try{
     await stSet("deckungsgrad_visible_metrics",JSON.stringify(dgVisibleMetrics));
     toast("Auswahl gespeichert ✓");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
+async function toggleEmpRankingEnabled(){
+  const on=$("empRankingEnabledChk").checked;
+  empRankingEnabled=on;
+  try{ renderEmpRanking(); }catch(e){ console.error("renderEmpRanking (toggle):",e); }
+  try{
+    await stSet("emp_ranking_enabled",on?"1":"0");
+    toast(on?"Mitarbeiter-Ranking aktiviert ✓":"Mitarbeiter-Ranking deaktiviert");
   }catch(e){
     toast("Speichern fehlgeschlagen: "+(e.message||e));
   }
@@ -2548,7 +2597,7 @@ function renderNotifResults(res){
     parts.push(!res.akp.length?`<div class="empty-note">Keine Auffälligkeiten.</div>`:
       `<div style="max-height:280px;overflow:auto;margin-bottom:18px">`+res.akp.map(a=>`
       <div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">
-        <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(a.nr)}">${escapeHtml(a.name)}</button></b>
+        <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(a.nr)}">${escapeHtml(a.name)}</button></b>${akpStornoBadges(a.nr)}
           <span class="betr"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(a.fhNr||"")}">${escapeHtml(a.firma||"")}</button>${a.emp?" · "+escapeHtml(a.emp):""}</span></span>
         <span style="color:var(--neg);font-weight:700;white-space:nowrap;text-align:right">${a.daysSince} Tage<br><span style="font-weight:600;color:var(--muted);font-size:11.5px">seit ${fmtDate(a.lastDate)}</span></span>
       </div>`).join("")+`</div>`);
@@ -3282,6 +3331,94 @@ async function handleDeckungsgradFile(files){
   }
 }
 
+// Stornoquoten-Auswertung AKP (02.09.2026): "Vermittlerübersicht mit
+// Stornoquoten", eine Zeile je AKP, Spalten A-F positional (nr,name,fhNr,
+// firma,-,ort - identisch zum Tagesreport-AKP-Parser), danach eine
+// zweistufige Kopfzeile (Gruppen-Label + "Anzahl"/"Quote"): die 4
+// "Quote"-Spalten werden über das jeweils zugehörige Gruppen-Label in der
+// Zeile darüber identifiziert (robust gg. Spaltenverschiebungen, da jedes
+// Gruppen-Label über 4 Spalten - Anzahl+Quote je zusammengehöriges
+// Merged-Zellenpaar - hinweg gilt). Nur 3 der 4 Quoten werden übernommen
+// (Nutzervorgabe): 1) Widerrufene Verträge, 2) Nichtzahlung Erstprämie,
+// 4) Wegfall versichertes Interesse (gesamtes laufendes Jahr) - Quote 3)
+// "Kulanz/Wegfall (erste 6 Monate)" wird nicht im Dashboard angezeigt.
+function parseAkpStornoquoten(wb){
+  let rows=null,subHi=-1,subRow=null,groupRow=null;
+  for(const n of wb.SheetNames){
+    const r=toRows(wb.Sheets[n]);
+    for(let i=1;i<Math.min(r.length,60);i++){
+      const row=r[i]; if(!row) continue;
+      const h=row.map(normHeader);
+      if(h.includes("Bestand")&&h.includes("Produktion")&&h.includes("Quote")){
+        rows=r; subHi=i; subRow=h; groupRow=(r[i-1]||[]).map(normHeader);
+        break;
+      }
+    }
+    if(rows) break;
+  }
+  if(!rows) return null;
+  const quoteCols=[];
+  for(let c=0;c<subRow.length;c++){
+    if(subRow[c]!=="Quote") continue;
+    let g="";
+    for(let k=c;k>=0;k--){ if(groupRow[k]){ g=groupRow[k]; break; } }
+    quoteCols.push({col:c,group:g});
+  }
+  const findQuoteCol=re=>{ const m=quoteCols.find(q=>re.test(q.group)); return m?m.col:-1; };
+  const idxWiderruf=findQuoteCol(/^1\)\s*Widerrufene/i);
+  const idxErstpraemie=findQuoteCol(/^2\)\s*Nichtzahlung\s+Erstprämie/i);
+  const idxWegfall=findQuoteCol(/^4\)\s*Wegfall/i);
+  if(idxWiderruf<0&&idxErstpraemie<0&&idxWegfall<0) return null;
+  const out=[];
+  for(let i=subHi+1;i<rows.length;i++){
+    const r=rows[i]; if(!r) continue;
+    const nr=r[0]; if(nr==null||String(nr).trim()==="") continue;
+    out.push({
+      nr:String(nr).trim(),
+      storno_widerruf_quote:idxWiderruf>-1&&r[idxWiderruf]!=null?num(r[idxWiderruf]):null,
+      storno_erstpraemie_quote:idxErstpraemie>-1&&r[idxErstpraemie]!=null?num(r[idxErstpraemie]):null,
+      storno_wegfall_quote:idxWegfall>-1&&r[idxWegfall]!=null?num(r[idxWegfall]):null,
+    });
+  }
+  return out.length?out:null;
+}
+async function upsertAkpStornoquoten(rows){
+  const CHUNK=500;
+  const now=new Date().toISOString();
+  for(let i=0;i<rows.length;i+=CHUNK){
+    const chunk=rows.slice(i,i+CHUNK).map(r=>({ ...r, storno_quoten_updated_at:now }));
+    const { error }=await sb.from("akp_contacts").upsert(chunk,{onConflict:"nr"});
+    if(error) throw error;
+  }
+}
+// Stornoquoten-Import (Admin-Panel + E-Mail-Import, siehe
+// processPendingImports): schreibt NUR die 3 Quoten-Spalten je AKP-Nr, alle
+// übrigen akp_contacts-Felder (Name, Kontaktdaten, Monatsproduktion, ...)
+// bleiben unangetastet (Postgres UPSERT ... ON CONFLICT DO UPDATE ändert
+// nur die im Payload enthaltenen Spalten).
+async function handleAkpStornoFile(files){
+  if(!files||!files.length) return;
+  if(!(sb&&supaUser)){ toast("Nicht angemeldet."); return; }
+  toast("Stornoquoten-Auswertung wird verarbeitet …");
+  try{
+    const buf=await files[0].arrayBuffer();
+    const wb=XLSX.read(buf,{type:"array",cellDates:true});
+    const rows=parseAkpStornoquoten(wb);
+    if(!rows){ toast("Format nicht erkannt – bitte die Stornoquoten-Auswertung (\"Vermittlerübersicht mit Stornoquoten\") einspielen."); return; }
+    await upsertAkpStornoquoten(rows);
+    await loadAkpContactsIndex();
+    if(akpContactCurrent&&!$("akpContactModal").classList.contains("hidden")){
+      const {data}=await sb.from("akp_contacts").select("*").eq("nr",akpContactCurrent.nr).maybeSingle();
+      if(data){ akpContactCurrent=data; renderAkpStornoSection(); }
+    }
+    render();
+    toast(`Stornoquoten-Auswertung eingespielt ✓ ${fmt(rows.length)} Aktivpartner aktualisiert`);
+  }catch(e){
+    console.error("handleAkpStornoFile failed:",e);
+    toast("Stornoquoten-Import fehlgeschlagen: "+(e.message||e));
+  }
+}
+
 // Liest die Miete-Report-Datei ("MSK_Report_...", Club.Weiss): ein oder
 // mehrere Blätter "AT_<Jahr>" (z.B. AT_2026, AT_2025 - je nach Jahr(en) in
 // der Datei, dynamisch statt fest, damit künftige Jahre ohne Codeänderung
@@ -3455,7 +3592,7 @@ async function processPendingImports(){
     const { data:rows, error } = await sb.from("pending_imports")
       .select("*").eq("status","pending").order("received_at",{ascending:true});
     if(error||!rows||!rows.length) return;
-    let snapCount=0,segCount=0,segFhCount=0,mieteCount=0,mieteFhCount=0,dgCount=0,dgFhCount=0;
+    let snapCount=0,segCount=0,segFhCount=0,mieteCount=0,mieteFhCount=0,dgCount=0,dgFhCount=0,stornoCount=0,stornoAkpCount=0;
     for(const row of rows){
       // Optimistisches "Claimen" (bedingtes Update) - verhindert, dass zwei
       // gleichzeitig geöffnete Tabs dieselbe Mail doppelt verarbeiten.
@@ -3491,9 +3628,18 @@ async function processPendingImports(){
               // Deckungsgrad-Auswertung sein, ebenfalls per Mail an
               // input@wgaustria.at zulässig (siehe parseDeckungsgrad).
               const dgRows=parseDeckungsgrad(wb);
-              if(!dgRows) throw new Error("Format nicht erkannt");
-              await upsertFhDeckungsgrad(dgRows);
-              dgCount++; dgFhCount+=dgRows.length;
+              if(dgRows){
+                await upsertFhDeckungsgrad(dgRows);
+                dgCount++; dgFhCount+=dgRows.length;
+              }else{
+                // Auch keine Deckungsgrad-Auswertung - könnte die
+                // Stornoquoten-Auswertung AKP sein (siehe
+                // parseAkpStornoquoten), ebenfalls per Mail zulässig.
+                const stornoRows=parseAkpStornoquoten(wb);
+                if(!stornoRows) throw new Error("Format nicht erkannt");
+                await upsertAkpStornoquoten(stornoRows);
+                stornoCount++; stornoAkpCount+=stornoRows.length;
+              }
             }
           }
         }
@@ -3520,6 +3666,15 @@ async function processPendingImports(){
     if(dgCount){
       if(fhModalCurrent) renderFhDeckungsgradSection();
       toast(`📧 Deckungsgrad-Auswertung automatisch eingespielt ✓ ${fmt(dgFhCount)} Fachhändler aktualisiert`);
+    }
+    if(stornoCount){
+      await loadAkpContactsIndex();
+      if(akpContactCurrent&&!$("akpContactModal").classList.contains("hidden")){
+        const {data}=await sb.from("akp_contacts").select("*").eq("nr",akpContactCurrent.nr).maybeSingle();
+        if(data){ akpContactCurrent=data; renderAkpStornoSection(); }
+      }
+      render();
+      toast(`📧 Stornoquoten-Auswertung automatisch eingespielt ✓ ${fmt(stornoAkpCount)} Aktivpartner aktualisiert`);
     }
   }catch(e){ console.error("processPendingImports failed:",e); }
 }
@@ -3591,7 +3746,7 @@ async function loadAkpContactsIndex(){
     for(;;){
       guard++;
       const {data,error}=await sb.from("akp_contacts")
-        .select("nr,vorname,nachname,firma,ort,fh_nr,prod_monthly,prod_monthly_other,poquote_monthly,q3fuer2_monthly")
+        .select("nr,vorname,nachname,firma,ort,fh_nr,prod_monthly,prod_monthly_other,poquote_monthly,q3fuer2_monthly,storno_widerruf_quote,storno_erstpraemie_quote,storno_wegfall_quote")
         .order("nr")
         .range(from,from+999);
       if(error){ console.error("loadAkpContactsIndex:",error.message||error); break; }
@@ -4761,6 +4916,7 @@ async function loadAll(){
   try{ akpPeerCompareEnabled=(await stGet("akp_peer_compare_enabled"))==="1"; }catch(e){}
   try{ deckungsgradEnabled=(await stGet("deckungsgrad_enabled"))==="1"; }catch(e){}
   try{ const dgv=await stGet("deckungsgrad_visible_metrics"); if(dgv) dgVisibleMetrics=JSON.parse(dgv); }catch(e){}
+  try{ const erv=await stGet("emp_ranking_enabled"); empRankingEnabled = erv==null ? true : erv==="1"; }catch(e){}
   try{ mieteLastImport=await stGet("miete_last_import"); }catch(e){}
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
@@ -5134,6 +5290,7 @@ function akqStaffelnInJahr(){
 // Werten, keine Zielerreichung).
 function renderEmpRanking(){
   const box=$("empRankingBlock"); if(!box) return;
+  if(!empRankingEnabled){ box.innerHTML=""; return; }
   if(currentEmp!==AT_GESAMT){ box.innerHTML=""; return; }
   const s=state.latest; if(!s){ box.innerHTML=""; return; }
   // Hochrechnung Jahresende (saisonal) - dieselbe Logik wie bei den Ziel-
@@ -5467,7 +5624,7 @@ function renderObs(){
       return `<div class="${cls}">
       <div class="ic">${ic}</div>
       <div class="t">
-        <b class="obs-name" title="${escapeHtml(o.f.name)} · AKP-Nr. ${escapeHtml(o.f.nr||"")}"><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(o.f.nr||"")}">${escapeHtml(o.f.name)}</button> <span style="font-weight:600;color:var(--muted)">· AKP-Nr. ${escapeHtml(o.f.nr||"")}${showGL&&(o.f.emp||o.f.gl)?" · "+escapeHtml(o.f.emp||o.f.gl):""}</span></b>
+        <b class="obs-name" title="${escapeHtml(o.f.name)} · AKP-Nr. ${escapeHtml(o.f.nr||"")}"><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(o.f.nr||"")}">${escapeHtml(o.f.name)}</button> <span style="font-weight:600;color:var(--muted)">· AKP-Nr. ${escapeHtml(o.f.nr||"")}${showGL&&(o.f.emp||o.f.gl)?" · "+escapeHtml(o.f.emp||o.f.gl):""}</span></b>${akpStornoBadges(o.f.nr)}
         <span class="obs-sub">${o.fhNr?`<button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(o.fhNr)}">${escapeHtml(o.firma||o.fhNr)}</button>`:escapeHtml(o.firma||"")}${o.f.ort?" · "+escapeHtml(o.f.ort):""}</span>
         <span class="obs-sub">${o.txt}</span>
       </div>
@@ -5494,6 +5651,26 @@ function renderObs(){
 }
 
 /* AKP Top/Flop 3 · umschaltbar Woche/Monat/Jahr */
+// Stornoquoten AKP (02.09.2026, "Vermittlerübersicht mit Stornoquoten",
+// siehe parseAkpStornoquoten): Schwellenwerte laut Erklärung in der
+// eingespielten Auswertung selbst - nur die 3 vom Nutzer angeforderten
+// Kennzahlen, jede AKP-Liste im Dashboard zeigt bei Überschreitung ein
+// rotes Warn-Badge (akpStornoBadges()), Details + Erklärung im AKP-PopUp.
+const AKP_STORNO_THRESHOLDS={widerruf:0.05,erstpraemie:0.10,wegfall:0.20};
+const AKP_STORNO_LABELS={widerruf:"Widerruf",erstpraemie:"Erstprämie",wegfall:"Wegfall"};
+function akpStornoFlags(nr){
+  const c=akpContactsIndex&&akpContactsIndex[nr]; if(!c) return [];
+  const flags=[];
+  if(c.storno_widerruf_quote!=null&&c.storno_widerruf_quote>AKP_STORNO_THRESHOLDS.widerruf) flags.push("widerruf");
+  if(c.storno_erstpraemie_quote!=null&&c.storno_erstpraemie_quote>AKP_STORNO_THRESHOLDS.erstpraemie) flags.push("erstpraemie");
+  if(c.storno_wegfall_quote!=null&&c.storno_wegfall_quote>AKP_STORNO_THRESHOLDS.wegfall) flags.push("wegfall");
+  return flags;
+}
+function akpStornoBadges(nr){
+  const flags=akpStornoFlags(nr);
+  if(!flags.length) return "";
+  return flags.map(f=>`<span class="pill neg" style="font-size:9.5px;padding:1px 6px;margin-left:4px;white-space:nowrap" title="Stornoquote „${AKP_STORNO_LABELS[f]}“ auffällig hoch - siehe Erklärung im AKP-PopUp">🔴 ${AKP_STORNO_LABELS[f]}</span>`).join("");
+}
 function akpKey(a){ return a.nr||a.name+"@"+a.firma; }
 function renderAKP(){
   const s=state.latest, showGL=currentEmp===AT_GESAMT;
@@ -5502,7 +5679,7 @@ function renderAKP(){
   const p=akpPeriod, medal=["#FFD700","#C0C0C0","#CD7F32","#8FB6C9","#8FB6C9"];
   const row=(r,i,neg,val,unit,pill)=>`<div class="akp-row">
       <div class="med" style="background:${neg?"var(--neg-bg)":medal[i]+"33"};color:${neg?"var(--neg)":"var(--wg-navy)"}">${neg?"▼":(i+1)}</div>
-      <div class="info"><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><span><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.fhNr||"")}">${escapeHtml(r.firma||"")}</button> · ${escapeHtml(r.ort||"")}${showGL&&r.emp?" · "+escapeHtml(r.emp):""}</span></div>
+      <div class="info"><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b>${akpStornoBadges(r.nr)}<span><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.fhNr||"")}">${escapeHtml(r.firma||"")}</button> · ${escapeHtml(r.ort||"")}${showGL&&r.emp?" · "+escapeHtml(r.emp):""}</span></div>
       <div class="val"><span class="val-num">${fmt(val)}<small> ${unit}</small></span>${pill}</div>
     </div>`;
   let html="";
@@ -5538,7 +5715,7 @@ function renderAkpSearch(){
   if(!hits.length){ box.innerHTML=`<div class="empty-note">Keine AKP gefunden.</div>`; return; }
   const unit=akpUnitLabel(akpPeriod);
   box.innerHTML=hits.map(r=>`<div class="akp-search-row">
-      <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b>
+      <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b>${akpStornoBadges(r.nr)}
       <span class="betr"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.fhNr||"")}">${escapeHtml(r.firma||"")}</button> · ${escapeHtml(r.ort||"")}</span></span>
       <span class="val"><span class="val-num">${fmt(r.val)}<small> ${unit}</small></span>${r.pill||""}</span>
     </div>`).join("");
@@ -5625,7 +5802,7 @@ function openAkpModal(){
     const mkTbl=(list,neg)=>`<table><thead><tr><th></th><th>AKP / Firma${showGL?" / Betreuer":""}</th><th class="r">${unit}</th><th class="r">VT</th><th class="r">vs. VJ</th></tr></thead><tbody>`+
       list.slice(0,akpN).map((r,i)=>`<tr>
         <td><span class="rank" style="${neg?"background:var(--neg-bg);color:var(--neg)":""}">${i+1}</span></td>
-        <td><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><br><span class="betr"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.fhNr||"")}">${escapeHtml(r.firma||"")}</button> · ${escapeHtml(r.ort||"")}${showGL&&r.emp?" · "+escapeHtml(r.emp):""}</span></td>
+        <td><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b>${akpStornoBadges(r.nr)}<br><span class="betr"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.fhNr||"")}">${escapeHtml(r.firma||"")}</button> · ${escapeHtml(r.ort||"")}${showGL&&r.emp?" · "+escapeHtml(r.emp):""}</span></td>
         <td class="r" style="font-weight:900">${fmt(r.val)}</td>
         <td class="r" style="color:var(--muted)">${fmt(r.vt)}</td>
         <td class="r">${r.vjDiff==null?"–":`<span class="pill ${r.vjDiff>=0?"pos":"neg"}">${fmtSign(r.vjDiff)}</span>`}</td>
@@ -5725,7 +5902,7 @@ async function openFhModal(fhNr){
     const unit=akpUnitLabel(fhAkpPeriod);
     const list=ranked.top;
     $("fhBody").innerHTML=list.length?list.map(r=>`<div class="akp-search-row">
-        <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b>
+        <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b>${akpStornoBadges(r.nr)}
         <span class="betr">${escapeHtml(r.firma||"")} · ${escapeHtml(r.ort||"")}</span>
         <span class="betr">PO-Quote (LJ): ${r.poQuote!=null?(r.poQuote*100).toFixed(1).replace(".",",")+" %":"–"} · 3-für-2-Quote (LJ): ${r.q3fuer2!=null?(r.q3fuer2*100).toFixed(1).replace(".",",")+" %":"–"}</span></span>
         <span class="val"><span class="val-num">${fmt(r.val)}<small> ${unit}</small></span>${r.pill||""}</span>
@@ -8564,6 +8741,7 @@ async function openAkpContact(nr,fallbackName){
   renderAkpContactView();
   renderAkpMonthly();
   renderAkpYearlyTrend();
+  renderAkpStornoSection();
   $("acPeerCompare").innerHTML='<div class="empty-note">Vergleichsgruppe wird geladen …</div>';
   if(c.fh_nr){
     try{
@@ -8600,6 +8778,28 @@ function renderAkpContactView(){
   const poTxt=poVal!=null?(poVal*100).toFixed(1).replace(".",",")+" %":"–";
   const f2Txt=f2Val!=null?(f2Val*100).toFixed(1).replace(".",",")+" %":"–";
   $("acQuotesInfo").textContent=`PO-Quote (LJ): ${poTxt} · 3-für-2-Quote (LJ): ${f2Txt}`;
+}
+// Stornoquoten-Abschnitt im AKP-PopUp (siehe parseAkpStornoquoten/ℹ️-Modal
+// #stornoInfoModal für die Erklärung) - für alle Mitarbeiter sichtbar, rot
+// hervorgehoben bei Überschreitung des jeweiligen Schwellenwerts.
+function renderAkpStornoSection(){
+  const c=akpContactCurrent;
+  const box=$("acStornoSection"); if(!box) return;
+  const has=c.storno_widerruf_quote!=null||c.storno_erstpraemie_quote!=null||c.storno_wegfall_quote!=null;
+  if(!has){ box.innerHTML=`<div class="empty-note">Keine Stornoquoten-Auswertung vorhanden.</div>`; return; }
+  const row=(label,val,threshold)=>{
+    const flagged=val!=null&&val>threshold;
+    const txt=val!=null?(val*100).toFixed(1).replace(".",",")+" %":"–";
+    return `<div style="display:flex;align-items:center;gap:8px;padding:4px 0">
+      <span style="flex:1;font-weight:700;font-size:12.5px">${label}</span>
+      <span class="pill ${flagged?"neg":""}" style="font-size:11px;padding:3px 9px">${flagged?"🔴 ":""}${txt}</span>
+    </div>`;
+  };
+  box.innerHTML=
+    row("Widerrufene Verträge",c.storno_widerruf_quote,AKP_STORNO_THRESHOLDS.widerruf)+
+    row("Nichtzahlung Erstprämie",c.storno_erstpraemie_quote,AKP_STORNO_THRESHOLDS.erstpraemie)+
+    row("Wegfall versichertes Interesse",c.storno_wegfall_quote,AKP_STORNO_THRESHOLDS.wegfall)+
+    (c.storno_quoten_updated_at?`<div style="font-size:10.5px;color:var(--muted);margin-top:4px;font-style:italic">Eingespielt am ${fmtDate(c.storno_quoten_updated_at.slice(0,10))}</div>`:"");
 }
 // Jüngster Monatsstand eines *_monthly-Quoten-Objekts innerhalb eines Jahres
 // (Stand per Monatsultimo, siehe Migrationskommentar) - für Anzeige/Fallback,
@@ -9473,6 +9673,7 @@ $("dgVisAllChk").onchange=()=>{
 document.querySelectorAll(".dgVisChk").forEach(b=>{ b.onchange=syncDgVisAllChk; });
 $("dgVisCancel").onclick=()=>$("deckungsgradVisibilityModal").classList.add("hidden");
 $("dgVisSave").onclick=saveDeckungsgradVisibility;
+$("empRankingEnabledChk").onchange=toggleEmpRankingEnabled;
 $("perfDialogAdminEnabledChk").onchange=togglePerfDialogAdminEnabled;
 $("chefgespraechBtn").onclick=openChefgespraechModal;
 $("chefgespraechClose").onclick=()=>$("chefgespraechModal").classList.add("hidden");
@@ -9592,6 +9793,7 @@ $("akqFileInput").onchange=async e=>{ if(e.target.files.length){ await handleAkq
 $("fhSegmentFileInput").onchange=async e=>{ if(e.target.files.length){ await handleFhSegmentFile([...e.target.files]); e.target.value=""; } };
 $("mieteFileInput").onchange=async e=>{ if(e.target.files.length){ await handleMieteFile([...e.target.files]); e.target.value=""; } };
 $("dgFileInput").onchange=async e=>{ if(e.target.files.length){ await handleDeckungsgradFile([...e.target.files]); e.target.value=""; } };
+$("stornoFileInput").onchange=async e=>{ if(e.target.files.length){ await handleAkpStornoFile([...e.target.files]); e.target.value=""; } };
 // Admin: "Datei einspielen"-Auswahl-PopUp (bündelt die früher 4 einzelnen
 // Einspielen-Buttons, Nutzervorgabe 01.09.2026 - Admin-Panel wurde
 // zunehmend unübersichtlich).
@@ -9602,6 +9804,7 @@ $("adminImportChooseAkq").onclick=()=>{ $("adminImportChoiceModal").classList.ad
 $("adminImportChooseFhSegment").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); $("fhSegmentFileInput").click(); };
 $("adminImportChooseMiete").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); $("mieteFileInput").click(); };
 $("adminImportChooseDg").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); $("dgFileInput").click(); };
+$("adminImportChooseStorno").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); $("stornoFileInput").click(); };
 // Admin: Mitarbeiterverwaltung als eigenes PopUp (vorher inline im
 // Admin-Panel, Nutzervorgabe 01.09.2026).
 $("adminEmployeesBtn").onclick=()=>{ $("adminEmployeesModal").classList.remove("hidden"); loadEmployeesAdmin(); };
@@ -9686,6 +9889,8 @@ $("amPdfBtn").onclick=()=>openPdfTargetChoice(()=>exportAkpTopFlopPdf(),fhAkpFil
 $("aqmClose").onclick=()=>$("akqStaffelnModal").classList.add("hidden");
 $("aqmPdfBtn").onclick=()=>openPdfTargetChoice(()=>exportAkqStaffelnPdf());
 $("acClose").onclick=()=>$("akpContactModal").classList.add("hidden");
+$("acStornoInfoBtn").onclick=()=>$("stornoInfoModal").classList.remove("hidden");
+$("stornoInfoClose").onclick=()=>$("stornoInfoModal").classList.add("hidden");
 $("fhClose").onclick=()=>$("fhModal").classList.add("hidden");
 // fhModal bleibt bewusst offen (nicht ausblenden!) - akpModal legt sich als
 // Unter-PopUp darüber (DOM-Reihenfolge sorgt für die richtige Stapelung), so
