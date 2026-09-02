@@ -1134,6 +1134,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div><span class="ac-lbl">Geburtsdatum</span><div class="ac-val" id="acGebView">–</div></div>
         <div><span class="ac-lbl">Aktionsteilnahme</span><div class="ac-val" id="acAktView">–</div></div>
         <div><span class="ac-lbl">Profi-Training</span><div class="ac-val" id="acTrainView">–</div></div>
+        <div><span class="ac-lbl">Service-Training</span><div class="ac-val" id="acServiceTrainView">–</div></div>
         <div><span class="ac-lbl">Letzte Produktion</span><div class="ac-val" id="acLastProdView">–</div></div>
       </div>
       <button class="btn btn-blue" id="acEditBtn" style="margin-top:14px">✎ Kontaktdaten bearbeiten</button>
@@ -1149,6 +1150,9 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         </div>
         <div><label class="ac-lbl" for="acTrainEdit">Profi-Training</label>
           <select id="acTrainEdit"><option value="">Keines</option><option value="1">Stufe 1</option><option value="2">Stufe 2</option><option value="3">Stufe 3</option><option value="erledigt">erledigt</option><option value="500">500 Verträge</option></select>
+        </div>
+        <div><label class="ac-lbl" for="acServiceTrainEdit">Service-Training</label>
+          <select id="acServiceTrainEdit"><option value="">Keines</option><option value="1">Stufe 1</option><option value="2">Stufe 2</option></select>
         </div>
       </div>
       <div class="actions" style="margin-top:14px">
@@ -1345,6 +1349,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <input type="file" id="mieteFileInput" accept=".xlsx,.xls" class="hidden">
     <input type="file" id="dgFileInput" accept=".xlsx,.xls" class="hidden">
     <input type="file" id="stornoFileInput" accept=".xlsx,.xls" class="hidden">
+    <input type="file" id="profiTrainingFileInput" accept=".xlsx,.xls" class="hidden">
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -1433,6 +1438,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <button class="btn btn-blue" id="adminImportChooseMiete" style="text-align:left">🏠 Miete</button>
       <button class="btn btn-blue" id="adminImportChooseDg" style="text-align:left">🛡️ Deckungsgrad <span style="font-weight:600;opacity:.75;font-size:12px">(vertraulich)</span></button>
       <button class="btn btn-blue" id="adminImportChooseStorno" style="text-align:left">📉 Stornoquoten AKP</button>
+      <button class="btn btn-blue" id="adminImportChooseProfiTraining" style="text-align:left">🎓 Profi-Training-Teilnehmerliste</button>
     </div>
     <button class="btn btn-ghost" id="adminImportChoiceClose" style="width:100%">Abbrechen</button>
   </div>
@@ -3469,6 +3475,87 @@ async function handleAkpStornoFile(files){
   }
 }
 
+// Profi-Training-Teilnehmerliste (02.09.2026): Blatt "Liste zum Abgleich",
+// eine Zeile je Trainingsteilnahme (nicht je AKP - ein AKP kann mehrere
+// Zeilen haben, z.B. mehrere Stufen oder mehrere Versuche). Nur
+// erfolgreiche Teilnahmen (Erfolgskennzeichen="ja") fließen ein, deutsche
+// AKP werden über die PLZ-Länge rausgefiltert (Nutzervorgabe: FH PLZ
+// vierstellig = Österreich, fünfstellig = Deutschland - in der Praxis
+// eindeutig, keine Mischfälle). "Profi-Training Event" (keine Stufen-
+// Nummer) wird als "erledigt" gewertet, aber nur falls keine nummerierte
+// Profi-Training-Stufe für denselben AKP vorliegt (eine Stufenzahl ist
+// aussagekräftiger). "Service-Training" ist ein eigenes, unabhängiges
+// Programm (2 Stufen) - eigenes Feld service_training, nicht profi_training
+// (ein AKP kann beides abgeschlossen haben). Bei mehreren erfolgreichen
+// Stufen je AKP wird jeweils die höchste übernommen; der eigentliche
+// Downgrade-/"500"-Schutz beim Zusammenführen mit dem bestehenden Stand
+// passiert serverseitig in akp_profi_training_upsert() (siehe schema.sql).
+function parseProfiTraining(wb){
+  let ws=null;
+  for(const n of wb.SheetNames){ if(/^liste\s*zum\s*abgleich$/i.test(n.trim())){ ws=wb.Sheets[n]; break; } }
+  if(!ws) return null;
+  const rows=toRows(ws);
+  if(!rows.length) return null;
+  const header=(rows[0]||[]).map(normHeader);
+  const col=name=>header.indexOf(name);
+  const idxNr=col("Vermittler Nr"), idxPlz=col("FH PLZ"), idxName=col("Training Name"), idxErfolg=col("Erfolgskennzeichen");
+  if(idxNr<0||idxPlz<0||idxName<0||idxErfolg<0) return null;
+  const STUFE_RANK={"1":1,"2":2,"3":3};
+  const byAkp={};
+  for(let i=1;i<rows.length;i++){
+    const r=rows[i]; if(!r) continue;
+    const nr=r[idxNr]; if(nr==null||String(nr).trim()==="") continue;
+    if(String(r[idxErfolg]||"").trim().toLowerCase()!=="ja") continue;
+    const plz=String(r[idxPlz]??"").trim();
+    if(plz.length!==4) continue; // 5-stellig = Deutschland, raus
+    const key=String(nr).trim();
+    if(!byAkp[key]) byAkp[key]={profiStufe:null, event:false, serviceStufe:null};
+    const name=String(r[idxName]||"").trim();
+    let m=/^Profi-Training Stufe (\d)$/i.exec(name);
+    if(m){ const s=m[1]; if(!byAkp[key].profiStufe||STUFE_RANK[s]>STUFE_RANK[byAkp[key].profiStufe]) byAkp[key].profiStufe=s; continue; }
+    if(/^Profi-Training Event$/i.test(name)){ byAkp[key].event=true; continue; }
+    m=/^Service-Training Stufe (\d)$/i.exec(name);
+    if(m){ const s=m[1]; if(!byAkp[key].serviceStufe||s>byAkp[key].serviceStufe) byAkp[key].serviceStufe=s; continue; }
+  }
+  const out=Object.entries(byAkp).map(([nr,a])=>({
+    nr,
+    profi_training:a.profiStufe||(a.event?"erledigt":null),
+    service_training:a.serviceStufe
+  })).filter(a=>a.profi_training||a.service_training);
+  return out.length?out:null;
+}
+async function upsertAkpProfiTraining(rows){
+  const CHUNK=500;
+  for(let i=0;i<rows.length;i+=CHUNK){
+    const chunk=rows.slice(i,i+CHUNK);
+    const { error }=await sb.rpc("akp_profi_training_upsert",{rows:chunk});
+    if(error) throw error;
+  }
+}
+// Profi-Training-Import (Admin-Panel + E-Mail-Import, siehe
+// processPendingImports): ergänzt NUR bereits vorhandene AKP (kein Insert
+// für unbekannte AKP-Nr, siehe akp_profi_training_upsert()).
+async function handleProfiTrainingFile(files){
+  if(!files||!files.length) return;
+  if(!(sb&&supaUser)){ toast("Nicht angemeldet."); return; }
+  toast("Profi-Training-Liste wird verarbeitet …");
+  try{
+    const buf=await files[0].arrayBuffer();
+    const wb=XLSX.read(buf,{type:"array",cellDates:true});
+    const rows=parseProfiTraining(wb);
+    if(!rows){ toast('Format nicht erkannt – bitte die Profi-Training-Teilnehmerliste (Blatt "Liste zum Abgleich") einspielen.'); return; }
+    await upsertAkpProfiTraining(rows);
+    if(akpContactCurrent&&!$("akpContactModal").classList.contains("hidden")){
+      const {data}=await sb.from("akp_contacts").select("*").eq("nr",akpContactCurrent.nr).maybeSingle();
+      if(data){ akpContactCurrent=data; renderAkpContactView(); }
+    }
+    toast(`Profi-Training-Liste eingespielt ✓ ${fmt(rows.length)} AKP mit erfolgreichem Training gefunden (nur bereits vorhandene AKP aktualisiert, deutsche AKP herausgefiltert)`);
+  }catch(e){
+    console.error("handleProfiTrainingFile failed:",e);
+    toast("Profi-Training-Import fehlgeschlagen: "+(e.message||e));
+  }
+}
+
 // Liest die Miete-Report-Datei ("MSK_Report_...", Club.Weiss): ein oder
 // mehrere Blätter "AT_<Jahr>" (z.B. AT_2026, AT_2025 - je nach Jahr(en) in
 // der Datei, dynamisch statt fest, damit künftige Jahre ohne Codeänderung
@@ -3642,7 +3729,7 @@ async function processPendingImports(){
     const { data:rows, error } = await sb.from("pending_imports")
       .select("*").eq("status","pending").order("received_at",{ascending:true});
     if(error||!rows||!rows.length) return;
-    let snapCount=0,segCount=0,segFhCount=0,mieteCount=0,mieteFhCount=0,dgCount=0,dgFhCount=0,stornoCount=0,stornoAkpCount=0;
+    let snapCount=0,segCount=0,segFhCount=0,mieteCount=0,mieteFhCount=0,dgCount=0,dgFhCount=0,stornoCount=0,stornoAkpCount=0,ptCount=0,ptAkpCount=0;
     for(const row of rows){
       // Optimistisches "Claimen" (bedingtes Update) - verhindert, dass zwei
       // gleichzeitig geöffnete Tabs dieselbe Mail doppelt verarbeiten.
@@ -3686,9 +3773,18 @@ async function processPendingImports(){
                 // Stornoquoten-Auswertung AKP sein (siehe
                 // parseAkpStornoquoten), ebenfalls per Mail zulässig.
                 const stornoRows=parseAkpStornoquoten(wb);
-                if(!stornoRows) throw new Error("Format nicht erkannt");
-                await upsertAkpStornoquoten(stornoRows);
-                stornoCount++; stornoAkpCount+=stornoRows.length;
+                if(stornoRows){
+                  await upsertAkpStornoquoten(stornoRows);
+                  stornoCount++; stornoAkpCount+=stornoRows.length;
+                }else{
+                  // Auch keine Stornoquoten-Auswertung - könnte die
+                  // Profi-Training-Teilnehmerliste sein (siehe
+                  // parseProfiTraining), ebenfalls per Mail zulässig.
+                  const ptRows=parseProfiTraining(wb);
+                  if(!ptRows) throw new Error("Format nicht erkannt");
+                  await upsertAkpProfiTraining(ptRows);
+                  ptCount++; ptAkpCount+=ptRows.length;
+                }
               }
             }
           }
@@ -3725,6 +3821,13 @@ async function processPendingImports(){
       }
       render();
       toast(`📧 Stornoquoten-Auswertung automatisch eingespielt ✓ ${fmt(stornoAkpCount)} Aktivpartner aktualisiert`);
+    }
+    if(ptCount){
+      if(akpContactCurrent&&!$("akpContactModal").classList.contains("hidden")){
+        const {data}=await sb.from("akp_contacts").select("*").eq("nr",akpContactCurrent.nr).maybeSingle();
+        if(data){ akpContactCurrent=data; renderAkpContactView(); }
+      }
+      toast(`📧 Profi-Training-Liste automatisch eingespielt ✓ ${fmt(ptAkpCount)} AKP mit erfolgreichem Training gefunden`);
     }
   }catch(e){ console.error("processPendingImports failed:",e); }
 }
@@ -8763,7 +8866,7 @@ async function exportAkpPeerAiPdf(){
 
 async function openAkpContact(nr,fallbackName){
   if(!nr) return;
-  akpContactCurrent={nr,vorname:null,nachname:null,firma:null,telefon:null,email:null,geburtsdatum:null,aktionsteilnahme:null,profi_training:null,prod_monthly:{},prod_monthly_other:{},poquote_monthly:{},q3fuer2_monthly:{}};
+  akpContactCurrent={nr,vorname:null,nachname:null,firma:null,telefon:null,email:null,geburtsdatum:null,aktionsteilnahme:null,profi_training:null,service_training:null,prod_monthly:{},prod_monthly_other:{},poquote_monthly:{},q3fuer2_monthly:{}};
   akpPeerFhNrsCache={}; akpPeerFhContact=null; akpPeerLoadingNr=nr;
   $("acName").textContent=fallbackName||nr;
   $("acMeta").textContent="AKP-Nr. "+nr+" · lädt …";
@@ -8803,6 +8906,7 @@ function renderAkpContactView(){
   $("acGebView").textContent=c.geburtsdatum?fmtDate(c.geburtsdatum):"–";
   $("acAktView").textContent=c.aktionsteilnahme==null?"–":(c.aktionsteilnahme?"Ja":"Nein");
   $("acTrainView").textContent=c.profi_training?(TRAIN_LBL[c.profi_training]||c.profi_training):"Keines";
+  $("acServiceTrainView").textContent=c.service_training?(SERVICE_TRAIN_LBL[c.service_training]||c.service_training):"Keines";
   const lastDay=akpLastProdDay(c.nr);
   $("acLastProdView").textContent=lastDay?fmtDate(lastDay):"Noch keine Tagesdaten erfasst";
   // PO-/3-für-2-Quote kommen aus der heutigen Einspielung (state.latest.akp),
@@ -8908,6 +9012,7 @@ function renderAkpYearlyTrend(){
     <div class="ac-month-note">Jahre mit weniger als 12 erfassten Monaten sind noch nicht vollständig – der Vergleich ist dann nicht 1:1.</div>`;
 }
 const TRAIN_LBL={"1":"Stufe 1","2":"Stufe 2","3":"Stufe 3",erledigt:"erledigt",500:"500 Verträge"};
+const SERVICE_TRAIN_LBL={"1":"Stufe 1","2":"Stufe 2"};
 let akpPdfBusy=false;
 // Eigenständiges, festes Ein-Seiten-A4-Hochformat-Datenblatt für den aktuell
 // geöffneten AKP – unabhängig vom Haupt-Dashboard-PDF (Querformat, mehrseitig).
@@ -8941,6 +9046,7 @@ async function exportAkpPdf(){
         ${field("Geburtsdatum",c.geburtsdatum?fmtDate(c.geburtsdatum):"–")}
         ${field("Aktionsteilnahme",c.aktionsteilnahme==null?"–":(c.aktionsteilnahme?"Ja":"Nein"))}
         ${field("Profi-Training",c.profi_training?(TRAIN_LBL[c.profi_training]||escapeHtml(c.profi_training)):"Keines")}
+        ${field("Service-Training",c.service_training?(SERVICE_TRAIN_LBL[c.service_training]||escapeHtml(c.service_training)):"Keines")}
         ${field("Letzte Produktion",lastDay?fmtDate(lastDay):"Noch keine Tagesdaten erfasst")}
       </div>
       <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Monatsproduktion</div>
@@ -9247,6 +9353,7 @@ function toggleAkpEdit(on){
     $("acGebEdit").value=c.geburtsdatum||"";
     $("acAktEdit").value=c.aktionsteilnahme==null?"":(c.aktionsteilnahme?"ja":"nein");
     $("acTrainEdit").value=c.profi_training||"";
+    $("acServiceTrainEdit").value=c.service_training||"";
   }
 }
 async function saveAkpContact(){
@@ -9258,14 +9365,16 @@ async function saveAkpContact(){
   const aktionsteilnahme=aktSel===""?null:(aktSel==="ja");
   const trainSel=$("acTrainEdit").value;
   const profi_training=trainSel===""?null:trainSel;
+  const serviceTrainSel=$("acServiceTrainEdit").value;
+  const service_training=serviceTrainSel===""?null:serviceTrainSel;
   $("acSaveBtn").disabled=true;
   const {error}=await sb.from("akp_contacts").upsert({
-    nr,telefon,email,geburtsdatum,aktionsteilnahme,profi_training,
+    nr,telefon,email,geburtsdatum,aktionsteilnahme,profi_training,service_training,
     updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()
   },{onConflict:"nr"});
   $("acSaveBtn").disabled=false;
   if(error){ $("acSaveHint").textContent="Fehler: "+error.message; return; }
-  Object.assign(akpContactCurrent,{telefon,email,geburtsdatum,aktionsteilnahme,profi_training});
+  Object.assign(akpContactCurrent,{telefon,email,geburtsdatum,aktionsteilnahme,profi_training,service_training});
   renderAkpContactView();
   toggleAkpEdit(false);
   toast("Kontaktdaten gespeichert ✓");
@@ -9841,6 +9950,7 @@ $("fhSegmentFileInput").onchange=async e=>{ if(e.target.files.length){ await han
 $("mieteFileInput").onchange=async e=>{ if(e.target.files.length){ await handleMieteFile([...e.target.files]); e.target.value=""; } };
 $("dgFileInput").onchange=async e=>{ if(e.target.files.length){ await handleDeckungsgradFile([...e.target.files]); e.target.value=""; } };
 $("stornoFileInput").onchange=async e=>{ if(e.target.files.length){ await handleAkpStornoFile([...e.target.files]); e.target.value=""; } };
+$("profiTrainingFileInput").onchange=async e=>{ if(e.target.files.length){ await handleProfiTrainingFile([...e.target.files]); e.target.value=""; } };
 // Admin: "Datei einspielen"-Auswahl-PopUp (bündelt die früher 4 einzelnen
 // Einspielen-Buttons, Nutzervorgabe 01.09.2026 - Admin-Panel wurde
 // zunehmend unübersichtlich).
@@ -9852,6 +9962,7 @@ $("adminImportChooseFhSegment").onclick=()=>{ $("adminImportChoiceModal").classL
 $("adminImportChooseMiete").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); $("mieteFileInput").click(); };
 $("adminImportChooseDg").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); $("dgFileInput").click(); };
 $("adminImportChooseStorno").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); $("stornoFileInput").click(); };
+$("adminImportChooseProfiTraining").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); $("profiTrainingFileInput").click(); };
 // Admin: Mitarbeiterverwaltung als eigenes PopUp (vorher inline im
 // Admin-Panel, Nutzervorgabe 01.09.2026).
 $("adminEmployeesBtn").onclick=()=>{ $("adminEmployeesModal").classList.remove("hidden"); loadEmployeesAdmin(); };

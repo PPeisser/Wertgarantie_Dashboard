@@ -180,6 +180,14 @@ alter table public.akp_contacts add column if not exists storno_erstpraemie_quot
 alter table public.akp_contacts add column if not exists storno_wegfall_quote numeric;
 alter table public.akp_contacts add column if not exists storno_quoten_updated_at timestamptz;
 
+-- Service-Training (02.09.2026): eigenes Feld getrennt von profi_training,
+-- da ein AKP theoretisch BEIDE Programme abgeschlossen haben kann (Profi-
+-- Training UND Service-Training sind unterschiedliche Trainingsreihen laut
+-- Nutzervorgabe) - ein gemeinsames Feld würde eines der beiden verdecken.
+-- Nur 2 Stufen (kein "erledigt"/"500" wie bei profi_training).
+alter table public.akp_contacts add column if not exists service_training text
+  check (service_training is null or service_training in ('1','2'));
+
 alter table public.akp_contacts enable row level security;
 
 -- Kontaktdaten sind Team-Arbeitswerkzeug: jeder eingeloggte Nutzer (jede Rolle)
@@ -249,6 +257,57 @@ $$;
 
 revoke execute on function public.akp_sync_daily(jsonb) from public;
 grant execute on function public.akp_sync_daily(jsonb) to authenticated;
+
+-- Bulk-Import der "Profi Training"-Teilnehmerliste (Blatt "Liste zum
+-- Abgleich", siehe parseProfiTraining in index.html): ergänzt profi_training/
+-- service_training NUR bei bereits vorhandenen AKP (kein Insert für
+-- unbekannte AKP-Nr, Nutzervorgabe 02.09.2026 - "nur bei den Vorhandenen
+-- ergänzen") - "not found" nach dem select bricht die Zeile einfach ab.
+--
+-- Downgrade-Schutz (Nutzervorgabe 02.09.2026): ein bereits gesetzter, laut
+-- rank_of HÖHERER Stand wird nie durch einen niedrigeren aus der Liste
+-- ersetzt (z.B. Stufe 3 bleibt Stufe 3, auch wenn die aktuelle Liste nur
+-- eine erfolgreiche Stufe 1 zeigt). Der Sonderwert "500" (500-Verträge-
+-- Meilenstein, fachlich unabhängig vom Training) wird NIE überschrieben.
+create or replace function public.akp_profi_training_upsert(rows jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  r jsonb;
+  new_pt text; new_st text;
+  cur_pt text; cur_st text;
+  rank_of jsonb := '{"1":1,"2":2,"3":3,"erledigt":4,"500":5}'::jsonb;
+begin
+  for r in select * from jsonb_array_elements(rows) loop
+    if coalesce(r->>'nr','') = '' then continue; end if;
+    new_pt := nullif(r->>'profi_training','');
+    new_st := nullif(r->>'service_training','');
+
+    select profi_training, service_training into cur_pt, cur_st
+      from public.akp_contacts where nr = r->>'nr';
+    if not found then continue; end if;
+
+    update public.akp_contacts set
+      profi_training = case
+        when new_pt is null then profi_training
+        when cur_pt = '500' then profi_training
+        when cur_pt is null then new_pt
+        when coalesce((rank_of->>new_pt)::int,0) > coalesce((rank_of->>cur_pt)::int,0) then new_pt
+        else profi_training
+      end,
+      service_training = case
+        when new_st is null then service_training
+        when cur_st is null then new_st
+        when new_st::int > cur_st::int then new_st
+        else service_training
+      end,
+      updated_at = now()
+    where nr = r->>'nr';
+  end loop;
+end;
+$$;
+
+revoke execute on function public.akp_profi_training_upsert(jsonb) from public;
+grant execute on function public.akp_profi_training_upsert(jsonb) to authenticated;
 
 -- ---------- Fachhändler-Zusatzdaten (Adresse, Kontakt, Ansprechpartner, Segmentierung, Besuch, Notizen) ----------
 
