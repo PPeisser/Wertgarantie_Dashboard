@@ -164,6 +164,22 @@ alter table public.akp_contacts add column if not exists prod_monthly_other json
 alter table public.akp_contacts add column if not exists poquote_monthly jsonb not null default '{}'::jsonb;
 alter table public.akp_contacts add column if not exists q3fuer2_monthly jsonb not null default '{}'::jsonb;
 
+-- Stornoquoten je AKP (02.09.2026, "Vermittlerübersicht mit Stornoquoten",
+-- siehe parseAkpStornoquoten in index.html) - EIN aktueller Snapshot, keine
+-- Historie (wie poquote_monthly), da die Quelldatei selbst bereits ein
+-- kumuliertes "laufendes Jahr bis Vormonat"-Stand ist. Werte als Bruch
+-- (nicht ×100). NICHT vertraulich - im Gegensatz zu fh_deckungsgrad für
+-- alle authentifizierten Nutzer über die bestehenden akp_contacts-Policies
+-- lesbar (siehe unten), da diese Quoten laut Nutzervorgabe für alle
+-- Mitarbeiter sichtbar sein sollen. Nur 3 der 4 Quoten aus der Quelldatei
+-- werden gespeichert (1) Widerruf, 2) Nichtzahlung Erstprämie, 4) Wegfall
+-- versichertes Interesse) - Quote 3) "Kulanz/Wegfall (erste 6 Monate)" wird
+-- im Dashboard nicht angezeigt.
+alter table public.akp_contacts add column if not exists storno_widerruf_quote numeric;
+alter table public.akp_contacts add column if not exists storno_erstpraemie_quote numeric;
+alter table public.akp_contacts add column if not exists storno_wegfall_quote numeric;
+alter table public.akp_contacts add column if not exists storno_quoten_updated_at timestamptz;
+
 alter table public.akp_contacts enable row level security;
 
 -- Kontaktdaten sind Team-Arbeitswerkzeug: jeder eingeloggte Nutzer (jede Rolle)
@@ -696,3 +712,184 @@ select cron.schedule(
   );
   $$
 );
+
+-- ==========================================================================
+-- Mitarbeiterstammdaten (Punkt 10, 01.09.2026): ersetzt die frueher
+-- hartcodierten Konstanten EMPLOYEES/PERS_JAHRESZIELE/PERS_MIETEZIELE/
+-- AKQ_STAFFEL_ZIEL/PERF_GOALS_BY_EMPLOYEE im Client. Neue Mitarbeiter
+-- (inkl. Zielwerten) werden ab jetzt ueber das Admin-Panel angelegt statt
+-- per Code-Deployment. Wird einmalig pro Session via loadEmployees() im
+-- Client geladen, vor dem ersten Rendern.
+create table if not exists public.employees (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  pers_jahresziel numeric not null default 0,
+  miete_jahresziel numeric,
+  akq_staffel_ziel numeric not null default 0,
+  perf_goal_ids jsonb not null default '[1,2,3]'::jsonb,
+  match_aliases text[] not null default '{}',
+  admin_only boolean not null default false,
+  active boolean not null default true,
+  sort_order int not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+comment on column public.employees.name is
+  'Kanonischer Anzeigename. Wird auch als Matching-Ziel in EMP_NORM registriert (siehe matchEmployee() im Client) - der Tagesreport-Rohtext muss exakt oder ueber match_aliases hierauf normalisieren.';
+comment on column public.employees.match_aliases is
+  'Alternative/rohe Schreibweisen aus dem Tagesreport fuer matchEmployee()-Matching. Wird u.a. genutzt, um die admin-only Analyse-Eintraege ("Technischer GL", "ohne Zuordnung") auf ihre rohen GL-Label-Texte im Tagesreport zu matchen, sodass Region_nach_GL/FH_Liste/Sparten/AKQ-Parsing diese automatisch unter dem virtuellen Mitarbeiternamen ablegen - keine Sonderbehandlung an anderer Stelle im Code noetig.';
+comment on column public.employees.admin_only is
+  'true = nur im Admin-Dropdown waehlbar (virtuelle Analyse-Mitarbeiter wie "Technischer GL"/"ohne Zuordnung"), nicht Teil der normalen EMPLOYEES-Liste/Benachrichtigungen/Ranking.';
+comment on column public.employees.active is
+  'Soft-Delete-Flag. Historische Daten (snap.gl/snap.fh/state.dailyGL) haengen am Namen - deshalb bewusst kein Hard-Delete im Standardfall.';
+comment on column public.employees.perf_goal_ids is
+  'Welche der 5 Performance-Dialog-Ziele gelten (siehe PERF_GOALS_BY_EMPLOYEE/PERF_GOAL_TITLES im Client). Ziele 4/5 (PO-Quote Telekom, Gebrauchtgeraete-Quote) sind aktuell Dominik-Szendi-spezifische Sondervertriebs-Snapshot-Berechnungen - ein neuer Mitarbeiter mit diesen Zielen braucht weiterhin Code-Anpassung.';
+
+alter table public.employees enable row level security;
+
+-- Jeder eingeloggte Nutzer braucht die Liste (Dropdown, Ranking, Ziel-
+-- Kacheln, Matching) - analog profiles. Schreiben nur Admin, bewusst NICHT
+-- wie fh_contacts/akp_contacts (dort duerfen alle pflegen): Mitarbeiter-
+-- Zielwerte sind sensibler und laut Nutzervorgabe exklusiv ueber das
+-- Admin-UI zu verwalten.
+create policy "Authenticated read employees" on public.employees
+  for select to authenticated using (true);
+create policy "Admins can insert employees" on public.employees
+  for insert to authenticated with check (public.is_admin());
+create policy "Admins can update employees" on public.employees
+  for update to authenticated using (public.is_admin()) with check (public.is_admin());
+create policy "Admins can delete employees" on public.employees
+  for delete to authenticated using (public.is_admin());
+
+create index if not exists employees_active_idx on public.employees (active, sort_order);
+
+-- Seed: bestehende 6 Mitarbeiter 1:1 aus den bisherigen Code-Konstanten.
+insert into public.employees (name, pers_jahresziel, miete_jahresziel, akq_staffel_ziel, perf_goal_ids, sort_order) values
+  ('Klaus Witting',20000,750,30,'[1,2,3]','1'),
+  ('Florian Hasibeder',15000,750,30,'[1,2,3]','2'),
+  ('Dominik Szendi',55000,null,0,'[1,4,5]','3'),
+  ('Helmut Otto',7000,750,30,'[1,2,3]','4'),
+  ('Peter Peißer',7000,750,30,'[1,2,3]','5'),
+  ('Thomas Eitzinger',15000,null,0,'[1]','6')
+on conflict (name) do nothing;
+
+-- Punkt 9: virtuelle, admin-only Analyse-Eintraege. match_aliases = exakter
+-- GL-Rohtext aus dem Tagesreport, damit matchEmployee() sie automatisch auf
+-- diesen Mitarbeiternamen matcht.
+insert into public.employees (name, admin_only, match_aliases, sort_order) values
+  ('Technischer GL', true, '{"Technischer GL CE DE"}', 100),
+  ('ohne Zuordnung', true, '{}', 101)
+on conflict (name) do nothing;
+
+-- ==========================================================================
+-- Deckungsgrad-Auswertung (01.09.2026): absolut vertrauliche Finanzdaten je
+-- Fachhaendler aus einer separaten Excel-Datei ("DG2_Bericht_AT.xlsx",
+-- Spalten u.a. FH Nr/Bestand/Provision/Schaeden/DB1/DG1/DB2/DG2 je LJ/VJ).
+-- Bestand/Provision/Schaeden duerfen als Zahl angezeigt werden, DG1/DG2/DB1/
+-- DB2 NIEMALS im Klartext - auch nicht an Admins (Nutzervorgabe). Deshalb
+-- bewusst KEINE select-Policy auf der Rohdatentabelle - der einzige
+-- Lesezugriff laeuft ueber die security-definer-Funktion
+-- fh_deckungsgrad_for() weiter unten, die ausschliesslich abgeleitete
+-- Ampel-/Tendenz-Werte und die unkritischen Felder zurueckgibt. Kein KI-/
+-- Anthropic-Bezug irgendwo in dieser Kette (Nutzervorgabe: diese Daten
+-- duerfen nie ueber "das Internet/KI" verteilt werden). Trend (besser/
+-- schlechter/gleich zum Vorjahr) kommt direkt aus den VJ-Spalten derselben
+-- Einspielung - keine eigene Zeithistorie noetig, die Quelldatei liefert LJ
+-- und VJ bereits nebeneinander.
+create table if not exists public.fh_deckungsgrad (
+  fh_nr text primary key,
+  bestand numeric,
+  provision_lj numeric,
+  schaeden_lj integer,
+  schadenbetrag_lj numeric,
+  db1_lj numeric,
+  dg1_lj numeric,
+  db2_lj numeric,
+  dg2_lj numeric,
+  db1_vj numeric,
+  dg1_vj numeric,
+  db2_vj numeric,
+  dg2_vj numeric,
+  imported_at timestamptz not null default now(),
+  imported_by uuid references auth.users(id)
+);
+
+alter table public.fh_deckungsgrad enable row level security;
+
+-- Schreiben (Import) nur durch Admin. Bewusst KEINE select-Policy fuer
+-- irgendeine Rolle -> RLS verweigert jeden direkten Lesezugriff, auch fuer
+-- Admin. Der einzige Weg an die Daten ist die untenstehende Funktion.
+create policy "Admins can insert fh_deckungsgrad" on public.fh_deckungsgrad
+  for insert to authenticated with check (public.is_admin());
+create policy "Admins can update fh_deckungsgrad" on public.fh_deckungsgrad
+  for update to authenticated using (public.is_admin()) with check (public.is_admin());
+
+-- DG-Ampel: rot bis 10 %, gelb bis 30 %, gruen ab 30 % (identische Schwellen
+-- fuer DG1 und DG2, Nutzervorgabe). DB-Ampel (absolute Euro-Betraege,
+-- Haendlergroessen extrem unterschiedlich): Perzentil-Rang unter allen
+-- Haendlern dieser Einspielung - rot = unteres Drittel, gelb = mittleres
+-- Drittel, gruen = oberes Drittel. Tendenz DG: Differenz LJ-VJ in
+-- Prozentpunkten, +/-0,5pp Totzone als "gleich". Tendenz DB: relative
+-- Veraenderung LJ-VJ, +/-5% Totzone.
+create or replace function public.fh_deckungsgrad_for(p_fh_nr text)
+returns table (
+  fh_nr text,
+  bestand numeric,
+  provision_lj numeric,
+  schaeden_lj integer,
+  schadenbetrag_lj numeric,
+  dg1_ampel text,
+  dg1_trend text,
+  dg2_ampel text,
+  dg2_trend text,
+  db1_ampel text,
+  db1_trend text,
+  db2_ampel text,
+  db2_trend text,
+  imported_at timestamptz
+)
+language sql
+security definer
+set search_path = public
+as $$
+  with ranked as (
+    select
+      d.*,
+      percent_rank() over (order by d.db1_lj) as db1_rank,
+      percent_rank() over (order by d.db2_lj) as db2_rank
+    from public.fh_deckungsgrad d
+  )
+  select
+    r.fh_nr,
+    r.bestand,
+    r.provision_lj,
+    r.schaeden_lj,
+    r.schadenbetrag_lj,
+    case when r.dg1_lj is null then null when r.dg1_lj < 0.10 then 'rot' when r.dg1_lj < 0.30 then 'gelb' else 'gruen' end as dg1_ampel,
+    case when r.dg1_lj is null or r.dg1_vj is null then null
+         when r.dg1_lj - r.dg1_vj > 0.005 then 'besser'
+         when r.dg1_vj - r.dg1_lj > 0.005 then 'schlechter'
+         else 'gleich' end as dg1_trend,
+    case when r.dg2_lj is null then null when r.dg2_lj < 0.10 then 'rot' when r.dg2_lj < 0.30 then 'gelb' else 'gruen' end as dg2_ampel,
+    case when r.dg2_lj is null or r.dg2_vj is null then null
+         when r.dg2_lj - r.dg2_vj > 0.005 then 'besser'
+         when r.dg2_vj - r.dg2_lj > 0.005 then 'schlechter'
+         else 'gleich' end as dg2_trend,
+    case when r.db1_lj is null then null when r.db1_rank < 0.333 then 'rot' when r.db1_rank < 0.667 then 'gelb' else 'gruen' end as db1_ampel,
+    case when r.db1_lj is null or r.db1_vj is null or r.db1_vj = 0 then null
+         when (r.db1_lj - r.db1_vj) / abs(r.db1_vj) > 0.05 then 'besser'
+         when (r.db1_vj - r.db1_lj) / abs(r.db1_vj) > 0.05 then 'schlechter'
+         else 'gleich' end as db1_trend,
+    case when r.db2_lj is null then null when r.db2_rank < 0.333 then 'rot' when r.db2_rank < 0.667 then 'gelb' else 'gruen' end as db2_ampel,
+    case when r.db2_lj is null or r.db2_vj is null or r.db2_vj = 0 then null
+         when (r.db2_lj - r.db2_vj) / abs(r.db2_vj) > 0.05 then 'besser'
+         when (r.db2_vj - r.db2_lj) / abs(r.db2_vj) > 0.05 then 'schlechter'
+         else 'gleich' end as db2_trend,
+    r.imported_at
+  from ranked r
+  where r.fh_nr = p_fh_nr;
+$$;
+
+revoke execute on function public.fh_deckungsgrad_for(text) from public;
+grant execute on function public.fh_deckungsgrad_for(text) to authenticated;

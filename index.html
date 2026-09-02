@@ -358,7 +358,15 @@ td .betr{font-size:11px;color:var(--muted)}
    Akquiseliste, weil #fhModal im HTML vor #akqStaffelnModal steht). Höherer
    z-index stellt sicher, dass diese beiden Detail-PopUps immer VOR jedem
    anderen PopUp liegen, unabhängig von der Öffnungsreihenfolge. */
-#fhModal,#akpContactModal{z-index:60}
+#fhModal{z-index:60}
+/* akpModal (Top/Flop-AKP-PopUp) wird u.a. AUS #fhModal heraus geöffnet
+   (Button "Top & Flop AKP dieses Händlers") und muss - wie
+   #filialGruppeModal unten - darüber liegen, sonst öffnet es sich sichtbar
+   dahinter (Bug-Report 01.09.2026). akpContactModal gehört in dieselbe
+   Stufe, weil es sowohl direkt als auch AUS akpModal heraus (Klick auf
+   einen AKP-Namen in der Top/Flop-Liste) geöffnet werden kann - sonst
+   entstünde derselbe Bug eine Ebene tiefer. */
+#akpModal,#akpContactModal{z-index:65}
 /* pdfTargetModal/pdfSendModal/fhPdfChoiceModal sind die "Drucken oder
    Versenden"-Auswahldialoge (siehe openPdfTargetChoice()) - diese werden u.a.
    AUS #fhModal heraus geöffnet (⬇ Datenblatt als PDF), während #fhModal dabei
@@ -367,7 +375,7 @@ td .betr{font-size:11px;color:var(--muted)}
    durch die #fhModal-Erhöhung oben, entdeckt 22.08.2026 beim Testen des neuen
    Jahresbericht-Buttons). Gleiches gilt für alle anderen Inhalts-PopUps (z.B.
    #perfAdminModal), aus denen ein PDF-Download ausgelöst werden kann. */
-#pdfTargetModal,#pdfSendModal,#fhPdfChoiceModal{z-index:70}
+#pdfTargetModal,#pdfSendModal,#fhPdfChoiceModal,#stornoInfoModal{z-index:70}
 /* Filialgruppen-PopUp wird AUS #fhModal heraus geöffnet (Button "Alle
    Filialen anzeigen") und muss - wie die PDF-Auswahldialoge oben - über
    #fhModal (60) liegen, sonst öffnet es sich sichtbar dahinter (Bug-Report
@@ -640,6 +648,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 
     <h2 class="sec"><svg class="arr" viewBox="0 0 60 30"><path d="M4 22 C 20 10, 35 8, 48 12" fill="none" stroke="#009FE3" stroke-width="6" stroke-linecap="round"/><path d="M39 4 L 56 13 L 37 20 Z" fill="#009FE3"/></svg> Ziele &amp; Hochrechnung <small>Soll-Linie = erwarteter Stand · Jahresziele saisonal gerechnet (71 % bis 30.9., 29 % der Produktion in Q4) · Monat lt. „Tage Ist von Soll"</small></h2>
     <div class="goals" id="goalCards"></div>
+    <div id="empRankingBlock"></div>
     <div id="akqStaffelBar"></div>
 
     <h2 class="sec"><svg class="arr" viewBox="0 0 60 30"><path d="M4 22 C 20 10, 35 8, 48 12" fill="none" stroke="#009FE3" stroke-width="6" stroke-linecap="round"/><path d="M39 4 L 56 13 L 37 20 Z" fill="#009FE3"/></svg> Produktmix &amp; Sparten</h2>
@@ -723,11 +732,14 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       </div>
       <div class="panel">
         <h3 style="justify-content:space-between"><span style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--wg-navy)"></span>Top 20 AKQ</span>
+          <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           <span class="tabs mini no-print" id="akqYearTabs">
             <button data-y="alle" class="on">gesamt</button>
             <button data-y="2024">2024</button>
             <button data-y="2025">2025</button>
             <button data-y="2026">2026</button>
+          </span>
+          <button type="button" class="btn btn-ghost no-print" id="akqShowAllBtn" style="padding:5px 10px;font-size:11px;border-radius:9px" title="Alle akquiserelevanten Fachhändler mit ihrer Vortagsproduktion anzeigen">Alle · nach Vortag ⤢</button>
           </span></h3>
         <div style="font-size:11px;color:var(--muted);margin:-2px 0 6px" id="akqWho"></div>
         <div id="akqList" style="max-height:650px;overflow:auto"></div>
@@ -914,7 +926,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
           <select id="fhKooperationEdit"></select>
         </div>
         <div><label class="ac-lbl" for="fhHauptzweigEdit">Hauptzweig</label>
-          <select id="fhHauptzweigEdit"><option value="">–</option><option value="Vollsortiment">Vollsortiment</option><option value="Mobilfunk">Mobilfunk</option><option value="IT">IT</option><option value="Kundendienst">Kundendienst</option><option value="Industrie">Industrie</option><option value="Akustik">Akustik</option><option value="Optik">Optik</option><option value="Küchenhandel">Küchenhandel</option><option value="Uhrenhandel">Uhrenhandel</option><option value="Grüne Ware">Grüne Ware</option><option value="Makler">Makler</option><option value="Projekt">Projekt</option><option value="Sonstiges">Sonstiges</option></select>
+          <select id="fhHauptzweigEdit"><option value="">–</option><option value="Akustik">Akustik</option><option value="Grüne Ware">Grüne Ware</option><option value="Industrie">Industrie</option><option value="IT">IT</option><option value="Küchenhandel">Küchenhandel</option><option value="Kundendienst">Kundendienst</option><option value="Makler">Makler</option><option value="Mobilfunk">Mobilfunk</option><option value="Optik">Optik</option><option value="Projekt">Projekt</option><option value="Sonstiges">Sonstiges</option><option value="Uhrenhandel">Uhrenhandel</option><option value="Vollsortiment">Vollsortiment</option></select>
         </div>
         <div><label class="ac-lbl" for="fhBesuchEdit">Letzter Besuch</label><input id="fhBesuchEdit" type="date"></div>
         <div><span class="ac-lbl">9-Wochen-Plan</span>
@@ -989,6 +1001,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div id="fhYearlyTrend"></div>
     <div id="fhAkqStaffelBlock"></div>
     <div id="fhMieteSection"></div>
+    <div id="fhDeckungsgradSection"></div>
 
     <div class="actions" style="justify-content:flex-start;margin-top:18px;margin-bottom:10px">
       <button class="btn btn-blue" id="fhTopFlopBtn">Top &amp; Flop AKP dieses Händlers ⤢</button>
@@ -1187,10 +1200,37 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div id="acQuotesInfo" style="font-size:12px;color:var(--muted);font-weight:600;margin-bottom:8px"></div>
     <div id="acMonthly"></div>
     <div id="acYearlyTrend"></div>
+    <div id="acStornoBlock" class="hidden">
+      <h4 style="margin:20px 0 4px;color:var(--wg-navy);font-size:13px;display:flex;align-items:center;gap:6px">Stornoquoten
+        <button type="button" id="acStornoInfoBtn" title="Erklärung zu den Stornoquoten" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1">ℹ️</button>
+      </h4>
+      <div id="acStornoSection"></div>
+    </div>
     <div id="acPeerCompare"></div>
 
     <div class="actions" style="margin-top:18px;justify-content:flex-start">
       <button class="btn btn-ghost no-print" id="acPdfBtn">⬇ Datenblatt als PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- Erklärung zu den Stornoquoten (02.09.2026, aus der eingespielten
+     Auswertung übernommen) - für alle Mitarbeiter über das ℹ️ im AKP-PopUp
+     erreichbar, öffnet sich AUS akpContactModal (z-index 65) heraus. -->
+<div class="modal-bg hidden" id="stornoInfoModal">
+  <div class="modal" style="max-width:540px">
+    <h3 style="margin:0 0 10px">Erklärung zu den Stornoquoten</h3>
+    <div style="font-size:13px;line-height:1.6;color:var(--ink)">
+      <p style="margin:0 0 10px">Alle Vertragsauflösungen aus dem laufenden Jahr werden gewertet und ins Verhältnis zum Bestand bzw. zur Produktion gesetzt (Quoten 1-3: nur Stornos innerhalb der ersten 6 Monate der Vertragslaufzeit).</p>
+      <p style="margin:0 0 8px"><b>1) Widerrufene Verträge</b> – auffällig ab <b>5&nbsp;%</b>: kann ein Indiz sein, dass nicht sauber vermarktet wird.</p>
+      <p style="margin:0 0 8px"><b>2) Nichtzahlung Erstprämie</b> – auffällig ab <b>10&nbsp;%</b>: vom Fachhändler nicht beeinflussbar, aber ebenfalls ein möglicher Indikator für unsaubere Vermarktung.</p>
+      <p style="margin:0 0 8px;color:var(--muted)">3) Kulanz / Wegfall versichertes Interesse (erste 6 Monate) – auffällig ab 8&nbsp;%: oft vom Fachhändler initiiert, wenn der Kunde unzufrieden ist oder der Schutz nicht gewollt war. <i>(im Dashboard nicht als eigene Kennzahl angezeigt)</i></p>
+      <p style="margin:0 0 10px"><b>4) Wegfall versichertes Interesse (gesamtes laufendes Jahr)</b> – auffällig ab <b>20&nbsp;%</b>: starker Indikator für eventuellen Betrug (Verträge werden häufig mit der Begründung des AKP aufgelöst, das versicherte Gerät sei nicht mehr vorhanden) – sollte dringend mit dem AKP besprochen werden.</p>
+      <p style="margin:0 0 4px;font-size:12px;color:var(--muted)">Vergleichsquoten Deutschland gesamt (alle Regionen): Widerruf 2,9&nbsp;% · Zahlungsverzug 2,3&nbsp;% · Kulanz/Wegfall vers. Interesse/Versicherungsfall 0,8&nbsp;%.</p>
+      <p style="margin:0;font-size:12px;color:var(--muted)">Im Dashboard werden die Quoten 1), 2) und 4) angezeigt und bei Überschreitung des jeweiligen Schwellenwerts rot markiert.</p>
+    </div>
+    <div class="actions">
+      <button class="btn btn-blue" id="stornoInfoClose">Verstanden</button>
     </div>
   </div>
 </div>
@@ -1334,16 +1374,49 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 
     <h4 style="margin:16px 0 8px;color:var(--wg-navy);font-size:14px">Daten</h4>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-blue" id="adminUploadBtn">📤 Excel einspielen</button>
-      <button class="btn btn-blue" id="adminAkqUploadBtn">📊 Akquisestaffeln einspielen</button>
-      <button class="btn btn-blue" id="adminFhSegmentUploadBtn">🗂️ Händlersegmentierung einspielen</button>
-      <button class="btn btn-blue" id="adminMieteUploadBtn">🏠 Miete einspielen</button>
+      <button class="btn btn-blue" id="adminImportBtn">📤 Datei einspielen</button>
+      <button class="btn btn-blue" id="adminEmployeesBtn">👥 Mitarbeiterverwaltung</button>
+      <button class="btn btn-blue" id="adminFunctionsBtn">⚙ Funktionen</button>
     </div>
     <input type="file" id="akqFileInput" accept=".xlsx,.xls" class="hidden">
     <input type="file" id="fhSegmentFileInput" accept=".xlsx,.xls" class="hidden">
     <input type="file" id="mieteFileInput" accept=".xlsx,.xls" class="hidden">
+    <input type="file" id="dgFileInput" accept=".xlsx,.xls" class="hidden">
+    <input type="file" id="stornoFileInput" accept=".xlsx,.xls" class="hidden">
 
-    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Funktionen aktivieren</h4>
+    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Datenqualität (DSGVO)</h4>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-ghost" id="karteileichenBtn">🗂 Review-Liste: FH/AKP ohne Produktion</button>
+    </div>
+
+    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input type="text" id="adName" placeholder="Name" autocomplete="off" style="flex:1;min-width:150px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <input type="email" id="adEmail" placeholder="E-Mail" autocomplete="off" style="flex:1;min-width:180px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <select id="adRole" style="border:2px solid var(--line);border-radius:10px;padding:9px 12px;font:inherit">
+        <option value="aussendienst">Außendienst</option>
+        <option value="trainer">Trainer</option>
+        <option value="admin">Admin</option>
+      </select>
+      <button class="btn btn-blue" id="adCreateBtn">Anlegen</button>
+    </div>
+    <div class="hint">Standardpasswort: <b>WertGARANTIE</b> - wird nach Anmeldung geändert</div>
+    <div class="error" id="adCreateHint"></div>
+
+    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Nutzerübersicht</h4>
+    <div id="adUserList" style="max-height:340px;overflow:auto"></div>
+  </div>
+</div>
+
+<!-- Admin: PopUp "Funktionen" - bündelt alle Ein/Aus-Schalter, damit das
+     Admin-Panel selbst nicht weiter wächst (analog zur "Datei
+     einspielen"-Bündelung, 02.09.2026). -->
+<div class="modal-bg hidden" id="adminFunctionsModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
+      <h3 style="margin:0">Funktionen aktivieren</h3>
+      <button class="btn btn-ghost" id="adminFunctionsClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
         <input type="checkbox" id="chefgespraechEnabledChk" style="width:17px;height:17px;flex-shrink:0">
@@ -1373,29 +1446,103 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <input type="checkbox" id="akpPeerCompareEnabledChk" style="width:17px;height:17px;flex-shrink:0">
         AKP-Vergleich (PopUp)
       </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+        <input type="checkbox" id="deckungsgradEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+        Deckungsgrad-Ampel (FH-Ansicht)
+        <button type="button" class="btn btn-ghost" id="deckungsgradVisibilityBtn" style="padding:3px 8px;font-size:11px" title="Auswählen, welche Kennzahlen als Ampel gezeigt werden">⚙ Auswahl</button>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+        <input type="checkbox" id="empRankingEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+        Mitarbeiter-Ranking (Österreich gesamt)
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+        <input type="checkbox" id="stornoquotenEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+        Stornoquoten (AKP-PopUp)
+      </label>
     </div>
+  </div>
+</div>
 
-    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Datenqualität (DSGVO)</h4>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-ghost" id="karteileichenBtn">🗂 Review-Liste: FH/AKP ohne Produktion</button>
+<!-- Admin: Auswahl-PopUp "Datei einspielen" - bündelt die früher einzelnen
+     Einspielen-Buttons, damit das Admin-Panel selbst nicht weiter wächst. -->
+<div class="modal-bg hidden" id="adminImportChoiceModal">
+  <div class="modal">
+    <h3>Datei einspielen</h3>
+    <p>Welche Einspielung möchtest du vornehmen?</p>
+    <div style="display:flex;flex-direction:column;gap:8px;margin:14px 0">
+      <button class="btn btn-blue" id="adminImportChooseTagesreport" style="text-align:left">📊 Tagesreport <span style="font-weight:600;opacity:.75;font-size:12px">(Auswertung_TAG.xlsx)</span></button>
+      <button class="btn btn-blue" id="adminImportChooseAkq" style="text-align:left">🎯 Akquisestaffeln</button>
+      <button class="btn btn-blue" id="adminImportChooseFhSegment" style="text-align:left">🗂️ Händlersegmentierung</button>
+      <button class="btn btn-blue" id="adminImportChooseMiete" style="text-align:left">🏠 Miete</button>
+      <button class="btn btn-blue" id="adminImportChooseDg" style="text-align:left">🛡️ Deckungsgrad <span style="font-weight:600;opacity:.75;font-size:12px">(vertraulich)</span></button>
+      <button class="btn btn-blue" id="adminImportChooseStorno" style="text-align:left">📉 Stornoquoten AKP</button>
     </div>
+    <button class="btn btn-ghost" id="adminImportChoiceClose" style="width:100%">Abbrechen</button>
+  </div>
+</div>
 
-    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
+<!-- Admin: Auswahl, welche Deckungsgrad-Kennzahlen in der FH-Ansicht als
+     Ampel gezeigt werden (Nutzervorgabe 02.09.2026) - unabhängig vom
+     Master-Schalter "Deckungsgrad-Ampel (FH-Ansicht)" in "Funktionen
+     aktivieren": auch bei aktiviertem Feature lässt sich hier einzeln
+     einschränken, welche der 4 Kennzahlen sichtbar sind. -->
+<div class="modal-bg hidden" id="deckungsgradVisibilityModal">
+  <div class="modal">
+    <h3>Deckungsgrad-Ampel: Auswahl</h3>
+    <p>Welche Kennzahlen sollen als Ampel in der Fachhändler-Ansicht erscheinen?</p>
+    <div style="margin:14px 0">
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;padding:6px 0;border-bottom:1px solid var(--line);margin-bottom:6px">
+        <input type="checkbox" id="dgVisAllChk" style="width:16px;height:16px;flex-shrink:0"> Alle DG-Punkte freischalten
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 0"><input type="checkbox" class="dgVisChk" value="dg1" style="width:16px;height:16px;flex-shrink:0"> DG 1</label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 0"><input type="checkbox" class="dgVisChk" value="dg2" style="width:16px;height:16px;flex-shrink:0"> DG 2</label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 0"><input type="checkbox" class="dgVisChk" value="db1" style="width:16px;height:16px;flex-shrink:0"> DB 1</label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 0"><input type="checkbox" class="dgVisChk" value="db2" style="width:16px;height:16px;flex-shrink:0"> DB 2</label>
+    </div>
+    <div class="actions">
+      <button class="btn btn-ghost" id="dgVisCancel">Abbrechen</button>
+      <button class="btn btn-blue" id="dgVisSave">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Admin: Mitarbeiterverwaltung - eigenes PopUp statt im Admin-Panel
+     inline (das wurde dort zunehmend unübersichtlich, Nutzervorgabe
+     01.09.2026). Inhaltlich unverändert gegenüber vorher. -->
+<div class="modal-bg hidden" id="adminEmployeesModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:10px">
+      <h3 style="margin:0">Mitarbeiterverwaltung</h3>
+      <button class="btn btn-ghost" id="adminEmployeesClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+    <h4 style="margin:8px 0;color:var(--wg-navy);font-size:14px">Neuen Mitarbeiter anlegen</h4>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <input type="text" id="adName" placeholder="Name" autocomplete="off" style="flex:1;min-width:150px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
-      <input type="email" id="adEmail" placeholder="E-Mail" autocomplete="off" style="flex:1;min-width:180px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
-      <select id="adRole" style="border:2px solid var(--line);border-radius:10px;padding:9px 12px;font:inherit">
-        <option value="aussendienst">Außendienst</option>
-        <option value="trainer">Trainer</option>
-        <option value="admin">Admin</option>
-      </select>
-      <button class="btn btn-blue" id="adCreateBtn">Anlegen</button>
+      <input type="text" id="empName" placeholder="Name" autocomplete="off" style="flex:1;min-width:150px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <input type="number" id="empJahresziel" placeholder="Jahresziel Produktion" style="width:170px;font-size:14px;font-weight:600;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <input type="number" id="empMieteziel" placeholder="Miete-Jahresziel (optional)" style="width:190px;font-size:14px;font-weight:600;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <input type="number" id="empAkqZiel" placeholder="Akquisestufen-Ziel" style="width:170px;font-size:14px;font-weight:600;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
     </div>
-    <div class="hint">Standardpasswort: <b>WertGARANTIE</b> - wird nach Anmeldung geändert</div>
-    <div class="error" id="adCreateHint"></div>
+    <div style="margin-top:10px;font-size:12.5px">
+      <div style="color:var(--muted);font-weight:700;margin-bottom:6px">Performance-Ziele:</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="empGoalChk" value="1" checked style="width:16px;height:16px;flex-shrink:0"> 1 Produktion</label>
+        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="empGoalChk" value="2" style="width:16px;height:16px;flex-shrink:0"> 2 Akquise</label>
+        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="empGoalChk" value="3" style="width:16px;height:16px;flex-shrink:0"> 3 Miete</label>
+        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="empGoalChk" value="4" style="width:16px;height:16px;flex-shrink:0"> 4 PO-Quote Telekom <span style="color:var(--muted)">(Sondervertrieb, braucht Code-Anpassung)</span></label>
+        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="empGoalChk" value="5" style="width:16px;height:16px;flex-shrink:0"> 5 Gebrauchtgeräte <span style="color:var(--muted)">(Sondervertrieb, braucht Code-Anpassung)</span></label>
+      </div>
+    </div>
+    <div style="margin-top:10px">
+      <input type="text" id="empAliases" placeholder="Namensvarianten für den Tagesreport-Abgleich, mit Komma getrennt (optional)" autocomplete="off" style="width:100%;font-size:13px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+    </div>
+    <div style="margin-top:10px">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12.5px"><input type="checkbox" id="empAdminOnly" style="width:16px;height:16px;flex-shrink:0"> nur im Admin-Zugang sichtbar (virtueller Analyse-Mitarbeiter, z. B. für Sammelposten)</label>
+    </div>
+    <button class="btn btn-blue" id="empCreateBtn" style="margin-top:10px">Mitarbeiter anlegen</button>
+    <div class="error" id="empCreateHint"></div>
 
-    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Nutzerübersicht</h4>
-    <div id="adUserList" style="max-height:340px;overflow:auto"></div>
+    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Mitarbeiterübersicht</h4>
+    <div id="empList" style="max-height:340px;overflow:auto"></div>
   </div>
 </div>
 
@@ -1444,6 +1591,8 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <h3 style="margin:0">Performance Dialog – Admin-Übersicht</h3>
       <span style="display:flex;gap:8px">
         <button class="btn btn-ghost no-print" id="perfAdminPdfBtn" style="padding:7px 12px">⬇ Gesamt-PDF freigeschalteter Monat</button>
+        <select id="perfKiMonthSel" title="Monat für den KI-Monatsbericht" style="border:2px solid var(--line);border-radius:8px;padding:4px 8px;font:inherit;font-weight:600"></select>
+        <button class="btn btn-ghost no-print" id="perfMonthlySummaryBtn" style="padding:7px 12px">🧠 Monatsbericht (KI-Zusammenfassung)</button>
         <button class="btn btn-ghost no-print" id="perfAnnualSummaryBtn" style="padding:7px 12px">🧠 Jahresbericht (KI-Zusammenfassung)</button>
         <button class="btn btn-ghost" id="perfAdminClose" style="padding:7px 12px">✕ Schließen</button>
       </span>
@@ -1601,18 +1750,20 @@ const INITIAL_DATA={"latest":{"date":"2026-07-22","vortag":"2026-07-21","jahr":2
    AKQ-Liste, Region_nach_GL, ZE_Region)
    ========================================================= */
 
-const EMPLOYEES = ["Klaus Witting","Florian Hasibeder","Dominik Szendi","Helmut Otto","Peter Peißer","Thomas Eitzinger"];
+// EMPLOYEES/PERS_JAHRESZIELE/PERS_MIETEZIELE/AKQ_STAFFEL_ZIEL/
+// PERF_GOALS_BY_EMPLOYEE/EMP_NORM/ADMIN_ONLY_EMPLOYEES sind seit Punkt 10
+// (01.09.2026) NICHT mehr hartcodiert, sondern werden aus der Supabase-
+// Tabelle "employees" geladen (siehe loadEmployees(), aufgerufen in init()
+// vor dem ersten render()) - hier nur als leere Platzhalter deklariert,
+// damit alle Lesestellen im Code unverändert bleiben können.
+let EMPLOYEES = [];
 const AT_GESAMT = "Österreich gesamt";
 const AT_KEY = "__AT__";
 const ZIEL_AT = 120000;      // Jahresziel (Österreich)
 const ZIEL_FIRMA = 109500;   // PLAN 2026 (Firmenvorgabe)
 const Q4_ANTEIL = 0.29;      // Saisonalität: 71 % bis 30.9., 29 % der Jahresproduktion in Q4
 const AT_MONATSZIELE = {1:9867,2:8679,3:9284,4:8998,5:8998,6:8998,7:10175,8:9856,9:10318,10:10318,11:12452,12:12452}; // Persönliches Monatsziel Österreich gesamt (fest)
-const PERS_JAHRESZIELE = {
-  "Klaus Witting":20000,"Florian Hasibeder":15000,"Thomas Eitzinger":15000,
-  "Dominik Szendi":55000,"Helmut Otto":7000,"Peter Peißer":7000
-};
-PERS_JAHRESZIELE[AT_GESAMT]=Object.values(PERS_JAHRESZIELE).reduce((a,b)=>a+b,0); // 119.000
+let PERS_JAHRESZIELE = {};
 // Miete-Jahresziel (Club.Weiss) - lt. Nutzervorgabe 18.08.2026: Österreich
 // gesamt 3.000 Verträge/Jahr, gleichmäßig auf die 4 Mitarbeiter mit
 // Club.Weiss-Ziel verteilt (Witting, Otto, Hasibeder, Peißer - je 750,
@@ -1620,9 +1771,7 @@ PERS_JAHRESZIELE[AT_GESAMT]=Object.values(PERS_JAHRESZIELE).reduce((a,b)=>a+b,0)
 // Kaufen"). Szendi und Eitzinger haben keine Club.Weiss-Ziele (0 = "kein
 // Jahresziel hinterlegt", siehe renderGoals).
 const ZIEL_MIETE_AT = 3000;
-const PERS_MIETEZIELE = {
-  "Klaus Witting":750, "Helmut Otto":750, "Florian Hasibeder":750, "Peter Peißer":750
-};
+let PERS_MIETEZIELE = {};
 // Monatsziel ist bewusst FLACH (3.000 ÷ 12 = 250, nicht saisonal Q4-
 // gewichtet wie ZIEL_AT) - siehe mieteShare/yearFrac() in renderGoals.
 const ZIEL_MIETE_MONAT = 250;
@@ -1645,11 +1794,7 @@ const AKQ_OHNE_ZUORDNUNG_GL=["Technischer GL CE DE","Ohne Zuordnung RB"];
 // Mitarbeiter in diesem Jahr. "Erststaffeln" (Staffel 1 = FH erstmals aktiv/
 // akquiriert) werden zusätzlich als Teilmenge ausgewiesen, zählen aber mit
 // in dieses Gesamtziel - siehe Erklärung des Nutzers vom 14.08.2026.
-const AKQ_STAFFEL_ZIEL = {
-  "Klaus Witting":30,"Florian Hasibeder":30,"Thomas Eitzinger":0,
-  "Dominik Szendi":0,"Helmut Otto":30,"Peter Peißer":30
-};
-AKQ_STAFFEL_ZIEL[AT_GESAMT]=Object.values(AKQ_STAFFEL_ZIEL).reduce((a,b)=>a+b,0);
+let AKQ_STAFFEL_ZIEL = {};
 
 /* ---------- Supabase Konfiguration ---------- */
 const SUPABASE_URL = "https://gfyjftwlombhmwirbyse.supabase.co";
@@ -1720,6 +1865,23 @@ let karteileichenJahre = 3;
 // wurde bzw. der Wert noch nicht aus der DB geladen ist.
 let fhKarteileichenReview = null;
 let akpKarteileichenReview = null;
+// Deckungsgrad-Ampel (02.09.2026): Master-Schalter + Feinauswahl, welche der
+// 4 Kennzahlen (DG1/DG2/DB1/DB2) überhaupt als Ampel in der FH-Ansicht
+// erscheinen - unabhängig von der Sicherheitsarchitektur (Rohwerte sind
+// ohnehin nie abrufbar, siehe fh_deckungsgrad_for()), reine
+// Sichtbarkeits-/Einführungssteuerung durch den Admin.
+let deckungsgradEnabled = false;
+let dgVisibleMetrics = ["dg1","dg2","db1","db2"];
+// Mitarbeiter-Ranking (Österreich gesamt · Ziele & Hochrechnung), Admin-
+// Freischalter (02.09.2026) - Default true (nicht wie bei neuen Features
+// sonst üblich false), da das Ranking bereits produktiv sichtbar war, bevor
+// der Schalter eingeführt wurde: ein Default von false hätte es für alle
+// Nutzer unangekündigt ausgeblendet, bis ein Admin es manuell aktiviert.
+let empRankingEnabled = true;
+// Stornoquoten AKP (02.09.2026) - Admin-Freischalter für den
+// "Stornoquoten"-Abschnitt im AKP-PopUp (renderAkpStornoSection). Default
+// false wie bei anderen neuen Features, bis ein Admin es aktiviert.
+let stornoquotenEnabled = false;
 // Zeitpunkt der letzten Miete-Report-Einspielung (dashboard_kv-Key
 // "miete_last_import", von upsertMieteData() bei jedem Import gesetzt -
 // deckt sowohl den Admin-Panel-Upload als auch den automatischen
@@ -2090,6 +2252,71 @@ async function createAdminUser(){
   toast("Nutzer angelegt: "+email+" (Erstpasswort: WertGARANTIE)");
   loadAdminUsers();
 }
+// Mitarbeiterverwaltung (Punkt 10, 01.09.2026): CRUD-Vorbild 1:1 aus
+// loadAdminUsers()/createAdminUser() oben übernommen, aber OHNE Edge
+// Function - reine Tabellenoperation ohne Auth-Provisioning. Nach jeder
+// Änderung wird loadEmployees() neu aufgerufen, damit EMPLOYEES/
+// PERS_JAHRESZIELE/... sofort konsistent bleiben (z.B. fürs Ranking oder
+// die Ziel-Kacheln, ohne dass ein Reload nötig wäre).
+async function loadEmployeesAdmin(){
+  const box=$("empList");
+  box.innerHTML="<p style='color:var(--muted)'>Lädt …</p>";
+  const { data, error } = await sb.from("employees").select("*").order("sort_order").order("name");
+  if(error||!data){ box.innerHTML="<p style='color:var(--muted)'>Fehler beim Laden.</p>"; return; }
+  box.innerHTML = data.map(e=>`
+    <div data-id="${e.id}" style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
+      <input class="em-name" value="${escapeHtml(e.name)}" placeholder="Name" style="flex:1;min-width:130px;font-weight:700;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
+      <input class="em-jz" type="number" value="${e.pers_jahresziel}" title="Jahresziel Produktion" style="width:110px;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
+      <input class="em-mz" type="number" value="${e.miete_jahresziel??""}" title="Miete-Jahresziel" style="width:110px;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
+      <input class="em-az" type="number" value="${e.akq_staffel_ziel}" title="Akquisestufen-Ziel" style="width:110px;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
+      <span style="font-size:11px;color:${e.active?"var(--pos)":"var(--neg)"}">${e.active?"aktiv":"deaktiviert"}${e.admin_only?" · admin-only":""}</span>
+      <button class="btn btn-ghost em-toggle" style="padding:6px 10px;font-size:12px">${e.active?"Deaktivieren":"Aktivieren"}</button>
+    </div>
+  `).join("") || "<p style='color:var(--muted)'>Keine Mitarbeiter.</p>";
+  box.querySelectorAll(".em-name,.em-jz,.em-mz,.em-az").forEach(inp=>{
+    inp.addEventListener("change",async e=>{
+      const id=e.target.closest("[data-id]").dataset.id;
+      const patch={};
+      if(e.target.classList.contains("em-name")) patch.name=e.target.value.trim();
+      if(e.target.classList.contains("em-jz")) patch.pers_jahresziel=+e.target.value||0;
+      if(e.target.classList.contains("em-mz")) patch.miete_jahresziel=e.target.value===""?null:+e.target.value;
+      if(e.target.classList.contains("em-az")) patch.akq_staffel_ziel=+e.target.value||0;
+      const { error } = await sb.from("employees").update(patch).eq("id",id);
+      if(!error) await loadEmployees();
+      toast(error?("Fehler: "+error.message):"Gespeichert");
+    });
+  });
+  box.querySelectorAll(".em-toggle").forEach(btn=>{
+    btn.onclick=async e=>{
+      const row=e.target.closest("[data-id]");
+      const { data:cur } = await sb.from("employees").select("active").eq("id",row.dataset.id).single();
+      const { error } = await sb.from("employees").update({active:!(cur&&cur.active)}).eq("id",row.dataset.id);
+      if(!error){ await loadEmployees(); buildMitarbeiterDropdown(); loadEmployeesAdmin(); }
+      toast(error?("Fehler: "+error.message):"Status geändert");
+    };
+  });
+}
+async function createEmployee(){
+  const name=$("empName").value.trim();
+  if(!name){ $("empCreateHint").textContent="Bitte Namen eingeben."; return; }
+  const goalIds=[...document.querySelectorAll(".empGoalChk:checked")].map(c=>+c.value);
+  const aliases=$("empAliases").value.split(",").map(s=>s.trim()).filter(Boolean);
+  const adminOnly=$("empAdminOnly").checked;
+  $("empCreateBtn").disabled=true;
+  const { error } = await sb.from("employees").insert({
+    name, pers_jahresziel:+$("empJahresziel").value||0,
+    miete_jahresziel:$("empMieteziel").value===""?null:+$("empMieteziel").value,
+    akq_staffel_ziel:+$("empAkqZiel").value||0,
+    perf_goal_ids:goalIds, match_aliases:aliases, admin_only:adminOnly
+  });
+  $("empCreateBtn").disabled=false;
+  if(error){ $("empCreateHint").textContent=error.message; return; }
+  $("empCreateHint").textContent="";
+  $("empName").value=""; $("empJahresziel").value=""; $("empMieteziel").value=""; $("empAkqZiel").value=""; $("empAliases").value=""; $("empAdminOnly").checked=false;
+  document.querySelectorAll(".empGoalChk").forEach(c=>c.checked=(c.value==="1"));
+  await loadEmployees(); buildMitarbeiterDropdown(); loadEmployeesAdmin();
+  toast("Mitarbeiter angelegt: "+name);
+}
 function openAdminModal(){
   $("adminModal").classList.remove("hidden"); loadAdminUsers();
   $("chefgespraechEnabledChk").checked=chefgespraechEnabled;
@@ -2099,6 +2326,9 @@ function openAdminModal(){
   $("perfDialogAdminEnabledChk").checked=perfDialogAdminEnabled;
   $("fhSearchEnabledChk").checked=fhSearchEnabled;
   $("akpPeerCompareEnabledChk").checked=akpPeerCompareEnabled;
+  $("deckungsgradEnabledChk").checked=deckungsgradEnabled;
+  $("empRankingEnabledChk").checked=empRankingEnabled;
+  $("stornoquotenEnabledChk").checked=stornoquotenEnabled;
 }
 // ---------- Karteileichen-Review (DSGVO-Prüfprotokoll, Befund N-2) ----------
 // Ereignisbasierter statt zeitbasierter Ansatz (Nutzervorgabe 01.09.2026):
@@ -2317,6 +2547,65 @@ async function toggleAkpPeerCompareEnabled(){
   try{
     await stSet("akp_peer_compare_enabled",on?"1":"0");
     toast(on?"AKP-Vergleich aktiviert ✓":"AKP-Vergleich deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
+async function toggleDeckungsgradEnabled(){
+  const on=$("deckungsgradEnabledChk").checked;
+  deckungsgradEnabled=on;
+  if(fhModalCurrent&&!$("fhModal").classList.contains("hidden")){
+    try{ renderFhDeckungsgradSection(); }catch(e){ console.error("renderFhDeckungsgradSection (toggle):",e); }
+  }
+  try{
+    await stSet("deckungsgrad_enabled",on?"1":"0");
+    toast(on?"Deckungsgrad-Ampel aktiviert ✓":"Deckungsgrad-Ampel deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
+function syncDgVisAllChk(){
+  const boxes=[...document.querySelectorAll(".dgVisChk")];
+  $("dgVisAllChk").checked=boxes.every(b=>b.checked);
+}
+function openDeckungsgradVisibilityModal(){
+  document.querySelectorAll(".dgVisChk").forEach(b=>{ b.checked=dgVisibleMetrics.includes(b.value); });
+  syncDgVisAllChk();
+  $("deckungsgradVisibilityModal").classList.remove("hidden");
+}
+async function saveDeckungsgradVisibility(){
+  dgVisibleMetrics=[...document.querySelectorAll(".dgVisChk")].filter(b=>b.checked).map(b=>b.value);
+  $("deckungsgradVisibilityModal").classList.add("hidden");
+  if(fhModalCurrent&&!$("fhModal").classList.contains("hidden")){
+    try{ renderFhDeckungsgradSection(); }catch(e){ console.error("renderFhDeckungsgradSection (visibility):",e); }
+  }
+  try{
+    await stSet("deckungsgrad_visible_metrics",JSON.stringify(dgVisibleMetrics));
+    toast("Auswahl gespeichert ✓");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
+async function toggleEmpRankingEnabled(){
+  const on=$("empRankingEnabledChk").checked;
+  empRankingEnabled=on;
+  try{ renderEmpRanking(); }catch(e){ console.error("renderEmpRanking (toggle):",e); }
+  try{
+    await stSet("emp_ranking_enabled",on?"1":"0");
+    toast(on?"Mitarbeiter-Ranking aktiviert ✓":"Mitarbeiter-Ranking deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
+async function toggleStornoquotenEnabled(){
+  const on=$("stornoquotenEnabledChk").checked;
+  stornoquotenEnabled=on;
+  if(akpContactCurrent&&!$("akpContactModal").classList.contains("hidden")){
+    try{ renderAkpStornoSection(); }catch(e){ console.error("renderAkpStornoSection (toggle):",e); }
+  }
+  try{
+    await stSet("stornoquoten_enabled",on?"1":"0");
+    toast(on?"Stornoquoten aktiviert ✓":"Stornoquoten deaktiviert");
   }catch(e){
     toast("Speichern fehlgeschlagen: "+(e.message||e));
   }
@@ -2673,7 +2962,8 @@ function normName(s){
     .replace(/ß/g,"ss").replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue")
     .replace(/[^a-z ]/g," ").split(/\s+/).filter(Boolean).sort().join(" ");
 }
-const EMP_NORM = {}; EMPLOYEES.forEach(e=>EMP_NORM[normName(e)]=e);
+let EMP_NORM = {}; // wird komplett in loadEmployees() befüllt (auch admin-only)
+let ADMIN_ONLY_EMPLOYEES = []; // [{name}] – für die Dropdown-Gruppe "Admin: Analyse" (Punkt 9)
 function matchEmployee(gl){
   if(!gl) return null;
   const n=normName(gl);
@@ -2683,6 +2973,55 @@ function matchEmployee(gl){
     if(toks.every(t=>n.includes(t))) return e;
   }
   return null; // z. B. "ohne Zuordnung", "Technischer GL CE DE", "Akquise" → nur Österreich gesamt
+}
+// Lädt die Mitarbeiterstammdaten aus Supabase (Tabelle "employees", Punkt 10
+// 01.09.2026) und befüllt damit EMPLOYEES/PERS_JAHRESZIELE/PERS_MIETEZIELE/
+// AKQ_STAFFEL_ZIEL/PERF_GOALS_BY_EMPLOYEE/EMP_NORM/ADMIN_ONLY_EMPLOYEES neu -
+// einmalig in init() vor dem ersten render() aufgerufen, danach erneut nach
+// jeder Änderung im Admin-Panel (siehe loadEmployeesAdmin()/createEmployee()),
+// damit die App sofort konsistent bleibt. EMP_NORM wird bewusst aus ALLEN
+// aktiven Zeilen aufgebaut (auch admin_only!): registriert man deren
+// match_aliases (roher GL-Text aus dem Tagesreport) hier, matcht
+// matchEmployee() sie automatisch auf den virtuellen Mitarbeiternamen -
+// dadurch funktionieren glKey()/glRow()/fhFor() und alle ".emp===currentEmp"-
+// Filter im ganzen Dashboard ohne jede weitere Anpassung (siehe Punkt 9).
+async function loadEmployees(){
+  if(!sb){
+    // Ohne Supabase-Verbindung (Demo-/Offline-Modus mit INITIAL_DATA, siehe
+    // initAuth() "if(!sb) return true;") auf die früheren, hartcodierten
+    // Werte zurückfallen, damit Dropdown/Matching/Ziel-Kacheln in diesem
+    // Fallback-Modus weiter benutzbar bleiben - analog zum Muster anderer
+    // Loader wie loadAkpContactsIndex() ("if(!(sb&&supaUser)) return;").
+    EMPLOYEES=["Klaus Witting","Florian Hasibeder","Dominik Szendi","Helmut Otto","Peter Peißer","Thomas Eitzinger"];
+    PERS_JAHRESZIELE={"Klaus Witting":20000,"Florian Hasibeder":15000,"Thomas Eitzinger":15000,"Dominik Szendi":55000,"Helmut Otto":7000,"Peter Peißer":7000};
+    PERS_JAHRESZIELE[AT_GESAMT]=Object.values(PERS_JAHRESZIELE).reduce((a,b)=>a+b,0);
+    PERS_MIETEZIELE={"Klaus Witting":750,"Helmut Otto":750,"Florian Hasibeder":750,"Peter Peißer":750};
+    AKQ_STAFFEL_ZIEL={"Klaus Witting":30,"Florian Hasibeder":30,"Thomas Eitzinger":0,"Dominik Szendi":0,"Helmut Otto":30,"Peter Peißer":30};
+    AKQ_STAFFEL_ZIEL[AT_GESAMT]=Object.values(AKQ_STAFFEL_ZIEL).reduce((a,b)=>a+b,0);
+    PERF_GOALS_BY_EMPLOYEE={"Klaus Witting":[1,2,3],"Florian Hasibeder":[1,2,3],"Peter Peißer":[1,2,3],"Helmut Otto":[1,2,3],"Dominik Szendi":[1,4,5],"Thomas Eitzinger":[1]};
+    EMP_NORM={}; EMPLOYEES.forEach(e=>EMP_NORM[normName(e)]=e);
+    ADMIN_ONLY_EMPLOYEES=[];
+    return;
+  }
+  const { data, error } = await sb.from("employees").select("*").eq("active",true).order("sort_order").order("name");
+  if(error||!data){ console.error("loadEmployees fehlgeschlagen:",error); return; }
+  const real=data.filter(e=>!e.admin_only);
+  EMPLOYEES=real.map(e=>e.name);
+  PERS_JAHRESZIELE={}; PERS_MIETEZIELE={}; AKQ_STAFFEL_ZIEL={}; PERF_GOALS_BY_EMPLOYEE={};
+  for(const e of real){
+    PERS_JAHRESZIELE[e.name]=Number(e.pers_jahresziel)||0;
+    if(e.miete_jahresziel!=null) PERS_MIETEZIELE[e.name]=Number(e.miete_jahresziel);
+    AKQ_STAFFEL_ZIEL[e.name]=Number(e.akq_staffel_ziel)||0;
+    PERF_GOALS_BY_EMPLOYEE[e.name]=e.perf_goal_ids||[];
+  }
+  PERS_JAHRESZIELE[AT_GESAMT]=Object.values(PERS_JAHRESZIELE).reduce((a,b)=>a+b,0);
+  AKQ_STAFFEL_ZIEL[AT_GESAMT]=Object.values(AKQ_STAFFEL_ZIEL).reduce((a,b)=>a+b,0);
+  EMP_NORM={};
+  for(const e of data){
+    EMP_NORM[normName(e.name)]=e.name;
+    for(const alias of (e.match_aliases||[])) EMP_NORM[normName(alias)]=e.name;
+  }
+  ADMIN_ONLY_EMPLOYEES=data.filter(e=>e.admin_only).map(e=>({name:e.name}));
 }
 
 /* ---------- Datenmodell ----------
@@ -2903,7 +3242,7 @@ function parseAuswertung(wb){
         beginn, beginnJahr:beginn?parseInt(beginn.slice(0,4),10):null,
         glRaw, emp:matchEmployee(glRaw),
         p2024:num(r[10]), p2025:num(r[11]), p2026:num(r[12]),
-        produzent:String(r[13]||"").trim().toUpperCase()==="JA", kw:num(r[14]), besP:num(r[15]), besT:num(r[16]) });
+        produzent:String(r[13]||"").trim().toUpperCase()==="JA", kw:num(r[14]), besP:num(r[15]), besT:num(r[16]), besG:num(r[17]) });
     }
   }
 
@@ -2956,6 +3295,30 @@ function parseAuswertung(wb){
     }
   })();
 
+  // ZE_Region: Sparte "Bike" (fix P22, Nutzervorgabe 01.09.2026) - anders
+  // als der Rest dieses Parsers bewusst positional statt labelbasiert, da
+  // keine robuste Kopfzeile für diese Einzelzahl bekannt ist. Zeile 22 ->
+  // Index 21, Spalte P -> Index 15 (0-indiziert, ze=toRows(...) mit
+  // header:1). Logging der Nachbarzelle zur Kontrolle bei künftigen
+  // Layout-Verschiebungen im Tagesreport. Muss NACH der Sparten-
+  // Nebentabelle oben stehen, sonst überschreibt snap.sparten[AT_KEY]=rec
+  // dieses Feld wieder.
+  if(ze[21]){
+    const bikeVal=num(ze[21][15]);
+    console.log("[Import] ZE_Region Bike (P22):", ze[21][15], "→", bikeVal, "| Label A22:", ze[21][0]);
+    if(!snap.sparten) snap.sparten={};
+    if(!snap.sparten[AT_KEY]) snap.sparten[AT_KEY]={};
+    snap.sparten[AT_KEY].bike=bikeVal;
+  }
+  // ZE_Region: AT-Vorjahresvergleich Monat (fix K12, Nutzervorgabe
+  // 01.09.2026) - siehe Kommentar beim Bike-Wert zur Begründung des
+  // positionalen Zugriffs. Zeile 12 -> Index 11, Spalte K -> Index 10.
+  if(ze[11]){
+    const monatVJAT=num(ze[11][10]);
+    console.log("[Import] ZE_Region AT-Monatsvergleich VJ (K12):", ze[11][10], "→", monatVJAT, "| Label A12:", ze[11][0]);
+    snap.zeAtMonatVJ=monatVJAT;
+  }
+
   /* --- Gebrauchtgeräte-Quote LJ/VJ je GL: liegt in einem der "data_"-Hilfsblätter
      hinter dem sichtbaren Region_nach_GL-Tab (Excel-PivotTable-Cache). Welches
      data_-Blatt das genau ist (z. B. "_3" vs. "_4"), verschiebt sich je nach
@@ -2997,6 +3360,47 @@ function parseAuswertung(wb){
       if(/^(auswertung|gesamt|summe|total)$/i.test(name)) continue;
       snap.gwQuote[matchEmployee(name)||("x_"+name)]={lj:num(r[q]),vj:qv>-1?num(r[qv]):0};
     }
+  })();
+
+  /* --- Bugfix 01.09.2026: "Prod Monat VJ" je GL (rec.monatVJ oben, aus der
+     sichtbaren Region_nach_GL-Pivot-Spalte D) liefert im Tagesreport-Export
+     systematisch 0 für JEDE Zeile (auch "Auswertung") - anhand eines echten
+     Tagesreports geprüft: die Kopfzeile/Spaltenindizes oben (r[1..7]) sind
+     korrekt, "Prod VJ" (Jahr, Spalte H) ist ebenfalls korrekt befüllt, nur
+     die Monats-VJ-Spalte der PIVOT-ANSICHT selbst ist leer/0 - kein Bug im
+     Parser, sondern in der Report-Vorlage. Die korrekten Werte liegen
+     (analog zur Gebrauchtgeräte-Quote oben) in einem Pivot-Hilfsblatt
+     ("data_Region_nach_GL_...") unter der Kopfzeile "Vertriebsproduktion_
+     VJ" - wird hier gesucht und overschreibt rec.monatVJ je GL. Für
+     Österreich gesamt (AT_KEY) gibt es in diesem Hilfsblatt keine
+     Summenzeile - dort stattdessen der bereits weiter oben aus ZE_Region
+     K12 ermittelte Wert (snap.zeAtMonatVJ, "Ist VJ Summe" der Zeile
+     "Auswertung") verwendet, falls vorhanden. */
+  (function(){
+    let hi=-1,vjCol=-1,foundRows=null;
+    for(const n of wb.SheetNames){
+      if(!n.toLowerCase().startsWith("data_")) continue;
+      const rows=toRowsIgnoringRef(wb.Sheets[n]);
+      hi=-1; vjCol=-1;
+      for(let i=0;i<rows.length;i++){
+        const r=rows[i]; if(!r) continue;
+        for(let j=0;j<r.length;j++){
+          if(String(r[j]||"").trim().toLowerCase().replace(/\s+/g,"")==="vertriebsproduktion_vj"){ hi=i; vjCol=j; }
+        }
+        if(hi>-1) break;
+      }
+      if(hi>-1){ foundRows=rows; break; }
+    }
+    if(hi>-1&&foundRows){
+      for(let i=hi+1;i<foundRows.length;i++){
+        const r=foundRows[i]; if(!r||r[0]==null) continue;
+        const name=String(r[0]).trim();
+        if(/^(auswertung|gesamt|summe|total)$/i.test(name)) continue;
+        const key=matchEmployee(name)||("x_"+name);
+        if(snap.gl[key]) snap.gl[key].monatVJ=num(r[vjCol]);
+      }
+    }
+    if(snap.gl[AT_KEY]&&snap.zeAtMonatVJ!=null) snap.gl[AT_KEY].monatVJ=snap.zeAtMonatVJ;
   })();
 
   const ok=Object.keys(snap.gl).length>0||Object.keys(snap.fh).length>0;
@@ -3126,6 +3530,167 @@ async function handleFhSegmentFile(files){
   }catch(e){
     console.error("handleFhSegmentFile failed:",e);
     toast("Händlersegmentierung-Import fehlgeschlagen: "+(e.message||e));
+  }
+}
+
+// Deckungsgrad-Auswertung (01.09.2026, absolut vertraulich) - ein Blatt mit
+// Kopfzeile (Sheetname variiert, z.B. "Seite1" - deshalb per Header-Signatur
+// "FH Nr" + "DG 1 LJ bis VM" gesucht statt per festem Blattnamen), eine
+// Zeile je Fachhändler. Werte werden 1:1 (als Bruch, nicht ×100) übernommen -
+// dieselbe Konvention wie überall sonst im Dashboard (z.B. poQuote).
+function parseDeckungsgrad(wb){
+  let ws=null,rows=null,hi=-1,header=null;
+  for(const n of wb.SheetNames){
+    const r=toRows(wb.Sheets[n]);
+    for(let i=0;i<Math.min(r.length,5);i++){
+      const row=r[i]; if(!row) continue;
+      const h=row.map(normHeader);
+      if(h.includes("FH Nr")&&h.includes("DG 1 LJ bis VM")){ ws=wb.Sheets[n]; rows=r; hi=i; header=h; break; }
+    }
+    if(ws) break;
+  }
+  if(!ws) return null;
+  const col=name=>header.indexOf(name);
+  const idxFh=col("FH Nr"), idxBestand=col("Bestand"), idxProvLj=col("Provision LJ bis VM"),
+        idxSchLj=col("Schäden LJ bis VM"), idxSchBetragLj=col("Schadenbetrag LJ bis VM"),
+        idxDb1Lj=col("DB 1 LJ bis VM"), idxDg1Lj=col("DG 1 LJ bis VM"),
+        idxDb2Lj=col("DB 2 LJ bis VM"), idxDg2Lj=col("DG 2 LJ bis VM"),
+        idxDb1Vj=col("DB 1 VJ bis VM"), idxDg1Vj=col("DG 1 VJ bis VM"),
+        idxDb2Vj=col("DB 2 VJ bis VM"), idxDg2Vj=col("DG 2 VJ bis VM");
+  if(idxFh<0||idxDg1Lj<0) return null;
+  const out=[];
+  for(let i=hi+1;i<rows.length;i++){
+    const r=rows[i]; if(!r||r[idxFh]==null||r[idxFh]==="") continue;
+    const fhNr=String(r[idxFh]).trim(); if(!fhNr) continue;
+    out.push({
+      fh_nr:fhNr,
+      bestand:idxBestand>-1?num(r[idxBestand]):null,
+      provision_lj:idxProvLj>-1?num(r[idxProvLj]):null,
+      schaeden_lj:idxSchLj>-1?Math.round(num(r[idxSchLj])):null,
+      schadenbetrag_lj:idxSchBetragLj>-1?num(r[idxSchBetragLj]):null,
+      db1_lj:idxDb1Lj>-1?num(r[idxDb1Lj]):null, dg1_lj:idxDg1Lj>-1?num(r[idxDg1Lj]):null,
+      db2_lj:idxDb2Lj>-1?num(r[idxDb2Lj]):null, dg2_lj:idxDg2Lj>-1?num(r[idxDg2Lj]):null,
+      db1_vj:idxDb1Vj>-1?num(r[idxDb1Vj]):null, dg1_vj:idxDg1Vj>-1?num(r[idxDg1Vj]):null,
+      db2_vj:idxDb2Vj>-1?num(r[idxDb2Vj]):null, dg2_vj:idxDg2Vj>-1?num(r[idxDg2Vj]):null,
+    });
+  }
+  return out.length?out:null;
+}
+async function upsertFhDeckungsgrad(rows){
+  const CHUNK=500;
+  for(let i=0;i<rows.length;i+=CHUNK){
+    const chunk=rows.slice(i,i+CHUNK).map(r=>({ ...r, imported_by:supaUser.id, imported_at:new Date().toISOString() }));
+    const { error }=await sb.from("fh_deckungsgrad").upsert(chunk,{onConflict:"fh_nr"});
+    if(error) throw error;
+  }
+}
+// Deckungsgrad-Import (Admin-Panel + E-Mail-Import, siehe
+// processPendingImports): NUR die Rohdaten werden gespeichert - im
+// Dashboard selbst nie im Klartext sichtbar (siehe fh_deckungsgrad_for()
+// in schema.sql, keine direkte SELECT-Policy auf der Tabelle).
+async function handleDeckungsgradFile(files){
+  if(!files||!files.length) return;
+  if(!(sb&&supaUser)){ toast("Nicht angemeldet."); return; }
+  toast("Deckungsgrad-Auswertung wird verarbeitet …");
+  try{
+    const buf=await files[0].arrayBuffer();
+    const wb=XLSX.read(buf,{type:"array",cellDates:true});
+    const rows=parseDeckungsgrad(wb);
+    if(!rows){ toast("Format nicht erkannt – bitte die Deckungsgrad-Auswertung mit den Spalten \"FH Nr\"/\"DG 1 LJ bis VM\" einspielen."); return; }
+    await upsertFhDeckungsgrad(rows);
+    if(fhModalCurrent) renderFhDeckungsgradSection();
+    toast(`Deckungsgrad-Auswertung eingespielt ✓ ${fmt(rows.length)} Fachhändler aktualisiert`);
+  }catch(e){
+    console.error("handleDeckungsgradFile failed:",e);
+    toast("Deckungsgrad-Import fehlgeschlagen: "+(e.message||e));
+  }
+}
+
+// Stornoquoten-Auswertung AKP (02.09.2026): "Vermittlerübersicht mit
+// Stornoquoten", eine Zeile je AKP, Spalten A-F positional (nr,name,fhNr,
+// firma,-,ort - identisch zum Tagesreport-AKP-Parser), danach eine
+// zweistufige Kopfzeile (Gruppen-Label + "Anzahl"/"Quote"): die 4
+// "Quote"-Spalten werden über das jeweils zugehörige Gruppen-Label in der
+// Zeile darüber identifiziert (robust gg. Spaltenverschiebungen, da jedes
+// Gruppen-Label über 4 Spalten - Anzahl+Quote je zusammengehöriges
+// Merged-Zellenpaar - hinweg gilt). Nur 3 der 4 Quoten werden übernommen
+// (Nutzervorgabe): 1) Widerrufene Verträge, 2) Nichtzahlung Erstprämie,
+// 4) Wegfall versichertes Interesse (gesamtes laufendes Jahr) - Quote 3)
+// "Kulanz/Wegfall (erste 6 Monate)" wird nicht im Dashboard angezeigt.
+function parseAkpStornoquoten(wb){
+  let rows=null,subHi=-1,subRow=null,groupRow=null;
+  for(const n of wb.SheetNames){
+    const r=toRows(wb.Sheets[n]);
+    for(let i=1;i<Math.min(r.length,60);i++){
+      const row=r[i]; if(!row) continue;
+      const h=row.map(normHeader);
+      if(h.includes("Bestand")&&h.includes("Produktion")&&h.includes("Quote")){
+        rows=r; subHi=i; subRow=h; groupRow=(r[i-1]||[]).map(normHeader);
+        break;
+      }
+    }
+    if(rows) break;
+  }
+  if(!rows) return null;
+  const quoteCols=[];
+  for(let c=0;c<subRow.length;c++){
+    if(subRow[c]!=="Quote") continue;
+    let g="";
+    for(let k=c;k>=0;k--){ if(groupRow[k]){ g=groupRow[k]; break; } }
+    quoteCols.push({col:c,group:g});
+  }
+  const findQuoteCol=re=>{ const m=quoteCols.find(q=>re.test(q.group)); return m?m.col:-1; };
+  const idxWiderruf=findQuoteCol(/^1\)\s*Widerrufene/i);
+  const idxErstpraemie=findQuoteCol(/^2\)\s*Nichtzahlung\s+Erstprämie/i);
+  const idxWegfall=findQuoteCol(/^4\)\s*Wegfall/i);
+  if(idxWiderruf<0&&idxErstpraemie<0&&idxWegfall<0) return null;
+  const out=[];
+  for(let i=subHi+1;i<rows.length;i++){
+    const r=rows[i]; if(!r) continue;
+    const nr=r[0]; if(nr==null||String(nr).trim()==="") continue;
+    out.push({
+      nr:String(nr).trim(),
+      storno_widerruf_quote:idxWiderruf>-1&&r[idxWiderruf]!=null?num(r[idxWiderruf]):null,
+      storno_erstpraemie_quote:idxErstpraemie>-1&&r[idxErstpraemie]!=null?num(r[idxErstpraemie]):null,
+      storno_wegfall_quote:idxWegfall>-1&&r[idxWegfall]!=null?num(r[idxWegfall]):null,
+    });
+  }
+  return out.length?out:null;
+}
+async function upsertAkpStornoquoten(rows){
+  const CHUNK=500;
+  const now=new Date().toISOString();
+  for(let i=0;i<rows.length;i+=CHUNK){
+    const chunk=rows.slice(i,i+CHUNK).map(r=>({ ...r, storno_quoten_updated_at:now }));
+    const { error }=await sb.from("akp_contacts").upsert(chunk,{onConflict:"nr"});
+    if(error) throw error;
+  }
+}
+// Stornoquoten-Import (Admin-Panel + E-Mail-Import, siehe
+// processPendingImports): schreibt NUR die 3 Quoten-Spalten je AKP-Nr, alle
+// übrigen akp_contacts-Felder (Name, Kontaktdaten, Monatsproduktion, ...)
+// bleiben unangetastet (Postgres UPSERT ... ON CONFLICT DO UPDATE ändert
+// nur die im Payload enthaltenen Spalten).
+async function handleAkpStornoFile(files){
+  if(!files||!files.length) return;
+  if(!(sb&&supaUser)){ toast("Nicht angemeldet."); return; }
+  toast("Stornoquoten-Auswertung wird verarbeitet …");
+  try{
+    const buf=await files[0].arrayBuffer();
+    const wb=XLSX.read(buf,{type:"array",cellDates:true});
+    const rows=parseAkpStornoquoten(wb);
+    if(!rows){ toast("Format nicht erkannt – bitte die Stornoquoten-Auswertung (\"Vermittlerübersicht mit Stornoquoten\") einspielen."); return; }
+    await upsertAkpStornoquoten(rows);
+    await loadAkpContactsIndex();
+    if(akpContactCurrent&&!$("akpContactModal").classList.contains("hidden")){
+      const {data}=await sb.from("akp_contacts").select("*").eq("nr",akpContactCurrent.nr).maybeSingle();
+      if(data){ akpContactCurrent=data; renderAkpStornoSection(); }
+    }
+    render();
+    toast(`Stornoquoten-Auswertung eingespielt ✓ ${fmt(rows.length)} Aktivpartner aktualisiert`);
+  }catch(e){
+    console.error("handleAkpStornoFile failed:",e);
+    toast("Stornoquoten-Import fehlgeschlagen: "+(e.message||e));
   }
 }
 
@@ -3323,7 +3888,7 @@ async function processPendingImports(){
     const { data:rows, error } = await sb.from("pending_imports")
       .select("*").eq("status","pending").order("received_at",{ascending:true});
     if(error||!rows||!rows.length) return;
-    let snapCount=0,segCount=0,segFhCount=0,mieteCount=0,mieteFhCount=0;
+    let snapCount=0,segCount=0,segFhCount=0,mieteCount=0,mieteFhCount=0,dgCount=0,dgFhCount=0,stornoCount=0,stornoAkpCount=0;
     for(const row of rows){
       // Optimistisches "Claimen" (bedingtes Update) - verhindert, dass zwei
       // gleichzeitig geöffnete Tabs dieselbe Mail doppelt verarbeiten.
@@ -3351,9 +3916,27 @@ async function processPendingImports(){
             // (Club.Weiss) sein, ebenfalls per Mail an input@wgaustria.at
             // zulässig (siehe parseMieteReport).
             const parsed=parseMieteReport(wb);
-            if(!parsed) throw new Error("Format nicht erkannt");
-            await upsertMieteData(parsed.byFh);
-            mieteCount++; mieteFhCount+=Object.keys(parsed.byFh).length;
+            if(parsed){
+              await upsertMieteData(parsed.byFh);
+              mieteCount++; mieteFhCount+=Object.keys(parsed.byFh).length;
+            }else{
+              // Auch kein Miete-Format - könnte die (absolut vertrauliche)
+              // Deckungsgrad-Auswertung sein, ebenfalls per Mail an
+              // input@wgaustria.at zulässig (siehe parseDeckungsgrad).
+              const dgRows=parseDeckungsgrad(wb);
+              if(dgRows){
+                await upsertFhDeckungsgrad(dgRows);
+                dgCount++; dgFhCount+=dgRows.length;
+              }else{
+                // Auch keine Deckungsgrad-Auswertung - könnte die
+                // Stornoquoten-Auswertung AKP sein (siehe
+                // parseAkpStornoquoten), ebenfalls per Mail zulässig.
+                const stornoRows=parseAkpStornoquoten(wb);
+                if(!stornoRows) throw new Error("Format nicht erkannt");
+                await upsertAkpStornoquoten(stornoRows);
+                stornoCount++; stornoAkpCount+=stornoRows.length;
+              }
+            }
           }
         }
         await sb.from("pending_imports").update({status:"processed",processed_at:new Date().toISOString()}).eq("id",row.id);
@@ -3375,6 +3958,19 @@ async function processPendingImports(){
       if(fhModalCurrent){ await loadFhContact(fhModalCurrent); renderFhContactView(); renderFhMieteSection(); }
       render();
       toast(`📧 Miete-Daten automatisch eingespielt ✓ ${fmt(mieteFhCount)} Fachhändler aktualisiert`);
+    }
+    if(dgCount){
+      if(fhModalCurrent) renderFhDeckungsgradSection();
+      toast(`📧 Deckungsgrad-Auswertung automatisch eingespielt ✓ ${fmt(dgFhCount)} Fachhändler aktualisiert`);
+    }
+    if(stornoCount){
+      await loadAkpContactsIndex();
+      if(akpContactCurrent&&!$("akpContactModal").classList.contains("hidden")){
+        const {data}=await sb.from("akp_contacts").select("*").eq("nr",akpContactCurrent.nr).maybeSingle();
+        if(data){ akpContactCurrent=data; renderAkpStornoSection(); }
+      }
+      render();
+      toast(`📧 Stornoquoten-Auswertung automatisch eingespielt ✓ ${fmt(stornoAkpCount)} Aktivpartner aktualisiert`);
     }
   }catch(e){ console.error("processPendingImports failed:",e); }
 }
@@ -3446,7 +4042,7 @@ async function loadAkpContactsIndex(){
     for(;;){
       guard++;
       const {data,error}=await sb.from("akp_contacts")
-        .select("nr,vorname,nachname,firma,ort,fh_nr,prod_monthly,prod_monthly_other,poquote_monthly,q3fuer2_monthly,gesperrt_am")
+        .select("nr,vorname,nachname,firma,ort,fh_nr,prod_monthly,prod_monthly_other,poquote_monthly,q3fuer2_monthly,gesperrt_am,storno_widerruf_quote,storno_erstpraemie_quote,storno_wegfall_quote")
         .order("nr")
         .range(from,from+999);
       if(error){ console.error("loadAkpContactsIndex:",error.message||error); break; }
@@ -3587,11 +4183,7 @@ function renderMieteListModal(){
 // 18.08.2026. Ziel 1 (Produktion) für alle 6, Ziel 2+3 (Akquise/Miete) für
 // die vier "klassischen" Außendienstler, Ziel 4+5 (PO-Quote Telekom/
 // Gebrauchtgeräte) nur für Szendi (eigene Zielstruktur, Sondervertrieb).
-const PERF_GOALS_BY_EMPLOYEE = {
-  "Klaus Witting":[1,2,3], "Florian Hasibeder":[1,2,3], "Peter Peißer":[1,2,3], "Helmut Otto":[1,2,3],
-  "Dominik Szendi":[1,4,5],
-  "Thomas Eitzinger":[1]
-};
+let PERF_GOALS_BY_EMPLOYEE = {};
 const PERF_GOAL_TITLES = {
   1:"Persönliches Produktionsziel",
   2:"Persönliches Akquise-Ziel",
@@ -4190,8 +4782,22 @@ async function openPerfAdminModal(){
   await loadPerfActivePeriod();
   renderPerfActivePeriodUI();
   renderPerfAdminYearTabs();
+  renderPerfKiMonthSel();
   await loadPerfAdminReports();
   renderPerfAdminGrid();
+}
+// Monat-Auswahl für den KI-Monatsbericht (Punkt "Performance Dialog: KI-
+// Zusammenfassung Jahres-/Monatsbericht", 01.09.2026) - alle 12 Monate frei
+// wählbar, Jahr kommt aus den bereits vorhandenen "Jahr:"-Tabs (perfAdminYear,
+// wird auch vom Jahresbericht-Button genutzt). Default: der aktuell
+// freigeschaltete Berichtsmonat (meist der mit den meisten abgegebenen
+// Protokollen), falls im gleichen Jahr wie perfAdminYear, sonst der
+// laufende Kalendermonat.
+function renderPerfKiMonthSel(){
+  const active=perfActivePeriod();
+  const now=new Date();
+  const def=(active&&active.year===perfAdminYear)?active.month:(now.getFullYear()===perfAdminYear?now.getMonth()+1:12);
+  $("perfKiMonthSel").innerHTML=MONATE.map((m,i)=>`<option value="${i+1}"${i+1===def?" selected":""}>${m}</option>`).join("");
 }
 // Befüllt die Jahr/Monat-Auswahl für den freigeschalteten Berichtsmonat und
 // zeigt den aktuell aktiven Monat als Text an (siehe perfActivePeriod()).
@@ -4221,7 +4827,7 @@ function renderPerfAdminYearTabs(){
   const years=[new Date().getFullYear()];
   $("perfAdminYearBtns").innerHTML=years.map(y=>`<button data-y="${y}" class="${y===perfAdminYear?"on":""}">${y}</button>`).join("");
   $("perfAdminYearBtns").querySelectorAll("button").forEach(b=>{
-    b.onclick=async()=>{ perfAdminYear=+b.dataset.y; renderPerfAdminYearTabs(); await loadPerfAdminReports(); renderPerfAdminGrid(); };
+    b.onclick=async()=>{ perfAdminYear=+b.dataset.y; renderPerfAdminYearTabs(); renderPerfKiMonthSel(); await loadPerfAdminReports(); renderPerfAdminGrid(); };
   });
 }
 async function loadPerfAdminReports(){
@@ -4471,6 +5077,93 @@ async function exportPerfAnnualSummaryPdf(year){
     pdfSendTarget=null;
   }
 }
+// KI-Monatsbericht (01.09.2026): dieselbe Edge Function wie der Jahresbericht,
+// aber mit zusätzlichem "month"-Parameter - dort verzweigt der Server auf
+// Query/Tool-Schema/Prompt für genau EINEN Monat statt eine Jahres-Trend-
+// Analyse. Antwortform ist deshalb flacher (keine months[]-Unterliste je
+// Mitarbeiter, kein yearSummary), siehe buildMonthlySummaryPdfDoc.
+async function callPerfMonthlySummary(year,month){
+  const { data:{ session } } = await sb.auth.getSession();
+  const res = await fetch(SUPABASE_URL+"/functions/v1/performance-dialog-annual-summary", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+session.access_token },
+    body: JSON.stringify({ year, month })
+  });
+  return await res.json();
+}
+function buildMonthlySummaryPdfDoc(year,month,report){
+  if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)) throw new Error("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals versuchen.");
+  return (async()=>{
+    const nowStr=fmtNowDateTime();
+    const monatLbl=MONATE[month-1]+" "+year;
+    const box=document.createElement("div");
+    box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
+    const empSections=(report.employees||[]).map(emp=>`
+      <div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:14px;font-size:11px">
+        <div style="font-size:15px;font-weight:900;color:#062A3F;margin-bottom:8px">${escapeHtml(emp.employee)}</div>
+        <div style="font-size:11.5px;color:#10202C;white-space:pre-wrap;line-height:1.4">${escapeHtml(emp.summary||"")}</div>
+      </div>`).join("");
+    box.innerHTML=`
+      <div class="pdf-block" style="border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:8px">
+        <div style="font-size:21px;font-weight:900;color:#062A3F">Performance Dialog – KI-Monatsbericht</div>
+        <div style="font-size:12px;color:#5D7284;margin-top:3px">${escapeHtml(monatLbl)} · ${(report.employees||[]).length} Mitarbeiter · Erstellt am: ${nowStr}</div>
+      </div>
+      <div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:14px;font-size:11px;background:#F5F9FC">
+        <div style="font-size:14px;font-weight:900;color:#062A3F;margin-bottom:10px">Unternehmensweite Zusammenfassung ${escapeHtml(monatLbl)}</div>
+        <div style="font-size:11.5px;color:#10202C;white-space:pre-wrap;line-height:1.4">${escapeHtml(report.companySummary||"")}</div>
+      </div>
+      ${empSections}
+    `;
+    document.body.appendChild(box);
+    await new Promise(r=>setTimeout(r,30));
+    try{
+      const blocks=[...box.querySelectorAll(".pdf-block")];
+      const blockEndsBoxPx=blocks.map(b=>b.offsetTop+b.offsetHeight);
+      const canvas=await html2canvas(box,{scale:2,backgroundColor:"#ffffff",useCORS:true,logging:false});
+      const {jsPDF}=window.jspdf;
+      const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+      const pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), margin=10;
+      const imgW=pw-2*margin;
+      const canvasPxPerBoxPx=canvas.width/box.offsetWidth;
+      const blockEndsCanvasPx=blockEndsBoxPx.map(px=>px*canvasPxPerBoxPx);
+      const pageContentPxCanvas=(ph-2*margin)*canvas.width/imgW;
+      let renderedPx=0,pageIdx=0;
+      while(renderedPx<canvas.height-1&&pageIdx<200){
+        let cutoff=Math.min(renderedPx+pageContentPxCanvas,canvas.height);
+        if(cutoff<canvas.height){
+          let best=null;
+          for(const b of blockEndsCanvasPx){ if(b>renderedPx&&b<=cutoff) best=b; }
+          if(best!=null) cutoff=best;
+        }
+        const sliceH=Math.max(1,Math.round(cutoff-renderedPx));
+        const sliceCanvas=document.createElement("canvas");
+        sliceCanvas.width=canvas.width; sliceCanvas.height=sliceH;
+        sliceCanvas.getContext("2d").drawImage(canvas,0,renderedPx,canvas.width,sliceH,0,0,canvas.width,sliceH);
+        const sliceImgH=sliceH*imgW/canvas.width;
+        if(pageIdx>0) pdf.addPage();
+        pdf.addImage(sliceCanvas.toDataURL("image/jpeg",0.95),"JPEG",margin,margin,imgW,sliceImgH);
+        renderedPx+=sliceH; pageIdx++;
+      }
+      const filename="PerformanceDialog_Monatsbericht_KI_"+year+"-"+String(month).padStart(2,"0")+".pdf";
+      return {pdf,filename};
+    }finally{
+      if(box.parentNode) box.parentNode.removeChild(box);
+    }
+  })();
+}
+async function exportPerfMonthlySummaryPdf(year,month){
+  toast("KI-Monatsbericht wird erstellt … das kann bis zu einer Minute dauern.");
+  try{
+    const res=await callPerfMonthlySummary(year,month);
+    if(!res||res.error) throw new Error((res&&res.error)||"unbekannter Fehler");
+    const {pdf,filename}=await buildMonthlySummaryPdfDoc(year,month,res.report);
+    await finalizePdf(pdf,filename);
+  }catch(e){
+    console.error("exportPerfMonthlySummaryPdf failed:",e);
+    toast("KI-Monatsbericht fehlgeschlagen: "+(e.message||e));
+    pdfSendTarget=null;
+  }
+}
 
 // Schreibt den "9-Wochen-Plan erledigt"-Status dauerhaft fest (rastet ein -
 // kein automatisches Zurücksetzen, auch wenn sich Termine/Produktion später
@@ -4555,6 +5248,10 @@ async function loadAll(){
   try{ karteileichenJahre=parseInt(await stGet("karteileichen_jahre"))||3; }catch(e){}
   try{ const r=await stGet("karteileichen_review_fh"); fhKarteileichenReview=r?JSON.parse(r):null; }catch(e){}
   try{ const r=await stGet("karteileichen_review_akp"); akpKarteileichenReview=r?JSON.parse(r):null; }catch(e){}
+  try{ deckungsgradEnabled=(await stGet("deckungsgrad_enabled"))==="1"; }catch(e){}
+  try{ const dgv=await stGet("deckungsgrad_visible_metrics"); if(dgv) dgVisibleMetrics=JSON.parse(dgv); }catch(e){}
+  try{ const erv=await stGet("emp_ranking_enabled"); empRankingEnabled = erv==null ? true : erv==="1"; }catch(e){}
+  try{ stornoquotenEnabled=(await stGet("stornoquoten_enabled"))==="1"; }catch(e){}
   try{ mieteLastImport=await stGet("miete_last_import"); }catch(e){}
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
@@ -4661,7 +5358,7 @@ function render(){
   const s=state.latest;
   $("datenstand").innerHTML=`Auswertung vom <b>${fmtDate(s.date)}</b> · Produktionsstand (Vortag): <b>${fmtDate(s.vortag)}</b> · Ansicht: <b>${currentEmp}</b>`;
   $("secKpiWho").textContent="– "+currentEmp;
-  renderGoals(); renderAkqStaffelBar(); renderMix(); renderGW(); renderPO(); renderSparten();
+  renderGoals(); renderEmpRanking(); renderAkqStaffelBar(); renderMix(); renderGW(); renderPO(); renderSparten();
   renderKPIs(); renderTopFlop(); renderObs(); renderAKP(); renderAKQ();
   renderAkqOhneProd(); renderNeunWochen();
   if($("akpSearchInput")) renderAkpSearch();
@@ -4847,6 +5544,20 @@ function renderGoals(){
       g>0?`Tag ${s.tageIst} von ${s.tageSoll} Arbeitstagen`:(isATv?"kein Monatsziel hinterlegt":`<button class="edit no-print" onclick="openGoalModal(true)" style="background:none;border:none;color:var(--wg-blue);font-weight:700;cursor:pointer;font-size:12px">Jetzt Ziel festlegen →</button>`), g>0&&!isATv,
       g>0?{val:hrMe,lbl:"Monatsende",stand:standM}:null)
   ];
+  // Vorjahresvergleich Monat für Österreich gesamt (Nutzervorgabe
+  // 01.09.2026, "wie bei Mitarbeiter") - card3 zeigt bei AT-gesamt bereits
+  // "PLAN Monat" (beide Infos sind wertvoll), deshalb eine zusätzliche
+  // Karte statt Ersatz. Quelle: ZE_Region (siehe snap.zeAtMonatVJ im
+  // Parser), nicht Region_nach_GL wie bei Mitarbeitern - dort steht kein
+  // AT-Gesamt-Vorjahreswert je Monat zur Verfügung.
+  if(isATv&&s.zeAtMonatVJ!=null){
+    cards.splice(3,0, goalCard("📊 Vorjahresvergleich · "+MONATE[s.monat-1]+"<br><span style='font-weight:600;font-size:11px;color:var(--muted)'>Österreich gesamt · Vorjahresmonat gleicher Zeitraum (ZE_Region)</span>",
+      s.zeAtMonatVJ, at.monat, s.zeAtMonatVJ,
+      `Vorjahr bis Tag ${s.tageIst}: ${fmt(s.zeAtMonatVJ)} Verträge`, false,
+      s.zeAtMonatVJ>0&&s.tageIst>0?{val:hrMe,lbl:"Monatsende",stand:standM,
+        target:s.zeAtMonatVJ/s.tageIst*s.tageSoll,vsLbl:"vom VJ-Monatsende"}:null,
+      {ahead:"▲ über Vorjahr",behind:"▼ unter Vorjahr",target:"Vorjahr"}));
+  }
   // Miete-Kachel (Club.Weiss) - reagiert wie die persönlichen Karten auf den
   // Mitarbeiter-Filter (mieteJahrFor), nicht wie Jahresziel/PLAN Jahr immer
   // auf Österreich gesamt. Soll-Balkenmarker/-Pille und die absolute
@@ -4866,21 +5577,23 @@ function renderGoals(){
     null,
     "Zahlen aus Freitagsreport, letzte Einspielung: "+(fmtWeekdayDate(mieteLastImport)||MIETE_REPORT_STAND_FALLBACK)
   ).replace('class="goal"','class="goal goal-miete" style="cursor:pointer" onclick="openMieteListModal()"');
-  // Nur für Österreich gesamt und die Mitarbeiter mit Club.Weiss-Ziel
-  // anzeigen - Szendi und Eitzinger haben keines (mieteTarget=0), bei ihnen
-  // soll die Kachel komplett ausgeblendet werden statt "kein Jahresziel
-  // hinterlegt" zu zeigen (lt. Nutzervorgabe 18.08.2026).
-  if(isATv||mieteTarget>0) cards.push(mieteCard);
+  // Reihenfolge (Nutzervorgabe 01.09.2026): Persönliches Jahresziel VOR der
+  // Miete-Kachel - deshalb wird hier zuerst das Jahresziel gepusht.
   if(!isATv){
     cards.push(goalCard("🏁 Persönliches Jahresziel "+s.jahr+"<br><span style='font-weight:600;font-size:11px;color:var(--muted)'>"+currentEmp+" · fest hinterlegt</span>",
       persJZ, me.jahr, persJZ*share, `Soll & Hochrechnung saisonal (${Math.round(Q4_ANTEIL*100)} % in Q4)`, false,
       persJZ>0?{val:hrMeJahr,lbl:"Jahresende (saisonal)",stand:standJ}:null));
   }
+  // Nur für Österreich gesamt und die Mitarbeiter mit Club.Weiss-Ziel
+  // anzeigen - Szendi und Eitzinger haben keines (mieteTarget=0), bei ihnen
+  // soll die Kachel komplett ausgeblendet werden statt "kein Jahresziel
+  // hinterlegt" zu zeigen (lt. Nutzervorgabe 18.08.2026).
+  if(isATv||mieteTarget>0) cards.push(mieteCard);
   // AT-Ansicht: 4 WG-Karten + Miete = 5 Karten (passt in die normale
   // 5-spaltige .goals-Grid, kein cols4 mehr nötig). Mitarbeiter-Ansicht: 5 +
   // Persönliches Jahresziel + Miete = 6 Karten -> eigene 3-spaltige
   // (2-zeilige) Variante .cols3, siehe CSS.
-  $("goalCards").classList.toggle("cols3",!isATv);
+  $("goalCards").classList.toggle("cols3", !isATv||cards.length>5);
   $("goalCards").innerHTML=cards.join("");
 }
 // Zählt Staffel-Erreichungen (skaliert auf currentEmp) im aktuell gezeigten
@@ -4901,6 +5614,46 @@ function akqStaffelnInJahr(){
     });
   }
   return {alle,erst};
+}
+// Mitarbeiter-Ranking nach aktueller pers. Jahreszielerreichung (Punkt 1,
+// 01.09.2026) - nur in der Österreich-gesamt-Ansicht sichtbar, zwischen den
+// Ziel-Kacheln und den Akquisestufen. "Sergej Eigenseer" ist bewusst kein
+// employees-Eintrag (Login-User ohne Mitarbeiterseite) und taucht hier
+// deshalb nie auf - kein expliziter Ausschluss im Code nötig. Zielerreichung
+// = ist/ziel*100, exakt dieselbe Formel wie goalCard()s große Prozentzahl -
+// bewusst NICHT pctOf() (das berechnet eine Wachstumsrate zwischen zwei
+// Werten, keine Zielerreichung).
+function renderEmpRanking(){
+  const box=$("empRankingBlock"); if(!box) return;
+  if(!empRankingEnabled){ box.innerHTML=""; return; }
+  if(currentEmp!==AT_GESAMT){ box.innerHTML=""; return; }
+  const s=state.latest; if(!s){ box.innerHTML=""; return; }
+  // Hochrechnung Jahresende (saisonal) - dieselbe Logik wie bei den Ziel-
+  // Kacheln (goalCard()/renderGoals(), hrJahr=at.jahr/share) - Nutzervorgabe
+  // 01.09.2026: Zielzahl, Stand und Hochrechnung (±% zum Ziel) zusätzlich
+  // zur Zielerreichung anzeigen. Als Unterzeile unter dem Namen (nicht als
+  // weitere Spalte VOR dem Balken), damit der Balken nicht schmäler wird.
+  const share=seasonShare(s.vortag,s.jahr);
+  const rows=EMPLOYEES.map(emp=>{
+    const ist=glRow(emp).jahr, ziel=PERS_JAHRESZIELE[emp]||0;
+    const hr=share>0?ist/share:null;
+    const hrDelta=(ziel>0&&hr!=null)?(hr/ziel-1)*100:null;
+    return {emp, ist, ziel, hr, hrDelta, pct: ziel>0?ist/ziel*100:null};
+  }).filter(r=>r.ziel>0).sort((a,b)=>(b.pct??-1)-(a.pct??-1));
+  if(!rows.length){ box.innerHTML=""; return; }
+  box.innerHTML=`<div class="panel" style="margin:14px 0">
+    <h3><span class="dot" style="background:var(--wg-blue)"></span>Mitarbeiter-Ranking · pers. Jahreszielerreichung ${s.jahr}</h3>
+    ${rows.map((r,i)=>`
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0${i<rows.length-1?';border-bottom:1px solid var(--line)':""}">
+        <span style="width:20px;flex:none;font-weight:800;color:var(--muted)">${i+1}.</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700">${escapeHtml(r.emp)}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Ziel ${fmt(r.ziel)} · Stand ${fmt(r.ist)} · Hochr. ${fmt(r.hr)} <span style="color:${r.hrDelta==null?"var(--muted)":r.hrDelta>=0?"var(--pos)":"var(--neg)"};font-weight:700">(${fmtPct(r.hrDelta)})</span></div>
+        </div>
+        <div class="bar" style="flex:2;height:10px"><div class="fill" style="width:${Math.min(r.pct,100)}%;background:${r.pct>=100?"var(--pos)":"var(--wg-blue)"}"></div></div>
+        <b style="width:60px;text-align:right;flex:none">${r.pct.toFixed(1).replace(".",",")+" %"}</b>
+      </div>`).join("")}
+  </div>`;
 }
 function renderAkqStaffelBar(){
   const box=$("akqStaffelBar"); if(!box) return;
@@ -5233,6 +5986,12 @@ function renderObs(){
 }
 
 /* AKP Top/Flop 3 · umschaltbar Woche/Monat/Jahr */
+// Stornoquoten AKP (02.09.2026, "Vermittlerübersicht mit Stornoquoten",
+// siehe parseAkpStornoquoten): Schwellenwerte laut Erklärung in der
+// eingespielten Auswertung selbst - nur die 3 vom Nutzer angeforderten
+// Kennzahlen. Bewusst NUR im AKP-PopUp selbst sichtbar (renderAkpStornoSection),
+// nicht als Badge in den Übersichtslisten (Nutzervorgabe 02.09.2026).
+const AKP_STORNO_THRESHOLDS={widerruf:0.05,erstpraemie:0.10,wegfall:0.20};
 function akpKey(a){ return a.nr||a.name+"@"+a.firma; }
 function renderAKP(){
   const s=state.latest, showGL=currentEmp===AT_GESAMT;
@@ -5532,6 +6291,8 @@ async function openFhModal(fhNr){
       </div>`).join(""):`<div class="empty-note">Keine AKP für diesen Händler in diesem Zeitraum gefunden.</div>`;
   }
   $("fhModal").classList.remove("hidden");
+  $("fhDeckungsgradSection").innerHTML="";
+  renderFhDeckungsgradSection();
   await loadFhContact(fhNr);
   if(fhModalCurrent===fhNr){ renderFhContactView(); renderFhMonthly(); renderFhYearlyTrend(); renderFhStammdatenDiff(); renderFhMieteSection(); renderFhFilialbetriebeSwitcher(); }
 }
@@ -5561,7 +6322,7 @@ function populateFhKooperationSelect(current){
   const opts=["<option value=\"\">–</option>"];
   const known=new Set(KOOPERATION_OPTIONS);
   if(current&&!known.has(current)) opts.push(`<option value="${escapeHtml(current)}">${escapeHtml(current)}</option>`);
-  KOOPERATION_OPTIONS.forEach(k=>opts.push(`<option value="${escapeHtml(k)}">${escapeHtml(k)}</option>`));
+  [...KOOPERATION_OPTIONS].sort((a,b)=>a.localeCompare(b,"de")).forEach(k=>opts.push(`<option value="${escapeHtml(k)}">${escapeHtml(k)}</option>`));
   $("fhKooperationEdit").innerHTML=opts.join("");
 }
 // "Weitere Zuordnung" (Nutzervorgabe 23.08.2026): optionales Zusatzfeld je
@@ -7881,6 +8642,56 @@ function renderFhMieteSection(){
     ${yearlyTbl}
     <div style="margin-top:14px"><span class="ac-lbl">Verkauftes Sortiment</span>${sortimentList}</div>`;
 }
+// Deckungsgrad-Auswertung (01.09.2026, absolut vertraulich): Bestand/
+// Provision/Schäden dürfen als Zahl gezeigt werden, DG1/DG2/DB1/DB2 NIEMALS
+// im Klartext - auch nicht an Admins. Die Datenbankfunktion
+// fh_deckungsgrad_for() (siehe schema.sql) gibt deshalb ausschließlich
+// Ampel-Farbe + Tendenz zurück, nie die Rohwerte selbst - hier wird nur
+// noch dargestellt, es gibt clientseitig keine Rohzahl zu verstecken.
+// Eigener async Ladevorgang (nicht Teil von loadFhContact/fhContactCurrent),
+// deshalb mit eigenem Race-Guard gegen zwischenzeitlich gewechselte FH.
+const DG_AMPEL_COLOR={rot:"var(--neg)",gelb:"#B7791F",gruen:"var(--pos)"};
+const DG_AMPEL_BG={rot:"var(--neg-bg)",gelb:"#FFF3D6",gruen:"var(--pos-bg)"};
+const DG_TREND_ARROW={besser:"▲",schlechter:"▼",gleich:"→"};
+const DG_TREND_COLOR={besser:"var(--pos)",schlechter:"var(--neg)",gleich:"var(--muted)"};
+function dgAmpelPill(label,ampel,trend){
+  if(!ampel) return `<div class="ac-lbl" style="opacity:.5">${label}: keine Daten</div>`;
+  return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0">
+    <span style="flex:1;font-weight:700;font-size:12.5px">${label}</span>
+    <span class="pill" style="background:${DG_AMPEL_BG[ampel]};color:${DG_AMPEL_COLOR[ampel]};font-size:11px;padding:4px 10px">${ampel==="rot"?"🔴":ampel==="gelb"?"🟡":"🟢"} ${ampel}</span>
+    ${trend?`<span style="color:${DG_TREND_COLOR[trend]};font-weight:800;font-size:13px" title="${trend==="gleich"?"unverändert zum Vorjahr":trend+" als Vorjahr"}">${DG_TREND_ARROW[trend]}</span>`:""}
+  </div>`;
+}
+async function renderFhDeckungsgradSection(){
+  const box=$("fhDeckungsgradSection"); if(!box) return;
+  const fhNr=fhModalCurrent;
+  if(!deckungsgradEnabled){ box.innerHTML=""; return; }
+  if(!(sb&&supaUser)||!fhNr) return;
+  try{
+    const { data, error } = await sb.rpc("fh_deckungsgrad_for",{p_fh_nr:fhNr});
+    if(fhModalCurrent!==fhNr) return; // Nutzer hat inzwischen einen anderen Händler geöffnet
+    if(error){ console.error("renderFhDeckungsgradSection:",error.message||error); box.innerHTML=""; return; }
+    const d=data&&data[0];
+    if(!d){ box.innerHTML=""; return; }
+    const pills=[
+      dgVisibleMetrics.includes("dg1")?dgAmpelPill("DG 1",d.dg1_ampel,d.dg1_trend):"",
+      dgVisibleMetrics.includes("dg2")?dgAmpelPill("DG 2",d.dg2_ampel,d.dg2_trend):"",
+      dgVisibleMetrics.includes("db1")?dgAmpelPill("DB 1",d.db1_ampel,d.db1_trend):"",
+      dgVisibleMetrics.includes("db2")?dgAmpelPill("DB 2",d.db2_ampel,d.db2_trend):""
+    ].join("");
+    if(!pills){ box.innerHTML=""; return; }
+    box.innerHTML=`<h4 style="margin:18px 0 4px;color:var(--wg-navy);font-size:13px">Deckungsgrad-Auswertung</h4>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Bestand: <b style="color:var(--wg-navy)">${d.bestand!=null?fmt(d.bestand):"–"}</b> · Provision (lfd. Jahr): <b style="color:var(--wg-navy)">${d.provision_lj!=null?fmt(d.provision_lj)+" €":"–"}</b> · Schäden (lfd. Jahr): <b style="color:var(--wg-navy)">${d.schaeden_lj!=null?fmt(d.schaeden_lj):"–"}${d.schadenbetrag_lj!=null?" ("+fmt(d.schadenbetrag_lj)+" €)":""}</b></div>
+      <div class="ac-card" style="border:1px solid #ECF2F6;border-radius:8px;padding:6px 12px">
+        ${pills}
+      </div>
+      <div style="font-size:10.5px;color:var(--muted);margin-top:6px;font-style:italic">Aus Vertraulichkeitsgründen nur als Ampel (rot/gelb/grün) mit Tendenz zum Vorjahr (▲/▼/→) - kein Rohwert wird angezeigt oder übertragen. Stand: ${d.imported_at?fmtDate(d.imported_at.slice(0,10)):"–"}</div>`;
+  }catch(e){
+    if(fhModalCurrent!==fhNr) return;
+    console.error("renderFhDeckungsgradSection failed:",e);
+    box.innerHTML="";
+  }
+}
 async function toggleFhEdit(on){
   $("fhViewMode").classList.toggle("hidden",on);
   $("fhEditMode").classList.toggle("hidden",!on);
@@ -8466,6 +9277,7 @@ async function openAkpContact(nr,fallbackName){
   renderAkpContactView();
   renderAkpMonthly();
   renderAkpYearlyTrend();
+  renderAkpStornoSection();
   $("acPeerCompare").innerHTML='<div class="empty-note">Vergleichsgruppe wird geladen …</div>';
   if(c.fh_nr){
     try{
@@ -8508,6 +9320,33 @@ function renderAkpContactView(){
   if(isGesperrt) $("acGesperrtText").textContent="Gesperrt am "+fmtDate(c.gesperrt_am.slice(0,10))+" – Name, Kontakt- und Geburtsdatum wurden gelöscht. AKP-Nummer und Produktionszahlen bleiben für Auswertungen erhalten.";
   $("acEditBtn").classList.toggle("hidden",isGesperrt);
   $("acEntsperrenBtn").classList.toggle("hidden",!isGesperrt||myRole!=="admin");
+}
+// Stornoquoten-Abschnitt im AKP-PopUp (siehe parseAkpStornoquoten/ℹ️-Modal
+// #stornoInfoModal für die Erklärung) - für alle Mitarbeiter sichtbar (wenn
+// per Admin-Schalter "Stornoquoten (AKP-PopUp)" aktiviert), rot hervor-
+// gehoben bei Überschreitung des jeweiligen Schwellenwerts. Bewusst NUR hier
+// im PopUp, nicht als Badge in den Übersichtslisten (Nutzervorgabe 02.09.2026).
+function renderAkpStornoSection(){
+  const block=$("acStornoBlock"); if(!block) return;
+  if(!stornoquotenEnabled){ block.classList.add("hidden"); return; }
+  block.classList.remove("hidden");
+  const c=akpContactCurrent;
+  const box=$("acStornoSection"); if(!box) return;
+  const has=c.storno_widerruf_quote!=null||c.storno_erstpraemie_quote!=null||c.storno_wegfall_quote!=null;
+  if(!has){ box.innerHTML=`<div class="empty-note">Keine Stornoquoten-Auswertung vorhanden.</div>`; return; }
+  const row=(label,val,threshold)=>{
+    const flagged=val!=null&&val>threshold;
+    const txt=val!=null?(val*100).toFixed(1).replace(".",",")+" %":"–";
+    return `<div style="display:flex;align-items:center;gap:8px;padding:4px 0">
+      <span style="flex:1;font-weight:700;font-size:12.5px">${label}</span>
+      <span class="pill ${flagged?"neg":""}" style="font-size:11px;padding:3px 9px">${flagged?"🔴 ":""}${txt}</span>
+    </div>`;
+  };
+  box.innerHTML=
+    row("Widerrufene Verträge",c.storno_widerruf_quote,AKP_STORNO_THRESHOLDS.widerruf)+
+    row("Nichtzahlung Erstprämie",c.storno_erstpraemie_quote,AKP_STORNO_THRESHOLDS.erstpraemie)+
+    row("Wegfall versichertes Interesse",c.storno_wegfall_quote,AKP_STORNO_THRESHOLDS.wegfall)+
+    (c.storno_quoten_updated_at?`<div style="font-size:10.5px;color:var(--muted);margin-top:4px;font-style:italic">Eingespielt am ${fmtDate(c.storno_quoten_updated_at.slice(0,10))}</div>`:"");
 }
 // Jüngster Monatsstand eines *_monthly-Quoten-Objekts innerhalb eines Jahres
 // (Stand per Monatsultimo, siehe Migrationskommentar) - für Anzeige/Fallback,
@@ -8984,13 +9823,34 @@ document.addEventListener("click",e=>{
 
 /* Top 20 AKQ · Filter: Akquise-Jahrgang */
 let akqJahrFilter="alle";
+let akqShowAll=false;
 function renderAKQ(){
   const s=state.latest, showGL=currentEmp===AT_GESAMT;
-  $("akqWho").textContent=currentEmp+" · nach Produktion "+s.jahr+(akqJahrFilter==="alle"?"":" · Akquise "+akqJahrFilter);
-  const rows=s.akq.filter(a=>currentEmp===AT_GESAMT||a.emp===currentEmp)
-    .filter(a=>akqJahrFilter==="alle"||a.beginnJahr===+akqJahrFilter)
-    .sort((a,b)=>b.p2026-a.p2026||b.kw-a.kw).slice(0,20);
+  $("akqYearTabs").classList.toggle("hidden",akqShowAll);
+  let rows=s.akq.filter(a=>currentEmp===AT_GESAMT||a.emp===currentEmp);
+  if(akqShowAll){
+    // Alle akquiserelevanten FH, sortiert nach Vortagsproduktion (aus
+    // state.latest.fh[nr].vt - steht NICHT in akq[] selbst) - bewusst ohne
+    // die sonstige Top-20-Begrenzung, um jeden Akquise-Produzenten des
+    // Vortags sehen zu können (Nutzervorgabe 01.09.2026).
+    $("akqWho").textContent=currentEmp+" · alle · nach Vortagsproduktion";
+    rows=rows.sort((a,b)=>(s.fh[b.nr]?.vt||0)-(s.fh[a.nr]?.vt||0));
+  }else{
+    $("akqWho").textContent=currentEmp+" · nach Produktion "+s.jahr+(akqJahrFilter==="alle"?"":" · Akquise "+akqJahrFilter);
+    rows=rows.filter(a=>akqJahrFilter==="alle"||a.beginnJahr===+akqJahrFilter)
+      .sort((a,b)=>b.p2026-a.p2026||b.kw-a.kw).slice(0,20);
+  }
   if(!rows.length){ $("akqList").innerHTML=`<div class="empty-note">Keine Akquisekunden für diese Ansicht in der AKQ-Liste.</div>`; return; }
+  if(akqShowAll){
+    $("akqList").innerHTML=`<table><thead><tr><th></th><th>Akquisekunde${showGL?" / Betreuer":""}</th><th class="r">${s.jahr}</th><th class="r">Vortag</th></tr></thead><tbody>`+
+      rows.map((r,i)=>{ const vt=s.fh[r.nr]?.vt||0; return `<tr>
+      <td><span class="rank">${i+1}</span></td>
+      <td><b><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.nr||"")}">${escapeHtml(r.name)}</button></b><br><span class="betr">${escapeHtml(r.nr)} · ${escapeHtml(r.ort)}${showGL?" · "+escapeHtml(r.emp||r.glRaw||"–"):""}${r.produzent?"":" · <span style='color:var(--neg)'>kein Produzent</span>"}</span></td>
+      <td class="r" style="font-weight:900;font-size:14px">${fmt(r.p2026)}</td>
+      <td class="r">${vt>0?`<span class="pill pos">+${fmt(vt)}</span>`:`<span class="pill neu">0</span>`}</td>
+    </tr>`;}).join("")+`</tbody></table>`;
+    return;
+  }
   const max=Math.max(rows[0].p2026,1);
   $("akqList").innerHTML=`<table><thead><tr><th></th><th>Akquisekunde${showGL?" / Betreuer":""}</th><th class="r">${s.jahr}</th><th class="r">akt. KW</th></tr></thead><tbody>`+
     rows.map((r,i)=>`<tr>
@@ -9092,10 +9952,22 @@ function renderPO(){
 /* Sparten lfd. Monat: Optik (Brille), Akustik (Hörgeräte), Uhren, Küchen */
 function renderSparten(){
   const s=state.latest;
-  if(!s.sparten){ $("spBody").innerHTML=`<div class="empty-note">Sparten-Daten in dieser Einspielung nicht enthalten – bitte Auswertung mit dieser Version neu einspielen.</div>`; return; }
-  const rec=s.sparten[glKey(currentEmp)];
+  const rec=s.sparten&&s.sparten[glKey(currentEmp)];
   const defs=[["👓 Optik (Brille)","brille"],["👂 Akustik (Hörgeräte)","hoer"],["⌚ Uhren","uhren"],["🍳 Küchen","kueche"]];
-  if(!rec){ $("spBody").innerHTML=`<div class="empty-note">Für ${currentEmp} in der Sparten-Tabelle (Region_nach_GL) nicht angeführt.</div>`; return; }
+  // Bike nur in der Gesamtübersicht - kommt aus ZE_Region (nicht aus der
+  // Region_nach_GL-Sparten-Nebentabelle wie die anderen 4) und liegt daher
+  // nur als AT-Gesamtwert vor, keine Aufschlüsselung je GL/FH möglich.
+  if(currentEmp===AT_GESAMT) defs.push(["🚲 Bike","bike"]);
+  // Bugfix 01.09.2026: die Region_nach_GL-Sparten-Nebentabelle (Brille/
+  // Hörgeräte/Küche/Uhren) enthält im aktuellen Tagesreport-Format nur noch
+  // eine verwaiste Spaltenüberschrift ohne Datenzeilen dahinter - der
+  // Label-Suchcode im Parser "findet" diese trotzdem und hinterlässt ein
+  // leeres {} statt gar keines Eintrags. Ein bloßes "gibt es rec?"-Check
+  // (früher: if(!rec)) erkennt das nicht und zeigte fälschlich ein leeres
+  // Widget statt des Hinweises. Deshalb hier zusätzlich prüfen, ob rec
+  // tatsächlich mindestens einen Wert für eine der angezeigten Sparten hat.
+  const hasAny=rec&&defs.some(([,k])=>rec[k]!=null);
+  if(!hasAny){ $("spBody").innerHTML=`<div class="empty-note">Sparten-Daten in dieser Einspielung nicht enthalten – bitte Auswertung mit dieser Version neu einspielen.</div>`; return; }
   $("spBody").innerHTML=defs.map(([lbl,k])=>{
     const v=rec[k];
     const txt=(v==null)?"–":(typeof v==="number"?fmt(v):`<span style="font-size:11px;color:var(--muted)">${v}</span>`);
@@ -9152,7 +10024,7 @@ function renderNeunWochen(){
       <td><b><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(a.nr||"")}">${escapeHtml(a.name)}</button></b><br><span class="betr">${escapeHtml(a.nr)} · ${escapeHtml(a.ort)}${showGL?" · "+escapeHtml(a.emp||a.glRaw||"–"):""}</span></td>
       <td class="r" style="font-weight:800;${a.resttage<=14?"color:var(--neg)":""}">${a.resttage}</td>
       <td>${fmtDate(a.beginn)}</td>
-      <td class="r" style="font-weight:800;${a.termine<5?"color:var(--neg)":""}">${fmt(a.termine)} <span class="betr">(${fmt(a.besP)} p. / ${fmt(a.besT)} tel.)</span></td>
+      <td class="r" style="font-weight:800;${a.termine<5?"color:var(--neg)":""}">${fmt(a.termine)} <span class="betr">(${fmt(a.besP)} p. / ${fmt(a.besT)} t. / ${fmt(a.besG)} g.)</span></td>
       <td class="r" style="font-weight:800;${(a.p2026||0)<20?"color:var(--neg)":""}">${fmt(a.p2026)}</td>
     </tr>`).join("")+`</tbody></table>
     <div class="mix-sub" style="margin-top:6px">Resttage = 63 minus Tage seit Beginn · ⚠️ = weniger als 5 Termine (persönlich + telefonisch) UND weniger als 20 Verträge</div>`;
@@ -9368,6 +10240,17 @@ $("auswertungEnabledChk").onchange=toggleAuswertungEnabled;
 $("fhZielEnabledChk").onchange=toggleFhZielEnabled;
 $("fhSearchEnabledChk").onchange=toggleFhSearchEnabled;
 $("akpPeerCompareEnabledChk").onchange=toggleAkpPeerCompareEnabled;
+$("deckungsgradEnabledChk").onchange=toggleDeckungsgradEnabled;
+$("deckungsgradVisibilityBtn").onclick=openDeckungsgradVisibilityModal;
+$("dgVisAllChk").onchange=()=>{
+  const on=$("dgVisAllChk").checked;
+  document.querySelectorAll(".dgVisChk").forEach(b=>{ b.checked=on; });
+};
+document.querySelectorAll(".dgVisChk").forEach(b=>{ b.onchange=syncDgVisAllChk; });
+$("dgVisCancel").onclick=()=>$("deckungsgradVisibilityModal").classList.add("hidden");
+$("dgVisSave").onclick=saveDeckungsgradVisibility;
+$("empRankingEnabledChk").onchange=toggleEmpRankingEnabled;
+$("stornoquotenEnabledChk").onchange=toggleStornoquotenEnabled;
 $("perfDialogAdminEnabledChk").onchange=togglePerfDialogAdminEnabled;
 $("chefgespraechBtn").onclick=openChefgespraechModal;
 $("chefgespraechClose").onclick=()=>$("chefgespraechModal").classList.add("hidden");
@@ -9471,20 +10354,42 @@ $("perfAnnualSummaryBtn").onclick=()=>{
   if(!confirm("KI-Jahresbericht "+perfAdminYear+" jetzt erstellen?\n\nFasst alle im gewählten Jahr abgegebenen Performance-Dialog-Protokolle je Mitarbeiter/Monat sowie unternehmensweit zusammen. Dies kann bis zu einer Minute dauern und ersetzt NICHT die einzelnen Monatsprotokolle.")) return;
   openPdfTargetChoice(()=>exportPerfAnnualSummaryPdf(perfAdminYear));
 };
+$("perfMonthlySummaryBtn").onclick=()=>{
+  const month=+$("perfKiMonthSel").value;
+  const monatLbl=MONATE[month-1]+" "+perfAdminYear;
+  if(!confirm("KI-Monatsbericht "+monatLbl+" jetzt erstellen?\n\nFasst alle für "+monatLbl+" abgegebenen Performance-Dialog-Protokolle je Mitarbeiter sowie unternehmensweit zusammen. Dies kann bis zu einer Minute dauern und ersetzt NICHT die einzelnen Monatsprotokolle.")) return;
+  openPdfTargetChoice(()=>exportPerfMonthlySummaryPdf(perfAdminYear,month));
+};
 $("perfDialogEnabledChk").onchange=togglePerfDialogEnabled;
 $("perfActivePeriodSetBtn").onclick=async()=>{
   const year=+$("perfActivePeriodYearSel").value, month=+$("perfActivePeriodMonthSel").value;
   await setPerfActivePeriod(year,month);
   renderPerfActivePeriodUI();
 };
-$("adminUploadBtn").onclick=pickFiles;
-$("adminAkqUploadBtn").onclick=()=>$("akqFileInput").click();
 $("akqFileInput").onchange=async e=>{ if(e.target.files.length){ await handleAkqStaffelFile([...e.target.files]); e.target.value=""; } };
-$("adminFhSegmentUploadBtn").onclick=()=>$("fhSegmentFileInput").click();
 $("fhSegmentFileInput").onchange=async e=>{ if(e.target.files.length){ await handleFhSegmentFile([...e.target.files]); e.target.value=""; } };
-$("adminMieteUploadBtn").onclick=()=>$("mieteFileInput").click();
 $("mieteFileInput").onchange=async e=>{ if(e.target.files.length){ await handleMieteFile([...e.target.files]); e.target.value=""; } };
+$("dgFileInput").onchange=async e=>{ if(e.target.files.length){ await handleDeckungsgradFile([...e.target.files]); e.target.value=""; } };
+$("stornoFileInput").onchange=async e=>{ if(e.target.files.length){ await handleAkpStornoFile([...e.target.files]); e.target.value=""; } };
+// Admin: "Datei einspielen"-Auswahl-PopUp (bündelt die früher 4 einzelnen
+// Einspielen-Buttons, Nutzervorgabe 01.09.2026 - Admin-Panel wurde
+// zunehmend unübersichtlich).
+$("adminImportBtn").onclick=()=>$("adminImportChoiceModal").classList.remove("hidden");
+$("adminImportChoiceClose").onclick=()=>$("adminImportChoiceModal").classList.add("hidden");
+$("adminImportChooseTagesreport").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); pickFiles(); };
+$("adminImportChooseAkq").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); $("akqFileInput").click(); };
+$("adminImportChooseFhSegment").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); $("fhSegmentFileInput").click(); };
+$("adminImportChooseMiete").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); $("mieteFileInput").click(); };
+$("adminImportChooseDg").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); $("dgFileInput").click(); };
+$("adminImportChooseStorno").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); $("stornoFileInput").click(); };
+// Admin: Mitarbeiterverwaltung als eigenes PopUp (vorher inline im
+// Admin-Panel, Nutzervorgabe 01.09.2026).
+$("adminEmployeesBtn").onclick=()=>{ $("adminEmployeesModal").classList.remove("hidden"); loadEmployeesAdmin(); };
+$("adminFunctionsBtn").onclick=()=>$("adminFunctionsModal").classList.remove("hidden");
+$("adminFunctionsClose").onclick=()=>$("adminFunctionsModal").classList.add("hidden");
+$("adminEmployeesClose").onclick=()=>$("adminEmployeesModal").classList.add("hidden");
 $("adCreateBtn").onclick=createAdminUser;
+$("empCreateBtn").onclick=createEmployee;
 $("settingsBtn").onclick=showSettingsModal;
 $("settingsClose").onclick=hideSettingsModal;
 $("setPwBtn").onclick=doSettingsPasswordChange;
@@ -9552,6 +10457,7 @@ document.querySelectorAll("#akpTabs button").forEach(b=>{
 document.querySelectorAll("#akqYearTabs button").forEach(b=>{
   b.onclick=()=>{ document.querySelectorAll("#akqYearTabs button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); akqJahrFilter=b.dataset.y; renderAKQ(); };
 });
+$("akqShowAllBtn").onclick=()=>{ akqShowAll=!akqShowAll; $("akqShowAllBtn").classList.toggle("on",akqShowAll); renderAKQ(); };
 $("akpMoreBtn").onclick=()=>{ fhAkpFilter=null; openAkpModal(); };
 $("akpSearchInput").oninput=()=>renderAkpSearch();
 $("fhSearchInput").oninput=()=>renderFhSearch();
@@ -9564,6 +10470,8 @@ $("amPdfBtn").onclick=()=>openPdfTargetChoice(()=>exportAkpTopFlopPdf(),fhAkpFil
 $("aqmClose").onclick=()=>$("akqStaffelnModal").classList.add("hidden");
 $("aqmPdfBtn").onclick=()=>openPdfTargetChoice(()=>exportAkqStaffelnPdf());
 $("acClose").onclick=()=>$("akpContactModal").classList.add("hidden");
+$("acStornoInfoBtn").onclick=()=>$("stornoInfoModal").classList.remove("hidden");
+$("stornoInfoClose").onclick=()=>$("stornoInfoModal").classList.add("hidden");
 $("fhClose").onclick=()=>$("fhModal").classList.add("hidden");
 // fhModal bleibt bewusst offen (nicht ausblenden!) - akpModal legt sich als
 // Unter-PopUp darüber (DOM-Reihenfolge sorgt für die richtige Stapelung), so
@@ -9641,11 +10549,27 @@ document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==
 window.addEventListener("pageshow",e=>{ if(e.persisted&&hasData()) refreshData(true); });
 
 /* ---------- Init ---------- */
-(async function init(){
+// Baut das Haupt-Mitarbeiter-Dropdown - ersetzt den früheren, direkt in
+// init() eingebetteten Aufbau. Muss NACH initAuth() (myRole bekannt) UND
+// NACH loadEmployees() (EMPLOYEES/ADMIN_ONLY_EMPLOYEES befüllt) laufen,
+// deshalb eigene Funktion statt Inline-Code in init(). Admin-only Einträge
+// (Punkt 9) werden per DOM-Gate statt CSS-Verstecken ausgeblendet - kein
+// Risiko, dass sie über DevTools/CSS für Nicht-Admins sichtbar werden.
+function buildMitarbeiterDropdown(){
   const sel=$("mitarbeiter");
+  sel.innerHTML="";
   [AT_GESAMT,...EMPLOYEES].forEach(n=>{ const o=document.createElement("option"); o.value=n; o.textContent=n; sel.appendChild(o); });
+  if(myRole==="admin"&&ADMIN_ONLY_EMPLOYEES.length){
+    const grp=document.createElement("optgroup"); grp.label="Admin: Analyse";
+    ADMIN_ONLY_EMPLOYEES.forEach(a=>{ const o=document.createElement("option"); o.value=a.name; o.textContent=a.name; grp.appendChild(o); });
+    sel.appendChild(grp);
+  }
+}
+(async function init(){
   const authed = await initAuth();
   if(authed){
+    await loadEmployees();
+    buildMitarbeiterDropdown();
     await loadAll(); showRoleBadge(); render();
     await Promise.all([loadAkpContactsIndex(), loadFhContactsIndicesAll()]);
     await processPendingImports();

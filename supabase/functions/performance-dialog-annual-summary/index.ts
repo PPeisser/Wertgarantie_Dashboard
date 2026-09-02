@@ -1,10 +1,16 @@
-// Performance Dialog: KI-gestützter Jahresbericht (Admin-Only, on-demand).
-// Fasst alle im gewählten Jahr abgegebenen Performance-Dialog-Protokolle
-// zusammen und gleicht Monate/Mitarbeiter ab - ZUSÄTZLICH zu den
-// bestehenden Einzel-/Monatsprotokollen, ersetzt diese nicht (siehe
-// Nutzervorgabe 22.08.2026). Nutzt die Anthropic Messages API mit
-// erzwungenem Tool-Call, damit die Antwort garantiert dem erwarteten
+// Performance Dialog: KI-gestützter Jahres-/Monatsbericht (Admin-Only,
+// on-demand). Fasst die im gewählten Zeitraum abgegebenen Performance-
+// Dialog-Protokolle zusammen und gleicht Monate/Mitarbeiter ab -
+// ZUSÄTZLICH zu den bestehenden Einzel-/Monatsprotokollen, ersetzt diese
+// nicht (siehe Nutzervorgabe 22.08.2026). Nutzt die Anthropic Messages API
+// mit erzwungenem Tool-Call, damit die Antwort garantiert dem erwarteten
 // JSON-Schema entspricht (keine Freitext-Parsing-Fehler).
+//
+// Zeitraum (Nutzervorgabe 01.09.2026): optionaler "month"-Parameter im
+// Request-Body schaltet von "ganzes Jahr, Trend über alle Monate" auf
+// "genau ein Monat" um - dafür werden Query/Tool-Schema/Prompt/Response-
+// Form unten jeweils zwischen den beiden Modi verzweigt. Kein Monat
+// angegeben -> unverändertes Jahresbericht-Verhalten (Abwärtskompatibilität).
 //
 // Auth: normale Nutzer-Session (Authorization-Header), serverseitig auf
 // role="admin" geprüft - anders als dashboard-mailer/performance-dialog-
@@ -174,6 +180,36 @@ const REPORT_TOOL = {
   },
 };
 
+// Monatsbericht-Variante (01.09.2026): flacher als REPORT_TOOL - genau ein
+// Monat, daher kein months[]-Array je Mitarbeiter und kein Jahres-Trend
+// (yearSummary). companySummary bezieht sich hier nur auf diesen einen Monat.
+const MONTHLY_REPORT_TOOL = {
+  name: "generate_monthly_report",
+  description: "Erstellt den strukturierten Performance-Dialog-Monatsbericht für genau einen Monat.",
+  input_schema: {
+    type: "object",
+    properties: {
+      employees: {
+        type: "array",
+        description: "Ein Eintrag je Mitarbeiter mit abgegebenem Protokoll in diesem Monat.",
+        items: {
+          type: "object",
+          properties: {
+            employee: { type: "string" },
+            summary: { type: "string", description: "Konkrete Analyse dieses Mitarbeiters für diesen Monat (2-4 Sätze): Kennzahlen-Stand, was aus den Antworten hervorsticht, ggf. Unterstützungsbedarf." },
+          },
+          required: ["employee", "summary"],
+        },
+      },
+      companySummary: {
+        type: "string",
+        description: "Unternehmensweite Zusammenfassung über alle Mitarbeiter für DIESEN EINEN Monat (1-3 Absätze): gemeinsame Muster, Unterstützungsbedarf, auffällige Unterschiede zwischen Mitarbeitern.",
+      },
+    },
+    required: ["employees", "companySummary"],
+  },
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS_HEADERS });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -197,12 +233,22 @@ Deno.serve(async (req) => {
   try { body = await req.json(); } catch { return json({ error: "Ungültiger Body" }, 400); }
   const year = Number(body.year);
   if (!year || year < 2000 || year > 3000) return json({ error: "Ungültiges Jahr" }, 400);
+  // month ist optional (01.09.2026) - vorhanden -> Monatsbericht-Modus,
+  // sonst unverändertes Jahresbericht-Verhalten.
+  const monthRaw = body.month;
+  const month = monthRaw == null || monthRaw === "" ? null : Number(monthRaw);
+  if (month != null && (!Number.isInteger(month) || month < 1 || month > 12)) {
+    return json({ error: "Ungültiger Monat" }, 400);
+  }
 
-  const { data: reports, error: repErr } = await admin
-    .from("performance_dialog_reports").select("*").eq("year", year).eq("is_draft", false).order("employee").order("month");
+  let reportsQuery = admin
+    .from("performance_dialog_reports").select("*").eq("year", year).eq("is_draft", false);
+  if (month != null) reportsQuery = reportsQuery.eq("month", month);
+  const { data: reports, error: repErr } = await reportsQuery.order("employee").order("month");
   if (repErr) return json({ error: repErr.message }, 500);
+  const zeitraumLbl = month != null ? `${MONATE[month - 1]} ${year}` : `${year}`;
   if (!reports || !reports.length) {
-    return json({ error: `Für ${year} liegen noch keine Performance-Dialog-Protokolle vor.` }, 400);
+    return json({ error: `Für ${zeitraumLbl} liegen noch keine Performance-Dialog-Protokolle vor.` }, 400);
   }
 
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
@@ -214,22 +260,36 @@ Deno.serve(async (req) => {
   const tokenList = employeeList.map((n) => tokenOf.get(n));
   const promptBody = reports.map((r) => formatReportForPrompt(r, tokenOf)).join("\n\n---\n\n");
 
-  const systemPrompt =
-    `Du erstellst einen internen Jahresbericht für das Wertgarantie Performance Dashboard auf Basis der ` +
-    `monatlichen "Performance Dialog"-Protokolle von Vertriebsmitarbeitern. Jedes Protokoll enthält System-` +
-    `Kennzahlen zu den persönlichen Zielen des Monats sowie vier Freitext-Antworten des Mitarbeiters. ` +
-    `Analysiere die Daten sachlich und konkret, erkenne Muster/Trends über die Monate hinweg (z.B. wiederkehrende ` +
-    `Themen, Verbesserung/Verschlechterung der Zielerreichung, wiederholt genannter Unterstützungsbedarf). ` +
-    `Schreibe auf Deutsch, professionell, prägnant, ohne Floskeln. Gehe NUR auf Monate/Mitarbeiter ein, für die ` +
-    `tatsächlich Protokolle vorliegen - erfinde nichts für fehlende Monate. Die echten Mitarbeiternamen werden ` +
-    `dir aus Datenschutzgründen NICHT mitgeteilt - jeder Mitarbeiter ist ausschließlich über einen Platzhalter ` +
-    `wie "MITARBEITER_1" referenziert. Verwende in deiner GESAMTEN Antwort (inkl. "employee"-Feldern) ` +
-    `ausschließlich diese Platzhalter und erfinde oder rekonstruiere KEINE echten Namen. Antworte ausschließlich ` +
-    `über das Tool "generate_annual_report".`;
+  const systemPrompt = month != null
+    ? `Du erstellst einen internen Monatsbericht für das Wertgarantie Performance Dashboard auf Basis der ` +
+      `"Performance Dialog"-Protokolle von Vertriebsmitarbeitern für GENAU EINEN Monat. Jedes Protokoll enthält ` +
+      `System-Kennzahlen zu den persönlichen Zielen des Monats sowie vier Freitext-Antworten des Mitarbeiters. ` +
+      `Analysiere die Daten sachlich und konkret - Kennzahlen-Stand, was aus den Antworten hervorsticht, ggf. ` +
+      `Unterstützungsbedarf. Da nur ein Monat vorliegt, gibt es KEINEN Trend über mehrere Monate - erfinde keinen. ` +
+      `Schreibe auf Deutsch, professionell, prägnant, ohne Floskeln. Gehe NUR auf Mitarbeiter ein, für die ` +
+      `tatsächlich ein Protokoll vorliegt. Die echten Mitarbeiternamen werden dir aus Datenschutzgründen NICHT ` +
+      `mitgeteilt - jeder Mitarbeiter ist ausschließlich über einen Platzhalter wie "MITARBEITER_1" referenziert. ` +
+      `Verwende in deiner GESAMTEN Antwort (inkl. "employee"-Feldern) ausschließlich diese Platzhalter und erfinde ` +
+      `oder rekonstruiere KEINE echten Namen. Antworte ausschließlich über das Tool "generate_monthly_report".`
+    : `Du erstellst einen internen Jahresbericht für das Wertgarantie Performance Dashboard auf Basis der ` +
+      `monatlichen "Performance Dialog"-Protokolle von Vertriebsmitarbeitern. Jedes Protokoll enthält System-` +
+      `Kennzahlen zu den persönlichen Zielen des Monats sowie vier Freitext-Antworten des Mitarbeiters. ` +
+      `Analysiere die Daten sachlich und konkret, erkenne Muster/Trends über die Monate hinweg (z.B. wiederkehrende ` +
+      `Themen, Verbesserung/Verschlechterung der Zielerreichung, wiederholt genannter Unterstützungsbedarf). ` +
+      `Schreibe auf Deutsch, professionell, prägnant, ohne Floskeln. Gehe NUR auf Monate/Mitarbeiter ein, für die ` +
+      `tatsächlich Protokolle vorliegen - erfinde nichts für fehlende Monate. Die echten Mitarbeiternamen werden ` +
+      `dir aus Datenschutzgründen NICHT mitgeteilt - jeder Mitarbeiter ist ausschließlich über einen Platzhalter ` +
+      `wie "MITARBEITER_1" referenziert. Verwende in deiner GESAMTEN Antwort (inkl. "employee"-Feldern) ` +
+      `ausschließlich diese Platzhalter und erfinde oder rekonstruiere KEINE echten Namen. Antworte ausschließlich ` +
+      `über das Tool "generate_annual_report".`;
 
-  const userPrompt =
-    `Jahr: ${year}\nMitarbeiter mit Protokollen: ${tokenList.join(", ")}\n\n` +
-    `Rohdaten aller Protokolle dieses Jahres:\n\n${promptBody}`;
+  const userPrompt = month != null
+    ? `Monat: ${zeitraumLbl}\nMitarbeiter mit Protokollen: ${tokenList.join(", ")}\n\n` +
+      `Rohdaten aller Protokolle dieses Monats:\n\n${promptBody}`
+    : `Jahr: ${year}\nMitarbeiter mit Protokollen: ${tokenList.join(", ")}\n\n` +
+      `Rohdaten aller Protokolle dieses Jahres:\n\n${promptBody}`;
+
+  const tool = month != null ? MONTHLY_REPORT_TOOL : REPORT_TOOL;
 
   let aiRes: Response;
   try {
@@ -245,8 +305,8 @@ Deno.serve(async (req) => {
         max_tokens: 8000,
         system: systemPrompt,
         messages: [{ role: "user", content: userPrompt }],
-        tools: [REPORT_TOOL],
-        tool_choice: { type: "tool", name: "generate_annual_report" },
+        tools: [tool],
+        tool_choice: { type: "tool", name: tool.name },
       }),
     });
   } catch (e) {
@@ -265,7 +325,8 @@ Deno.serve(async (req) => {
   // Platzhalter erst jetzt, server-seitig vor der Antwort ans Dashboard,
   // wieder durch die echten Namen ersetzen (siehe Pseudonymisierungs-Hinweis
   // oben). Laengere Tokens zuerst (MITARBEITER_10 vor MITARBEITER_1), damit
-  // keine Teilersetzung einen laengeren Token zerstoert.
+  // keine Teilersetzung einen laengeren Token zerstoert. Gilt fuer beide
+  // Modi (Jahres- und Monatsbericht).
   const reverseTokens = [...tokenOf.entries()].sort((a, b) => b[1].length - a[1].length);
   const report = deepReplace(toolUse.input, (s: string) => {
     let out = s;
@@ -273,5 +334,5 @@ Deno.serve(async (req) => {
     return out;
   });
 
-  return json({ ok: true, year, report });
+  return json({ ok: true, year, month, report });
 });
