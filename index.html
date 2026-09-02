@@ -3343,11 +3343,19 @@ function parseDeckungsgrad(wb){
   }
   return out.length?out:null;
 }
+// Schreibt NICHT direkt per .upsert() auf fh_deckungsgrad, sondern über die
+// security-definer RPC fh_deckungsgrad_upsert() (siehe schema.sql): die
+// Tabelle hat bewusst KEINE select-Policy (nicht mal für Admins), ein
+// direkter Client-Upsert verlangt aber implizit eine RETURNING-Klausel und
+// schlägt deshalb IMMER mit "violates row-level security policy" fehl,
+// unabhängig davon ob der Aufrufer Admin ist (Bug-Report 02.09.2026, per
+// SQL-Test verifiziert - kein Auth-/Rollenproblem). Die RPC gibt bewusst
+// nichts zurück (returns void) und prüft is_admin() serverseitig selbst.
 async function upsertFhDeckungsgrad(rows){
   const CHUNK=500;
   for(let i=0;i<rows.length;i+=CHUNK){
-    const chunk=rows.slice(i,i+CHUNK).map(r=>({ ...r, imported_by:supaUser.id, imported_at:new Date().toISOString() }));
-    const { error }=await sb.from("fh_deckungsgrad").upsert(chunk,{onConflict:"fh_nr"});
+    const chunk=rows.slice(i,i+CHUNK);
+    const { error }=await sb.rpc("fh_deckungsgrad_upsert",{rows:chunk});
     if(error) throw error;
   }
 }
