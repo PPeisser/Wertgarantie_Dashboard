@@ -966,6 +966,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div id="fhYearlyTrend"></div>
     <div id="fhAkqStaffelBlock"></div>
     <div id="fhMieteSection"></div>
+    <div id="fhDeckungsgradSection"></div>
 
     <div class="actions" style="justify-content:flex-start;margin-top:18px;margin-bottom:10px">
       <button class="btn btn-blue" id="fhTopFlopBtn">Top &amp; Flop AKP dieses Händlers ⤢</button>
@@ -1307,6 +1308,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <input type="file" id="akqFileInput" accept=".xlsx,.xls" class="hidden">
     <input type="file" id="fhSegmentFileInput" accept=".xlsx,.xls" class="hidden">
     <input type="file" id="mieteFileInput" accept=".xlsx,.xls" class="hidden">
+    <input type="file" id="dgFileInput" accept=".xlsx,.xls" class="hidden">
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Funktionen aktivieren</h4>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -1370,6 +1372,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <button class="btn btn-blue" id="adminImportChooseAkq" style="text-align:left">🎯 Akquisestaffeln</button>
       <button class="btn btn-blue" id="adminImportChooseFhSegment" style="text-align:left">🗂️ Händlersegmentierung</button>
       <button class="btn btn-blue" id="adminImportChooseMiete" style="text-align:left">🏠 Miete</button>
+      <button class="btn btn-blue" id="adminImportChooseDg" style="text-align:left">🛡️ Deckungsgrad <span style="font-weight:600;opacity:.75;font-size:12px">(vertraulich)</span></button>
     </div>
     <button class="btn btn-ghost" id="adminImportChoiceClose" style="width:100%">Abbrechen</button>
   </div>
@@ -3133,6 +3136,79 @@ async function handleFhSegmentFile(files){
   }
 }
 
+// Deckungsgrad-Auswertung (01.09.2026, absolut vertraulich) - ein Blatt mit
+// Kopfzeile (Sheetname variiert, z.B. "Seite1" - deshalb per Header-Signatur
+// "FH Nr" + "DG 1 LJ bis VM" gesucht statt per festem Blattnamen), eine
+// Zeile je Fachhändler. Werte werden 1:1 (als Bruch, nicht ×100) übernommen -
+// dieselbe Konvention wie überall sonst im Dashboard (z.B. poQuote).
+function parseDeckungsgrad(wb){
+  let ws=null,rows=null,hi=-1,header=null;
+  for(const n of wb.SheetNames){
+    const r=toRows(wb.Sheets[n]);
+    for(let i=0;i<Math.min(r.length,5);i++){
+      const row=r[i]; if(!row) continue;
+      const h=row.map(normHeader);
+      if(h.includes("FH Nr")&&h.includes("DG 1 LJ bis VM")){ ws=wb.Sheets[n]; rows=r; hi=i; header=h; break; }
+    }
+    if(ws) break;
+  }
+  if(!ws) return null;
+  const col=name=>header.indexOf(name);
+  const idxFh=col("FH Nr"), idxBestand=col("Bestand"), idxProvLj=col("Provision LJ bis VM"),
+        idxSchLj=col("Schäden LJ bis VM"), idxSchBetragLj=col("Schadenbetrag LJ bis VM"),
+        idxDb1Lj=col("DB 1 LJ bis VM"), idxDg1Lj=col("DG 1 LJ bis VM"),
+        idxDb2Lj=col("DB 2 LJ bis VM"), idxDg2Lj=col("DG 2 LJ bis VM"),
+        idxDb1Vj=col("DB 1 VJ bis VM"), idxDg1Vj=col("DG 1 VJ bis VM"),
+        idxDb2Vj=col("DB 2 VJ bis VM"), idxDg2Vj=col("DG 2 VJ bis VM");
+  if(idxFh<0||idxDg1Lj<0) return null;
+  const out=[];
+  for(let i=hi+1;i<rows.length;i++){
+    const r=rows[i]; if(!r||r[idxFh]==null||r[idxFh]==="") continue;
+    const fhNr=String(r[idxFh]).trim(); if(!fhNr) continue;
+    out.push({
+      fh_nr:fhNr,
+      bestand:idxBestand>-1?num(r[idxBestand]):null,
+      provision_lj:idxProvLj>-1?num(r[idxProvLj]):null,
+      schaeden_lj:idxSchLj>-1?Math.round(num(r[idxSchLj])):null,
+      schadenbetrag_lj:idxSchBetragLj>-1?num(r[idxSchBetragLj]):null,
+      db1_lj:idxDb1Lj>-1?num(r[idxDb1Lj]):null, dg1_lj:idxDg1Lj>-1?num(r[idxDg1Lj]):null,
+      db2_lj:idxDb2Lj>-1?num(r[idxDb2Lj]):null, dg2_lj:idxDg2Lj>-1?num(r[idxDg2Lj]):null,
+      db1_vj:idxDb1Vj>-1?num(r[idxDb1Vj]):null, dg1_vj:idxDg1Vj>-1?num(r[idxDg1Vj]):null,
+      db2_vj:idxDb2Vj>-1?num(r[idxDb2Vj]):null, dg2_vj:idxDg2Vj>-1?num(r[idxDg2Vj]):null,
+    });
+  }
+  return out.length?out:null;
+}
+async function upsertFhDeckungsgrad(rows){
+  const CHUNK=500;
+  for(let i=0;i<rows.length;i+=CHUNK){
+    const chunk=rows.slice(i,i+CHUNK).map(r=>({ ...r, imported_by:supaUser.id, imported_at:new Date().toISOString() }));
+    const { error }=await sb.from("fh_deckungsgrad").upsert(chunk,{onConflict:"fh_nr"});
+    if(error) throw error;
+  }
+}
+// Deckungsgrad-Import (Admin-Panel + E-Mail-Import, siehe
+// processPendingImports): NUR die Rohdaten werden gespeichert - im
+// Dashboard selbst nie im Klartext sichtbar (siehe fh_deckungsgrad_for()
+// in schema.sql, keine direkte SELECT-Policy auf der Tabelle).
+async function handleDeckungsgradFile(files){
+  if(!files||!files.length) return;
+  if(!(sb&&supaUser)){ toast("Nicht angemeldet."); return; }
+  toast("Deckungsgrad-Auswertung wird verarbeitet …");
+  try{
+    const buf=await files[0].arrayBuffer();
+    const wb=XLSX.read(buf,{type:"array",cellDates:true});
+    const rows=parseDeckungsgrad(wb);
+    if(!rows){ toast("Format nicht erkannt – bitte die Deckungsgrad-Auswertung mit den Spalten \"FH Nr\"/\"DG 1 LJ bis VM\" einspielen."); return; }
+    await upsertFhDeckungsgrad(rows);
+    if(fhModalCurrent) renderFhDeckungsgradSection();
+    toast(`Deckungsgrad-Auswertung eingespielt ✓ ${fmt(rows.length)} Fachhändler aktualisiert`);
+  }catch(e){
+    console.error("handleDeckungsgradFile failed:",e);
+    toast("Deckungsgrad-Import fehlgeschlagen: "+(e.message||e));
+  }
+}
+
 // Liest die Miete-Report-Datei ("MSK_Report_...", Club.Weiss): ein oder
 // mehrere Blätter "AT_<Jahr>" (z.B. AT_2026, AT_2025 - je nach Jahr(en) in
 // der Datei, dynamisch statt fest, damit künftige Jahre ohne Codeänderung
@@ -3306,7 +3382,7 @@ async function processPendingImports(){
     const { data:rows, error } = await sb.from("pending_imports")
       .select("*").eq("status","pending").order("received_at",{ascending:true});
     if(error||!rows||!rows.length) return;
-    let snapCount=0,segCount=0,segFhCount=0,mieteCount=0,mieteFhCount=0;
+    let snapCount=0,segCount=0,segFhCount=0,mieteCount=0,mieteFhCount=0,dgCount=0,dgFhCount=0;
     for(const row of rows){
       // Optimistisches "Claimen" (bedingtes Update) - verhindert, dass zwei
       // gleichzeitig geöffnete Tabs dieselbe Mail doppelt verarbeiten.
@@ -3334,9 +3410,18 @@ async function processPendingImports(){
             // (Club.Weiss) sein, ebenfalls per Mail an input@wgaustria.at
             // zulässig (siehe parseMieteReport).
             const parsed=parseMieteReport(wb);
-            if(!parsed) throw new Error("Format nicht erkannt");
-            await upsertMieteData(parsed.byFh);
-            mieteCount++; mieteFhCount+=Object.keys(parsed.byFh).length;
+            if(parsed){
+              await upsertMieteData(parsed.byFh);
+              mieteCount++; mieteFhCount+=Object.keys(parsed.byFh).length;
+            }else{
+              // Auch kein Miete-Format - könnte die (absolut vertrauliche)
+              // Deckungsgrad-Auswertung sein, ebenfalls per Mail an
+              // input@wgaustria.at zulässig (siehe parseDeckungsgrad).
+              const dgRows=parseDeckungsgrad(wb);
+              if(!dgRows) throw new Error("Format nicht erkannt");
+              await upsertFhDeckungsgrad(dgRows);
+              dgCount++; dgFhCount+=dgRows.length;
+            }
           }
         }
         await sb.from("pending_imports").update({status:"processed",processed_at:new Date().toISOString()}).eq("id",row.id);
@@ -3358,6 +3443,10 @@ async function processPendingImports(){
       if(fhModalCurrent){ await loadFhContact(fhModalCurrent); renderFhContactView(); renderFhMieteSection(); }
       render();
       toast(`📧 Miete-Daten automatisch eingespielt ✓ ${fmt(mieteFhCount)} Fachhändler aktualisiert`);
+    }
+    if(dgCount){
+      if(fhModalCurrent) renderFhDeckungsgradSection();
+      toast(`📧 Deckungsgrad-Auswertung automatisch eingespielt ✓ ${fmt(dgFhCount)} Fachhändler aktualisiert`);
     }
   }catch(e){ console.error("processPendingImports failed:",e); }
 }
@@ -5568,6 +5657,8 @@ async function openFhModal(fhNr){
       </div>`).join(""):`<div class="empty-note">Keine AKP für diesen Händler in diesem Zeitraum gefunden.</div>`;
   }
   $("fhModal").classList.remove("hidden");
+  $("fhDeckungsgradSection").innerHTML="";
+  renderFhDeckungsgradSection();
   await loadFhContact(fhNr);
   if(fhModalCurrent===fhNr){ renderFhContactView(); renderFhMonthly(); renderFhYearlyTrend(); renderFhStammdatenDiff(); renderFhMieteSection(); renderFhFilialbetriebeSwitcher(); }
 }
@@ -7815,6 +7906,51 @@ function renderFhMieteSection(){
     ${yearlyTbl}
     <div style="margin-top:14px"><span class="ac-lbl">Verkauftes Sortiment</span>${sortimentList}</div>`;
 }
+// Deckungsgrad-Auswertung (01.09.2026, absolut vertraulich): Bestand/
+// Provision/Schäden dürfen als Zahl gezeigt werden, DG1/DG2/DB1/DB2 NIEMALS
+// im Klartext - auch nicht an Admins. Die Datenbankfunktion
+// fh_deckungsgrad_for() (siehe schema.sql) gibt deshalb ausschließlich
+// Ampel-Farbe + Tendenz zurück, nie die Rohwerte selbst - hier wird nur
+// noch dargestellt, es gibt clientseitig keine Rohzahl zu verstecken.
+// Eigener async Ladevorgang (nicht Teil von loadFhContact/fhContactCurrent),
+// deshalb mit eigenem Race-Guard gegen zwischenzeitlich gewechselte FH.
+const DG_AMPEL_COLOR={rot:"var(--neg)",gelb:"#B7791F",gruen:"var(--pos)"};
+const DG_AMPEL_BG={rot:"var(--neg-bg)",gelb:"#FFF3D6",gruen:"var(--pos-bg)"};
+const DG_TREND_ARROW={besser:"▲",schlechter:"▼",gleich:"→"};
+const DG_TREND_COLOR={besser:"var(--pos)",schlechter:"var(--neg)",gleich:"var(--muted)"};
+function dgAmpelPill(label,ampel,trend){
+  if(!ampel) return `<div class="ac-lbl" style="opacity:.5">${label}: keine Daten</div>`;
+  return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0">
+    <span style="flex:1;font-weight:700;font-size:12.5px">${label}</span>
+    <span class="pill" style="background:${DG_AMPEL_BG[ampel]};color:${DG_AMPEL_COLOR[ampel]};font-size:11px;padding:4px 10px">${ampel==="rot"?"🔴":ampel==="gelb"?"🟡":"🟢"} ${ampel}</span>
+    ${trend?`<span style="color:${DG_TREND_COLOR[trend]};font-weight:800;font-size:13px" title="${trend==="gleich"?"unverändert zum Vorjahr":trend+" als Vorjahr"}">${DG_TREND_ARROW[trend]}</span>`:""}
+  </div>`;
+}
+async function renderFhDeckungsgradSection(){
+  const box=$("fhDeckungsgradSection"); if(!box) return;
+  const fhNr=fhModalCurrent;
+  if(!(sb&&supaUser)||!fhNr) return;
+  try{
+    const { data, error } = await sb.rpc("fh_deckungsgrad_for",{p_fh_nr:fhNr});
+    if(fhModalCurrent!==fhNr) return; // Nutzer hat inzwischen einen anderen Händler geöffnet
+    if(error){ console.error("renderFhDeckungsgradSection:",error.message||error); box.innerHTML=""; return; }
+    const d=data&&data[0];
+    if(!d){ box.innerHTML=""; return; }
+    box.innerHTML=`<h4 style="margin:18px 0 4px;color:var(--wg-navy);font-size:13px">Deckungsgrad-Auswertung</h4>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Bestand: <b style="color:var(--wg-navy)">${d.bestand!=null?fmt(d.bestand):"–"}</b> · Provision (lfd. Jahr): <b style="color:var(--wg-navy)">${d.provision_lj!=null?fmt(d.provision_lj)+" €":"–"}</b> · Schäden (lfd. Jahr): <b style="color:var(--wg-navy)">${d.schaeden_lj!=null?fmt(d.schaeden_lj):"–"}${d.schadenbetrag_lj!=null?" ("+fmt(d.schadenbetrag_lj)+" €)":""}</b></div>
+      <div class="ac-card" style="border:1px solid #ECF2F6;border-radius:8px;padding:6px 12px">
+        ${dgAmpelPill("DG 1",d.dg1_ampel,d.dg1_trend)}
+        ${dgAmpelPill("DG 2",d.dg2_ampel,d.dg2_trend)}
+        ${dgAmpelPill("DB 1",d.db1_ampel,d.db1_trend)}
+        ${dgAmpelPill("DB 2",d.db2_ampel,d.db2_trend)}
+      </div>
+      <div style="font-size:10.5px;color:var(--muted);margin-top:6px;font-style:italic">Aus Vertraulichkeitsgründen nur als Ampel (rot/gelb/grün) mit Tendenz zum Vorjahr (▲/▼/→) - kein Rohwert wird angezeigt oder übertragen. Stand: ${d.imported_at?fmtDate(d.imported_at.slice(0,10)):"–"}</div>`;
+  }catch(e){
+    if(fhModalCurrent!==fhNr) return;
+    console.error("renderFhDeckungsgradSection failed:",e);
+    box.innerHTML="";
+  }
+}
 async function toggleFhEdit(on){
   $("fhViewMode").classList.toggle("hidden",on);
   $("fhEditMode").classList.toggle("hidden",!on);
@@ -9366,6 +9502,7 @@ $("perfActivePeriodSetBtn").onclick=async()=>{
 $("akqFileInput").onchange=async e=>{ if(e.target.files.length){ await handleAkqStaffelFile([...e.target.files]); e.target.value=""; } };
 $("fhSegmentFileInput").onchange=async e=>{ if(e.target.files.length){ await handleFhSegmentFile([...e.target.files]); e.target.value=""; } };
 $("mieteFileInput").onchange=async e=>{ if(e.target.files.length){ await handleMieteFile([...e.target.files]); e.target.value=""; } };
+$("dgFileInput").onchange=async e=>{ if(e.target.files.length){ await handleDeckungsgradFile([...e.target.files]); e.target.value=""; } };
 // Admin: "Datei einspielen"-Auswahl-PopUp (bündelt die früher 4 einzelnen
 // Einspielen-Buttons, Nutzervorgabe 01.09.2026 - Admin-Panel wurde
 // zunehmend unübersichtlich).
@@ -9375,6 +9512,7 @@ $("adminImportChooseTagesreport").onclick=()=>{ $("adminImportChoiceModal").clas
 $("adminImportChooseAkq").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); $("akqFileInput").click(); };
 $("adminImportChooseFhSegment").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); $("fhSegmentFileInput").click(); };
 $("adminImportChooseMiete").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); $("mieteFileInput").click(); };
+$("adminImportChooseDg").onclick=()=>{ $("adminImportChoiceModal").classList.add("hidden"); $("dgFileInput").click(); };
 // Admin: Mitarbeiterverwaltung als eigenes PopUp (vorher inline im
 // Admin-Panel, Nutzervorgabe 01.09.2026).
 $("adminEmployeesBtn").onclick=()=>{ $("adminEmployeesModal").classList.remove("hidden"); loadEmployeesAdmin(); };
