@@ -1155,10 +1155,12 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div id="acQuotesInfo" style="font-size:12px;color:var(--muted);font-weight:600;margin-bottom:8px"></div>
     <div id="acMonthly"></div>
     <div id="acYearlyTrend"></div>
-    <h4 style="margin:20px 0 4px;color:var(--wg-navy);font-size:13px;display:flex;align-items:center;gap:6px">Stornoquoten
-      <button type="button" id="acStornoInfoBtn" title="Erklärung zu den Stornoquoten" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1">ℹ️</button>
-    </h4>
-    <div id="acStornoSection"></div>
+    <div id="acStornoBlock" class="hidden">
+      <h4 style="margin:20px 0 4px;color:var(--wg-navy);font-size:13px;display:flex;align-items:center;gap:6px">Stornoquoten
+        <button type="button" id="acStornoInfoBtn" title="Erklärung zu den Stornoquoten" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1">ℹ️</button>
+      </h4>
+      <div id="acStornoSection"></div>
+    </div>
     <div id="acPeerCompare"></div>
 
     <div class="actions" style="margin-top:18px;justify-content:flex-start">
@@ -1329,6 +1331,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-blue" id="adminImportBtn">📤 Datei einspielen</button>
       <button class="btn btn-blue" id="adminEmployeesBtn">👥 Mitarbeiterverwaltung</button>
+      <button class="btn btn-blue" id="adminFunctionsBtn">⚙ Funktionen</button>
     </div>
     <input type="file" id="akqFileInput" accept=".xlsx,.xls" class="hidden">
     <input type="file" id="fhSegmentFileInput" accept=".xlsx,.xls" class="hidden">
@@ -1336,7 +1339,34 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <input type="file" id="dgFileInput" accept=".xlsx,.xls" class="hidden">
     <input type="file" id="stornoFileInput" accept=".xlsx,.xls" class="hidden">
 
-    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Funktionen aktivieren</h4>
+    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input type="text" id="adName" placeholder="Name" autocomplete="off" style="flex:1;min-width:150px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <input type="email" id="adEmail" placeholder="E-Mail" autocomplete="off" style="flex:1;min-width:180px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <select id="adRole" style="border:2px solid var(--line);border-radius:10px;padding:9px 12px;font:inherit">
+        <option value="aussendienst">Außendienst</option>
+        <option value="trainer">Trainer</option>
+        <option value="admin">Admin</option>
+      </select>
+      <button class="btn btn-blue" id="adCreateBtn">Anlegen</button>
+    </div>
+    <div class="hint">Standardpasswort: <b>WertGARANTIE</b> - wird nach Anmeldung geändert</div>
+    <div class="error" id="adCreateHint"></div>
+
+    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Nutzerübersicht</h4>
+    <div id="adUserList" style="max-height:340px;overflow:auto"></div>
+  </div>
+</div>
+
+<!-- Admin: PopUp "Funktionen" - bündelt alle Ein/Aus-Schalter, damit das
+     Admin-Panel selbst nicht weiter wächst (analog zur "Datei
+     einspielen"-Bündelung, 02.09.2026). -->
+<div class="modal-bg hidden" id="adminFunctionsModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
+      <h3 style="margin:0">Funktionen aktivieren</h3>
+      <button class="btn btn-ghost" id="adminFunctionsClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
         <input type="checkbox" id="chefgespraechEnabledChk" style="width:17px;height:17px;flex-shrink:0">
@@ -1375,24 +1405,11 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <input type="checkbox" id="empRankingEnabledChk" style="width:17px;height:17px;flex-shrink:0">
         Mitarbeiter-Ranking (Österreich gesamt)
       </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+        <input type="checkbox" id="stornoquotenEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+        Stornoquoten (AKP-PopUp)
+      </label>
     </div>
-
-    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <input type="text" id="adName" placeholder="Name" autocomplete="off" style="flex:1;min-width:150px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
-      <input type="email" id="adEmail" placeholder="E-Mail" autocomplete="off" style="flex:1;min-width:180px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
-      <select id="adRole" style="border:2px solid var(--line);border-radius:10px;padding:9px 12px;font:inherit">
-        <option value="aussendienst">Außendienst</option>
-        <option value="trainer">Trainer</option>
-        <option value="admin">Admin</option>
-      </select>
-      <button class="btn btn-blue" id="adCreateBtn">Anlegen</button>
-    </div>
-    <div class="hint">Standardpasswort: <b>WertGARANTIE</b> - wird nach Anmeldung geändert</div>
-    <div class="error" id="adCreateHint"></div>
-
-    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Nutzerübersicht</h4>
-    <div id="adUserList" style="max-height:340px;overflow:auto"></div>
   </div>
 </div>
 
@@ -1774,6 +1791,10 @@ let dgVisibleMetrics = ["dg1","dg2","db1","db2"];
 // der Schalter eingeführt wurde: ein Default von false hätte es für alle
 // Nutzer unangekündigt ausgeblendet, bis ein Admin es manuell aktiviert.
 let empRankingEnabled = true;
+// Stornoquoten AKP (02.09.2026) - Admin-Freischalter für den
+// "Stornoquoten"-Abschnitt im AKP-PopUp (renderAkpStornoSection). Default
+// false wie bei anderen neuen Features, bis ein Admin es aktiviert.
+let stornoquotenEnabled = false;
 // Zeitpunkt der letzten Miete-Report-Einspielung (dashboard_kv-Key
 // "miete_last_import", von upsertMieteData() bei jedem Import gesetzt -
 // deckt sowohl den Admin-Panel-Upload als auch den automatischen
@@ -2220,6 +2241,7 @@ function openAdminModal(){
   $("akpPeerCompareEnabledChk").checked=akpPeerCompareEnabled;
   $("deckungsgradEnabledChk").checked=deckungsgradEnabled;
   $("empRankingEnabledChk").checked=empRankingEnabled;
+  $("stornoquotenEnabledChk").checked=stornoquotenEnabled;
 }
 async function togglePerfDialogAdminEnabled(){
   const on=$("perfDialogAdminEnabledChk").checked;
@@ -2343,6 +2365,19 @@ async function toggleEmpRankingEnabled(){
   try{
     await stSet("emp_ranking_enabled",on?"1":"0");
     toast(on?"Mitarbeiter-Ranking aktiviert ✓":"Mitarbeiter-Ranking deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
+async function toggleStornoquotenEnabled(){
+  const on=$("stornoquotenEnabledChk").checked;
+  stornoquotenEnabled=on;
+  if(akpContactCurrent&&!$("akpContactModal").classList.contains("hidden")){
+    try{ renderAkpStornoSection(); }catch(e){ console.error("renderAkpStornoSection (toggle):",e); }
+  }
+  try{
+    await stSet("stornoquoten_enabled",on?"1":"0");
+    toast(on?"Stornoquoten aktiviert ✓":"Stornoquoten deaktiviert");
   }catch(e){
     toast("Speichern fehlgeschlagen: "+(e.message||e));
   }
@@ -2597,7 +2632,7 @@ function renderNotifResults(res){
     parts.push(!res.akp.length?`<div class="empty-note">Keine Auffälligkeiten.</div>`:
       `<div style="max-height:280px;overflow:auto;margin-bottom:18px">`+res.akp.map(a=>`
       <div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">
-        <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(a.nr)}">${escapeHtml(a.name)}</button></b>${akpStornoBadges(a.nr)}
+        <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(a.nr)}">${escapeHtml(a.name)}</button></b>
           <span class="betr"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(a.fhNr||"")}">${escapeHtml(a.firma||"")}</button>${a.emp?" · "+escapeHtml(a.emp):""}</span></span>
         <span style="color:var(--neg);font-weight:700;white-space:nowrap;text-align:right">${a.daysSince} Tage<br><span style="font-weight:600;color:var(--muted);font-size:11.5px">seit ${fmtDate(a.lastDate)}</span></span>
       </div>`).join("")+`</div>`);
@@ -4917,6 +4952,7 @@ async function loadAll(){
   try{ deckungsgradEnabled=(await stGet("deckungsgrad_enabled"))==="1"; }catch(e){}
   try{ const dgv=await stGet("deckungsgrad_visible_metrics"); if(dgv) dgVisibleMetrics=JSON.parse(dgv); }catch(e){}
   try{ const erv=await stGet("emp_ranking_enabled"); empRankingEnabled = erv==null ? true : erv==="1"; }catch(e){}
+  try{ stornoquotenEnabled=(await stGet("stornoquoten_enabled"))==="1"; }catch(e){}
   try{ mieteLastImport=await stGet("miete_last_import"); }catch(e){}
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
@@ -5624,7 +5660,7 @@ function renderObs(){
       return `<div class="${cls}">
       <div class="ic">${ic}</div>
       <div class="t">
-        <b class="obs-name" title="${escapeHtml(o.f.name)} · AKP-Nr. ${escapeHtml(o.f.nr||"")}"><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(o.f.nr||"")}">${escapeHtml(o.f.name)}</button> <span style="font-weight:600;color:var(--muted)">· AKP-Nr. ${escapeHtml(o.f.nr||"")}${showGL&&(o.f.emp||o.f.gl)?" · "+escapeHtml(o.f.emp||o.f.gl):""}</span></b>${akpStornoBadges(o.f.nr)}
+        <b class="obs-name" title="${escapeHtml(o.f.name)} · AKP-Nr. ${escapeHtml(o.f.nr||"")}"><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(o.f.nr||"")}">${escapeHtml(o.f.name)}</button> <span style="font-weight:600;color:var(--muted)">· AKP-Nr. ${escapeHtml(o.f.nr||"")}${showGL&&(o.f.emp||o.f.gl)?" · "+escapeHtml(o.f.emp||o.f.gl):""}</span></b>
         <span class="obs-sub">${o.fhNr?`<button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(o.fhNr)}">${escapeHtml(o.firma||o.fhNr)}</button>`:escapeHtml(o.firma||"")}${o.f.ort?" · "+escapeHtml(o.f.ort):""}</span>
         <span class="obs-sub">${o.txt}</span>
       </div>
@@ -5654,23 +5690,9 @@ function renderObs(){
 // Stornoquoten AKP (02.09.2026, "Vermittlerübersicht mit Stornoquoten",
 // siehe parseAkpStornoquoten): Schwellenwerte laut Erklärung in der
 // eingespielten Auswertung selbst - nur die 3 vom Nutzer angeforderten
-// Kennzahlen, jede AKP-Liste im Dashboard zeigt bei Überschreitung ein
-// rotes Warn-Badge (akpStornoBadges()), Details + Erklärung im AKP-PopUp.
+// Kennzahlen. Bewusst NUR im AKP-PopUp selbst sichtbar (renderAkpStornoSection),
+// nicht als Badge in den Übersichtslisten (Nutzervorgabe 02.09.2026).
 const AKP_STORNO_THRESHOLDS={widerruf:0.05,erstpraemie:0.10,wegfall:0.20};
-const AKP_STORNO_LABELS={widerruf:"Widerruf",erstpraemie:"Erstprämie",wegfall:"Wegfall"};
-function akpStornoFlags(nr){
-  const c=akpContactsIndex&&akpContactsIndex[nr]; if(!c) return [];
-  const flags=[];
-  if(c.storno_widerruf_quote!=null&&c.storno_widerruf_quote>AKP_STORNO_THRESHOLDS.widerruf) flags.push("widerruf");
-  if(c.storno_erstpraemie_quote!=null&&c.storno_erstpraemie_quote>AKP_STORNO_THRESHOLDS.erstpraemie) flags.push("erstpraemie");
-  if(c.storno_wegfall_quote!=null&&c.storno_wegfall_quote>AKP_STORNO_THRESHOLDS.wegfall) flags.push("wegfall");
-  return flags;
-}
-function akpStornoBadges(nr){
-  const flags=akpStornoFlags(nr);
-  if(!flags.length) return "";
-  return flags.map(f=>`<span class="pill neg" style="font-size:9.5px;padding:1px 6px;margin-left:4px;white-space:nowrap" title="Stornoquote „${AKP_STORNO_LABELS[f]}“ auffällig hoch - siehe Erklärung im AKP-PopUp">🔴 ${AKP_STORNO_LABELS[f]}</span>`).join("");
-}
 function akpKey(a){ return a.nr||a.name+"@"+a.firma; }
 function renderAKP(){
   const s=state.latest, showGL=currentEmp===AT_GESAMT;
@@ -5679,7 +5701,7 @@ function renderAKP(){
   const p=akpPeriod, medal=["#FFD700","#C0C0C0","#CD7F32","#8FB6C9","#8FB6C9"];
   const row=(r,i,neg,val,unit,pill)=>`<div class="akp-row">
       <div class="med" style="background:${neg?"var(--neg-bg)":medal[i]+"33"};color:${neg?"var(--neg)":"var(--wg-navy)"}">${neg?"▼":(i+1)}</div>
-      <div class="info"><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b>${akpStornoBadges(r.nr)}<span><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.fhNr||"")}">${escapeHtml(r.firma||"")}</button> · ${escapeHtml(r.ort||"")}${showGL&&r.emp?" · "+escapeHtml(r.emp):""}</span></div>
+      <div class="info"><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><span><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.fhNr||"")}">${escapeHtml(r.firma||"")}</button> · ${escapeHtml(r.ort||"")}${showGL&&r.emp?" · "+escapeHtml(r.emp):""}</span></div>
       <div class="val"><span class="val-num">${fmt(val)}<small> ${unit}</small></span>${pill}</div>
     </div>`;
   let html="";
@@ -5715,7 +5737,7 @@ function renderAkpSearch(){
   if(!hits.length){ box.innerHTML=`<div class="empty-note">Keine AKP gefunden.</div>`; return; }
   const unit=akpUnitLabel(akpPeriod);
   box.innerHTML=hits.map(r=>`<div class="akp-search-row">
-      <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b>${akpStornoBadges(r.nr)}
+      <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b>
       <span class="betr"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.fhNr||"")}">${escapeHtml(r.firma||"")}</button> · ${escapeHtml(r.ort||"")}</span></span>
       <span class="val"><span class="val-num">${fmt(r.val)}<small> ${unit}</small></span>${r.pill||""}</span>
     </div>`).join("");
@@ -5802,7 +5824,7 @@ function openAkpModal(){
     const mkTbl=(list,neg)=>`<table><thead><tr><th></th><th>AKP / Firma${showGL?" / Betreuer":""}</th><th class="r">${unit}</th><th class="r">VT</th><th class="r">vs. VJ</th></tr></thead><tbody>`+
       list.slice(0,akpN).map((r,i)=>`<tr>
         <td><span class="rank" style="${neg?"background:var(--neg-bg);color:var(--neg)":""}">${i+1}</span></td>
-        <td><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b>${akpStornoBadges(r.nr)}<br><span class="betr"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.fhNr||"")}">${escapeHtml(r.firma||"")}</button> · ${escapeHtml(r.ort||"")}${showGL&&r.emp?" · "+escapeHtml(r.emp):""}</span></td>
+        <td><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><br><span class="betr"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.fhNr||"")}">${escapeHtml(r.firma||"")}</button> · ${escapeHtml(r.ort||"")}${showGL&&r.emp?" · "+escapeHtml(r.emp):""}</span></td>
         <td class="r" style="font-weight:900">${fmt(r.val)}</td>
         <td class="r" style="color:var(--muted)">${fmt(r.vt)}</td>
         <td class="r">${r.vjDiff==null?"–":`<span class="pill ${r.vjDiff>=0?"pos":"neg"}">${fmtSign(r.vjDiff)}</span>`}</td>
@@ -5902,7 +5924,7 @@ async function openFhModal(fhNr){
     const unit=akpUnitLabel(fhAkpPeriod);
     const list=ranked.top;
     $("fhBody").innerHTML=list.length?list.map(r=>`<div class="akp-search-row">
-        <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b>${akpStornoBadges(r.nr)}
+        <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b>
         <span class="betr">${escapeHtml(r.firma||"")} · ${escapeHtml(r.ort||"")}</span>
         <span class="betr">PO-Quote (LJ): ${r.poQuote!=null?(r.poQuote*100).toFixed(1).replace(".",",")+" %":"–"} · 3-für-2-Quote (LJ): ${r.q3fuer2!=null?(r.q3fuer2*100).toFixed(1).replace(".",",")+" %":"–"}</span></span>
         <span class="val"><span class="val-num">${fmt(r.val)}<small> ${unit}</small></span>${r.pill||""}</span>
@@ -8780,9 +8802,14 @@ function renderAkpContactView(){
   $("acQuotesInfo").textContent=`PO-Quote (LJ): ${poTxt} · 3-für-2-Quote (LJ): ${f2Txt}`;
 }
 // Stornoquoten-Abschnitt im AKP-PopUp (siehe parseAkpStornoquoten/ℹ️-Modal
-// #stornoInfoModal für die Erklärung) - für alle Mitarbeiter sichtbar, rot
-// hervorgehoben bei Überschreitung des jeweiligen Schwellenwerts.
+// #stornoInfoModal für die Erklärung) - für alle Mitarbeiter sichtbar (wenn
+// per Admin-Schalter "Stornoquoten (AKP-PopUp)" aktiviert), rot hervor-
+// gehoben bei Überschreitung des jeweiligen Schwellenwerts. Bewusst NUR hier
+// im PopUp, nicht als Badge in den Übersichtslisten (Nutzervorgabe 02.09.2026).
 function renderAkpStornoSection(){
+  const block=$("acStornoBlock"); if(!block) return;
+  if(!stornoquotenEnabled){ block.classList.add("hidden"); return; }
+  block.classList.remove("hidden");
   const c=akpContactCurrent;
   const box=$("acStornoSection"); if(!box) return;
   const has=c.storno_widerruf_quote!=null||c.storno_erstpraemie_quote!=null||c.storno_wegfall_quote!=null;
@@ -9674,6 +9701,7 @@ document.querySelectorAll(".dgVisChk").forEach(b=>{ b.onchange=syncDgVisAllChk; 
 $("dgVisCancel").onclick=()=>$("deckungsgradVisibilityModal").classList.add("hidden");
 $("dgVisSave").onclick=saveDeckungsgradVisibility;
 $("empRankingEnabledChk").onchange=toggleEmpRankingEnabled;
+$("stornoquotenEnabledChk").onchange=toggleStornoquotenEnabled;
 $("perfDialogAdminEnabledChk").onchange=togglePerfDialogAdminEnabled;
 $("chefgespraechBtn").onclick=openChefgespraechModal;
 $("chefgespraechClose").onclick=()=>$("chefgespraechModal").classList.add("hidden");
@@ -9808,6 +9836,8 @@ $("adminImportChooseStorno").onclick=()=>{ $("adminImportChoiceModal").classList
 // Admin: Mitarbeiterverwaltung als eigenes PopUp (vorher inline im
 // Admin-Panel, Nutzervorgabe 01.09.2026).
 $("adminEmployeesBtn").onclick=()=>{ $("adminEmployeesModal").classList.remove("hidden"); loadEmployeesAdmin(); };
+$("adminFunctionsBtn").onclick=()=>$("adminFunctionsModal").classList.remove("hidden");
+$("adminFunctionsClose").onclick=()=>$("adminFunctionsModal").classList.add("hidden");
 $("adminEmployeesClose").onclick=()=>$("adminEmployeesModal").classList.add("hidden");
 $("adCreateBtn").onclick=createAdminUser;
 $("empCreateBtn").onclick=createEmployee;
