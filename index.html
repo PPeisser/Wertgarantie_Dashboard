@@ -3965,17 +3965,39 @@ function mergeSnapshot(snap){
     // 0 gesetzt (an diesem Tag keine neue Produktion gemeldet), Monats-/
     // Jahres-/Vorjahreswerte, Plan, PO-/3-für-2-Quote und Stammdaten bleiben
     // wie zuletzt bekannt erhalten.
+    // Monatswechsel-Regel (Nutzervorgabe 03.09.2026, gleicher Fehler wie bei
+    // der AKP-Liste s.u.): "monat" ist ein Rohwert direkt aus der
+    // Tages-Excel-Zeile - bei einem Monatswechsel (snap.jahr/snap.monat aus
+    // der Report-Kopfzeile) würde die Vormonatsproduktion sonst fälschlich
+    // als "aktueller Monat" weiterlaufen, wenn ein FH an diesem Tag fehlt
+    // (z.B. automatischer Mail-Import ohne vollständige FH-Liste). lj/vj
+    // bleiben unberührt.
     if(state.latest&&state.latest.fh){
+      const monatswechselFh=state.latest.jahr!==snap.jahr||state.latest.monat!==snap.monat;
       for(const [nr,f] of Object.entries(state.latest.fh)){
-        if(!snap.fh[nr]) snap.fh[nr]={...f,vt:0};
+        if(!snap.fh[nr]) snap.fh[nr]={...f,vt:0,monat:monatswechselFh?0:f.monat};
       }
     }
     // Gleiches für die AKP-Liste (poQuote/q3fuer2 je Aktivpartner, siehe oben).
+    // Monatswechsel-Regel (Nutzervorgabe 03.09.2026): "monat" ist ein Rohwert
+    // direkt aus der Tages-Excel-Zeile (aktuelle Monatsproduktion). Für einen
+    // AKP, der an einem Tag nicht in der Liste steht, wird hier der gesamte
+    // bisherige Datensatz übernommen (nur vt=0) - das ist INNERHALB desselben
+    // Monats richtig (an diesem Tag nur nicht neu produziert). Bei einem
+    // Monatswechsel (snap.jahr/snap.monat kommen aus der Kopfzeile der Datei,
+    // nicht aus dem Systemdatum - am 1. eines Monats kann die Datei noch den
+    // "alten" Monat melden, siehe Kommentar oben) würde sonst die
+    // Vormonatsproduktion fälschlich als "aktueller Monat" weiterangezeigt,
+    // wenn ein AKP im neuen Monat (noch) unter der Berichtsgrenze liegt und
+    // deshalb gar nicht mehr in der Liste auftaucht. lj/vj (Jahres- bzw.
+    // Vorjahressumme) bleiben unberührt - nur "monat" wird beim ersten Import
+    // eines neuen Kalendermonats auf 0 gesetzt, wenn der AKP dort fehlt.
     if(state.latest&&state.latest.akp&&state.latest.akp.length){
+      const monatswechsel=state.latest.jahr!==snap.jahr||state.latest.monat!==snap.monat;
       const seen=new Set(snap.akp.map(a=>a.nr||a.name+"@"+a.firma));
       for(const a of state.latest.akp){
         const k=a.nr||a.name+"@"+a.firma;
-        if(!seen.has(k)) snap.akp.push({...a,vt:0});
+        if(!seen.has(k)) snap.akp.push({...a,vt:0,monat:monatswechsel?0:a.monat});
       }
     }
     state.latest=snap;
