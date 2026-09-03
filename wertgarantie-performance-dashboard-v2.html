@@ -3704,9 +3704,17 @@ function mergeSnapshot(snap){
     // 0 gesetzt (an diesem Tag keine neue Produktion gemeldet), Monats-/
     // Jahres-/Vorjahreswerte, Plan, PO-/3-für-2-Quote und Stammdaten bleiben
     // wie zuletzt bekannt erhalten.
+    // Monatswechsel-Regel (Nutzervorgabe 03.09.2026, gleicher Fehler wie bei
+    // der AKP-Liste s.u.): "monat" ist ein Rohwert direkt aus der
+    // Tages-Excel-Zeile - bei einem Monatswechsel (snap.jahr/snap.monat aus
+    // der Report-Kopfzeile) würde die Vormonatsproduktion sonst fälschlich
+    // als "aktueller Monat" weiterlaufen, wenn ein FH an diesem Tag fehlt
+    // (z.B. automatischer Mail-Import ohne vollständige FH-Liste). lj/vj
+    // bleiben unberührt.
     if(state.latest&&state.latest.fh){
+      const monatswechselFh=state.latest.jahr!==snap.jahr||state.latest.monat!==snap.monat;
       for(const [nr,f] of Object.entries(state.latest.fh)){
-        if(!snap.fh[nr]) snap.fh[nr]={...f,vt:0};
+        if(!snap.fh[nr]) snap.fh[nr]={...f,vt:0,monat:monatswechselFh?0:f.monat};
       }
     }
     // Gleiches für die AKP-Liste (poQuote/q3fuer2 je Aktivpartner, siehe oben).
