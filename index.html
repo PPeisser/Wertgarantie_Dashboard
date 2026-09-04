@@ -1417,6 +1417,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Datenqualität (DSGVO)</h4>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-ghost" id="karteileichenBtn">🗂 Review-Liste: FH/AKP ohne Produktion</button>
+      <button class="btn btn-ghost" id="fhDupBtn">🔗 FH-Duplikate zusammenführen</button>
     </div>
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
@@ -1598,6 +1599,48 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <button class="btn btn-blue" id="karteileichenApplyBtn" style="padding:6px 14px">Übernehmen</button>
     </div>
     <div id="karteileichenBody"><p style="color:var(--muted)">Lädt …</p></div>
+  </div>
+</div>
+
+<!-- FH-Duplikate zusammenführen (04.09.2026, DSGVO/Datenqualität): manche
+     Fachhändler stehen unter zwei FH-Nr in den Quelldateien (typischer Fall:
+     derselbe Betrieb bekam bei einer weiteren Vertragsart intern eine neue
+     Kundennummer statt der bestehenden - Bug-Report "Elektrotechnik Vallant
+     KG"). Admin markiert die beiden FH-Nr hier als Duplikat, das Dashboard
+     zeigt sie danach überall als EINEN zusammengeführten Datensatz
+     (Produktion addiert, nur ein Sucheintrag) - siehe resolveFhDup(). -->
+<div class="modal-bg hidden" id="fhDupModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
+      <h3 style="margin:0">🔗 FH-Duplikate zusammenführen</h3>
+      <button class="btn btn-ghost" id="fhDupClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+      Markiert zwei Fachhändler-Nummern als denselben realen Betrieb. Nach dem Zusammenführen erscheint die
+      Alias-Nr nirgends mehr als eigener Eintrag - Produktion, Suche, PopUp usw. zeigen nur noch die kanonische
+      Nummer, mit addierten Kennzahlen. Wirkt erst nach der nächsten Einspielung/Aktualisierung.
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div>
+        <label style="font-weight:700;font-size:13px">Bleibt bestehen (kanonisch)</label>
+        <input type="text" id="fhDupCanonicalSearch" placeholder="Name, Ort oder FH-Nr. …" autocomplete="off" style="width:100%;border:2px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;margin-top:4px">
+        <div id="fhDupCanonicalResults"></div>
+        <div id="fhDupCanonicalPicked" class="hint"></div>
+      </div>
+      <div>
+        <label style="font-weight:700;font-size:13px">Wird zusammengeführt (Alias, verschwindet)</label>
+        <input type="text" id="fhDupAliasSearch" placeholder="Name, Ort oder FH-Nr. …" autocomplete="off" style="width:100%;border:2px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;margin-top:4px">
+        <div id="fhDupAliasResults"></div>
+        <div id="fhDupAliasPicked" class="hint"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+      <input type="text" id="fhDupNote" placeholder="Notiz (optional, z.B. Grund/Quelle)" autocomplete="off" style="flex:1;min-width:220px;border:2px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit">
+      <button class="btn btn-blue" id="fhDupCreateBtn">Zusammenführen</button>
+    </div>
+    <div class="error" id="fhDupCreateHint"></div>
+    <h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:14px">Bestehende Zusammenführungen</h4>
+    <div id="fhDupList"><p style="color:var(--muted)">Lädt …</p></div>
   </div>
 </div>
 
@@ -2725,20 +2768,50 @@ let fhContactsBulkIndex=null;
 // Reine Aggregationslogik (kein I/O) - baut aus einer Liste fh_contacts-Zeilen
 // alle vier Indizes gleichzeitig. Eigene Funktion, damit sie unabhängig von
 // sb/Netzwerk direkt testbar ist.
+// Addiert zwei "YYYY-MM"->Zahl-Monatsmaps (für bulkIdx/mieteIdx-Merge bei
+// FH-Duplikaten, siehe resolveFhDup()).
+function mergeMonthlyObj(a,b){
+  const out={...(a||{})};
+  for(const [k,v] of Object.entries(b||{})) out[k]=(out[k]||0)+(Number(v)||0);
+  return out;
+}
 function buildFhContactsIndices(rows){
   const bulkIdx={}, mieteIdx={}, erledigt=new Set(), akqIdx={}, manualNameIdx={}, mieteNameIdx={}, allIdx={};
   for(const r of rows){
     if(!r.fh_nr) continue;
-    bulkIdx[r.fh_nr]=r.prod_monthly||{};
-    if(r.miete_monthly&&Object.keys(r.miete_monthly).length) mieteIdx[r.fh_nr]={monthly:r.miete_monthly};
-    if(r.neunwochen_erledigt) erledigt.add(r.fh_nr);
-    if(r.akq_punkte!=null||(r.akq_staffeln&&r.akq_staffeln.length)) akqIdx[r.fh_nr]={punkte:r.akq_punkte,staffeln:r.akq_staffeln||[],gl:r.akq_gl||null,name:r.akq_name||null};
-    if(r.name) manualNameIdx[r.fh_nr]=r.name;
-    if(r.miete_name) mieteNameIdx[r.fh_nr]=r.miete_name;
+    // Alias- und kanonische FH-Nr (FH-Duplikate zusammenführen) können beide
+    // als eigene fh_contacts-Zeile vorkommen - Produktions-/Mietzahlen werden
+    // hier je Monat addiert, alle anderen Felder behalten den zuerst
+    // gefundenen (nicht-leeren) Wert.
+    const nr=resolveFhDup(r.fh_nr);
+    bulkIdx[nr]=mergeMonthlyObj(bulkIdx[nr],r.prod_monthly);
+    if(r.miete_monthly&&Object.keys(r.miete_monthly).length){
+      mieteIdx[nr]={monthly:mergeMonthlyObj(mieteIdx[nr]&&mieteIdx[nr].monthly,r.miete_monthly)};
+    }
+    if(r.neunwochen_erledigt) erledigt.add(nr);
+    if(r.akq_punkte!=null||(r.akq_staffeln&&r.akq_staffeln.length)){
+      const ex=akqIdx[nr];
+      akqIdx[nr]={
+        punkte:(ex&&ex.punkte!=null)?ex.punkte:r.akq_punkte,
+        staffeln:(ex&&ex.staffeln&&ex.staffeln.length)?ex.staffeln:(r.akq_staffeln||[]),
+        gl:(ex&&ex.gl)||r.akq_gl||null,
+        name:(ex&&ex.name)||r.akq_name||null,
+      };
+    }
+    if(r.name&&!manualNameIdx[nr]) manualNameIdx[nr]=r.name;
+    if(r.miete_name&&!mieteNameIdx[nr]) mieteNameIdx[nr]=r.miete_name;
     // Jede fh_contacts-Zeile fließt hier ein, auch ganz ohne Akquise-/Miete-/
     // manuellen Namen (dann bleibt name null, Aufrufer fallen auf die FH-Nr
     // zurück) - Priorität wie in fhFallbackFromAkp: akq_name > miete_name > name.
-    allIdx[r.fh_nr]={name:r.akq_name||r.miete_name||r.name||null,ort:r.ort||null,gl:r.akq_gl||null,filialbetriebe:r.filialbetriebe||null,weitereZuordnung:r.weitere_zuordnung||null,gesperrt_am:r.gesperrt_am||null};
+    const exAll=allIdx[nr];
+    allIdx[nr]={
+      name:(exAll&&exAll.name)||r.akq_name||r.miete_name||r.name||null,
+      ort:(exAll&&exAll.ort)||r.ort||null,
+      gl:(exAll&&exAll.gl)||r.akq_gl||null,
+      filialbetriebe:(exAll&&exAll.filialbetriebe)||r.filialbetriebe||null,
+      weitereZuordnung:(exAll&&exAll.weitereZuordnung)||r.weitere_zuordnung||null,
+      gesperrt_am:(exAll&&exAll.gesperrt_am)||r.gesperrt_am||null,
+    };
   }
   return {bulkIdx,mieteIdx,erledigt,akqIdx,manualNameIdx,mieteNameIdx,allIdx};
 }
@@ -3055,6 +3128,105 @@ async function loadEmployees(){
   ADMIN_ONLY_EMPLOYEES=data.filter(e=>e.admin_only).map(e=>({name:e.name}));
 }
 
+/* ---------- FH-Duplikate zusammenführen (Admin, 04.09.2026) ----------
+Manche Fachhändler stehen unter zwei FH-Nr in den Quelldateien (typischer
+Fall: derselbe Betrieb bekam bei einer weiteren Vertragsart - z.B. Miete -
+intern eine neue Kundennummer statt der bestehenden zugewiesen, Bug-Report
+"Elektrotechnik Vallant KG" 04.09.2026). Analog zum EMP_NORM/matchEmployee()-
+Muster oben wird GENAU EIN Auflösungs-Schritt (resolveFhDup) direkt an der
+Stelle eingesetzt, an der jede FH-Nr aus einer Quelldatei/Tabelle gelesen
+wird (parseAuswertung(), buildFhContactsIndices(), loadAkpContactsIndex()) -
+danach kennt der gesamte übrige Code (Suche, PopUps, Render-Funktionen)
+ausschließlich noch die kanonische Nummer und muss nirgends sonst angepasst
+werden. Die Alias-Nr verschwindet dadurch überall als eigener Eintrag;
+Kennzahlen (Produktion etc.) werden an den drei Konstruktionsstellen addiert. */
+let FH_DUP_MAP={}; // alias_fh_nr -> canonical_fh_nr
+let FH_DUP_ALIASES={}; // canonical_fh_nr -> [alias_fh_nr,...] (Kehrwert von FH_DUP_MAP, für Deckungsgrad-Fallback)
+async function loadFhDuplicateMerges(){
+  if(!sb){ FH_DUP_MAP={}; FH_DUP_ALIASES={}; return; }
+  const { data, error } = await sb.from("fh_duplicate_merges").select("alias_fh_nr,canonical_fh_nr");
+  if(error){ console.error("loadFhDuplicateMerges fehlgeschlagen:",error); return; }
+  FH_DUP_MAP={}; FH_DUP_ALIASES={};
+  for(const r of (data||[])){
+    FH_DUP_MAP[r.alias_fh_nr]=r.canonical_fh_nr;
+    (FH_DUP_ALIASES[r.canonical_fh_nr]||(FH_DUP_ALIASES[r.canonical_fh_nr]=[])).push(r.alias_fh_nr);
+  }
+}
+function resolveFhDup(nr){
+  return (nr&&FH_DUP_MAP[nr])||nr;
+}
+// Admin-UI (fhDupModal, siehe HTML): Suche + Auswahl der zwei FH-Nr, dann
+// Anlegen/Löschen der Zusammenführung. Gleiches Suchmuster wie
+// renderFhSearch()/renderChefgespraechSearch() (fhAllKnownList()+
+// fhMatchesSearch()), aber bewusst OHNE currentEmp-Filter - ein Admin muss
+// jeden Händler finden können, unabhängig von der gerade gewählten Ansicht.
+let fhDupPicked={canonical:null,alias:null};
+function renderFhDupSearch(kind){
+  const q=($("fhDup"+(kind==="canonical"?"Canonical":"Alias")+"Search").value||"").trim().toLowerCase();
+  const box=$("fhDup"+(kind==="canonical"?"Canonical":"Alias")+"Results");
+  if(!q){ box.innerHTML=""; return; }
+  if(!hasData()){ box.innerHTML=""; return; }
+  const rows=fhAllKnownList().filter(f=>fhMatchesSearch(f,q)).slice(0,20);
+  if(!rows.length){ box.innerHTML=`<div class="empty-note">Kein Fachhändler gefunden.</div>`; return; }
+  box.innerHTML=rows.map(f=>`<div class="akp-search-row" style="cursor:pointer" data-fh-nr="${escapeHtml(f.nr)}">
+      <span><b>${escapeHtml(f.name||f.nr)}</b><span class="betr">${escapeHtml(f.ort||"")} · FH-Nr. ${escapeHtml(f.nr)}</span></span>
+    </div>`).join("");
+  box.querySelectorAll("[data-fh-nr]").forEach(row=>{
+    row.onclick=()=>{
+      const nr=row.dataset.fhNr;
+      const f=fhAllKnownList().find(x=>x.nr===nr);
+      fhDupPicked[kind]={nr,name:(f&&f.name)||nr};
+      $("fhDup"+(kind==="canonical"?"Canonical":"Alias")+"Picked").textContent="Ausgewählt: "+((f&&f.name)||nr)+" (FH-Nr. "+nr+")";
+      $("fhDup"+(kind==="canonical"?"Canonical":"Alias")+"Search").value="";
+      box.innerHTML="";
+    };
+  });
+}
+async function createFhDupMerge(){
+  const hint=$("fhDupCreateHint"); hint.textContent="";
+  const c=fhDupPicked.canonical, a=fhDupPicked.alias;
+  if(!c||!a){ hint.textContent="Bitte beide Fachhändler auswählen."; return; }
+  if(c.nr===a.nr){ hint.textContent="Kanonische und Alias-FH-Nr dürfen nicht identisch sein."; return; }
+  const { error } = await sb.from("fh_duplicate_merges").insert({
+    alias_fh_nr:a.nr, canonical_fh_nr:c.nr, note:($("fhDupNote").value||"").trim()||null,
+  });
+  if(error){ hint.textContent="Fehler: "+(error.message||error); return; }
+  fhDupPicked={canonical:null,alias:null};
+  $("fhDupCanonicalPicked").textContent=""; $("fhDupAliasPicked").textContent=""; $("fhDupNote").value="";
+  await loadFhDuplicateMerges();
+  // Kontaktdatenbank-Indizes sofort neu laden, damit Suche/PopUp-Namen ohne
+  // Warten auf die nächste Einspielung stimmen - state.latest.fh/akp/akq
+  // (aus der letzten Excel-Einspielung, in dashboard_kv zwischengespeichert)
+  // wird erst mit der nächsten echten Einspielung zusammengeführt, da wir
+  // die ursprüngliche Exceldatei dafür nicht erneut parsen können.
+  await Promise.all([loadFhContactsIndicesAll(),loadAkpContactsIndex()]);
+  render();
+  await loadFhDupList();
+}
+async function deleteFhDupMerge(aliasNr){
+  if(!confirm("Zusammenführung für FH-Nr "+aliasNr+" wieder aufheben?")) return;
+  const { error } = await sb.from("fh_duplicate_merges").delete().eq("alias_fh_nr",aliasNr);
+  if(error){ toast("Fehler beim Löschen: "+(error.message||error)); return; }
+  await loadFhDuplicateMerges();
+  await Promise.all([loadFhContactsIndicesAll(),loadAkpContactsIndex()]);
+  render();
+  await loadFhDupList();
+}
+async function loadFhDupList(){
+  const box=$("fhDupList"); if(!box) return;
+  if(!sb){ box.innerHTML=""; return; }
+  const { data, error } = await sb.from("fh_duplicate_merges").select("alias_fh_nr,canonical_fh_nr,note,created_at").order("created_at",{ascending:false});
+  if(error){ box.innerHTML=`<div class="empty-note">Fehler beim Laden.</div>`; return; }
+  if(!data||!data.length){ box.innerHTML=`<div class="empty-note">Noch keine Zusammenführungen angelegt.</div>`; return; }
+  const nameFor=(nr)=>{ const f=(fhContactsAllIndex&&fhContactsAllIndex[nr]); return (f&&f.name)||nr; };
+  box.innerHTML=data.map(r=>`<div class="akp-search-row" style="align-items:center">
+      <span><b>${escapeHtml(nameFor(r.canonical_fh_nr))}</b> (FH-Nr. ${escapeHtml(r.canonical_fh_nr)})
+        <span class="betr">← zusammengeführt mit ${escapeHtml(nameFor(r.alias_fh_nr))} (FH-Nr. ${escapeHtml(r.alias_fh_nr)})${r.note?" · "+escapeHtml(r.note):""}</span></span>
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" data-undo="${escapeHtml(r.alias_fh_nr)}">Aufheben</button>
+    </div>`).join("");
+  box.querySelectorAll("[data-undo]").forEach(btn=>{ btn.onclick=()=>deleteFhDupMerge(btn.dataset.undo); });
+}
+
 /* ---------- Datenmodell ----------
 state = {
   latest: {
@@ -3220,14 +3392,15 @@ function parseAuswertung(wb){
   if(fhi>-1){
     for(let i=fhi+1;i<fh.length;i++){
       const r=fh[i]; if(!r||r[0]==null) continue;
-      const nr=String(r[0]).trim(); if(!nr) continue;
+      const rawNr=String(r[0]).trim(); if(!rawNr) continue;
       // Nur echte (rein numerische) FH-Nummern übernehmen - Summen-/Fußzeilen
       // wie "Auswertung" oder "Seite 1" landen sonst als Phantom-Fachhändler
       // in fh_contacts (deren Zeilenwerte oft Gesamtsummen statt Einzelwerte
       // sind) und verfälschen glPlan[AT_KEY]/die Monatsproduktion.
-      if(!/^\d+$/.test(nr)) continue;
+      if(!/^\d+$/.test(rawNr)) continue;
+      const nr=resolveFhDup(rawNr);
       const glRaw=String(r[5]||"").trim();
-      snap.fh[nr]={ name:String(r[1]||"").trim(), plz:String(r[2]||""), ort:String(r[3]||"").trim(),
+      const rec={ name:String(r[1]||"").trim(), plz:String(r[2]||""), ort:String(r[3]||"").trim(),
         gl:glRaw, emp:matchEmployee(glRaw),
         vt:num(r[6]), monat:num(r[7]), lj:num(r[8]), vj:num(r[9]), plan:num(r[13]),
         // Spalte L "Anteil PO in % LJ" / M "Anteil 3für2 in % LJ" - als Bruch
@@ -3235,6 +3408,16 @@ function parseAuswertung(wb){
         // vorhanden, deshalb hier je FH erfasst und in renderMix() nach
         // Jahresproduktion gewichtet aggregiert (analog zur GW-Quote).
         poQuote:num(r[11]), q3fuer2:num(r[12]) };
+      const ex=snap.fh[nr];
+      if(ex){
+        // Alias- UND kanonische FH-Nr stehen beide in derselben Einspielung
+        // (FH-Duplikate zusammenführen, siehe resolveFhDup()) - Produktions-
+        // zahlen addieren, Name/Ort/Betreuer vom zuerst gesehenen Eintrag
+        // behalten (meist der kanonische, da FH_Liste i.d.R. sortiert ist).
+        snap.fh[nr]={...ex, vt:ex.vt+rec.vt, monat:ex.monat+rec.monat, lj:ex.lj+rec.lj, vj:ex.vj+rec.vj, plan:ex.plan+rec.plan};
+      }else{
+        snap.fh[nr]=rec;
+      }
     }
     // Jahrespläne aus der FH-Liste je Betreuer aufsummieren
     snap.glPlan={}; snap.glPlan[AT_KEY]=0;
@@ -3252,7 +3435,7 @@ function parseAuswertung(wb){
     for(let i=ai+1;i<ak.length;i++){
       const r=ak[i]; if(!r||r[1]==null) continue;
       const glRaw=String(r[7]||"").trim();
-      snap.akp.push({ nr:String(r[0]||""), name:String(r[1]).trim(), fhNr:String(r[2]||"").trim(), firma:String(r[3]||"").trim(), ort:String(r[5]||"").trim(),
+      snap.akp.push({ nr:String(r[0]||""), name:String(r[1]).trim(), fhNr:resolveFhDup(String(r[2]||"").trim()), firma:String(r[3]||"").trim(), ort:String(r[5]||"").trim(),
         glRaw, emp:matchEmployee(glRaw), vt:num(r[8]), monat:num(r[9]), lj:num(r[10]), vj:num(r[11]),
         // Spalte N "Anteil PO in % LJ" / O "Anteil 3für2 in % LJ" (als Bruch).
         poQuote:num(r[13]), q3fuer2:num(r[14]) });
@@ -3264,17 +3447,35 @@ function parseAuswertung(wb){
   let qi=-1;
   for(let i=0;i<Math.min(aq.length,5);i++){ if(aq[i]&&String(aq[i][1]||"").trim()==="Gebietsleiter"){ qi=i; break; } }
   if(qi>-1){
+    // Map statt direktem push(): Alias- und kanonische FH-Nr (FH-Duplikate
+    // zusammenführen, siehe resolveFhDup()) können beide als eigene Zeile in
+    // der AKQ-Liste stehen - werden hier zu einem Eintrag zusammengeführt
+    // (Kennzahlen addiert, frühester Beginn behalten), bevor snap.akq daraus
+    // gebaut wird.
+    const akqMap=new Map();
     for(let i=qi+1;i<aq.length;i++){
       const r=aq[i]; if(!r||r[3]==null) continue;
       const glRaw=String(r[1]||"").trim();
       const beginn=cellDate(r[9]);
-      snap.akq.push({ nr:String(r[2]||""), name:String(r[3]).trim(),
+      const nr=resolveFhDup(String(r[2]||""));
+      const rec={ nr, name:String(r[3]).trim(),
         strasse:String(r[4]||"").trim(), plz:String(r[5]||""), ort:String(r[6]||"").trim(), tel:String(r[7]||"").trim(),
         beginn, beginnJahr:beginn?parseInt(beginn.slice(0,4),10):null,
         glRaw, emp:matchEmployee(glRaw),
         p2024:num(r[10]), p2025:num(r[11]), p2026:num(r[12]),
-        produzent:String(r[13]||"").trim().toUpperCase()==="JA", kw:num(r[14]), besP:num(r[15]), besT:num(r[16]), besG:num(r[17]) });
+        produzent:String(r[13]||"").trim().toUpperCase()==="JA", kw:num(r[14]), besP:num(r[15]), besT:num(r[16]), besG:num(r[17]) };
+      const ex=akqMap.get(nr);
+      if(ex){
+        const earlierBeginn=(ex.beginn&&rec.beginn)?(ex.beginn<rec.beginn?ex.beginn:rec.beginn):(ex.beginn||rec.beginn);
+        akqMap.set(nr,{...ex, p2024:ex.p2024+rec.p2024, p2025:ex.p2025+rec.p2025, p2026:ex.p2026+rec.p2026,
+          kw:ex.kw+rec.kw, besP:ex.besP+rec.besP, besT:ex.besT+rec.besT, besG:ex.besG+rec.besG,
+          produzent:ex.produzent||rec.produzent, beginn:earlierBeginn,
+          beginnJahr:earlierBeginn?parseInt(earlierBeginn.slice(0,4),10):null});
+      }else{
+        akqMap.set(nr,rec);
+      }
     }
+    snap.akq=Array.from(akqMap.values());
   }
 
   /* --- ZE_Region Detailblock: Komplettschutz vs. Geräteschutz ---
@@ -3941,6 +4142,21 @@ function mergeSnapshot(snap){
     const k=a.nr||a.name+"@"+a.firma;
     if(a.vt>0){ if(!state.dailyAKP) state.dailyAKP={}; if(!state.dailyAKP[k]) state.dailyAKP[k]={}; state.dailyAKP[k][snap.vortag]=a.vt; }
   });
+  // "monat" (aktuelle Monatsproduktion) wird ab jetzt NICHT mehr aus der
+  // rohen Report-Spalte bzw. per Monatswechsel-Sonderfallerkennung
+  // übernommen, sondern direkt aus der Tageshistorie (state.dailyFH/
+  // state.dailyAKP, siehe oben) aufsummiert - dieselbe bereits bewährte
+  // Technik wie bei perfGoal1Snapshot() (Bug-Report 03./04.09.2026: die
+  // bisherige Monatswechsel-Erkennung "state.latest.monat!==snap.monat"
+  // ist pro Browser-Sitzung lokal und griff nicht zuverlässig - real
+  // geprüft zeigten danach ~68% aller AKP weiterhin exakt ihren
+  // Vormonatswert als "aktuellen Monat", u.a. bei echten Personen wie
+  // Ronja Hausbauer/Florian Frantar, nicht nur bei Kampagnen-Einträgen).
+  // Ein Monatswechsel "erledigt sich" dadurch von selbst (neuer Monat =
+  // noch leere Tageshistorie = 0), die bisherige monatswechsel-Erkennung
+  // unten für fehlende FH/AKP entfällt komplett.
+  for(const [nr,f] of Object.entries(snap.fh)) f.monat=sumMonthFromDaily(state.dailyFH[nr]||{},snap.jahr,snap.monat);
+  snap.akp.forEach(a=>{ a.monat=sumMonthFromDaily(state.dailyAKP[a.nr||a.name+"@"+a.firma]||{},snap.jahr,snap.monat); });
   if(!state.latest || snap.date>=state.latest.date){
     // Manche Quellen (z.B. die automatische Tages-Mail "ZE+Produktion_Vortag...")
     // enthalten nicht alle optionalen Pivot-Blätter der vollständigen
@@ -3966,39 +4182,23 @@ function mergeSnapshot(snap){
     // 0 gesetzt (an diesem Tag keine neue Produktion gemeldet), Monats-/
     // Jahres-/Vorjahreswerte, Plan, PO-/3-für-2-Quote und Stammdaten bleiben
     // wie zuletzt bekannt erhalten.
-    // Monatswechsel-Regel (Nutzervorgabe 03.09.2026, gleicher Fehler wie bei
-    // der AKP-Liste s.u.): "monat" ist ein Rohwert direkt aus der
-    // Tages-Excel-Zeile - bei einem Monatswechsel (snap.jahr/snap.monat aus
-    // der Report-Kopfzeile) würde die Vormonatsproduktion sonst fälschlich
-    // als "aktueller Monat" weiterlaufen, wenn ein FH an diesem Tag fehlt
-    // (z.B. automatischer Mail-Import ohne vollständige FH-Liste). lj/vj
-    // bleiben unberührt.
+    // "monat" für einen fehlenden FH wird ebenfalls per sumMonthFromDaily neu
+    // berechnet (siehe Kommentar oben bei der Tageshistorie-Fortschreibung) -
+    // die frühere Monatswechsel-Sonderfallerkennung entfällt dadurch, ein
+    // neuer Kalendermonat ergibt automatisch 0 (noch keine Tageshistorie).
     if(state.latest&&state.latest.fh){
-      const monatswechselFh=state.latest.jahr!==snap.jahr||state.latest.monat!==snap.monat;
       for(const [nr,f] of Object.entries(state.latest.fh)){
-        if(!snap.fh[nr]) snap.fh[nr]={...f,vt:0,monat:monatswechselFh?0:f.monat};
+        if(!snap.fh[nr]) snap.fh[nr]={...f,vt:0,monat:sumMonthFromDaily(state.dailyFH[nr]||{},snap.jahr,snap.monat)};
       }
     }
-    // Gleiches für die AKP-Liste (poQuote/q3fuer2 je Aktivpartner, siehe oben).
-    // Monatswechsel-Regel (Nutzervorgabe 03.09.2026): "monat" ist ein Rohwert
-    // direkt aus der Tages-Excel-Zeile (aktuelle Monatsproduktion). Für einen
-    // AKP, der an einem Tag nicht in der Liste steht, wird hier der gesamte
-    // bisherige Datensatz übernommen (nur vt=0) - das ist INNERHALB desselben
-    // Monats richtig (an diesem Tag nur nicht neu produziert). Bei einem
-    // Monatswechsel (snap.jahr/snap.monat kommen aus der Kopfzeile der Datei,
-    // nicht aus dem Systemdatum - am 1. eines Monats kann die Datei noch den
-    // "alten" Monat melden, siehe Kommentar oben) würde sonst die
-    // Vormonatsproduktion fälschlich als "aktueller Monat" weiterangezeigt,
-    // wenn ein AKP im neuen Monat (noch) unter der Berichtsgrenze liegt und
-    // deshalb gar nicht mehr in der Liste auftaucht. lj/vj (Jahres- bzw.
-    // Vorjahressumme) bleiben unberührt - nur "monat" wird beim ersten Import
-    // eines neuen Kalendermonats auf 0 gesetzt, wenn der AKP dort fehlt.
+    // Gleiches für die AKP-Liste (poQuote/q3fuer2 je Aktivpartner, siehe oben) -
+    // "monat" für einen fehlenden AKP ebenfalls per sumMonthFromDaily statt
+    // per Monatswechsel-Sonderfall.
     if(state.latest&&state.latest.akp&&state.latest.akp.length){
-      const monatswechsel=state.latest.jahr!==snap.jahr||state.latest.monat!==snap.monat;
       const seen=new Set(snap.akp.map(a=>a.nr||a.name+"@"+a.firma));
       for(const a of state.latest.akp){
         const k=a.nr||a.name+"@"+a.firma;
-        if(!seen.has(k)) snap.akp.push({...a,vt:0,monat:monatswechsel?0:a.monat});
+        if(!seen.has(k)) snap.akp.push({...a,vt:0,monat:sumMonthFromDaily(state.dailyAKP[k]||{},snap.jahr,snap.monat)});
       }
     }
     state.latest=snap;
@@ -4206,7 +4406,10 @@ async function loadAkpContactsIndex(){
         .range(from,from+999);
       if(error){ console.error("loadAkpContactsIndex:",error.message||error); break; }
       if(!data||!data.length) break;
-      for(const r of data) if(r.nr) idx[r.nr]=r;
+      // FH-Nr auf kanonische Nummer auflösen (FH-Duplikate zusammenführen,
+      // siehe resolveFhDup()) - Index bleibt nach r.nr geschlüsselt, nur das
+      // fh_nr-Feld jeder Zeile wird angepasst.
+      for(const r of data) if(r.nr){ r.fh_nr=resolveFhDup(r.fh_nr); idx[r.nr]=r; }
       // Nicht anhand der Antwortgröße auf "letzte Seite" schließen (der
       // Server kann ein eigenes, kleineres Zeilenlimit pro Anfrage haben) –
       // stattdessen immer um genau so viele Zeilen weiterrücken, wie
@@ -4381,6 +4584,13 @@ function sumYearThroughMonthFromDaily(map,year,month){
   let sum=0; for(const d in map) if(d.slice(0,4)===String(year)&&d<=to) sum+=map[d];
   return sum;
 }
+// Summe der Tageshistorie NACH dem angegebenen Monat (exklusive) bis heute -
+// Gegenstück zu sumYearThroughMonthFromDaily(), siehe perfGoal1Snapshot().
+function sumDailyAfterMonth(map,year,month){
+  const cutoff=year+"-"+String(month).padStart(2,"0")+"-31";
+  let sum=0; for(const d in map) if(d>cutoff) sum+=map[d];
+  return sum;
+}
 // Ziel 1: Persönliches Produktionsziel. Der Performance Dialog berichtet
 // immer über den ABGESCHLOSSENEN Vormonat - state.latest/glRow() zeigen zu
 // diesem Zeitpunkt aber bereits den NEUEN, laufenden Monat (die tägliche
@@ -4391,7 +4601,24 @@ function sumYearThroughMonthFromDaily(map,year,month){
 function perfGoal1Snapshot(emp,year,month){
   const dm=state.dailyGL[glKey(emp)]||{};
   const monatIst=sumMonthFromDaily(dm,year,month);
-  const jahrIst=sumYearThroughMonthFromDaily(dm,year,month);
+  let jahrIst;
+  if(state.latest.jahr===year){
+    // Jahreswert bis Ende des berichteten Monats = aktueller kumulierter
+    // Jahreswert (glRow().jahr, immer korrekt "bis heute") MINUS die Tage
+    // NACH dem berichteten Monat bis heute - robuster als die Summe der
+    // GESAMTEN Tageshistorie seit Jahresbeginn (vorherige Berechnung), die
+    // nicht lückenlos bis Jahresanfang zurückreicht (Bug-Report 04.09.2026:
+    // "Persönliches Ziel Jahr" zeigte bei Dominik Szendi 3.965 statt korrekt
+    // 34.583, da state.dailyGL erst seit 21.07.2026 geführt wird). Die neue
+    // Berechnung braucht nur Tageshistorie ab Ende des berichteten Monats,
+    // nicht seit Jahresbeginn.
+    jahrIst=((state.latest.gl[glKey(emp)]||{}).jahr||0)-sumDailyAfterMonth(dm,year,month);
+  }else{
+    // Berichtsjahr liegt nicht im aktuellen Jahr (z.B. Nacherfassung eines
+    // Vorjahres) - kein aktueller Jahreswert verfügbar, daher weiterhin
+    // best-effort aus der Tageshistorie.
+    jahrIst=sumYearThroughMonthFromDaily(dm,year,month);
+  }
   const jahrZiel=PERS_JAHRESZIELE[emp]||0;
   const monatZiel=goals[emp+"|"+year+"-"+String(month).padStart(2,"0")]||0;
   return {year,month,jahr_ist:jahrIst,jahr_ziel:jahrZiel,monat_ist:monatIst,monat_ziel:monatZiel};
@@ -5384,12 +5611,28 @@ function akpQuarterSum(rec,jahr,monat){
   const prev=sum(keysBack(py,pm2,3));
   return {cur,prev};
 }
+// Manche AKP-Nummern gehören keiner echten Person, sondern einer Aktion/
+// Kampagne (z.B. "Aktionsgeräteschutz") - erkennbar daran, dass die
+// zugehörige akp_contacts-Zeile einen Vornamen, aber KEINEN Nachnamen hat:
+// akp_sync_daily (siehe schema.sql) splittet den Rohnamen nur bei einem
+// Leerzeichen - ein einzelnes Wort wie "Aktionsgeräteschutz" landet komplett
+// im Vornamen, der Nachname bleibt leer. Echte AKP ohne jeden erfassten
+// Namen haben dagegen BEIDE Felder leer (kein Treffer hier). Solche
+// Kampagnen-Einträge sollen nirgends als "Person" in AKP-Listen auftauchen
+// (Nutzer-Bug-Report 04.09.2026: "Aktionsgeräteschutz" stand in Top&Flop 5
+// AKP) - ihre Produktion zählt aber unverändert in allen FH-/Gesamtsummen
+// mit, da die aus der FH_Liste kommen, nicht aus dieser AKP-Liste.
+function isAkpCampaignEntry(nr){
+  const rec=akpContactsIndex&&akpContactsIndex[nr];
+  return !!(rec&&rec.vorname&&!rec.nachname);
+}
 // Ergänzt die Tages-Einspielliste (s.akp) um AKP aus der Kontaktdatenbank, die
 // an diesem Tag nicht produziert haben und deshalb nicht im Excel-Export
 // stehen – sonst fehlen sie in Woche/Monat/Jahr-Ansichten je Mitarbeiter
-// komplett, obwohl sie im gewählten Zeitraum produziert haben.
+// komplett, obwohl sie im gewählten Zeitraum produziert haben. Filtert dabei
+// Aktions-/Kampagnen-Einträge (siehe isAkpCampaignEntry) heraus, siehe oben.
 function akpFullList(s){
-  if(!akpContactsIndex) return s.akp;
+  if(!akpContactsIndex) return s.akp.filter(a=>!isAkpCampaignEntry(a.nr));
   // akpIndexGen (statt nur der Anzahl) im Cache-Key, damit ein Neuladen der
   // Kontaktdatenbank (z.B. über den Aktualisieren-Button) den Cache immer
   // invalidiert - auch wenn die Anzahl der Einträge zufällig gleich bleibt.
@@ -5399,6 +5642,7 @@ function akpFullList(s){
     const extra=[];
     for(const [nr,rec] of Object.entries(akpContactsIndex)){
       if(seen.has(nr)) continue;
+      if(isAkpCampaignEntry(nr)) continue;
       const {lj,vj,monat}=akpContactSums(rec,s.jahr,s.monat);
       if(!lj&&!vj&&!monat) continue;
       const fh=s.fh[rec.fh_nr];
@@ -5408,7 +5652,8 @@ function akpFullList(s){
     }
     akpExtrasCache=extra; akpExtrasCacheKey=key;
   }
-  return akpExtrasCache.length? s.akp.concat(akpExtrasCache) : s.akp;
+  const combined=akpExtrasCache.length? s.akp.concat(akpExtrasCache) : s.akp;
+  return combined.filter(a=>!isAkpCampaignEntry(a.nr));
 }
 
 async function saveData(){ try{ await stSet("wg-state",JSON.stringify(state)); }catch(e){} }
@@ -6463,6 +6708,10 @@ function fhResolveNameOrt(fhNr){
 let fhModalCurrent=null;
 async function openFhModal(fhNr){
   if(!fhNr) return;
+  // Sicherheitsnetz: falls doch einmal eine Alias-FH-Nr direkt übergeben
+  // wird (z.B. alter Link/Datenreferenz von vor dem Zusammenführen), auf die
+  // kanonische Nummer umleiten - siehe resolveFhDup().
+  fhNr=resolveFhDup(fhNr);
   fhModalCurrent=fhNr;
   const f=state.latest.fh[fhNr];
   const fb=f?null:fhFallbackFromAkp(fhNr);
@@ -8889,7 +9138,19 @@ async function renderFhDeckungsgradSection(){
   if(!deckungsgradEnabled){ box.innerHTML=""; return; }
   if(!(sb&&supaUser)||!fhNr) return;
   try{
-    const { data, error } = await sb.rpc("fh_deckungsgrad_for",{p_fh_nr:fhNr});
+    let { data, error } = await sb.rpc("fh_deckungsgrad_for",{p_fh_nr:fhNr});
+    // FH-Duplikate zusammenführen (siehe resolveFhDup()/FH_DUP_ALIASES): hat
+    // die kanonische FH-Nr selbst keinen Deckungsgrad-Datensatz, aber eine
+    // zusammengeführte Alias-Nr, wird deren Datensatz stattdessen gezeigt -
+    // bewusst KEINE Summierung der vertraulichen DG-/DB-Kennzahlen (DB1/DB2-
+    // Ampel basiert auf Perzentil-Rang über alle Fachhändler, eine einfache
+    // Addition würde eine falsche Ampel erzeugen).
+    if((!data||!data.length)&&FH_DUP_ALIASES[fhNr]&&FH_DUP_ALIASES[fhNr].length){
+      for(const aliasNr of FH_DUP_ALIASES[fhNr]){
+        const alt=await sb.rpc("fh_deckungsgrad_for",{p_fh_nr:aliasNr});
+        if(alt.data&&alt.data.length){ data=alt.data; error=alt.error; break; }
+      }
+    }
     if(fhModalCurrent!==fhNr) return; // Nutzer hat inzwischen einen anderen Händler geöffnet
     if(error){ console.error("renderFhDeckungsgradSection:",error.message||error); box.innerHTML=""; return; }
     const d=data&&data[0];
@@ -10467,6 +10728,11 @@ $("adminClose").onclick=()=>$("adminModal").classList.add("hidden");
 $("karteileichenBtn").onclick=openKarteileichenModal;
 $("karteileichenClose").onclick=()=>$("karteileichenModal").classList.add("hidden");
 $("karteileichenApplyBtn").onclick=applyKarteileichenJahre;
+$("fhDupBtn").onclick=()=>{ $("fhDupModal").classList.remove("hidden"); loadFhDupList(); };
+$("fhDupClose").onclick=()=>$("fhDupModal").classList.add("hidden");
+$("fhDupCanonicalSearch").oninput=()=>renderFhDupSearch("canonical");
+$("fhDupAliasSearch").oninput=()=>renderFhDupSearch("alias");
+$("fhDupCreateBtn").onclick=createFhDupMerge;
 $("chefgespraechEnabledChk").onchange=toggleChefgespraechEnabled;
 $("kooperationsgespraechEnabledChk").onchange=toggleKooperationsgespraechEnabled;
 $("auswertungEnabledChk").onchange=toggleAuswertungEnabled;
@@ -10651,6 +10917,11 @@ async function refreshData(silent){
   refreshBusy=true;
   const btn=$("refreshBtn"); if(btn) btn.disabled=true;
   try{
+    // Vor allem anderen laden (siehe resolveFhDup()) - loadAkpContactsIndex/
+    // loadFhContactsIndicesAll/processPendingImports lösen FH-Nr direkt beim
+    // Aufbau ihrer Indizes auf, dürfen also nicht parallel dazu erst noch
+    // FH_DUP_MAP befüllen (sonst Race Condition mit veraltetem/leerem Stand).
+    await loadFhDuplicateMerges();
     await Promise.all([loadAll(), loadAkpContactsIndex(), loadFhContactsIndicesAll()]);
     await processPendingImports();
     render();
@@ -10806,6 +11077,9 @@ function buildMitarbeiterDropdown(){
   if(authed){
     await loadEmployees();
     buildMitarbeiterDropdown();
+    // Vor loadAll()/den Kontaktdatenbank-Indizes laden (siehe resolveFhDup()
+    // und Kommentar in refreshData()).
+    await loadFhDuplicateMerges();
     await loadAll(); showRoleBadge(); render();
     await Promise.all([loadAkpContactsIndex(), loadFhContactsIndicesAll()]);
     await processPendingImports();
