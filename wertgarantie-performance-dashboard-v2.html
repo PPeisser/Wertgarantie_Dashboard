@@ -887,7 +887,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div><span class="ac-lbl">Ansprechpartner</span><div class="ac-val" id="fhAnsprechpartnerView">–</div></div>
         <div><span class="ac-lbl">E-Mail Ansprechpartner</span><div class="ac-val" id="fhEmailApView">–</div></div>
         <div><span class="ac-lbl">Homepage</span><div class="ac-val" id="fhHomepageView">–</div></div>
-        <div><span class="ac-lbl">Händlersegmentierung</span><div class="ac-val" id="fhSegmentView">–</div></div>
+        <div><span class="ac-lbl">Händlersegmentierung</span><div class="ac-val" style="display:flex;align-items:center;gap:6px"><span id="fhSegmentView">–</span><span id="fhSegmentTrend"></span></div></div>
         <div><span class="ac-lbl">Kooperation</span><div class="ac-val" id="fhKooperationView">–</div></div>
         <div><span class="ac-lbl">Hauptzweig</span><div class="ac-val" id="fhHauptzweigView">–</div></div>
         <div><span class="ac-lbl">Letzter Besuch</span><div class="ac-val" id="fhBesuchView">–</div></div>
@@ -3530,16 +3530,17 @@ function parseFhSegmentierung(wb){
   }
   return out.length?out:null;
 }
-// Schreibt eine Liste {fh_nr,segmentierung} per Upsert in fh_contacts
-// (gemeinsam von Admin-Upload und automatischem Mail-Import genutzt).
+// Schreibt eine Liste {fh_nr,segmentierung} in fh_contacts (gemeinsam von
+// Admin-Upload und automatischem Mail-Import genutzt). Läuft über die RPC
+// fh_segmentierung_upsert (statt eines direkten .upsert()), weil dort beim
+// ersten Import eines neuen Kalendermonats "segmentierung_prev" serverseitig
+// aus dem bisherigen Stand fortgeschrieben wird - Basis für den
+// Vormonats-Trendpfeil im FH-PopUp (siehe fhSegmentTrend/FH_SEGMENT_RANK).
 async function upsertFhSegmentierung(rows){
   const CHUNK=500;
   for(let i=0;i<rows.length;i+=CHUNK){
-    const chunk=rows.slice(i,i+CHUNK).map(r=>({
-      fh_nr:r.fh_nr, segmentierung:r.segmentierung,
-      updated_by:supaUser.id, updated_at:new Date().toISOString()
-    }));
-    const { error }=await sb.from("fh_contacts").upsert(chunk,{onConflict:"fh_nr"});
+    const chunk=rows.slice(i,i+CHUNK).map(r=>({ fh_nr:r.fh_nr, segmentierung:r.segmentierung }));
+    const { error }=await sb.rpc("fh_segmentierung_upsert",{rows:chunk});
     if(error) throw error;
   }
 }
@@ -6493,6 +6494,18 @@ async function openFhModal(fhNr){
 /* ---------- Fachhändler-Stammdaten (Adresse, Kontakt, Ansprechpartner, Segmentierung, Besuch, Notizen) ---------- */
 let fhContactCurrent=null;
 const FH_SEGMENT_LBL={"A+":"A+",A:"A",B:"B","C+":"C+",C:"C",D:"D"};
+// Rangfolge der Segmentierungs-Kategorien (D am schlechtesten, A+ am besten -
+// siehe parseFhSegmentierung/Händlersegmentierungs-Datei) - Basis für den
+// Vormonats-Trendpfeil im FH-PopUp (Nutzervorgabe 04.09.2026). Liefert null
+// (kein Pfeil), wenn aktueller oder vorheriger Wert fehlt/"–" ist - es wird
+// nie geraten, nur bei zwei tatsächlich vorhandenen Kategorien verglichen.
+const FH_SEGMENT_RANK={D:0,C:1,"C+":2,B:3,A:4,"A+":5};
+function fhSegmentTrend(cur,prev){
+  if(cur==null||prev==null) return null;
+  const rc=FH_SEGMENT_RANK[cur], rp=FH_SEGMENT_RANK[prev];
+  if(rc==null||rp==null) return null;
+  return rc>rp?"besser":rc<rp?"schlechter":"gleich";
+}
 // Kooperationen (Einkaufsverbindungen) - Stand des Bulk-Imports vom
 // 23.08.2026 aus 14 Kooperationslisten (siehe fh_contacts.kooperation).
 // Neue Kooperationen können hier ergänzt werden; die Spalte selbst ist
@@ -6641,7 +6654,7 @@ function fhHasRecentAkqBeginn(fhNr){
   return (s.akq||[]).some(a=>a.nr===fhNr&&a.beginn&&a.beginn>=grenze);
 }
 async function loadFhContact(fhNr){
-  fhContactCurrent={fh_nr:fhNr,strasse:null,plz:null,ort:null,telefon:null,email:null,ansprechpartner:null,ansprechpartner_email:null,homepage:null,segmentierung:null,letzter_besuch:null,sonstige_infos:null,neunwochen_erledigt:false,club_weiss_mitglied:false,club_weiss_mitgliedsnummer:null,miete_monthly:{},miete_sortiment:{},gesperrt_am:null};
+  fhContactCurrent={fh_nr:fhNr,strasse:null,plz:null,ort:null,telefon:null,email:null,ansprechpartner:null,ansprechpartner_email:null,homepage:null,segmentierung:null,segmentierung_prev:null,letzter_besuch:null,sonstige_infos:null,neunwochen_erledigt:false,club_weiss_mitglied:false,club_weiss_mitgliedsnummer:null,miete_monthly:{},miete_sortiment:{},gesperrt_am:null};
   try{
     const {data,error}=await sb.from("fh_contacts").select("*").eq("fh_nr",fhNr).maybeSingle();
     // Falls der User inzwischen einen anderen Fachhändler geöffnet hat, ist
@@ -6680,6 +6693,8 @@ function renderFhContactView(){
   $("fhEmailApView").textContent=c.ansprechpartner_email||"–";
   $("fhHomepageView").innerHTML=c.homepage?`<a href="${escapeHtml(urlHref(c.homepage))}" target="_blank" rel="noopener">${escapeHtml(c.homepage)}</a>`:"–";
   $("fhSegmentView").textContent=c.segmentierung?(FH_SEGMENT_LBL[c.segmentierung]||c.segmentierung):"–";
+  const segTrend=fhSegmentTrend(c.segmentierung,c.segmentierung_prev);
+  $("fhSegmentTrend").innerHTML=segTrend?`<span style="color:${DG_TREND_COLOR[segTrend]};font-weight:800;font-size:13px" title="${segTrend==="gleich"?"unverändert zum Vormonat":segTrend+" als Vormonat"}">${DG_TREND_ARROW[segTrend]}</span>`:"";
   $("fhKooperationView").textContent=c.kooperation||"–";
   $("fhHauptzweigView").textContent=c.hauptzweig||"–";
   $("fhBesuchView").textContent=c.letzter_besuch?fmtDate(c.letzter_besuch):"–";
