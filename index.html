@@ -4866,9 +4866,10 @@ async function exportPerfAllReportsPdf(year,month){
 
 // KI-Jahresbericht: ZUSÄTZLICHER, einmal im Jahr abrufbarer Sammelbericht
 // (Nutzervorgabe 22.08.2026) - ersetzt NICHT die Einzel-/Monatsprotokolle
-// oben, sondern lässt die Anthropic API alle im gewählten Jahr abgegebenen
-// Protokolle je Mitarbeiter/Monat sowie unternehmensweit zusammenfassen
-// (Backend: Edge Function performance-dialog-annual-summary, Admin-only).
+// oben, sondern lässt die Mistral API (EU-Anbieter, DSGVO-konform, seit
+// 04.09.2026) alle im gewählten Jahr abgegebenen Protokolle je Mitarbeiter/
+// Monat sowie unternehmensweit zusammenfassen (Backend: Edge Function
+// performance-dialog-annual-summary, Admin-only).
 async function callPerfAnnualSummary(year){
   const { data:{ session } } = await sb.auth.getSession();
   const res = await fetch(SUPABASE_URL+"/functions/v1/performance-dialog-annual-summary", {

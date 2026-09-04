@@ -2,7 +2,8 @@
 // EINER Einkaufskooperation (alle ihre Mitglieds-Fachhändler zusammen)
 // zusammen und vergleicht sie anonymisiert (nur Aggregatwerte je Kooperation,
 // keine Einzelhändler-Daten) mit allen ANDEREN Einkaufskooperationen. Nutzt
-// die Anthropic Messages API mit erzwungenem Tool-Call für eine strukturierte
+// die Mistral Chat-Completions-API (EU-Anbieter, DSGVO-konform, DPA vorhanden
+// - Nutzervorgabe 04.09.2026) mit erzwungenem Tool-Call für eine strukturierte
 // JSON-Antwort (Zusammenfassung + Vergleichswerte je Kennzahl + Empfehlungen).
 // Analog zu chefgespraech-ai-comparison, aber auf Kooperations- statt
 // Einzelhändler-Ebene - "ohne Kooperation" ist keine echte Kooperation und
@@ -12,7 +13,7 @@
 // da jeder Außendienst-Mitarbeiter den Kooperationsgespräch-Button nutzen
 // darf (fh_contacts ist ohnehin für alle authentifizierten Nutzer lesbar).
 //
-// Secret: ANTHROPIC_API_KEY (bereits als Supabase-Secret hinterlegt, siehe
+// Secret: MISTRAL_API_KEY (als Supabase-Secret hinterlegt, siehe
 // chefgespraech-ai-comparison).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -119,7 +120,7 @@ function rankPercentile(arr: number[], value: number): number | null {
 const COMPARISON_TOOL = {
   name: "generate_kooperationsgespraech_comparison",
   description: "Erstellt die strukturierte Zusammenfassung samt anonymem Vergleich für das Kooperationsgespräch.",
-  input_schema: {
+  parameters: {
     type: "object",
     properties: {
       summary: {
@@ -248,8 +249,8 @@ Deno.serve(async (req) => {
     },
   };
 
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!apiKey) return json({ error: "ANTHROPIC_API_KEY ist nicht als Supabase-Secret hinterlegt." }, 500);
+  const apiKey = Deno.env.get("MISTRAL_API_KEY");
+  if (!apiKey) return json({ error: "MISTRAL_API_KEY ist nicht als Supabase-Secret hinterlegt." }, 500);
 
   const fmtPct = (v: number | null) => v == null ? "–" : (v * 100).toFixed(1).replace(".", ",") + " %";
   const userPrompt =
@@ -282,34 +283,42 @@ Deno.serve(async (req) => {
 
   let aiRes: Response;
   try {
-    aiRes = await fetch("https://api.anthropic.com/v1/messages", {
+    aiRes = await fetch("https://api.mistral.ai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
+        "Authorization": "Bearer " + apiKey,
       },
       body: JSON.stringify({
-        model: "claude-sonnet-5",
+        model: "mistral-large-latest",
         max_tokens: 4000,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }],
-        tools: [COMPARISON_TOOL],
-        tool_choice: { type: "tool", name: "generate_kooperationsgespraech_comparison" },
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        tools: [{ type: "function", function: COMPARISON_TOOL }],
+        tool_choice: "any",
+        parallel_tool_calls: false,
       }),
     });
   } catch (e) {
-    return json({ error: "Anthropic-API nicht erreichbar: " + String(e) }, 502);
+    return json({ error: "Mistral-API nicht erreichbar: " + String(e) }, 502);
   }
 
   if (!aiRes.ok) {
     const errText = await aiRes.text();
-    return json({ error: `Anthropic-API-Fehler (${aiRes.status}): ${errText}` }, 502);
+    return json({ error: `Mistral-API-Fehler (${aiRes.status}): ${errText}` }, 502);
   }
 
   const aiJson = await aiRes.json();
-  const toolUse = (aiJson.content || []).find((c: { type: string }) => c.type === "tool_use");
-  if (!toolUse) return json({ error: "KI-Antwort enthielt keine strukturierte Auswertung." }, 502);
+  const toolCall = aiJson.choices?.[0]?.message?.tool_calls?.[0];
+  if (!toolCall) return json({ error: "KI-Antwort enthielt keine strukturierte Auswertung." }, 502);
+  let report: unknown;
+  try {
+    report = JSON.parse(toolCall.function.arguments);
+  } catch (e) {
+    return json({ error: "KI-Antwort enthielt kein gueltiges JSON: " + String(e) }, 502);
+  }
 
   return json({
     ok: true,
@@ -317,6 +326,6 @@ Deno.serve(async (req) => {
     peerCount: peerGroups.length,
     year: maxYear,
     metrics: { target: targetMetrics, peers: peerStats },
-    report: toolUse.input,
+    report,
   });
 });

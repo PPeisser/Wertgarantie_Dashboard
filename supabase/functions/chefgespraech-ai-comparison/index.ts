@@ -1,7 +1,8 @@
 // Chefgespraech - KI-Unterstuetzt: fasst die Kennzahlen EINES Fachhaendlers
 // zusammen und vergleicht ihn anonymisiert (nur Aggregatwerte, keine
 // Einzelhaendler-Daten) mit einer Vergleichsgruppe anderer Haendler. Nutzt die
-// Anthropic Messages API mit erzwungenem Tool-Call fuer eine strukturierte
+// Mistral Chat-Completions-API (EU-Anbieter, DSGVO-konform, DPA vorhanden -
+// Nutzervorgabe 04.09.2026) mit erzwungenem Tool-Call fuer eine strukturierte
 // JSON-Antwort (Zusammenfassung + Vergleichswerte je Kennzahl + Empfehlungen).
 //
 // Vergleichsmodi (Nutzervorgabe 22./23./25.08.2026, "mode"-Feld im Request):
@@ -18,7 +19,7 @@
 // da jeder Aussendienst-Mitarbeiter den Chefgespraech-Button nutzen darf
 // (fh_contacts ist ohnehin fuer alle authentifizierten Nutzer lesbar).
 //
-// Secret: ANTHROPIC_API_KEY (bereits als Supabase-Secret hinterlegt, siehe
+// Secret: MISTRAL_API_KEY (als Supabase-Secret hinterlegt, siehe
 // performance-dialog-annual-summary).
 //
 // Hinweis 25.08.2026: Kommentare/Prompt-Texte in dieser Datei sind bewusst
@@ -174,7 +175,7 @@ async function selectPeerGroup(
 const COMPARISON_TOOL = {
   name: "generate_chefgespraech_comparison",
   description: "Erstellt die strukturierte Zusammenfassung samt anonymem Vergleich fuer das Chefgespraech.",
-  input_schema: {
+  parameters: {
     type: "object",
     properties: {
       summary: {
@@ -307,8 +308,8 @@ Deno.serve(async (req) => {
     clubWeissRate: peerMetrics.length ? peerMetrics.filter((m) => m.clubWeiss).length / peerMetrics.length : null,
   };
 
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!apiKey) return json({ error: "ANTHROPIC_API_KEY ist nicht als Supabase-Secret hinterlegt." }, 500);
+  const apiKey = Deno.env.get("MISTRAL_API_KEY");
+  if (!apiKey) return json({ error: "MISTRAL_API_KEY ist nicht als Supabase-Secret hinterlegt." }, 500);
 
   const fmtPct = (v: number | null) => v == null ? "-" : (v * 100).toFixed(1).replace(".", ",") + " %";
   const userPrompt =
@@ -352,34 +353,42 @@ Deno.serve(async (req) => {
 
   let aiRes: Response;
   try {
-    aiRes = await fetch("https://api.anthropic.com/v1/messages", {
+    aiRes = await fetch("https://api.mistral.ai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
+        "Authorization": "Bearer " + apiKey,
       },
       body: JSON.stringify({
-        model: "claude-sonnet-5",
+        model: "mistral-large-latest",
         max_tokens: 4000,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }],
-        tools: [COMPARISON_TOOL],
-        tool_choice: { type: "tool", name: "generate_chefgespraech_comparison" },
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        tools: [{ type: "function", function: COMPARISON_TOOL }],
+        tool_choice: "any",
+        parallel_tool_calls: false,
       }),
     });
   } catch (e) {
-    return json({ error: "Anthropic-API nicht erreichbar: " + String(e) }, 502);
+    return json({ error: "Mistral-API nicht erreichbar: " + String(e) }, 502);
   }
 
   if (!aiRes.ok) {
     const errText = await aiRes.text();
-    return json({ error: `Anthropic-API-Fehler (${aiRes.status}): ${errText}` }, 502);
+    return json({ error: `Mistral-API-Fehler (${aiRes.status}): ${errText}` }, 502);
   }
 
   const aiJson = await aiRes.json();
-  const toolUse = (aiJson.content || []).find((c: { type: string }) => c.type === "tool_use");
-  if (!toolUse) return json({ error: "KI-Antwort enthielt keine strukturierte Auswertung." }, 502);
+  const toolCall = aiJson.choices?.[0]?.message?.tool_calls?.[0];
+  if (!toolCall) return json({ error: "KI-Antwort enthielt keine strukturierte Auswertung." }, 502);
+  let report: unknown;
+  try {
+    report = JSON.parse(toolCall.function.arguments);
+  } catch (e) {
+    return json({ error: "KI-Antwort enthielt kein gueltiges JSON: " + String(e) }, 502);
+  }
 
   return json({
     ok: true,
@@ -390,6 +399,6 @@ Deno.serve(async (req) => {
     year: targetMetrics.curYear,
     metrics: { target: targetMetrics, peers: peerStats },
     cooperationContext,
-    report: toolUse.input,
+    report,
   });
 });
