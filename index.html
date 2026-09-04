@@ -6766,12 +6766,26 @@ function akqLeadFor(fhNr){
 // (erster Treffer) - deckt Händler ab, die weder in fh_contacts noch in der
 // AKQ-Liste einen Namen haben, aber in der AKP-Kontaktdatenbank bekannt sind
 // (Bug-Report 04.09.2026: FH-Suche zeigte bei solchen Händlern nur die FH-Nr).
+// Map-Cache statt Object.values().find() bei jedem Aufruf - gleiches Muster
+// wie akqLeadFor() oben: fhAllKnownList() ruft dies für JEDEN fh_contacts-
+// Eintrag ohne eigenen Namen auf, macht bei ~10.000 AKP-Kontakten also pro
+// Aufruf einen vollen linearen Scan. Bei jedem Tastendruck in der FH-Suche
+// (fhAllKnownList() war bis hierher NICHT gecacht, siehe unten) summierte
+// sich das zu mehreren Sekunden Verzögerung PRO Buchstabe (Bug-Report
+// 04.09.2026 "dauert Sekunden bis ein Buchstabe geschrieben ist"). Der Cache
+// wird pro neuer akpContactsIndex-Objektreferenz (also pro Neuladen) einmal
+// aufgebaut.
+let fhAkpFirmaCache=null, fhAkpFirmaCacheSrc=null;
 function fhAkpFirmaFallback(fhNr){
   if(!akpContactsIndex) return null;
-  for(const a of Object.values(akpContactsIndex)){
-    if(a.fh_nr===fhNr&&a.firma) return a.firma;
+  if(fhAkpFirmaCacheSrc!==akpContactsIndex){
+    fhAkpFirmaCache=new Map();
+    for(const a of Object.values(akpContactsIndex)){
+      if(a.fh_nr&&a.firma&&!fhAkpFirmaCache.has(a.fh_nr)) fhAkpFirmaCache.set(a.fh_nr,a.firma);
+    }
+    fhAkpFirmaCacheSrc=akpContactsIndex;
   }
-  return null;
+  return fhAkpFirmaCache.get(fhNr)||null;
 }
 function fhFallbackFromAkp(fhNr){
   // fh_contacts-Name (akq_name > miete_name > manueller Name, siehe
@@ -6815,7 +6829,20 @@ function fhFallbackFromAkp(fhNr){
 // keinen akq_name - die Suche kannte den Namen deshalb nicht, obwohl das
 // FH-PopUp ihn über akqLeadFor längst korrekt anzeigte - Namensauflösung
 // jetzt überall gleich: fh_contacts-Name > AKQ-Liste-Name > FH-Nr).
+// Bug-Report 04.09.2026 ("FH-Suche: Sekunden bis ein Buchstabe geschrieben
+// ist"): renderFhSearch()/renderChefgespraechSearch() riefen dies bei JEDEM
+// Tastendruck neu auf - baute die komplette Liste (heutige Produktion +
+// alle ~3.000 fh_contacts-Zeilen + AKQ-Liste, siehe oben) jedes Mal von
+// Grund auf neu, mit potenziell hunderten Aufrufen von fhAkpFirmaFallback()
+// pro Durchlauf. Gleiches Cache-Muster wie akqLeadFor()/fhAkpFirmaFallback()
+// oben: Ergebnis wird zwischengespeichert und nur neu gebaut, wenn sich
+// eine der vier Quell-Objektreferenzen tatsächlich geändert hat (neuer
+// Import/Reload) - nicht bei jedem Tastendruck.
+let fhAllKnownListCache=null, fhAllKnownListCacheSrc=[null,null,null,null];
 function fhAllKnownList(){
+  const srcs=[state.latest.fh,fhContactsAllIndex,state.latest.akq,akpContactsIndex];
+  if(fhAllKnownListCache&&srcs.every((s,i)=>s===fhAllKnownListCacheSrc[i])) return fhAllKnownListCache;
+  fhAllKnownListCacheSrc=srcs;
   const out=[], seen=new Set();
   // filialbetriebe/weitere_zuordnung kommen nur aus fh_contacts (manuell
   // gepflegt, kein Teil der täglichen Auswertung) - deshalb für JEDEN
@@ -6837,6 +6864,7 @@ function fhAllKnownList(){
     seen.add(a.nr);
     out.push({nr:a.nr,name:a.name||fhAkpFirmaFallback(a.nr)||a.nr,ort:a.ort||null,emp:a.emp||null,filialbetriebe:null,weitereZuordnung:null});
   });
+  fhAllKnownListCache=out;
   return out;
 }
 // Sucht über Name, Ort, Filialbetriebe, Weitere Zuordnung UND FH-Nr.
