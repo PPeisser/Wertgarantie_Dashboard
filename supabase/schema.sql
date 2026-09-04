@@ -321,8 +321,14 @@ create table if not exists public.fh_contacts (
   ansprechpartner  text,
   ansprechpartner_email text, -- getrennt von der geschäftlichen E-Mail-Adresse
   homepage         text,
-  -- Feste Segmentierung A+/A/B/C+/C/D (Händlerpotenzial).
+  -- Feste Segmentierung A+/A/B/C+/C/D (Händlerpotenzial). segmentierung_prev
+  -- ist der zuletzt bekannte VORMONATSwert, segmentierung_month der
+  -- Kalendermonat ("YYYY-MM"), für den "segmentierung" aktuell gilt - beide
+  -- werden ausschließlich von der RPC fh_segmentierung_upsert gepflegt
+  -- (siehe unten), Basis für den Trendpfeil im FH-PopUp (fhSegmentTrend).
   segmentierung    text check (segmentierung is null or segmentierung in ('A+','A','B','C+','C','D')),
+  segmentierung_prev text check (segmentierung_prev is null or segmentierung_prev in ('A+','A','B','C+','C','D')),
+  segmentierung_month text,
   letzter_besuch   date,
   sonstige_infos   text,
   -- Monatsproduktion je Fachhändler (analog zu akp_contacts.prod_monthly),
@@ -424,6 +430,62 @@ alter table public.fh_contacts add column if not exists ziel numeric;
 alter table public.fh_contacts drop constraint if exists fh_contacts_segmentierung_check;
 alter table public.fh_contacts add constraint fh_contacts_segmentierung_check
   check (segmentierung is null or segmentierung in ('A+','A','B','C+','C','D'));
+
+-- Vormonats-Trendpfeil für die Händlersegmentierung im FH-PopUp (Nutzervorgabe
+-- 04.09.2026): zusätzlich zum aktuellen Wert (segmentierung) wird der zuletzt
+-- bekannte Vormonatswert (segmentierung_prev) sowie der Monat, für den der
+-- aktuelle Wert gilt (segmentierung_month, "YYYY-MM"), mitgeführt.
+alter table public.fh_contacts add column if not exists segmentierung_prev text;
+alter table public.fh_contacts add column if not exists segmentierung_month text;
+
+alter table public.fh_contacts drop constraint if exists fh_contacts_segmentierung_prev_check;
+alter table public.fh_contacts add constraint fh_contacts_segmentierung_prev_check
+  check (segmentierung_prev is null or segmentierung_prev in ('A+','A','B','C+','C','D'));
+
+-- Schreibt die monatliche Händlersegmentierungs-Datei (Admin-Upload oder
+-- automatischer Mail-Import, siehe parseFhSegmentierung/upsertFhSegmentierung)
+-- je Fachhändler fest. Beim ERSTEN Import eines neuen Kalendermonats
+-- (erkannt an segmentierung_month vs. dem aktuellen Monat, server-seitig via
+-- now() statt Client-Uhrzeit) wird der bisherige Wert nach segmentierung_prev
+-- verschoben - das ist die Basis für den Trendpfeil (fhSegmentTrend im
+-- Client). Ein erneuter Import INNERHALB desselben Monats (z.B. eine
+-- Korrektur) überschreibt segmentierung_prev NICHT nochmal, sonst würde der
+-- "Vormonat" bei mehreren Importen im selben Monat verlorengehen.
+create or replace function public.fh_segmentierung_upsert(rows jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  r jsonb; fhnr text; newseg text; curmonth text;
+  oldseg text; oldmonth text; oldprev text; newprev text;
+begin
+  curmonth := to_char(now(), 'YYYY-MM');
+  for r in select * from jsonb_array_elements(rows) loop
+    fhnr := r->>'fh_nr';
+    if coalesce(fhnr,'') = '' then continue; end if;
+    newseg := nullif(r->>'segmentierung','');
+
+    select segmentierung, segmentierung_month, segmentierung_prev
+      into oldseg, oldmonth, oldprev
+      from public.fh_contacts where fh_nr = fhnr;
+
+    if oldmonth is distinct from curmonth then
+      newprev := oldseg;
+    else
+      newprev := oldprev;
+    end if;
+
+    insert into public.fh_contacts (fh_nr, segmentierung, segmentierung_prev, segmentierung_month)
+    values (fhnr, newseg, newprev, curmonth)
+    on conflict (fh_nr) do update set
+      segmentierung = excluded.segmentierung,
+      segmentierung_prev = excluded.segmentierung_prev,
+      segmentierung_month = excluded.segmentierung_month,
+      updated_at = now();
+  end loop;
+end;
+$$;
+
+revoke execute on function public.fh_segmentierung_upsert(jsonb) from public;
+grant execute on function public.fh_segmentierung_upsert(jsonb) to authenticated;
 
 alter table public.fh_contacts drop constraint if exists fh_contacts_hauptzweig_check;
 alter table public.fh_contacts add constraint fh_contacts_hauptzweig_check
