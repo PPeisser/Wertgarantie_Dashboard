@@ -44,6 +44,68 @@ function json(body: unknown, status = 200) {
   });
 }
 
+// Ruft Mistral mit erzwungenem Tool-Call auf. temperature:0.2 (statt Default)
+// fuer sachliche, konsistente Kennzahlen-Berichte statt kreativer Streuung.
+// Ein automatischer zweiter Versuch (Netzwerkfehler, HTTP-Fehler, fehlender
+// Tool-Call ODER ungueltiges JSON in den Tool-Argumenten) macht die Antwort
+// robust gegen die seltenen, aber moeglichen Ausreisser eines einzelnen
+// API-Aufrufs (Nutzervorgabe 04.09.2026: "es soll einwandfrei sein") - erst
+// wenn auch der zweite Versuch scheitert, wird der Fehler an den Client
+// zurueckgegeben.
+async function callMistralTool(
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string,
+  tool: Record<string, unknown>,
+  maxTokens: number,
+): Promise<{ report?: unknown; error?: string }> {
+  let lastError = "Unbekannter Fehler.";
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    let aiRes: Response;
+    try {
+      aiRes = await fetch("https://api.mistral.ai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + apiKey,
+        },
+        body: JSON.stringify({
+          model: "mistral-large-latest",
+          max_tokens: maxTokens,
+          temperature: 0.2,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          tools: [{ type: "function", function: tool }],
+          tool_choice: "any",
+          parallel_tool_calls: false,
+        }),
+      });
+    } catch (e) {
+      lastError = "Mistral-API nicht erreichbar: " + String(e);
+      continue;
+    }
+    if (!aiRes.ok) {
+      const errText = await aiRes.text();
+      lastError = `Mistral-API-Fehler (${aiRes.status}): ${errText}`;
+      continue;
+    }
+    const aiJson = await aiRes.json();
+    const toolCall = aiJson.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall) {
+      lastError = "KI-Antwort enthielt keine strukturierte Auswertung.";
+      continue;
+    }
+    try {
+      return { report: JSON.parse(toolCall.function.arguments) };
+    } catch (e) {
+      lastError = "KI-Antwort enthielt kein gueltiges JSON: " + String(e);
+    }
+  }
+  return { error: lastError };
+}
+
 // deno-lint-ignore no-explicit-any
 type AkpRow = Record<string, any>;
 // deno-lint-ignore no-explicit-any
@@ -351,44 +413,9 @@ Deno.serve(async (req) => {
     `professionell, praegnant, ohne Floskeln. Antworte ausschliesslich ueber das Tool ` +
     `"generate_akp_peer_comparison".`;
 
-  let aiRes: Response;
-  try {
-    aiRes = await fetch("https://api.mistral.ai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + apiKey,
-      },
-      body: JSON.stringify({
-        model: "mistral-large-latest",
-        max_tokens: 4000,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        tools: [{ type: "function", function: COMPARISON_TOOL }],
-        tool_choice: "any",
-        parallel_tool_calls: false,
-      }),
-    });
-  } catch (e) {
-    return json({ error: "Mistral-API nicht erreichbar: " + String(e) }, 502);
-  }
-
-  if (!aiRes.ok) {
-    const errText = await aiRes.text();
-    return json({ error: `Mistral-API-Fehler (${aiRes.status}): ${errText}` }, 502);
-  }
-
-  const aiJson = await aiRes.json();
-  const toolCall = aiJson.choices?.[0]?.message?.tool_calls?.[0];
-  if (!toolCall) return json({ error: "KI-Antwort enthielt keine strukturierte Auswertung." }, 502);
-  let report: unknown;
-  try {
-    report = JSON.parse(toolCall.function.arguments);
-  } catch (e) {
-    return json({ error: "KI-Antwort enthielt kein gueltiges JSON: " + String(e) }, 502);
-  }
+  const aiResult = await callMistralTool(apiKey, systemPrompt, userPrompt, COMPARISON_TOOL, 6000);
+  if (aiResult.error) return json({ error: aiResult.error }, 502);
+  const report = aiResult.report;
 
   return json({
     ok: true,
