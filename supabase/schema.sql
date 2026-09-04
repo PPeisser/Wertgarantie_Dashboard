@@ -1087,3 +1087,67 @@ $$;
 
 revoke execute on function public.fh_deckungsgrad_upsert(jsonb) from public;
 grant execute on function public.fh_deckungsgrad_upsert(jsonb) to authenticated;
+
+-- ---------- FH-Duplikate zusammenführen (04.09.2026) ----------
+-- Manche Fachhändler stehen unter zwei FH-Nr in den Quelldateien (Bug-Report
+-- "Elektrotechnik Vallant KG" - zweifach mit unterschiedlicher FH-Nr, gleicher
+-- Telefonnummer-Kern, vermutlich eine bei Wertgarantie intern vergebene neue
+-- Kundennummer statt Weiterverwendung der bestehenden). Ein Admin kann hier
+-- zwei FH-Nr als denselben realen Betrieb markieren - der Client löst
+-- alias_fh_nr dann ÜBERALL, wo eine FH-Nr aus einer Quelle gelesen wird
+-- (parseAuswertung/buildFhContactsIndices/loadAkpContactsIndex, siehe
+-- resolveFhDup() in index.html), auf canonical_fh_nr auf. Alias-Nr
+-- verschwindet dadurch als eigener Eintrag, Kennzahlen werden addiert.
+create table if not exists public.fh_duplicate_merges (
+  alias_fh_nr     text primary key,
+  canonical_fh_nr text not null,
+  note            text,
+  created_by      uuid references auth.users(id),
+  created_at      timestamptz not null default now(),
+  constraint fh_duplicate_merges_not_self check (alias_fh_nr <> canonical_fh_nr)
+);
+
+alter table public.fh_duplicate_merges enable row level security;
+
+create policy "Authenticated read fh_duplicate_merges"
+  on public.fh_duplicate_merges for select
+  to authenticated
+  using (true);
+
+create policy "Admins can insert fh_duplicate_merges"
+  on public.fh_duplicate_merges for insert
+  to authenticated
+  with check (public.is_admin());
+
+create policy "Admins can delete fh_duplicate_merges"
+  on public.fh_duplicate_merges for delete
+  to authenticated
+  using (public.is_admin());
+
+-- Verhindert Ketten (Alias, der selbst schon kanonisch fuer andere Aliase
+-- ist, oder ein Alias, der schon einer anderen Kanonisch-Nr zugeordnet ist) -
+-- resolveFhDup() im Client bleibt dadurch ein einfacher, nicht rekursiver
+-- Map-Lookup ohne Ketten-Aufloesung.
+create or replace function public.fh_duplicate_merges_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if exists (select 1 from public.fh_duplicate_merges where canonical_fh_nr = new.alias_fh_nr) then
+    raise exception 'FH-Nr % ist bereits kanonische Nummer fuer andere Aliase - keine Ketten erlaubt', new.alias_fh_nr;
+  end if;
+  if exists (select 1 from public.fh_duplicate_merges where alias_fh_nr = new.canonical_fh_nr) then
+    raise exception 'FH-Nr % ist selbst bereits als Alias markiert - keine Ketten erlaubt', new.canonical_fh_nr;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists fh_duplicate_merges_guard_trg on public.fh_duplicate_merges;
+create trigger fh_duplicate_merges_guard_trg
+  before insert or update on public.fh_duplicate_merges
+  for each row execute function public.fh_duplicate_merges_guard();
+
+create index if not exists fh_duplicate_merges_canonical_idx on public.fh_duplicate_merges (canonical_fh_nr);
