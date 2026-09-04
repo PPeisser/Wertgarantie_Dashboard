@@ -629,6 +629,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       </button>
       <button class="btn btn-ghost hidden" id="settingsBtn" title="Einstellungen">⚙ Einstellungen</button>
       <button class="btn btn-ghost hidden" id="adminBtn" title="Admin-Panel">⚙ Admin</button>
+      <button class="btn btn-ghost no-print" id="privacyBtn" title="Datenschutzhinweis" style="padding:11px 13px;font-weight:800">ℹ</button>
       <button class="btn btn-ghost hidden" id="logoutBtn" title="Abmelden" style="margin-left:18px">Abmelden</button>
      </div>
      <div class="controls-row">
@@ -840,6 +841,30 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
   </div>
 </div>
 
+<!-- Datenschutzhinweis (DSGVO-Prüfprotokoll, Befund M-3) -->
+<div class="modal-bg hidden" id="privacyModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
+      <h3 style="margin:0">ℹ Datenschutzhinweis</h3>
+      <button class="btn btn-ghost" id="privacyClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+    <div style="font-size:12.5px;line-height:1.6">
+      <p>Im Rahmen Ihrer Nutzung dieses Dashboards werden folgende Daten über Sie verarbeitet:</p>
+      <ul style="margin:6px 0;padding-left:20px">
+        <li>Name und E-Mail-Adresse (Ihr Zugangskonto)</li>
+        <li>Ihre Rolle (Außendienst / Trainer / Admin)</li>
+        <li>Ihre Vertriebs- und Leistungsdaten (Produktionszahlen, Zielerreichung, ggf. Angaben aus dem Performance-Dialog)</li>
+      </ul>
+      <p><strong>Zweck:</strong> Steuerung und Auswertung des Vertriebs sowie Vorbereitung von Chef-/Kooperationsgesprächen,
+      teils unter Einsatz einer KI-gestützten Zusammenfassung (Anbieter: Anthropic, USA – hierfür liegt ein
+      Auftragsverarbeitungsvertrag inkl. EU-Standardvertragsklauseln vor).</p>
+      <p><strong>Speicherort:</strong> Die Daten liegen auf Servern von Supabase in der EU (Frankfurt) und sind nur für
+      angemeldete Dashboard-Nutzer einsehbar.</p>
+      <p><strong>Fragen oder Auskunftsersuchen:</strong> Konstantin Scheiermann &amp; Peter Peißer.</p>
+    </div>
+  </div>
+</div>
+
 <!-- Fachhändler PopUp -->
 <div class="modal-bg hidden" id="fhModal">
   <div class="modal wide">
@@ -878,7 +903,14 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div id="fhFilialbetriebeSiblings" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
       </div>
       <div style="margin-top:14px"><span class="ac-lbl">Sonstige Infos</span><div class="ac-val" id="fhInfosView" style="font-weight:600;white-space:pre-wrap">–</div></div>
-      <button class="btn btn-blue" id="fhEditBtn" style="margin-top:14px">✎ Stammdaten bearbeiten</button>
+      <div id="fhGesperrtNotice" class="hidden" style="margin-top:14px;border-left:4px solid var(--neg);background:#FDF1F4;border-radius:8px;padding:10px 14px">
+        <div style="font-weight:800;color:var(--neg);font-size:12px">🔒 Datensatz gesperrt (DSGVO)</div>
+        <div id="fhGesperrtText" style="font-size:11.5px;color:var(--muted);margin-top:2px"></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+        <button class="btn btn-blue" id="fhEditBtn">✎ Stammdaten bearbeiten</button>
+        <button class="btn btn-ghost hidden" id="fhEntsperrenBtn">🔓 Entsperren (Admin)</button>
+      </div>
     </div>
 
     <div id="fhEditMode" class="hidden">
@@ -961,9 +993,12 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <label class="ac-lbl" for="fhInfosEdit">Sonstige Infos</label>
         <textarea id="fhInfosEdit" rows="3"></textarea>
       </div>
-      <div class="actions" style="margin-top:14px">
-        <button class="btn btn-ghost" id="fhCancelBtn">Abbrechen</button>
-        <button class="btn btn-blue" id="fhSaveBtn">Speichern</button>
+      <div class="actions" style="margin-top:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <button class="btn btn-ghost" id="fhSperrenBtn" style="border-color:var(--neg);color:var(--neg)">🔒 Datensatz sperren (DSGVO)</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost" id="fhCancelBtn">Abbrechen</button>
+          <button class="btn btn-blue" id="fhSaveBtn">Speichern</button>
+        </div>
       </div>
       <div class="error" id="fhSaveHint"></div>
     </div>
@@ -1138,7 +1173,14 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div><span class="ac-lbl">Service-Training</span><div class="ac-val" id="acServiceTrainView">–</div></div>
         <div><span class="ac-lbl">Letzte Produktion</span><div class="ac-val" id="acLastProdView">–</div></div>
       </div>
-      <button class="btn btn-blue" id="acEditBtn" style="margin-top:14px">✎ Kontaktdaten bearbeiten</button>
+      <div id="acGesperrtNotice" class="hidden" style="margin-top:14px;border-left:4px solid var(--neg);background:#FDF1F4;border-radius:8px;padding:10px 14px">
+        <div style="font-weight:800;color:var(--neg);font-size:12px">🔒 Datensatz gesperrt (DSGVO)</div>
+        <div id="acGesperrtText" style="font-size:11.5px;color:var(--muted);margin-top:2px"></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+        <button class="btn btn-blue" id="acEditBtn">✎ Kontaktdaten bearbeiten</button>
+        <button class="btn btn-ghost hidden" id="acEntsperrenBtn">🔓 Entsperren (Admin)</button>
+      </div>
     </div>
 
     <div id="acEditMode" class="hidden">
@@ -1156,9 +1198,12 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
           <select id="acServiceTrainEdit"><option value="">Keines</option><option value="1">Stufe 1</option><option value="2">Stufe 2</option></select>
         </div>
       </div>
-      <div class="actions" style="margin-top:14px">
-        <button class="btn btn-ghost" id="acCancelBtn">Abbrechen</button>
-        <button class="btn btn-blue" id="acSaveBtn">Speichern</button>
+      <div class="actions" style="margin-top:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <button class="btn btn-ghost" id="acSperrenBtn" style="border-color:var(--neg);color:var(--neg)">🔒 Datensatz sperren (DSGVO)</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost" id="acCancelBtn">Abbrechen</button>
+          <button class="btn btn-blue" id="acSaveBtn">Speichern</button>
+        </div>
       </div>
       <div class="error" id="acSaveHint"></div>
     </div>
@@ -1369,6 +1414,11 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <input type="file" id="stornoFileInput" accept=".xlsx,.xls" class="hidden">
     <input type="file" id="profiTrainingFileInput" accept=".xlsx,.xls" class="hidden">
 
+    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Datenqualität (DSGVO)</h4>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-ghost" id="karteileichenBtn">🗂 Review-Liste: FH/AKP ohne Produktion</button>
+    </div>
+
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Neuen Nutzer anlegen</h4>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <input type="text" id="adName" placeholder="Name" autocomplete="off" style="flex:1;min-width:150px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
@@ -1524,6 +1574,30 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Mitarbeiterübersicht</h4>
     <div id="empList" style="max-height:340px;overflow:auto"></div>
+  </div>
+</div>
+
+<!-- Karteileichen-Review (DSGVO-Prüfprotokoll, Befund N-2: ereignisbasierter
+     Ansatz statt starrer Aufbewahrungsfrist - reine Review-Liste als
+     Vorschlagsfilter, keine automatische Löschung) -->
+<div class="modal-bg hidden" id="karteileichenModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
+      <h3 style="margin:0">🗂 Review-Liste: FH/AKP ohne Produktion</h3>
+      <button class="btn btn-ghost" id="karteileichenClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+      Zeigt Fachhändler und AKP-Kontakte ohne Produktion im gewählten Zeitraum – zur manuellen Prüfung, ob
+      „Sperren/Anonymisieren" (DSGVO) sinnvoll ist. Es wird nichts automatisch gelöscht; die Entscheidung trifft
+      immer ein Mensch, Datensatz für Datensatz. Mit „Alle behalten" wird die Prüfung für das laufende Kalenderjahr
+      abgeschlossen (mit Datum/Person dokumentiert) – die Liste erscheint automatisch erst wieder im nächsten Jahr.
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px">
+      <label for="karteileichenJahreInput" style="font-weight:700;font-size:13px">Zeitraum ohne Produktion (Kalenderjahre, inkl. laufendem Jahr):</label>
+      <input type="number" id="karteileichenJahreInput" min="1" max="15" step="1" style="width:60px;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
+      <button class="btn btn-blue" id="karteileichenApplyBtn" style="padding:6px 14px">Übernehmen</button>
+    </div>
+    <div id="karteileichenBody"><p style="color:var(--muted)">Lädt …</p></div>
   </div>
 </div>
 
@@ -1809,6 +1883,19 @@ let fhSearchEnabled = false;
 // Vergleichsgruppe anfangs noch ausreichend Historie). Standardmäßig aus,
 // bis Wert aus der DB geladen wurde.
 let akpPeerCompareEnabled = false;
+// Zeitraum (Kalenderjahre inkl. laufendem Jahr) ohne Produktion, ab dem ein
+// FH/AKP in der Karteileichen-Review-Liste (Admin-Panel, DSGVO-Befund N-2)
+// als Kandidat auftaucht (dashboard_kv-Key "karteileichen_jahre") - rein ein
+// Vorschlagsfilter für die manuelle Prüfung, keine automatische Löschregel.
+// Standardwert 3, bis Wert aus der DB geladen wurde bzw. frei einstellbar.
+let karteileichenJahre = 3;
+// Jahres-Prüfstatus für die Karteileichen-Review-Liste (dashboard_kv-Keys
+// "karteileichen_review_fh"/"karteileichen_review_akp") - je
+// {year,reviewed_at,reviewed_by,count}, gesetzt über den "Alle behalten"-
+// Button. Null, solange für das laufende Kalenderjahr noch nicht geprüft
+// wurde bzw. der Wert noch nicht aus der DB geladen ist.
+let fhKarteileichenReview = null;
+let akpKarteileichenReview = null;
 // Deckungsgrad-Ampel (02.09.2026): Master-Schalter + Feinauswahl, welche der
 // 4 Kennzahlen (DG1/DG2/DB1/DB2) überhaupt als Ampel in der FH-Ansicht
 // erscheinen - unabhängig von der Sicherheitsarchitektur (Rohwerte sind
@@ -2274,6 +2361,147 @@ function openAdminModal(){
   $("empRankingEnabledChk").checked=empRankingEnabled;
   $("stornoquotenEnabledChk").checked=stornoquotenEnabled;
 }
+// ---------- Karteileichen-Review (DSGVO-Prüfprotokoll, Befund N-2) ----------
+// Ereignisbasierter statt zeitbasierter Ansatz (Nutzervorgabe 01.09.2026):
+// keine automatische Löschfrist, sondern eine für Admins sichtbare
+// Review-Liste als Vorschlagsfilter - die eigentliche Entscheidung (Sperren
+// über den bereits vorhandenen Button, siehe lockFhContact/lockAkpContact)
+// bleibt beim Admin, Datensatz für Datensatz. Nutzt bewusst die ohnehin
+// bereits geladenen Indizes (fhContactsBulkIndex/fhContactsAllIndex,
+// akpContactsIndex) statt eines eigenen Bulk-Requests.
+function karteileichenYearsSet(n){
+  const cy=new Date().getFullYear();
+  const s=new Set();
+  for(let i=0;i<n;i++) s.add(cy-i);
+  return s;
+}
+function karteileichenSumInYears(pm,years){
+  let sum=0;
+  for(const [k,v] of Object.entries(pm||{})) if(years.has(+k.slice(0,4))) sum+=(Number(v)||0);
+  return sum;
+}
+function fhKarteileichenCandidates(years){
+  const out=[];
+  for(const f of fhAllKnownList()){
+    const rec=fhContactsAllIndex&&fhContactsAllIndex[f.nr];
+    if(rec&&rec.gesperrt_am) continue;
+    const pm=(fhContactsBulkIndex&&fhContactsBulkIndex[f.nr])||{};
+    if(karteileichenSumInYears(pm,years)>0) continue;
+    out.push({nr:f.nr,name:f.name||f.nr,last:lastMonthKeyOf(pm)});
+  }
+  return out.sort((a,b)=>(a.name||"").localeCompare(b.name||"","de"));
+}
+function akpKarteileichenCandidates(years){
+  const out=[];
+  for(const [nr,a] of Object.entries(akpContactsIndex||{})){
+    if(a.gesperrt_am) continue;
+    const pm={...(a.prod_monthly||{}),...(a.prod_monthly_other||{})};
+    if(karteileichenSumInYears(pm,years)>0) continue;
+    const name=[a.vorname,a.nachname].filter(Boolean).join(" ")||a.firma||nr;
+    out.push({nr,name,last:lastMonthKeyOf(pm)});
+  }
+  return out.sort((a,b)=>(a.name||"").localeCompare(b.name||"","de"));
+}
+function karteileichenRowsHtml(list,type){
+  const MAXROWS=500;
+  const shown=list.slice(0,MAXROWS);
+  if(!shown.length) return "<div class='empty-note'>Keine Einträge.</div>";
+  const rows=shown.map(x=>`
+    <tr>
+      <td>${escapeHtml(x.nr)}</td>
+      <td>${escapeHtml(x.name)}</td>
+      <td>${x.last?auswertungMonthLabel(x.last):"nie"}</td>
+      <td><button class="btn btn-ghost karteileichen-open" data-type="${type}" data-nr="${escapeHtml(x.nr)}" style="padding:4px 10px;font-size:11.5px">Öffnen ⤢</button></td>
+    </tr>`).join("");
+  const more=list.length>MAXROWS?`<div class="hint" style="margin-top:6px">… und ${list.length-MAXROWS} weitere. Zeitraum verkürzen, um die Liste einzugrenzen.</div>`:"";
+  return `<table><tr><th>Nr.</th><th>Name</th><th>Letzte Produktion</th><th></th></tr>${rows}</table>${more}`;
+}
+function karteileichenGroupHtml(list,type,openByDefault){
+  const active=list.filter(x=>x.last), never=list.filter(x=>!x.last);
+  return `
+    <details ${openByDefault?"open":""}><summary style="cursor:pointer;font-weight:700;font-size:12.5px;margin-bottom:6px">War früher aktiv, jetzt ruhend (${active.length})</summary>
+      <div style="max-height:220px;overflow:auto">${karteileichenRowsHtml(active,type)}</div>
+    </details>
+    <details><summary style="cursor:pointer;font-weight:700;font-size:12.5px;margin:8px 0 6px">Nie produziert (${never.length})</summary>
+      <div style="max-height:220px;overflow:auto">${karteileichenRowsHtml(never,type)}</div>
+    </details>`;
+}
+// Jährliche Prüfung statt Einmalklick (Nutzervorgabe 01.09.2026): sobald ein
+// Admin "Alle behalten" klickt, gilt der Typ (FH/AKP) für das laufende
+// Kalenderjahr als geprüft - die Liste erscheint erst im nächsten Jahr
+// wieder automatisch (Jahresvergleich, kein Cron nötig). Es wird dabei
+// dokumentiert WER WANN WIE VIELE Kandidaten geprüft und bewusst behalten
+// hat (Nachweisbarkeit "regelmäßige Erforderlichkeitsprüfung", Art. 5 Abs. 1
+// lit. e DSGVO) - eine reine, stillschweigend geleerte Liste wäre dafür kein
+// ausreichender Nachweis. "Trotzdem jetzt anzeigen" erlaubt jederzeit einen
+// Blick auf die aktuellen Kandidaten, ohne den Prüfstatus zu verändern.
+function karteileichenTypeBlockHtml(type,label,list,years,review,openByDefault,forceShow){
+  const cy=new Date().getFullYear();
+  const already=review&&review.year===cy;
+  if(already&&!forceShow){
+    const when=fmtDate((review.reviewed_at||"").slice(0,10))||review.reviewed_at||"–";
+    return `
+      <h4 style="margin:14px 0 6px;color:var(--wg-navy);font-size:13.5px">${label} ohne Produktion seit ${years.size} Jahren</h4>
+      <div class="box tip" style="margin:0 0 8px">
+        ✓ Für ${cy} geprüft am ${escapeHtml(when)} von ${escapeHtml(review.reviewed_by||"–")} –
+        ${review.count} Kandidat(en) bewusst behalten. Nächste automatische Prüfung: ${cy+1}.
+        <button class="btn btn-ghost karteileichen-forceshow" data-type="${type}" style="margin-left:8px;padding:3px 9px;font-size:11px">Trotzdem jetzt anzeigen</button>
+      </div>`;
+  }
+  return `
+    <h4 style="margin:14px 0 6px;color:var(--wg-navy);font-size:13.5px">${label} ohne Produktion seit ${years.size} Jahren (${list.length})</h4>
+    ${karteileichenGroupHtml(list,type,openByDefault)}
+    ${list.length?`<button class="btn btn-blue karteileichen-keepall" data-type="${type}" data-count="${list.length}" style="margin-top:8px">✓ Alle behalten (Prüfung ${cy} abschließen)</button>`:""}
+  `;
+}
+let karteileichenForceShow={fh:false,akp:false};
+async function runKarteileichenScan(){
+  $("karteileichenBody").innerHTML="<p style='color:var(--muted)'>Lädt …</p>";
+  if(!fhContactsAllIndex||!fhContactsBulkIndex) await loadFhContactsIndicesAll();
+  if(!akpContactsIndex) await loadAkpContactsIndex();
+  const years=karteileichenYearsSet(karteileichenJahre);
+  const fhList=fhKarteileichenCandidates(years);
+  const akpList=akpKarteileichenCandidates(years);
+  $("karteileichenBody").innerHTML=
+    karteileichenTypeBlockHtml("fh","Fachhändler",fhList,years,fhKarteileichenReview,true,karteileichenForceShow.fh)+
+    karteileichenTypeBlockHtml("akp","AKP",akpList,years,akpKarteileichenReview,false,karteileichenForceShow.akp);
+  $("karteileichenBody").querySelectorAll(".karteileichen-open").forEach(btn=>{
+    btn.onclick=()=>{
+      const nr=btn.dataset.nr;
+      if(btn.dataset.type==="fh") openFhModal(nr); else openAkpContact(nr);
+    };
+  });
+  $("karteileichenBody").querySelectorAll(".karteileichen-forceshow").forEach(btn=>{
+    btn.onclick=()=>{ karteileichenForceShow[btn.dataset.type]=true; runKarteileichenScan(); };
+  });
+  $("karteileichenBody").querySelectorAll(".karteileichen-keepall").forEach(btn=>{
+    btn.onclick=()=>keepAllKarteileichen(btn.dataset.type,+btn.dataset.count);
+  });
+}
+async function keepAllKarteileichen(type,count){
+  const label=type==="fh"?"Fachhändler":"AKP";
+  if(!confirm(`Prüfung für ${label} (${new Date().getFullYear()}) abschließen und alle ${count} Kandidaten behalten?\n\nEs wird nichts gelöscht oder gesperrt - die Liste erscheint erst wieder im nächsten Kalenderjahr.`)) return;
+  const review={year:new Date().getFullYear(),reviewed_at:new Date().toISOString(),reviewed_by:myName||(supaUser&&supaUser.email)||"–",count};
+  try{ await stSet("karteileichen_review_"+type,JSON.stringify(review)); }catch(e){ toast("Fehler beim Speichern: "+(e.message||e)); return; }
+  if(type==="fh") fhKarteileichenReview=review; else akpKarteileichenReview=review;
+  karteileichenForceShow[type]=false;
+  toast("Prüfung abgeschlossen ✓");
+  await runKarteileichenScan();
+}
+async function openKarteileichenModal(){
+  $("karteileichenJahreInput").value=karteileichenJahre;
+  karteileichenForceShow={fh:false,akp:false};
+  $("karteileichenModal").classList.remove("hidden");
+  await runKarteileichenScan();
+}
+async function applyKarteileichenJahre(){
+  const parsed=parseInt($("karteileichenJahreInput").value);
+  const n=Math.max(1,Math.min(15,Number.isFinite(parsed)?parsed:3));
+  $("karteileichenJahreInput").value=n;
+  karteileichenJahre=n;
+  try{ await stSet("karteileichen_jahre",String(n)); }catch(e){}
+  await runKarteileichenScan();
+}
 async function togglePerfDialogAdminEnabled(){
   const on=$("perfDialogAdminEnabledChk").checked;
   perfDialogAdminEnabled=on;
@@ -2510,7 +2738,7 @@ function buildFhContactsIndices(rows){
     // Jede fh_contacts-Zeile fließt hier ein, auch ganz ohne Akquise-/Miete-/
     // manuellen Namen (dann bleibt name null, Aufrufer fallen auf die FH-Nr
     // zurück) - Priorität wie in fhFallbackFromAkp: akq_name > miete_name > name.
-    allIdx[r.fh_nr]={name:r.akq_name||r.miete_name||r.name||null,ort:r.ort||null,gl:r.akq_gl||null};
+    allIdx[r.fh_nr]={name:r.akq_name||r.miete_name||r.name||null,ort:r.ort||null,gl:r.akq_gl||null,filialbetriebe:r.filialbetriebe||null,weitereZuordnung:r.weitere_zuordnung||null,gesperrt_am:r.gesperrt_am||null};
   }
   return {bulkIdx,mieteIdx,erledigt,akqIdx,manualNameIdx,mieteNameIdx,allIdx};
 }
@@ -2525,7 +2753,7 @@ async function loadFhContactsIndicesAll(){
       for(;;){
         guard++;
         const {data,error}=await sb.from("fh_contacts")
-          .select("fh_nr,ort,prod_monthly,miete_monthly,neunwochen_erledigt,akq_punkte,akq_staffeln,akq_gl,akq_name,name,miete_name")
+          .select("fh_nr,ort,prod_monthly,miete_monthly,neunwochen_erledigt,akq_punkte,akq_staffeln,akq_gl,akq_name,name,miete_name,filialbetriebe,weitere_zuordnung,gesperrt_am")
           .range(from,from+999);
         if(error){ console.error("loadFhContactsIndicesAll:",error.message||error); break; }
         if(!data||!data.length) break;
@@ -2993,6 +3221,11 @@ function parseAuswertung(wb){
     for(let i=fhi+1;i<fh.length;i++){
       const r=fh[i]; if(!r||r[0]==null) continue;
       const nr=String(r[0]).trim(); if(!nr) continue;
+      // Nur echte (rein numerische) FH-Nummern übernehmen - Summen-/Fußzeilen
+      // wie "Auswertung" oder "Seite 1" landen sonst als Phantom-Fachhändler
+      // in fh_contacts (deren Zeilenwerte oft Gesamtsummen statt Einzelwerte
+      // sind) und verfälschen glPlan[AT_KEY]/die Monatsproduktion.
+      if(!/^\d+$/.test(nr)) continue;
       const glRaw=String(r[5]||"").trim();
       snap.fh[nr]={ name:String(r[1]||"").trim(), plz:String(r[2]||""), ort:String(r[3]||"").trim(),
         gl:glRaw, emp:matchEmployee(glRaw),
@@ -3245,6 +3478,10 @@ function parseAkquiseStaffeln(wb){
   for(let i=1;i<rows.length;i++){
     const r=rows[i]; if(!r) continue;
     const fhNr=r[idxFh]; if(fhNr==null||fhNr==="") continue;
+    // Nur echte (rein numerische) FH-Nummern übernehmen - Platzhalter-/
+    // Beispielzeilen (z.B. "x") landen sonst als Phantom-Fachhändler in
+    // fh_contacts (siehe gleicher Guard in parseAuswertung).
+    if(!/^\d+$/.test(String(fhNr).trim())) continue;
     const name=idxBez>-1?String(r[idxBez]??"").trim()||null:null;
     const gl=idxGl>-1?String(r[idxGl]??"").trim()||null:null;
     const punkte=idxPunkte>-1?num(r[idxPunkte]):null;
@@ -3285,6 +3522,9 @@ function parseFhSegmentierung(wb){
   for(let i=hi+1;i<rows.length;i++){
     const r=rows[i]; if(!r||r[idxFh]==null||r[idxFh]==="") continue;
     const fhNr=String(r[idxFh]).trim(); if(!fhNr) continue;
+    // Nur echte (rein numerische) FH-Nummern übernehmen (siehe gleicher Guard
+    // in parseAuswertung/parseAkquiseStaffeln).
+    if(!/^\d+$/.test(fhNr)) continue;
     const seg=String(r[idxSeg]??"").trim();
     out.push({ fh_nr:fhNr, segmentierung:VALID.has(seg)?seg:null });
   }
@@ -3598,7 +3838,14 @@ function parseMieteReport(wb){
     const idxFh=header.findIndex(h=>h==="Fachhändler Nr geliefert");
     const idxClubNr=header.findIndex(h=>h==="Händler Nr geliefert");
     const idxDatum=header.findIndex(h=>h==="Datum");
-    const idxSortiment=header.findIndex(h=>h==="Sortiment");
+    // Kategorie-Spalte (Weiße/Braune Ware) hieß in älteren Jahresblättern
+    // "Sortiment", heißt ab AT_2026 "Gerät Bez" - "Sortiment" zeigt dort auf
+    // eine andere Spalte (Auftrags-/Produktcodes wie "R260081", Nutzer-
+    // Bestätigung 30.08.2026). Je Jahresblatt eigenständig gesucht (idxSortiment
+    // wird pro Sheet neu ermittelt), damit ältere Blätter mit "Sortiment" als
+    // echter Kategoriespalte weiter korrekt funktionieren.
+    let idxSortiment=header.findIndex(h=>h==="Gerät Bez");
+    if(idxSortiment<0) idxSortiment=header.findIndex(h=>h==="Sortiment");
     const idxAnzahl=header.findIndex(h=>h==="Anzahl Produktion Mietverträge");
     // Firmenname (Nutzer-Bestätigung 25.08.2026) - deckt Händler ab, die in
     // keiner anderen Quelle (tägliche FH_Liste, AKP, Akquisestaffeln) einen
@@ -3608,13 +3855,27 @@ function parseMieteReport(wb){
     for(let i=1;i<rows.length;i++){
       const r=rows[i]; if(!r||r[idxFh]==null||r[idxFh]==="") continue;
       const fhNr=String(r[idxFh]).trim(); if(!fhNr) continue;
+      // Nur echte (rein numerische) FH-Nummern übernehmen (siehe gleicher Guard
+      // in parseAuswertung/parseAkquiseStaffeln) - sonst können Summen-/
+      // Fußzeilen als Phantom-Fachhändler landen.
+      if(!/^\d+$/.test(fhNr)) continue;
       const datum=cellDate(r[idxDatum]); if(!datum) continue;
       const ym=datum.slice(0,7);
       const count=idxAnzahl>-1?(num(r[idxAnzahl])||1):1;
       if(!byFh[fhNr]) byFh[fhNr]={monthly:{},sortiment:{},clubNr:null,name:null};
       byFh[fhNr].monthly[ym]=(byFh[fhNr].monthly[ym]||0)+count;
       const sort=idxSortiment>-1?String(r[idxSortiment]??"").trim():"";
-      if(sort) byFh[fhNr].sortiment[sort]=(byFh[fhNr].sortiment[sort]||0)+count;
+      // Pro Jahr gebucketet (Nutzervorgabe 30.08.2026: "Verkauftes Sortiment"
+      // soll sich immer nur auf das aktuelle Jahr beziehen) - wie monthly oben,
+      // aber eine Ebene höher, da Sortiment keine Monats-, nur Jahresgranularität
+      // hat. Jeder Import liefert laut Report je Jahresblatt bereits den
+      // vollständigen Jahresstand, ein Ersetzen des jeweiligen Jahres-Buckets
+      // beim Merge (siehe fh_sync_miete, JSONB `||`) ist daher korrekt.
+      if(sort){
+        const year=ym.slice(0,4);
+        if(!byFh[fhNr].sortiment[year]) byFh[fhNr].sortiment[year]={};
+        byFh[fhNr].sortiment[year][sort]=(byFh[fhNr].sortiment[year][sort]||0)+count;
+      }
       const clubNr=idxClubNr>-1?String(r[idxClubNr]??"").trim():"";
       if(clubNr) byFh[fhNr].clubNr=clubNr;
       const bez=idxBez>-1?String(r[idxBez]??"").trim():"";
@@ -3750,7 +4011,7 @@ async function handleFiles(files){
     const buf=await file.arrayBuffer();
     const wb=XLSX.read(buf,{type:"array",cellDates:true});
     const snap=parseAuswertung(wb);
-    if(snap){ mergeSnapshot(snap); syncAkpContacts(snap); syncFhContacts(snap); okCount++; }
+    if(snap){ mergeSnapshot(snap); await syncAkpContacts(snap); await syncFhContacts(snap); okCount++; }
   }
   if(!okCount){ toast("Format nicht erkannt – bitte die Auswertung_TAG-Datei mit den Blättern FH_Liste, AKP Liste, AKQ-Liste einspielen."); return; }
   await saveData();
@@ -3784,7 +4045,7 @@ async function processPendingImports(){
         const wb=XLSX.read(buf,{type:"array",cellDates:true});
         const snap=parseAuswertung(wb);
         if(snap){
-          mergeSnapshot(snap); syncAkpContacts(snap); syncFhContacts(snap);
+          mergeSnapshot(snap); await syncAkpContacts(snap); await syncFhContacts(snap);
           snapCount++;
         }else{
           // Kein Auswertung_TAG-Format - könnte die "Händlersegmentierung
@@ -3940,7 +4201,7 @@ async function loadAkpContactsIndex(){
     for(;;){
       guard++;
       const {data,error}=await sb.from("akp_contacts")
-        .select("nr,vorname,nachname,firma,ort,fh_nr,prod_monthly,prod_monthly_other,poquote_monthly,q3fuer2_monthly,storno_widerruf_quote,storno_erstpraemie_quote,storno_wegfall_quote")
+        .select("nr,vorname,nachname,firma,ort,fh_nr,prod_monthly,prod_monthly_other,poquote_monthly,q3fuer2_monthly,gesperrt_am,storno_widerruf_quote,storno_erstpraemie_quote,storno_wegfall_quote")
         .order("nr")
         .range(from,from+999);
       if(error){ console.error("loadAkpContactsIndex:",error.message||error); break; }
@@ -4009,12 +4270,25 @@ async function loadFhMieteIndex(){ await loadFhContactsIndicesAll(); }
 // FH->Mitarbeiter-Zuordnung wie die tägliche Auswertung (state.latest.fh),
 // nicht eine eigene aus der Miete-Datei - konsistent mit dem restlichen
 // Dashboard.
+// Betreuer für einen FH: bevorzugt aus der heutigen Tages-Auswertung
+// (state.latest.fh), sonst Fallback auf fh_contacts.akq_gl (gleiche
+// Priorität wie fhAllKnownList) - sonst verschwinden/verlieren Händler ohne
+// heutige Produktion ihren Betreuer in allen Miete-Ansichten, obwohl er in
+// fh_contacts längst hinterlegt ist (Bug-Report 30.08.2026: SCD Wiener
+// Neudorf/Deutschmann KG zeigten in der Miete-Liste "ohne Betreuer", obwohl
+// akq_gl gesetzt war).
+function fhEmpFor(nr){
+  const fh=state.latest&&state.latest.fh[nr];
+  if(fh&&fh.emp) return fh.emp;
+  const rec=fhContactsAllIndex&&fhContactsAllIndex[nr];
+  return (rec&&matchEmployee(rec.gl||""))||null;
+}
 function mieteJahrFor(emp,year){
   const s=state.latest; if(!s) return 0;
   const y=year||s.jahr;
   let sum=0;
   for(const [nr,rec] of Object.entries(fhMieteIndex)){
-    if(emp!==AT_GESAMT){ const fh=s.fh[nr]; if(!fh||fh.emp!==emp) continue; }
+    if(emp!==AT_GESAMT&&fhEmpFor(nr)!==emp) continue;
     for(const [ym,v] of Object.entries(rec.monthly||{})) if(ym.slice(0,4)===String(y)) sum+=v;
   }
   return sum;
@@ -4048,13 +4322,14 @@ function mieteListRows(period){
   const rows=[];
   for(const [nr,rec] of Object.entries(fhMieteIndex)){
     const fh=s.fh[nr];
-    if(currentEmp!==AT_GESAMT&&(!fh||fh.emp!==currentEmp)) continue;
+    const emp=fhEmpFor(nr);
+    if(currentEmp!==AT_GESAMT&&emp!==currentEmp) continue;
     let val=0;
     if(period==="monat") val=(rec.monthly||{})[mk]||0;
     else for(const [ym,v] of Object.entries(rec.monthly||{})) if(ym.slice(0,4)===String(s.jahr)) val+=v;
     if(val<=0) continue;
     const fb=fh?null:fhFallbackFromAkp(nr);
-    rows.push({fhNr:nr,name:(fh&&fh.name)||(fb&&fb.name)||nr,ort:(fh&&fh.ort)||(fb&&fb.ort)||"",emp:(fh&&fh.emp)||"",val});
+    rows.push({fhNr:nr,name:(fh&&fh.name)||(fb&&fb.name)||nr,ort:(fh&&fh.ort)||(fb&&fb.ort)||"",emp:emp||"",val});
   }
   rows.sort((a,b)=>b.val-a.val);
   return rows;
@@ -4129,12 +4404,31 @@ function akqStaffelnInJahrFor(emp,year){
   const yy=String(year).slice(2);
   let alle=0,erst=0;
   for(const [fhNr,rec] of Object.entries(fhAkqIndex)){
-    const fh=state.latest.fh[fhNr];
-    if(!fh||fh.emp!==emp) continue;
+    // fhEmpFor() statt nur state.latest.fh[fhNr].emp - sonst fehlen im
+    // Mitarbeitergespräch (Ziel 2) alle Staffeln von Händlern ohne heutige
+    // Tagesproduktion, obwohl der Betreuer in fh_contacts.akq_gl längst
+    // bekannt ist (gleicher Bug wie bei der Miete-Liste, hier aber in der
+    // Zielberechnung selbst - Nutzeranfrage 30.08.2026 "Daten nicht 0").
+    if(fhEmpFor(fhNr)!==emp) continue;
     const staffeln=rec.staffeln||[];
     staffeln.forEach((d,i)=>{ if(!d||String(d).slice(3,5)!==yy) return; alle++; if(i===0) erst++; });
   }
   return {alle,erst};
+}
+// Ob ein FH im gegebenen Jahr mind. 1 Vertrag produziert hat: bevorzugt aus
+// der heutigen Tages-Auswertung (f.lj = Jahresproduktion laut FH_Liste),
+// sonst Fallback auf die durable fh_contacts.prod_monthly-Summe des Jahres
+// (fhContactsBulkIndex) - sonst gilt ein Händler ohne HEUTIGE Produktion
+// als "nicht aktiviert", selbst wenn er dieses Jahr bereits produziert hat
+// (Nutzeranfrage 30.08.2026: Aktivierungsquote im Mitarbeitergespräch nicht
+// künstlich niedrig durch reine Tageszufälligkeit).
+function fhActiveThisYear(nr,year){
+  const fh=state.latest.fh[nr];
+  if(fh) return fh.lj>0;
+  const pm=fhContactsBulkIndex&&fhContactsBulkIndex[nr];
+  if(!pm) return false;
+  const prefix=String(year);
+  return Object.entries(pm).some(([k,v])=>k.startsWith(prefix)&&(v||0)>0);
 }
 const AKTIVIERUNGSQUOTE_JAHRE=[2024,2025,2026]; // fix lt. Zieldefinition, nicht automatisch rollierend
 function aktivierungsquoteFor(emp,year){
@@ -4145,8 +4439,7 @@ function aktivierungsquoteFor(emp,year){
     if(!AKTIVIERUNGSQUOTE_JAHRE.includes(a.beginnJahr)) continue;
     if(seen.has(a.nr)) continue; seen.add(a.nr);
     angelegt++;
-    const fh=s.fh[a.nr];
-    if(fh&&fh.jahr>0) aktiv++;
+    if(fhActiveThisYear(a.nr,year)) aktiv++;
   }
   return {angelegt,aktiv,quote:angelegt>0?aktiv/angelegt:null};
 }
@@ -4164,7 +4457,10 @@ function mieteMonatFor(emp,year,month){
   const key=year+"-"+String(month).padStart(2,"0");
   let sum=0;
   for(const [nr,rec] of Object.entries(fhMieteIndex)){
-    const fh=s.fh[nr]; if(!fh||fh.emp!==emp) continue;
+    // fhEmpFor() statt nur state.latest.fh[nr].emp (siehe akqStaffelnInJahrFor)
+    // - sonst fehlt im Mitarbeitergespräch (Ziel 3) die Miete-Produktion aller
+    // Händler ohne heutige Tagesproduktion.
+    if(fhEmpFor(nr)!==emp) continue;
     sum+=(rec.monthly||{})[key]||0;
   }
   return sum;
@@ -4174,7 +4470,7 @@ function mieteNeuGewonnenFor(emp,year,month){
   const reportKey=year+"-"+String(month).padStart(2,"0");
   let jahr=0,vormonat=0;
   for(const [nr,rec] of Object.entries(fhMieteIndex)){
-    const fh=s.fh[nr]; if(!fh||fh.emp!==emp) continue;
+    if(fhEmpFor(nr)!==emp) continue;
     const months=Object.keys(rec.monthly||{}); if(!months.length) continue;
     const first=[...months].sort()[0];
     if(first.slice(0,4)===String(year)) jahr++;
@@ -5127,6 +5423,9 @@ async function loadAll(){
   try{ fhZielEnabled=(await stGet("fh_ziel_enabled"))==="1"; }catch(e){}
   try{ fhSearchEnabled=(await stGet("fh_search_enabled"))==="1"; }catch(e){}
   try{ akpPeerCompareEnabled=(await stGet("akp_peer_compare_enabled"))==="1"; }catch(e){}
+  try{ karteileichenJahre=parseInt(await stGet("karteileichen_jahre"))||3; }catch(e){}
+  try{ const r=await stGet("karteileichen_review_fh"); fhKarteileichenReview=r?JSON.parse(r):null; }catch(e){}
+  try{ const r=await stGet("karteileichen_review_akp"); akpKarteileichenReview=r?JSON.parse(r):null; }catch(e){}
   try{ deckungsgradEnabled=(await stGet("deckungsgrad_enabled"))==="1"; }catch(e){}
   try{ const dgv=await stGet("deckungsgrad_visible_metrics"); if(dgv) dgVisibleMetrics=JSON.parse(dgv); }catch(e){}
   try{ const erv=await stGet("emp_ranking_enabled"); empRankingEnabled = erv==null ? true : erv==="1"; }catch(e){}
@@ -6031,15 +6330,38 @@ function openAkpModal(){
   $("akpModal").classList.remove("hidden");
 }
 
+// Liefert den AKQ-Liste-Eintrag (state.latest.akq, Adresse/Telefon/Beginn/
+// Besuche) für eine FH-Nr, falls vorhanden - die AKQ-Nr entspricht der
+// Fachhändler-Nr. Zentraler Fallback für Stammdaten (Adresse/Telefon) bei
+// frisch akquirierten Händlern, die noch nie in fh_contacts geschrieben
+// wurden (kein Import synchronisiert die AKQ-Liste dorthin, nur
+// Akquisestaffeln/Miete-Report/tägliche FH_Liste).
+// Map-Cache statt Array.find() bei jedem Aufruf - fhAllKnownList() ruft
+// dies bei jedem Tastendruck in der Suche für JEDEN fh_contacts-Eintrag
+// ohne heutige Produktion auf (Stresstest 30.08.2026: bei ~10-facher realer
+// Datenmenge sonst ~36ms/Tastendruck statt <5ms). Der Cache wird pro neuer
+// state.latest.akq-Arrayreferenz (also pro Import) einmal neu aufgebaut.
+let akqLeadIndexCache=null, akqLeadIndexCacheSrc=null;
+function akqLeadFor(fhNr){
+  const arr=state.latest&&state.latest.akq;
+  if(!arr) return null;
+  if(akqLeadIndexCacheSrc!==arr){
+    akqLeadIndexCache=new Map();
+    for(const a of arr) if(a.nr) akqLeadIndexCache.set(a.nr,a);
+    akqLeadIndexCacheSrc=arr;
+  }
+  return akqLeadIndexCache.get(fhNr)||null;
+}
 /* ---------- Fachhändler PopUp (Liste der AKP eines Händlers, Test) ---------- */
 // Fällt auf die AKP-Kontaktdatenbank (Firma/Ort) zurück, wenn ein Händler am
 // aktuellen Tag keine Produktion hatte und daher nicht in state.latest.fh
-// steht - sonst zeigt das Popup weder Name noch Ort (z.B. Bug bei "KURTZ").
-// Firma-Name aus der AKP-Kontaktdatenbank für eine FH-Nr (erster Treffer) -
-// gemeinsamer Baustein für fhFallbackFromAkp() und fhAllKnownList(), siehe
-// dort für den Hintergrund (Bug-Report 04.09.2026: FH-Suche zeigte bei
-// Händlern ohne Namen in fh_contacts/state.latest.fh nur die FH-Nr statt
-// eines Namens).
+// steht - sonst zeigt das Popup weder Name noch Ort (z.B. urspr. Bug bei
+// "KURTZ", als fh_contacts.akq_name für diesen Händler noch fehlte).
+// Letzter Namens-Fallback (nach fh_contacts-Name und AKQ-Liste, siehe
+// fhAllKnownList() unten): Firma aus der AKP-Kontaktdatenbank für eine FH-Nr
+// (erster Treffer) - deckt Händler ab, die weder in fh_contacts noch in der
+// AKQ-Liste einen Namen haben, aber in der AKP-Kontaktdatenbank bekannt sind
+// (Bug-Report 04.09.2026: FH-Suche zeigte bei solchen Händlern nur die FH-Nr).
 function fhAkpFirmaFallback(fhNr){
   if(!akpContactsIndex) return null;
   for(const a of Object.values(akpContactsIndex)){
@@ -6048,43 +6370,81 @@ function fhAkpFirmaFallback(fhNr){
   return null;
 }
 function fhFallbackFromAkp(fhNr){
-  // fh_contacts-Fallback (Ort + bestmöglicher Name: akq_name > miete_name >
-  // manueller Name, siehe fhContactsAllIndex/buildFhContactsIndices) - EINE
-  // Quelle statt vormals drei getrennt geprüfter Indizes (fhAkqIndex/
-  // fhMieteNameIndex/fhManualNameIndex einzeln), da fhAkqIndex nur bei
-  // vorhandenen Akquisestaffel-Punkten befüllt wird und daher einen Namen
-  // liefern konnte, den fhContactsAllIndex bereits kannte, dieser Fallback
-  // hier aber nicht fand (Bug im eigenen Test beim Beheben von Bug-Report
-  // 27.08.2026 "SCD, Krumbach & SCD, Wiener Neudorf" entdeckt).
+  // fh_contacts-Name (akq_name > miete_name > manueller Name, siehe
+  // fhContactsAllIndex/buildFhContactsIndices) hat Vorrang vor der rohen
+  // AKP-Kontaktdatenbank-Firma: Der AKP-Datensatz kombiniert oft einen
+  // internen Kurzcode + den vollen Namen in einem Feld (z.B. "KURTZ Kurtz
+  // Bernhard" statt "KURTZ") und erzeugte dadurch für denselben Händler je
+  // nach Ansicht zwei unterschiedliche Schreibweisen, die wie zwei
+  // verschiedene Fachhändler wirkten (Nutzer-Bug-Report 30.08.2026). Der
+  // AKP-Fallback bleibt nur für Händler ohne jeglichen fh_contacts-Namen
+  // (der urspr. Grund für diesen Fallback).
   const rec=fhContactsAllIndex&&fhContactsAllIndex[fhNr];
+  if(rec&&rec.name){
+    let akpOrt=null;
+    if(akpContactsIndex) for(const a of Object.values(akpContactsIndex)){ if(a.fh_nr===fhNr&&a.ort){ akpOrt=a.ort; break; } }
+    return {name:rec.name,ort:rec.ort||akpOrt||null};
+  }
   const fallbackOrt=(rec&&rec.ort)||null;
   if(akpContactsIndex){
     for(const a of Object.values(akpContactsIndex)){
       if(a.fh_nr===fhNr&&a.firma) return {name:a.firma,ort:a.ort||fallbackOrt};
     }
   }
-  if(rec&&(rec.name||rec.ort)) return {name:rec.name||null,ort:rec.ort||null};
+  // Letzter Fallback: AKQ-Liste (frisch akquirierte Händler, oft weder in
+  // fh_contacts noch in der AKP-Kontaktdatenbank bekannt, siehe akqLeadFor).
+  const akq=akqLeadFor(fhNr);
+  if(akq&&akq.name) return {name:akq.name,ort:akq.ort||fallbackOrt};
+  if(rec&&rec.ort) return {name:null,ort:rec.ort};
+  if(akq&&akq.ort) return {name:null,ort:akq.ort};
   return null;
 }
 // Alle bekannten Fachhändler für Suche/Auswahl (FH-Suche, Chefgespräch-/
 // Auswertung-Suche): heutige Tagesproduktion (state.latest.fh, beste Daten)
-// plus jede zusätzliche fh_contacts-Zeile, die dort NICHT vorkommt - deckt
-// Händler ohne jegliche Produktion heuer bzw. insgesamt ab, die nur aus
-// Akquisestaffeln-/Miete-/Segmentierungs-Import bekannt sind (Bug-Report
-// 27.08.2026: "SCD, Krumbach & SCD, Wiener Neudorf" fehlten überall im
-// Dashboard, obwohl beide Einspielungen sie enthielten).
+// plus jede zusätzliche fh_contacts-Zeile, die dort NICHT vorkommt, plus
+// jeder AKQ-Liste-Eintrag, der in keiner der beiden vorkommt - deckt Händler
+// ohne jegliche Produktion heuer bzw. insgesamt ab, die nur aus
+// Akquisestaffeln-/Miete-/Segmentierungs-Import ODER nur aus der frischen
+// AKQ-Liste bekannt sind (Bug-Report 27.08.2026: "SCD, Krumbach & SCD,
+// Wiener Neudorf" fehlten überall im Dashboard; Bug-Report 30.08.2026:
+// "PhiSchcom GmbH" hatte in fh_contacts nur weitere_zuordnung gesetzt, aber
+// keinen akq_name - die Suche kannte den Namen deshalb nicht, obwohl das
+// FH-PopUp ihn über akqLeadFor längst korrekt anzeigte - Namensauflösung
+// jetzt überall gleich: fh_contacts-Name > AKQ-Liste-Name > FH-Nr).
 function fhAllKnownList(){
   const out=[], seen=new Set();
+  // filialbetriebe/weitere_zuordnung kommen nur aus fh_contacts (manuell
+  // gepflegt, kein Teil der täglichen Auswertung) - deshalb für JEDEN
+  // Treffer (auch die mit heutiger Tagesproduktion) separat nachgeladen,
+  // damit die Suche unten auch danach filtern kann (z.B. "A1 Hartberg").
   Object.entries(state.latest.fh||{}).forEach(([nr,f])=>{
     seen.add(nr);
-    out.push({nr,name:f.name||fhAkpFirmaFallback(nr),ort:f.ort,emp:f.emp});
+    const rec=fhContactsAllIndex&&fhContactsAllIndex[nr];
+    out.push({nr,name:f.name||fhAkpFirmaFallback(nr),ort:f.ort,emp:f.emp,filialbetriebe:(rec&&rec.filialbetriebe)||null,weitereZuordnung:(rec&&rec.weitereZuordnung)||null});
   });
   Object.entries(fhContactsAllIndex||{}).forEach(([nr,r])=>{
     if(seen.has(nr)) return;
     seen.add(nr);
-    out.push({nr,name:r.name||fhAkpFirmaFallback(nr)||nr,ort:r.ort||null,emp:matchEmployee(r.gl||"")||null});
+    const akq=akqLeadFor(nr);
+    out.push({nr,name:r.name||(akq&&akq.name)||fhAkpFirmaFallback(nr)||nr,ort:r.ort||(akq&&akq.ort)||null,emp:matchEmployee(r.gl||"")||(akq&&akq.emp)||null,filialbetriebe:r.filialbetriebe||null,weitereZuordnung:r.weitereZuordnung||null});
+  });
+  (state.latest.akq||[]).forEach(a=>{
+    if(seen.has(a.nr)) return;
+    seen.add(a.nr);
+    out.push({nr:a.nr,name:a.name||fhAkpFirmaFallback(a.nr)||a.nr,ort:a.ort||null,emp:a.emp||null,filialbetriebe:null,weitereZuordnung:null});
   });
   return out;
+}
+// Sucht über Name, Ort, Filialbetriebe, Weitere Zuordnung UND FH-Nr.
+// gemeinsam statt nur ein einzelnes Feld: die Suchanfrage wird in Wörter
+// zerlegt, jedes Wort muss irgendwo in der Kombination vorkommen - deckt
+// Eingaben wie "Hus Klagenfurt" (Name-Teil + Ort) oder "A1 Hartberg"
+// (Weitere-Zuordnung-Tag + Ort) ab, die vorher nur ein einzelnes Feld
+// durchsuchten und deshalb leer blieben, obwohl der Händler existiert.
+function fhMatchesSearch(f,q){
+  if(!q) return true;
+  const haystack=[f.name,f.ort,f.filialbetriebe,f.weitereZuordnung,f.nr].filter(Boolean).join(" ").toLowerCase();
+  return q.split(/\s+/).filter(Boolean).every(w=>haystack.includes(w));
 }
 // Name/Ort zu einer FH-Nr auflösen, egal ob der Händler heute Tagesproduktion
 // hatte oder nur aus fh_contacts (Akquisestaffeln/Miete/manuell) bekannt ist -
@@ -6307,11 +6667,17 @@ function fhHasRecentAkqBeginn(fhNr){
   return (s.akq||[]).some(a=>a.nr===fhNr&&a.beginn&&a.beginn>=grenze);
 }
 async function loadFhContact(fhNr){
-  fhContactCurrent={fh_nr:fhNr,strasse:null,plz:null,ort:null,telefon:null,email:null,ansprechpartner:null,ansprechpartner_email:null,homepage:null,segmentierung:null,segmentierung_prev:null,letzter_besuch:null,sonstige_infos:null,neunwochen_erledigt:false,club_weiss_mitglied:false,club_weiss_mitgliedsnummer:null,miete_monthly:{},miete_sortiment:{}};
+  fhContactCurrent={fh_nr:fhNr,strasse:null,plz:null,ort:null,telefon:null,email:null,ansprechpartner:null,ansprechpartner_email:null,homepage:null,segmentierung:null,segmentierung_prev:null,letzter_besuch:null,sonstige_infos:null,neunwochen_erledigt:false,club_weiss_mitglied:false,club_weiss_mitgliedsnummer:null,miete_monthly:{},miete_sortiment:{},gesperrt_am:null};
   try{
     const {data,error}=await sb.from("fh_contacts").select("*").eq("fh_nr",fhNr).maybeSingle();
+    // Falls der User inzwischen einen anderen Fachhändler geöffnet hat, ist
+    // diese Antwort veraltet - fhContactCurrent NICHT überschreiben, sonst
+    // landen bei "Bearbeiten"/"Speichern" die Stammdaten von fhNr im falschen,
+    // inzwischen geöffneten Händler (stille Datenkorruption).
+    if(fhModalCurrent!==fhNr) return;
     if(!error&&data) fhContactCurrent=data;
   }catch(e){}
+  if(fhModalCurrent!==fhNr) return;
   // "Alte Händler" (kein aktueller 9-Wochen-Beginn in der Akquiseliste) gelten
   // automatisch als erledigt - einmalig festschreiben, damit der Status auch
   // ohne "bearbeiten" korrekt angezeigt wird und die Liste konsistent bleibt.
@@ -6324,11 +6690,17 @@ async function loadFhContact(fhNr){
 function renderFhContactView(){
   const c=fhContactCurrent||{};
   const f=state.latest.fh[fhModalCurrent];
+  // Frisch akquirierte Händler ohne jegliche Produktion (siehe "Akquise ohne
+  // Produktion") haben oft noch keine fh_contacts-Stammdaten (kein Import
+  // schreibt Adresse/Telefon dorthin), obwohl die AKQ-Liste (state.latest.akq)
+  // sie längst mitbringt - Fallback darauf, statt ein leeres PopUp zu zeigen
+  // (Nutzer-Bug-Report 30.08.2026, analog fhFallbackFromAkp für Name/Ort).
+  const akq=akqLeadFor(fhModalCurrent);
   $("fhManualNameViewRow").classList.toggle("hidden",!c.name);
   $("fhManualNameView").textContent=c.name||"–";
-  const addr=[c.strasse,[c.plz,c.ort||(f&&f.ort)].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  const addr=[c.strasse||(akq&&akq.strasse),[c.plz||(akq&&akq.plz),c.ort||(f&&f.ort)||(akq&&akq.ort)].filter(Boolean).join(" ")].filter(Boolean).join(", ");
   $("fhAddrView").textContent=addr||"–";
-  $("fhTelefonView").textContent=c.telefon||"–";
+  $("fhTelefonView").textContent=c.telefon||(akq&&akq.tel)||"–";
   $("fhEmailView").textContent=c.email||"–";
   $("fhAnsprechpartnerView").textContent=c.ansprechpartner||"–";
   $("fhEmailApView").textContent=c.ansprechpartner_email||"–";
@@ -6366,6 +6738,15 @@ function renderFhContactView(){
   const poTxt=(f&&f.poQuote!=null)?(f.poQuote*100).toFixed(1).replace(".",",")+" %":"–";
   const f2Txt=(f&&f.q3fuer2!=null)?(f.q3fuer2*100).toFixed(1).replace(".",",")+" %":"–";
   $("fhQuotesInfo").textContent=`PO-Quote (LJ): ${poTxt} · 3-für-2-Quote (LJ): ${f2Txt}`;
+  // DSGVO-Sperrung (Nutzervorgabe 31.08.2026): gesperrte Datensätze können
+  // von jeder Rolle gesperrt, aber nur von Admins wieder entsperrt werden
+  // (technisch über den DB-Trigger trg_protect_fh_gesperrt erzwungen -
+  // hier nur die passende Button-/Hinweis-Anzeige dazu).
+  const isGesperrt=!!c.gesperrt_am;
+  $("fhGesperrtNotice").classList.toggle("hidden",!isGesperrt);
+  if(isGesperrt) $("fhGesperrtText").textContent="Gesperrt am "+fmtDate(c.gesperrt_am.slice(0,10))+" – Name, Adresse, Kontakt- und Ansprechpartnerdaten wurden gelöscht. FH-Nummer und Produktionszahlen bleiben für Auswertungen erhalten.";
+  $("fhEditBtn").classList.toggle("hidden",isGesperrt);
+  $("fhEntsperrenBtn").classList.toggle("hidden",!isGesperrt||myRole!=="admin");
 }
 // Filialbetriebe: zeigt Umschalt-Buttons zu anderen FH derselben Gruppe im
 // FH-PopUp an, damit man zwischen den Filialen hin- und herschalten kann
@@ -6401,8 +6782,11 @@ async function renderFhFilialbetriebeSwitcher(){
   if(!siblings.length){ row.classList.add("hidden"); $("fhFilialbetriebeSiblings").innerHTML=""; return; }
   row.classList.remove("hidden");
   $("fhFilialbetriebeSiblings").innerHTML=siblings.map(nr=>{
-    const f=state.latest.fh[nr];
-    const label=f?fhNameOrt(f.name,f.ort):nr;
+    // fhResolveNameOrt statt nur state.latest.fh: sonst zeigen Filialen ohne
+    // heutige Produktion (z.B. "ABS Telekommunikations GmbH") nur die
+    // bloße FH-Nr statt des Namens (Nutzer-Bug-Report 30.08.2026).
+    const r=fhResolveNameOrt(nr);
+    const label=fhNameOrt(r.name,r.ort);
     return `<button type="button" class="btn btn-ghost fh-filial-switch-btn" data-fh-nr="${escapeHtml(nr)}" style="padding:5px 10px;font-size:12.5px">${escapeHtml(label)}</button>`;
   }).join("");
 }
@@ -6424,6 +6808,11 @@ async function openFilialGruppeModal(){
     const {data,error}=await sb.from("fh_contacts").select("fh_nr,prod_monthly").eq("filialbetriebe",value);
     if(!error&&data) members=data;
   }catch(e){}
+  // Falls der User inzwischen eine andere Filialgruppe geöffnet hat, ist
+  // diese Antwort veraltet - filialGruppeCurrentMembers NICHT überschreiben,
+  // sonst zeigt der PDF-Export Titel/Zahlen aus zwei verschiedenen Gruppen
+  // gemischt (siehe gleicher Guard bei loadFhContact/openAkpContact).
+  if(filialGruppeCurrentValue!==value) return;
   filialGruppeCurrentMembers=members;
   renderFilialGruppe(value,members);
 }
@@ -6437,8 +6826,12 @@ function filialGruppeCompute(members){
   const perFiliale=members.map(m=>{
     const merged=fhMonthlyMerged(m.fh_nr,{prod_monthly:m.prod_monthly||{}});
     const total=Object.entries(merged).reduce((a,[k,v])=>k.slice(0,4)===year?a+v:a,0);
-    const f=state.latest.fh[m.fh_nr];
-    return { fhNr:m.fh_nr, name:(f&&f.name)||m.fh_nr, ort:(f&&f.ort)||"", merged, total };
+    // fhResolveNameOrt statt nur state.latest.fh (siehe
+    // renderFhFilialbetriebeSwitcher) - sonst zeigt die Filialgruppen-
+    // Übersicht (Bildschirm + PDF) für Filialen ohne heutige Produktion nur
+    // die bloße FH-Nr.
+    const r=fhResolveNameOrt(m.fh_nr);
+    return { fhNr:m.fh_nr, name:r.name, ort:r.ort||"", merged, total };
   }).sort((a,b)=>b.total-a.total);
   const gesamt=perFiliale.reduce((a,f)=>a+f.total,0);
   const mergedAll={};
@@ -6687,12 +7080,16 @@ function renderFhSearch(){
   if(!q){ box.innerHTML=""; return; }
   if(!hasData()){ box.innerHTML=""; return; }
   const rows=fhAllKnownList()
-    .filter(f=>currentEmp===AT_GESAMT||f.emp===currentEmp)
-    .filter(f=>(f.name||"").toLowerCase().includes(q)||(f.ort||"").toLowerCase().includes(q)||f.nr.toLowerCase().includes(q))
+    // Händler ohne Mitarbeiter-Zuordnung (z.B. nur aus dem Miete-Report
+    // bekannt, keine Akquisestaffel hinterlegt) bleiben auch in der
+    // Mitarbeiter-Ansicht sichtbar statt komplett zu verschwinden - sonst
+    // findet sie niemand, weil sich keiner zuständig fühlen kann.
+    .filter(f=>currentEmp===AT_GESAMT||f.emp===currentEmp||f.emp==null)
+    .filter(f=>fhMatchesSearch(f,q))
     .slice(0,20);
   if(!rows.length){ box.innerHTML=`<div class="empty-note">Kein Fachhändler gefunden.</div>`; return; }
   box.innerHTML=rows.map(f=>`<div class="akp-search-row" style="cursor:pointer" data-fh-nr="${escapeHtml(f.nr)}">
-      <span><b>${escapeHtml(f.name||f.nr)}</b><span class="betr">${escapeHtml(f.ort||"")} · FH-Nr. ${escapeHtml(f.nr)}${f.emp?" · "+escapeHtml(f.emp):""}</span></span>
+      <span><b>${escapeHtml(f.name||f.nr)}</b><span class="betr">${escapeHtml(f.ort||"")} · FH-Nr. ${escapeHtml(f.nr)} · ${f.emp?escapeHtml(f.emp):"keine Zuordnung"}${f.weitereZuordnung?" · "+escapeHtml(f.weitereZuordnung):""}</span></span>
     </div>`).join("");
   box.querySelectorAll("[data-fh-nr]").forEach(row=>{
     row.onclick=()=>{
@@ -6708,13 +7105,15 @@ function renderChefgespraechSearch(){
   if(!q){ box.innerHTML=""; return; }
   if(!hasData()){ box.innerHTML=""; return; }
   const rows=fhAllKnownList()
-    .filter(f=>currentEmp===AT_GESAMT||f.emp===currentEmp)
+    // Siehe renderFhSearch: unzugeordnete Händler auch in der Mitarbeiter-
+    // Ansicht anzeigen statt zu verstecken.
+    .filter(f=>currentEmp===AT_GESAMT||f.emp===currentEmp||f.emp==null)
     .filter(f=>!chefgespraechFhNrs.includes(f.nr))
-    .filter(f=>(f.name||"").toLowerCase().includes(q)||(f.ort||"").toLowerCase().includes(q)||f.nr.toLowerCase().includes(q))
+    .filter(f=>fhMatchesSearch(f,q))
     .slice(0,25);
   if(!rows.length){ box.innerHTML=`<div class="empty-note">Kein Fachhändler gefunden.</div>`; return; }
   box.innerHTML=rows.map(f=>`<div class="akp-search-row" style="cursor:pointer" data-fh-nr="${escapeHtml(f.nr)}">
-      <span><b>${escapeHtml(f.name||f.nr)}</b><span class="betr">${escapeHtml(f.ort||"")} · FH-Nr. ${escapeHtml(f.nr)}${f.emp?" · "+escapeHtml(f.emp):""}</span></span>
+      <span><b>${escapeHtml(f.name||f.nr)}</b><span class="betr">${escapeHtml(f.ort||"")} · FH-Nr. ${escapeHtml(f.nr)} · ${f.emp?escapeHtml(f.emp):"keine Zuordnung"}${f.weitereZuordnung?" · "+escapeHtml(f.weitereZuordnung):""}</span></span>
     </div>`).join("");
   box.querySelectorAll("[data-fh-nr]").forEach(row=>{
     row.onclick=()=>selectChefgespraechFh(row.dataset.fhNr);
@@ -6901,7 +7300,10 @@ async function chefgespraechFhContactFor(fhNr){
 // vernünftig eingebaut werden. Ziel nur wenn im Admin-Panel freigeschaltet
 // und für diesen FH gesetzt (gleiche Regel wie im FH-Popup).
 function chefgespraechStammdatenCardHtml(fhNr,f,c){
-  const addr=[c.strasse,[c.plz,c.ort||f.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ")||"–";
+  // Fallback auf die AKQ-Liste bei frisch akquirierten Händlern ohne
+  // fh_contacts-Stammdaten (siehe renderFhContactView/akqLeadFor).
+  const akq=akqLeadFor(fhNr);
+  const addr=[c.strasse||(akq&&akq.strasse),[c.plz||(akq&&akq.plz),c.ort||f.ort||(akq&&akq.ort)].filter(Boolean).join(" ")].filter(Boolean).join(", ")||"–";
   const gebietsleiter=f.emp||f.gl||null;
   const stamRow=(lbl,val)=>`<div style="min-width:170px"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284;margin-bottom:2px">${lbl}</div><div style="font-size:12px;font-weight:700;color:#10202C">${val}</div></div>`;
   let zielRow="";
@@ -6915,7 +7317,7 @@ function chefgespraechStammdatenCardHtml(fhNr,f,c){
     <div style="display:flex;flex-wrap:wrap;gap:14px 26px">
       ${stamRow("Adresse",escapeHtml(addr))}
       ${stamRow("Gebietsleiter",gebietsleiter?escapeHtml(gebietsleiter):"–")}
-      ${stamRow("Telefon",c.telefon?escapeHtml(c.telefon):"–")}
+      ${stamRow("Telefon",(c.telefon||(akq&&akq.tel))?escapeHtml(c.telefon||akq.tel):"–")}
       ${stamRow("Ansprechpartner",c.ansprechpartner?escapeHtml(c.ansprechpartner):"–")}
       ${stamRow("E-Mail",c.email?escapeHtml(c.email):"–")}
       ${stamRow("Club Weiss",c.club_weiss_mitglied?"✓ Mitglied"+(c.club_weiss_mitgliedsnummer?" · Nr. "+escapeHtml(c.club_weiss_mitgliedsnummer):""):"Kein Mitglied")}
@@ -6928,7 +7330,10 @@ async function chefgespraechUnterlagenSectionHtml(fhNr,idx,total,showBranding){
   const f=state.latest.fh[fhNr]||{};
   const c=await chefgespraechFhContactFor(fhNr);
   const nowStr=fmtNowDateTime();
-  const fName=f.name||fhNr;
+  // Für Händler ohne heutige Produktion hat f keinen Namen (nur aus der
+  // Tages-Auswertung befüllt) - auf fh_contacts zurückfallen (gleiche
+  // Priorität wie fhResolveNameOrt), sonst zeigt das PDF nur die FH-Nr.
+  const fName=f.name||c.akq_name||c.miete_name||c.name||fhNr;
 
   const merged=fhMonthlyMerged(fhNr,c);
   const beitragsfrei=c.beitragsfrei_yearly||{};
@@ -6978,6 +7383,12 @@ async function chefgespraechUnterlagenSectionHtml(fhNr,idx,total,showBranding){
   renderFhAkqStaffel(fhNr);
   const akqStaffelInner=$("fhAkqStaffelBlock").innerHTML.trim();
   fhModalCurrent=prevFhModalCurrent;
+  // #fhAkqStaffelBlock wird oben nur geliehen, um renderFhAkqStaffel()
+  // wiederzuverwenden - das im Hintergrund offene FH-PopUp (falls eines
+  // offen ist) muss danach wieder seine EIGENE Staffel zeigen, sonst bleibt
+  // dort dauerhaft die Staffel von fhNr stehen (DOM-Leck zwischen Chef-
+  // gespräch-PDF und offenem FH-PopUp).
+  renderFhAkqStaffel(prevFhModalCurrent);
   const akqStaffelHtml=akqStaffelInner?`<div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:16px">${akqStaffelInner}</div>`:"";
 
   const kennzahl=(lbl,val)=>`<div style="text-align:center"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284">${lbl}</div><div style="font-size:18px;font-weight:900;color:#062A3F;margin-top:2px">${val}</div></div>`;
@@ -7036,7 +7447,7 @@ async function chefgespraechOverviewMetrics(fhNr){
   const curYear=String(state.latest.jahr);
   const prodCurYear=Object.entries(merged).filter(([k])=>k.startsWith(curYear)).reduce((s,[,v])=>s+(v||0),0);
   return {
-    fhNr, name:f.name||fhNr, ort:f.ort||c.ort||null,
+    fhNr, name:f.name||c.akq_name||c.miete_name||c.name||fhNr, ort:f.ort||c.ort||null,
     prodCurYear, poQuote:f.poQuote, q3fuer2:f.q3fuer2,
     akqPunkte:c.akq_punkte, clubWeiss:!!c.club_weiss_mitglied,
     merged,
@@ -7278,7 +7689,9 @@ async function chefgespraechKiSectionHtml(fhNr,modeResults,idx,total,showBrandin
   if(showBranding==null) showBranding=true;
   const f=state.latest.fh[fhNr]||{};
   const c=await chefgespraechFhContactFor(fhNr);
-  const fName=f.name||fhNr;
+  // Siehe chefgespraechUnterlagenSectionHtml: auf fh_contacts zurückfallen,
+  // wenn der Händler heute keine Produktion hatte.
+  const fName=f.name||c.akq_name||c.miete_name||c.name||fhNr;
   const first=modeResults[0].data||{};
   const target=(first.metrics||{}).target||{};
   const multiMode=modeResults.length>1;
@@ -7310,7 +7723,7 @@ async function buildChefgespraechKiPdfDoc(fhNrs,dataList){
   // Filiale mit ihrer Vergleichsgruppe je Modus, danach je Filiale eine
   // eigene Seite mit Zusammenfassung + Vergleich (wie bisher).
   if(fhNrs.length>1){
-    const fhNames=fhNrs.map(nr=>(state.latest.fh[nr]||{}).name||nr);
+    const fhNames=fhNrs.map(nr=>fhResolveNameOrt(nr).name);
     const targets=dataList.map(mr=>((mr[0]&&mr[0].data&&mr[0].data.metrics)||{}).target||{});
     const clubCount=targets.filter(t=>t.clubWeiss).length;
     const kennzahl=(lbl,val)=>`<div style="text-align:center"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284">${lbl}</div><div style="font-size:18px;font-weight:900;color:#062A3F;margin-top:2px">${val}</div></div>`;
@@ -7562,7 +7975,10 @@ async function buildKooperationsgespraechUnterlagenPdfDoc(koop){
     if(box.parentNode) box.parentNode.removeChild(box);
   }
 }
+let kooperationsgespraechPdfBusy=false;
 async function exportKooperationsgespraechUnterlagenPdf(koop){
+  if(kooperationsgespraechPdfBusy) return;
+  kooperationsgespraechPdfBusy=true;
   toast("Kooperationsgesprächsunterlagen werden erstellt …");
   try{
     const {pdf,filename}=await buildKooperationsgespraechUnterlagenPdfDoc(koop);
@@ -7571,6 +7987,8 @@ async function exportKooperationsgespraechUnterlagenPdf(koop){
     console.error("exportKooperationsgespraechUnterlagenPdf failed:",e);
     toast("Erstellung fehlgeschlagen: "+(e.message||e));
     pdfSendTarget=null;
+  }finally{
+    kooperationsgespraechPdfBusy=false;
   }
 }
 async function callKooperationsgespraechAiComparison(koop){
@@ -7643,7 +8061,10 @@ async function buildKooperationsgespraechKiPdfDoc(koop,data){
     if(box.parentNode) box.parentNode.removeChild(box);
   }
 }
+let kooperationsgespraechKiPdfBusy=false;
 async function exportKooperationsgespraechKiPdf(koop){
+  if(kooperationsgespraechKiPdfBusy) return;
+  kooperationsgespraechKiPdfBusy=true;
   toast("KI-Vergleich wird erstellt … das kann bis zu einer Minute dauern.");
   try{
     const data=await callKooperationsgespraechAiComparison(koop);
@@ -7654,6 +8075,8 @@ async function exportKooperationsgespraechKiPdf(koop){
     console.error("exportKooperationsgespraechKiPdf failed:",e);
     toast("KI-Vergleich fehlgeschlagen: "+(e.message||e));
     pdfSendTarget=null;
+  }finally{
+    kooperationsgespraechKiPdfBusy=false;
   }
 }
 /* ---------- Auswertung erfassen: Kooperation/Weitere Zuordnung/Fachhändler/AKP über frei wählbaren Zeitraum ---------- */
@@ -7755,10 +8178,12 @@ function renderAuswertungMultiSearch(){
   if(auswertungTyp==="fachhaendler"){
     if(!hasData()){ box.innerHTML=""; return; }
     rows=fhAllKnownList()
-      .filter(f=>currentEmp===AT_GESAMT||f.emp===currentEmp)
-      .map(f=>({key:f.nr,label:f.name||f.nr,sub:(f.ort||"")+" · FH-Nr. "+f.nr+(f.emp?" · "+f.emp:"")}))
-      .filter(r=>!auswertungMultiKeys.includes(r.key))
-      .filter(r=>r.label.toLowerCase().includes(q)||r.sub.toLowerCase().includes(q))
+      // Siehe renderFhSearch: unzugeordnete Händler auch in der Mitarbeiter-
+      // Ansicht anzeigen statt zu verstecken.
+      .filter(f=>currentEmp===AT_GESAMT||f.emp===currentEmp||f.emp==null)
+      .filter(f=>!auswertungMultiKeys.includes(f.nr))
+      .filter(f=>fhMatchesSearch(f,q))
+      .map(f=>({key:f.nr,label:f.name||f.nr,sub:(f.ort||"")+" · FH-Nr. "+f.nr+" · "+(f.emp||"keine Zuordnung")+(f.weitereZuordnung?" · "+f.weitereZuordnung:"")}))
       .slice(0,25);
   }else if(auswertungTyp==="akp"){
     if(!akpContactsIndex){ box.innerHTML=`<div class="empty-note">AKP-Kontaktdatenbank lädt noch …</div>`; return; }
@@ -7845,6 +8270,18 @@ function sumDailyRange(dailyMap,aISO,bISO){
   let s=0; for(const d in dailyMap){ if(d>=aISO&&d<=bISO) s+=dailyMap[d]||0; }
   return s;
 }
+// Wie sumDailyRange, aber ohne Sonntage (siehe weeksInRange: Wochenbuckets
+// sind bewusst Montag-Samstag, da Sonntage keine Arbeitstage sind). Für alle
+// Wochenansicht-Summen der Auswertung genutzt, die NICHT schon über
+// bucket-geclippte Zeiträume laufen (w.a/w.b aus weeksInRange sind bereits
+// Mo-Sa begrenzt) - sonst zeigt dieselbe PDF-Seite eine kleinere
+// Gesamtsumme (aus den Wochenbuckets) als die Summe der darunter gelisteten
+// Mitglieder-/AKP-Zeilen (die den vollen Zeitraum inkl. Sonntag summierten).
+function sumDailyRangeExclSunday(dailyMap,aISO,bISO){
+  if(!dailyMap) return 0;
+  let s=0; for(const d in dailyMap){ if(d>=aISO&&d<=bISO&&parseISO(d).getUTCDay()!==0) s+=dailyMap[d]||0; }
+  return s;
+}
 // Verschmilzt Tages-Historie (state.dailyFH/state.dailyAKP, ab Datum ->
 // Wert) mit der Monats-Bulkhistorie (prod_monthly) zu EINEM
 // Monats-Dict - analog fhMonthlyMerged(), aber für beliebige FH/AKP
@@ -7858,7 +8295,12 @@ function mergedMonthlyFromDaily(dailyMap,bulkMonthly){
   return {...fromDaily,...(bulkMonthly||{})};
 }
 function addYearsIso(dateISO,years){
-  return iso(new Date(Date.UTC(+dateISO.slice(0,4)+years,+dateISO.slice(5,7)-1,+dateISO.slice(8,10))));
+  const mo=+dateISO.slice(5,7)-1;
+  const dt=new Date(Date.UTC(+dateISO.slice(0,4)+years,mo,+dateISO.slice(8,10)));
+  // 29. Februar in einem Nicht-Schaltjahr rollt sonst stillschweigend auf den
+  // 1. März über - stattdessen auf den letzten Tag des Zielmonats zurückfallen.
+  if(dt.getUTCMonth()!==mo) dt.setUTCDate(0);
+  return iso(dt);
 }
 // Baut aus einer Liste von "Einheiten" (FH- oder AKP-Datensätzen, siehe
 // auswertungLoadUnits) die Zeitreihen-Buckets für den gewählten Zeitraum:
@@ -7889,7 +8331,7 @@ function auswertungBuildSeries(units,vonISO,bisISO){
   const vonPrev=addYearsIso(vonISO,-1), bisPrev=addYearsIso(bisISO,-1);
   let totalWgPrev=0,totalMietePrev=0;
   if(weekly){
-    for(const u of units){ totalWgPrev+=sumDailyRange(u.dailyWg,vonPrev,bisPrev); totalMietePrev+=sumDailyRange(u.dailyMiete,vonPrev,bisPrev); }
+    for(const u of units){ totalWgPrev+=sumDailyRangeExclSunday(u.dailyWg,vonPrev,bisPrev); totalMietePrev+=sumDailyRangeExclSunday(u.dailyMiete,vonPrev,bisPrev); }
   }else{
     const monthsPrev=monthKeysInRange(vonPrev,bisPrev);
     for(const u of units) for(const mk of monthsPrev){ totalWgPrev+=u.monthlyWg[mk]||0; totalMietePrev+=u.monthlyMiete[mk]||0; }
@@ -7956,7 +8398,7 @@ function auswertungAkpProdInPeriod(a,vonISO,bisISO,weekly){
   for(const [k,v] of Object.entries(a.prod_monthly||{})) bulk[k]=(bulk[k]||0)+(Number(v)||0);
   for(const [k,v] of Object.entries(a.prod_monthly_other||{})) bulk[k]=(bulk[k]||0)+(Number(v)||0);
   const dailyWg=(state.dailyAKP&&state.dailyAKP[a.nr])||{};
-  if(weekly) return sumDailyRange(dailyWg,vonISO,bisISO);
+  if(weekly) return sumDailyRangeExclSunday(dailyWg,vonISO,bisISO);
   const monthly=mergedMonthlyFromDaily(dailyWg,bulk);
   return monthKeysInRange(vonISO,bisISO).reduce((s,mk)=>s+(monthly[mk]||0),0);
 }
@@ -8048,7 +8490,7 @@ function auswertungAggregateSectionHtml(units,vonISO,bisISO,showAkp){
   const kennzahl=(lbl,val)=>`<div style="text-align:center"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284">${lbl}</div><div style="font-size:18px;font-weight:900;color:#062A3F;margin-top:2px">${val}</div></div>`;
   const yoy=series.totalWgPrev>0?((series.totalWg-series.totalWgPrev)/series.totalWgPrev*100):null;
   const monthsInRange=monthKeysInRange(vonISO,bisISO);
-  const prodOf=u=>series.weekly?sumDailyRange(u.dailyWg,vonISO,bisISO):monthsInRange.reduce((s,mk)=>s+(u.monthlyWg[mk]||0),0);
+  const prodOf=u=>series.weekly?sumDailyRangeExclSunday(u.dailyWg,vonISO,bisISO):monthsInRange.reduce((s,mk)=>s+(u.monthlyWg[mk]||0),0);
   const memberRows=[...units].sort((a,b)=>prodOf(b)-prodOf(a)).map(u=>
     `<tr><td>${escapeHtml(u.name)}</td><td>${escapeHtml(u.ort||"–")}</td><td>${escapeHtml(u.fhNr)}</td><td class="r">${fmt(prodOf(u))}</td><td style="text-align:center">${u.clubWeiss?"✓":"–"}</td></tr>`
   ).join("");
@@ -8173,7 +8615,10 @@ async function buildAuswertungPdfDoc(typ,singleVal,multiKeys,vonISO,bisISO,showA
     if(box.parentNode) box.parentNode.removeChild(box);
   }
 }
+let auswertungPdfBusy=false;
 async function exportAuswertungPdf(typ,singleVal,multiKeys,vonISO,bisISO,showAkp){
+  if(auswertungPdfBusy) return;
+  auswertungPdfBusy=true;
   toast("Auswertung wird erstellt …");
   try{
     const {pdf,filename}=await buildAuswertungPdfDoc(typ,singleVal,multiKeys,vonISO,bisISO,showAkp);
@@ -8182,6 +8627,8 @@ async function exportAuswertungPdf(typ,singleVal,multiKeys,vonISO,bisISO,showAkp
     console.error("exportAuswertungPdf failed:",e);
     toast("Erstellung fehlgeschlagen: "+(e.message||e));
     pdfSendTarget=null;
+  }finally{
+    auswertungPdfBusy=false;
   }
 }
 // Stammdaten-Änderungsworkflow: PLZ/Ort sind die einzigen Stammdaten-Felder,
@@ -8360,7 +8807,10 @@ function renderFhMieteSection(){
   const c=fhContactCurrent;
   if(!c||!c.club_weiss_mitglied){ box.innerHTML=""; return; }
   const monthly=c.miete_monthly||{};
-  const sortiment=c.miete_sortiment||{};
+  // Verkauftes Sortiment bezieht sich immer nur auf das aktuelle Jahr
+  // (Nutzervorgabe 30.08.2026) - miete_sortiment ist seitdem pro Jahr
+  // gebucketet ({"<Jahr>":{"<Kategorie>":Anzahl}}, siehe parseMieteReport).
+  const sortiment=(c.miete_sortiment||{})[String(state.latest.jahr)]||{};
   const years=[...new Set(Object.keys(monthly).map(k=>k.slice(0,4)))].sort();
   const monthlyTbl=years.length
     ?`<div style="overflow:auto"><table class="ac-month-table"><thead><tr><th>Jahr</th>${MONTH_LABELS.map(m=>`<th>${m}</th>`).join("")}<th>Summe</th></tr></thead><tbody>`+
@@ -8391,10 +8841,22 @@ function renderFhMieteSection(){
     yearlyTbl=`<h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:13px">Jahresvergleich Miete</h4>
       <table class="ac-yearly-table"><thead><tr><th>Jahr</th><th>Summe</th><th>vs. Vorjahr</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
-  const sortimentEntries=Object.entries(sortiment).sort((a,b)=>b[1]-a[1]);
-  const sortimentList=sortimentEntries.length
-    ?`<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px">`+sortimentEntries.map(([name,cnt])=>
-        `<span class="pill neu" style="font-size:11px;padding:4px 10px">${escapeHtml(name)}: <b>${fmt(cnt)}</b></span>`).join("")+`</div>`
+  // Sortiment-Spalte im Miete-Report enthaelt bei einzelnen Zeilen statt einer
+  // Kategorie (z.B. "Weiße Ware") einen Auftrags-/Produktcode (z.B. "R260081") -
+  // Datenqualitaet des Reports, nicht der Parser (der liest die Spalte korrekt).
+  // Echte Kategorienamen enthalten keine Ziffern, Codes immer. Die einzelnen
+  // Codes bleiben trotzdem echte Verträge (Nutzer-Bug-Report 30.08.2026: Summe
+  // der Kategorien passte nicht zur Produktion) - deshalb nicht mehr komplett
+  // ausgeblendet, sondern zu einem "nicht kategorisiert"-Sammelwert
+  // zusammengefasst, statt Dutzende bedeutungslose Einzel-Code-Chips zu zeigen.
+  const rawSortimentEntries=Object.entries(sortiment);
+  const sortimentEntries=rawSortimentEntries.filter(([name])=>!/\d/.test(name)).sort((a,b)=>b[1]-a[1]);
+  const sortimentUnkategorisiert=rawSortimentEntries.filter(([name])=>/\d/.test(name)).reduce((s,[,v])=>s+(v||0),0);
+  const sortimentList=(sortimentEntries.length||sortimentUnkategorisiert>0)
+    ?`<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px">`+
+      sortimentEntries.map(([name,cnt])=>`<span class="pill neu" style="font-size:11px;padding:4px 10px">${escapeHtml(name)}: <b>${fmt(cnt)}</b></span>`).join("")+
+      (sortimentUnkategorisiert>0?`<span class="pill" style="font-size:11px;padding:4px 10px;background:rgba(127,127,127,.15);color:var(--muted)" title="Verträge, bei denen der Miete-Report statt einer Kategorie einen Auftrags-/Produktcode geliefert hat">Sonstiges (nicht kategorisiert): <b>${fmt(sortimentUnkategorisiert)}</b></span>`:"")+
+      `</div>`
     :`<div class="empty-note">Kein Sortiment erfasst.</div>`;
   box.innerHTML=`<h4 style="margin:18px 0 4px;color:var(--wg-navy);font-size:13px">Produktion Miete (Club.Weiss)</h4>
     ${monthlyTbl}
@@ -8542,6 +9004,15 @@ async function saveFhContact(){
   // loadFhContactsIndicesAll-Refresh) - sonst zeigt z.B. das Miete-PopUp den
   // gerade eingetragenen Namen erst nach einem Reload.
   if(name) fhManualNameIndex[fhNr]=name; else delete fhManualNameIndex[fhNr];
+  // fhContactsAllIndex (fhMatchesSearch/fhAllKnownList) ebenso live nachziehen -
+  // sonst findet die FH-/Chefgespräch-/Auswertung-Suche einen gerade erst
+  // eingetragenen "Weitere Zuordnung"/Filialbetriebe-Wert (z.B. "A1 Shop")
+  // erst nach einem Reload (Nutzer-Bug-Report 30.08.2026: "A1 Liezen" fand
+  // die soeben getaggte Filiale nicht).
+  if(!fhContactsAllIndex[fhNr]) fhContactsAllIndex[fhNr]={name:null,ort:null,gl:null,filialbetriebe:null,weitereZuordnung:null};
+  fhContactsAllIndex[fhNr].ort=ort;
+  fhContactsAllIndex[fhNr].filialbetriebe=filialbetriebe;
+  fhContactsAllIndex[fhNr].weitereZuordnung=weitere_zuordnung;
   if(!(state.latest.fh[fhNr]&&state.latest.fh[fhNr].name)) $("fhName").textContent=name||fhNr;
   if(neunwochen_erledigt) fhErledigtSet.add(fhNr); else fhErledigtSet.delete(fhNr);
   renderFhContactView();
@@ -8550,6 +9021,38 @@ async function saveFhContact(){
   renderFhFilialbetriebeSwitcher();
   toggleFhEdit(false);
   toast("Händlerdaten gespeichert ✓");
+}
+// DSGVO-Sperren/Anonymisieren (Nutzervorgabe 31.08.2026, DSGVO-Prüfprotokoll
+// Befund H-1): jede Rolle darf einen Datensatz sperren, da das Bearbeiten
+// derselben Felder ohnehin schon für alle offen ist (fh_contacts-RLS) - der
+// eigentliche Schutz vor "aus Versehen/mutwillig entsperren" liegt im
+// DB-Trigger trg_protect_fh_gesperrt, nicht in dieser Client-Prüfung.
+// akq_name/miete_name werden mitgeleert, weil fhResolveNameOrt/fhFallbackFromAkp
+// sonst über diese Felder doch wieder einen Namen anzeigen würden.
+// Button sitzt bewusst im Bearbeiten-Modus (Nutzervorgabe 31.08.2026), nicht
+// in der normalen Ansicht.
+async function lockFhContact(){
+  const fhNr=fhModalCurrent; if(!fhNr) return;
+  if(!confirm("Diesen Fachhändler-Datensatz wirklich sperren?\n\nName, Adresse, Telefon, E-Mail, Ansprechpartner und Homepage werden dauerhaft gelöscht. FH-Nummer und Produktionszahlen bleiben für Auswertungen erhalten.\n\nDas kann nur noch von einem Admin rückgängig gemacht werden.")) return;
+  const patch={fh_nr:fhNr,name:null,akq_name:null,miete_name:null,strasse:null,plz:null,ort:null,telefon:null,email:null,ansprechpartner:null,ansprechpartner_email:null,homepage:null,sonstige_infos:null,gesperrt_am:new Date().toISOString(),updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()};
+  const {error}=await sb.from("fh_contacts").upsert(patch,{onConflict:"fh_nr"});
+  if(error){ toast("Fehler beim Sperren: "+error.message); return; }
+  Object.assign(fhContactCurrent,patch);
+  if(fhContactsAllIndex[fhNr]) fhContactsAllIndex[fhNr].name=null;
+  delete fhManualNameIndex[fhNr];
+  $("fhName").textContent="Gesperrt (FH-Nr. "+fhNr+")";
+  toggleFhEdit(false);
+  renderFhContactView();
+  toast("Datensatz gesperrt ✓");
+}
+async function unlockFhContact(){
+  const fhNr=fhModalCurrent; if(!fhNr||myRole!=="admin") return;
+  if(!confirm("Sperre für diesen Fachhändler aufheben?\n\nDie Stammdaten können danach wieder neu erfasst werden.")) return;
+  const {error}=await sb.from("fh_contacts").upsert({fh_nr:fhNr,gesperrt_am:null,updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()},{onConflict:"fh_nr"});
+  if(error){ toast("Fehler beim Entsperren: "+error.message); return; }
+  fhContactCurrent.gesperrt_am=null;
+  renderFhContactView();
+  toast("Datensatz entsperrt ✓");
 }
 let fhPdfBusy=false;
 // includeAkp: true/false - Auswahl aus #fhPdfChoiceModal ("Mit AKP"/"Ohne AKP").
@@ -8563,6 +9066,9 @@ async function exportFhPdf(includeAkp){
   const fhNr=fhModalCurrent; if(!fhNr) return;
   const f=state.latest.fh[fhNr]||{};
   const c=fhContactCurrent||{};
+  // Fallback auf die AKQ-Liste bei frisch akquirierten Händlern ohne
+  // fh_contacts-Stammdaten (siehe renderFhContactView/akqLeadFor).
+  const akq=akqLeadFor(fhNr);
   fhPdfBusy=true;
   // Fenster synchron im Klick öffnen statt erst nach dem await für html2canvas -
   // sonst werten Browser das spätere window.open() als Popup außerhalb einer
@@ -8574,7 +9080,7 @@ async function exportFhPdf(includeAkp){
   const box=document.createElement("div");
   try{
     const field=(lbl,val)=>`<div><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#5D7284;margin-bottom:3px">${lbl}</div><div style="font-size:14px;font-weight:700;color:#10202C">${val}</div></div>`;
-    const addr=[c.strasse,[c.plz,c.ort||f.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ")||"–";
+    const addr=[c.strasse||(akq&&akq.strasse),[c.plz||(akq&&akq.plz),c.ort||f.ort||(akq&&akq.ort)].filter(Boolean).join(" ")].filter(Boolean).join(", ")||"–";
     let akpHtml="";
     if(includeAkp){
       // Alle AKP des Händlers auflisten (nicht mehr gekappt) - notfalls über
@@ -8605,14 +9111,14 @@ async function exportFhPdf(includeAkp){
     box.innerHTML=`
       <div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:18px">
         <div>
-          <div style="font-size:21px;font-weight:900;color:#062A3F">${escapeHtml((f&&f.name)||fhNr)}</div>
+          <div style="font-size:21px;font-weight:900;color:#062A3F">${escapeHtml((f&&f.name)||c.akq_name||c.miete_name||c.name||fhNr)}</div>
           <div style="font-size:12px;color:#5D7284;margin-top:3px">FH-Nr. ${escapeHtml(fhNr)}${f&&f.ort?" · "+escapeHtml(f.ort):""}${f&&(f.emp||f.gl)?" · "+escapeHtml(f.emp||f.gl):""}</div>
         </div>
         <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Fachhändler-Datenblatt</div>
       </div>
       <div class="pdf-block" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px;margin-bottom:18px">
         ${field("Adresse",escapeHtml(addr))}
-        ${field("Telefon",escapeHtml(c.telefon||"–"))}
+        ${field("Telefon",escapeHtml(c.telefon||(akq&&akq.tel)||"–"))}
         ${field("E-Mail Geschäft",escapeHtml(c.email||"–"))}
         ${field("Ansprechpartner",escapeHtml(c.ansprechpartner||"–"))}
         ${field("E-Mail Ansprechpartner",escapeHtml(c.ansprechpartner_email||"–"))}
@@ -8681,6 +9187,7 @@ async function exportFhPdf(includeAkp){
 
 /* ---------- AKP-Kontakt PopUp (Stammdaten, Kontakt, Aktionsteilnahme, Profi-Training) ---------- */
 let akpContactCurrent=null;
+let akpContactModalCurrent=null;
 // AKP-Peer-Vergleich (renderAkpPeerCompare): Modus-Strings sind bewusst
 // identisch mit den fh_contacts-Spaltennamen, damit .eq(mode,value) direkt
 // funktioniert - AKP_PEER_MODES ist zugleich die Whitelist dagegen, dass ein
@@ -8967,7 +9474,8 @@ async function exportAkpPeerAiPdf(){
 
 async function openAkpContact(nr,fallbackName){
   if(!nr) return;
-  akpContactCurrent={nr,vorname:null,nachname:null,firma:null,telefon:null,email:null,geburtsdatum:null,aktionsteilnahme:null,profi_training:null,service_training:null,prod_monthly:{},prod_monthly_other:{},poquote_monthly:{},q3fuer2_monthly:{}};
+  akpContactModalCurrent=nr;
+  akpContactCurrent={nr,vorname:null,nachname:null,firma:null,telefon:null,email:null,geburtsdatum:null,aktionsteilnahme:null,profi_training:null,service_training:null,prod_monthly:{},prod_monthly_other:{},poquote_monthly:{},q3fuer2_monthly:{},gesperrt_am:null};
   akpPeerFhNrsCache={}; akpPeerFhContact=null; akpPeerLoadingNr=nr;
   $("acName").textContent=fallbackName||nr;
   $("acMeta").textContent="AKP-Nr. "+nr+" · lädt …";
@@ -8977,8 +9485,14 @@ async function openAkpContact(nr,fallbackName){
   $("akpContactModal").classList.remove("hidden");
   try{
     const {data,error}=await sb.from("akp_contacts").select("*").eq("nr",nr).maybeSingle();
+    // Falls der User inzwischen einen anderen AKP-Kontakt geöffnet hat, ist
+    // diese Antwort veraltet - akpContactCurrent NICHT überschreiben, sonst
+    // landen bei "Bearbeiten"/"Speichern" die Daten von nr im falschen,
+    // inzwischen geöffneten Kontakt (stille Datenkorruption).
+    if(akpContactModalCurrent!==nr) return;
     if(!error&&data) akpContactCurrent=data;
   }catch(e){}
+  if(akpContactModalCurrent!==nr) return;
   const c=akpContactCurrent;
   const name=(c.vorname||c.nachname)?[c.vorname,c.nachname].filter(Boolean).join(" "):(fallbackName||nr);
   $("acName").textContent=name;
@@ -9024,6 +9538,12 @@ function renderAkpContactView(){
   const poTxt=poVal!=null?(poVal*100).toFixed(1).replace(".",",")+" %":"–";
   const f2Txt=f2Val!=null?(f2Val*100).toFixed(1).replace(".",",")+" %":"–";
   $("acQuotesInfo").textContent=`PO-Quote (LJ): ${poTxt} · 3-für-2-Quote (LJ): ${f2Txt}`;
+  // DSGVO-Sperrung (Nutzervorgabe 31.08.2026, analog Fachhändler-PopUp).
+  const isGesperrt=!!c.gesperrt_am;
+  $("acGesperrtNotice").classList.toggle("hidden",!isGesperrt);
+  if(isGesperrt) $("acGesperrtText").textContent="Gesperrt am "+fmtDate(c.gesperrt_am.slice(0,10))+" – Name, Kontakt- und Geburtsdatum wurden gelöscht. AKP-Nummer und Produktionszahlen bleiben für Auswertungen erhalten.";
+  $("acEditBtn").classList.toggle("hidden",isGesperrt);
+  $("acEntsperrenBtn").classList.toggle("hidden",!isGesperrt||myRole!=="admin");
 }
 // Stornoquoten-Abschnitt im AKP-PopUp (siehe parseAkpStornoquoten/ℹ️-Modal
 // #stornoInfoModal für die Erklärung) - für alle Mitarbeiter sichtbar (wenn
@@ -9480,6 +10000,32 @@ async function saveAkpContact(){
   toggleAkpEdit(false);
   toast("Kontaktdaten gespeichert ✓");
 }
+// DSGVO-Sperren/Anonymisieren (Nutzervorgabe 31.08.2026, analog
+// Fachhändler-PopUp/lockFhContact) - Schutz vor erneutem Befüllen durch
+// künftige Importe liegt im DB-Trigger trg_protect_akp_gesperrt.
+// Button sitzt bewusst im Bearbeiten-Modus (Nutzervorgabe 31.08.2026), nicht
+// in der normalen Ansicht.
+async function lockAkpContact(){
+  const nr=akpContactCurrent&&akpContactCurrent.nr; if(!nr) return;
+  if(!confirm("Diesen Ansprechpartner wirklich sperren?\n\nVorname, Nachname, Firma, Adresse, Telefon, E-Mail und Geburtsdatum werden dauerhaft gelöscht. AKP-Nummer und Produktionszahlen bleiben für Auswertungen erhalten.\n\nDas kann nur noch von einem Admin rückgängig gemacht werden.")) return;
+  const patch={nr,vorname:null,nachname:null,firma:null,strasse:null,plz:null,ort:null,telefon:null,email:null,geburtsdatum:null,gesperrt_am:new Date().toISOString(),updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()};
+  const {error}=await sb.from("akp_contacts").upsert(patch,{onConflict:"nr"});
+  if(error){ toast("Fehler beim Sperren: "+error.message); return; }
+  Object.assign(akpContactCurrent,patch);
+  $("acName").textContent="Gesperrt (AKP-Nr. "+nr+")";
+  toggleAkpEdit(false);
+  renderAkpContactView();
+  toast("Datensatz gesperrt ✓");
+}
+async function unlockAkpContact(){
+  const nr=akpContactCurrent&&akpContactCurrent.nr; if(!nr||myRole!=="admin") return;
+  if(!confirm("Sperre für diesen Ansprechpartner aufheben?\n\nDie Kontaktdaten können danach wieder neu erfasst werden.")) return;
+  const {error}=await sb.from("akp_contacts").upsert({nr,gesperrt_am:null,updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()},{onConflict:"nr"});
+  if(error){ toast("Fehler beim Entsperren: "+error.message); return; }
+  akpContactCurrent.gesperrt_am=null;
+  renderAkpContactView();
+  toast("Datensatz entsperrt ✓");
+}
 document.addEventListener("click",e=>{
   const btn=e.target.closest(".akp-name-link");
   if(btn){ openAkpContact(btn.dataset.akpNr,btn.textContent); return; }
@@ -9918,6 +10464,9 @@ $("rpNew2").addEventListener("keydown",e=>{ if(e.key==="Enter") doSetNewPassword
 $("logoutBtn").onclick=doLogout;
 $("adminBtn").onclick=openAdminModal;
 $("adminClose").onclick=()=>$("adminModal").classList.add("hidden");
+$("karteileichenBtn").onclick=openKarteileichenModal;
+$("karteileichenClose").onclick=()=>$("karteileichenModal").classList.add("hidden");
+$("karteileichenApplyBtn").onclick=applyKarteileichenJahre;
 $("chefgespraechEnabledChk").onchange=toggleChefgespraechEnabled;
 $("kooperationsgespraechEnabledChk").onchange=toggleKooperationsgespraechEnabled;
 $("auswertungEnabledChk").onchange=toggleAuswertungEnabled;
@@ -10082,6 +10631,8 @@ $("setPwBtn").onclick=doSettingsPasswordChange;
 $("setSaveBtn").onclick=doSaveSettings;
 $("setCheckNowBtn").onclick=doCheckNow;
 $("notifClose").onclick=()=>$("notifModal").classList.add("hidden");
+$("privacyBtn").onclick=()=>$("privacyModal").classList.remove("hidden");
+$("privacyClose").onclick=()=>$("privacyModal").classList.add("hidden");
 // Datenstand (Excel-Auswertung + Ziele) wird nur einmal beim Start geladen
 // und danach nur noch aus dem lokalen Speicher gelesen. Beim Wechsel der
 // Mitarbeiter-Ansicht oder per Klick auf "Aktualisieren" frisch aus der
@@ -10173,10 +10724,14 @@ $("amPeriodTabs").addEventListener("click",e=>{
 $("acEditBtn").onclick=()=>toggleAkpEdit(true);
 $("acCancelBtn").onclick=()=>toggleAkpEdit(false);
 $("acSaveBtn").onclick=saveAkpContact;
+$("acSperrenBtn").onclick=lockAkpContact;
+$("acEntsperrenBtn").onclick=unlockAkpContact;
 $("acPdfBtn").onclick=()=>openPdfTargetChoice(()=>exportAkpPdf());
 $("fhEditBtn").onclick=()=>toggleFhEdit(true);
 $("fhCancelBtn").onclick=()=>toggleFhEdit(false);
 $("fhSaveBtn").onclick=saveFhContact;
+$("fhSperrenBtn").onclick=lockFhContact;
+$("fhEntsperrenBtn").onclick=unlockFhContact;
 // Ein "aktivieren"-Haken + Auswahl/Neu-Feldpaar (Weitere Zuordnung 1/3,
 // Filialbetriebe) einheitlich verdrahten: Haken blendet die Felder live
 // ein/aus, "Neu" und "Auswahl" schließen sich gegenseitig aus.

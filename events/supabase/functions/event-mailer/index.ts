@@ -1,9 +1,13 @@
 // Event-Landingpage: Mailversand.
 // - action "confirmation": Bestätigungsmail an eine einzelne Anmeldung
 //   (wird vom öffentlichen Anmeldeformular direkt nach dem Insert aufgerufen).
+//   Enthält einen unauffälligen Abmelde-Link (siehe cancelLinkHtml), der auf
+//   die separate Edge Function cancel-registration verweist.
 // - action "report": Status-Mail mit dem aktuellen Gesamt-Anmeldestand an alle
-//   konfigurierten Empfänger einer Häufigkeit (täglich/wöchentlich). Wird von
-//   einem pg_cron-Job aufgerufen und ist über CRON_SECRET geschützt.
+//   konfigurierten Empfänger einer Häufigkeit (täglich/wöchentlich/monatlich).
+//   Wird von einem pg_cron-Job aufgerufen und ist über CRON_SECRET geschützt.
+// - action "reminders": 48h-Vorher-Reminder an jede Anmeldung mit E-Mail.
+//   Wird stündlich per pg_cron aufgerufen, ebenfalls über CRON_SECRET.
 //
 // Läuft serverseitig in Supabase, nutzt den service_role Key (nur hier, nie im
 // Browser-Code) sowie SMTP-Zugangsdaten, die als Edge-Function-Secrets
@@ -39,6 +43,11 @@ function fmtDate(d: string) {
     weekday: "long", day: "2-digit", month: "2-digit", year: "numeric",
   });
 }
+function fmtDateShort(d: string) {
+  return new Date(d + "T00:00:00").toLocaleDateString("de-AT", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+  });
+}
 function fmtTime(t: string | null) {
   return t ? t.slice(0, 5) : "";
 }
@@ -56,6 +65,27 @@ function mapsUrl(d: { location?: string | null; street?: string | null; zip?: st
   return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(query);
 }
 
+// event_date/start_time werden ohne Zeitzone gespeichert (Wandzeit Österreich).
+// Für Fristen-Berechnungen (48h-Abmeldefrist, Reminder-Versand) muss das in
+// einen echten UTC-Zeitpunkt umgerechnet werden, DST-sicher (CET/CEST).
+function viennaLocalToUtc(dateStr: string, timeStr: string): Date {
+  const naiveUtc = new Date(`${dateStr}T${timeStr}Z`);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Vienna", timeZoneName: "shortOffset",
+  }).formatToParts(naiveUtc);
+  const tzName = parts.find((p) => p.type === "timeZoneName")?.value || "GMT+1";
+  const offsetHours = parseInt(tzName.replace("GMT", "") || "1", 10);
+  return new Date(naiveUtc.getTime() - offsetHours * 3600000);
+}
+
+// Unauffälliger Abmelde-Link am Ende von Bestätigungs-/Reminder-Mails - führt
+// zur separaten cancel-registration Edge Function, die die 48h-Frist selbst
+// nochmal serverseitig prüft.
+function cancelLinkHtml(registrationId: string) {
+  const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/cancel-registration?id=${registrationId}`;
+  return `<p style="color:#9BB0BE;font-size:11.5px;margin-top:22px">Kannst du doch nicht kommen? <a href="${url}" style="color:#9BB0BE;text-decoration:underline">Hier bis 48 Stunden vor der Veranstaltung abmelden</a>.</p>`;
+}
+
 function getSmtpClient() {
   const hostname = Deno.env.get("SMTP_HOST")!;
   const port = parseInt(Deno.env.get("SMTP_PORT") || "587", 10);
@@ -66,15 +96,33 @@ function getSmtpClient() {
   });
 }
 
+// denomailer 1.6.0 kodiert Nicht-ASCII-Zeichen (Umlaute, Gedankenstrich, ...)
+// in Subject/From-Headern fehlerhaft (RFC-2047-widriges "encoded word" mit
+// rohen Leerzeichen darin) - Mail-Clients wie Apple Mail geben dadurch den
+// kompletten Header auf: Betreff erscheint als kryptischer Rohtext, Absender
+// als "Kein Absender". Betrifft nur die Kopfzeilen, nicht den HTML-Body
+// (der hat eine eigene, korrekt funktionierende UTF-8-Kodierung). Fix:
+// Subject/From-Anzeigename vor dem Versand auf reines ASCII transliterieren,
+// damit denomailer sie gar nicht erst als "encoded word" kodieren muss.
+function asciiHeader(s: string): string {
+  return s
+    .replace(/ß/g, "ss")
+    .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue")
+    .replace(/Ä/g, "Ae").replace(/Ö/g, "Oe").replace(/Ü/g, "Ue")
+    .replace(/[–—]/g, "-")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^\x20-\x7E]/g, "");
+}
+
 async function sendMail(subject: string, to: string, html: string) {
   const fromEmail = Deno.env.get("SMTP_FROM_EMAIL")!;
-  const fromName = Deno.env.get("SMTP_FROM_NAME") || "Wertgarantie Veranstaltungen";
+  const fromName = asciiHeader(Deno.env.get("SMTP_FROM_NAME") || "Wertgarantie Events Austria");
   const client = getSmtpClient();
   try {
     await client.send({
       from: `${fromName} <${fromEmail}>`,
       to,
-      subject,
+      subject: asciiHeader(subject),
       html,
       content: "Bitte verwenden Sie einen E-Mail-Client mit HTML-Unterstützung.",
     });
@@ -124,6 +172,7 @@ async function handleConfirmation(admin: ReturnType<typeof createClient>, regist
       <p>Wir freuen uns auf dich!</p>
       <p style="margin-bottom:0">Dein Wertgarantie Österreich Team</p>
       <p style="color:#5D7284;font-size:13px;margin-top:24px">Diese E-Mail wurde automatisch versendet. Bei Fragen wende dich bitte an die Kontaktperson deiner Veranstaltung.</p>
+      ${cancelLinkHtml(reg.id)}
     </div>
   </div>`;
 
@@ -141,92 +190,185 @@ const REPORT_PERSON_FIELDS: [string, string][] = [
   ["email", "E-Mail"], ["plz", "PLZ"], ["ort", "Ort"],
 ];
 
+// Betreff-Format: "<Veranstaltung> // Anmeldezahlen // <Termin-Info>", z.B.
+// "Wertgarantie KickOff // Anmeldezahlen // 30.09.2026 // Wolfsberg". Bei
+// mehreren Terminen einer Veranstaltung lässt sich kein einzelnes
+// Datum/Ort sinnvoll in den Betreff packen, daher dort "X Termine".
+function reportSubject(event: { title: string }, dates: { event_date: string; location: string }[]) {
+  let terminPart: string;
+  if (dates.length === 1) {
+    terminPart = `${fmtDateShort(dates[0].event_date)} // ${dates[0].location}`;
+  } else if (dates.length > 1) {
+    terminPart = `${dates.length} Termine`;
+  } else {
+    terminPart = "keine Termine";
+  }
+  return `${event.title} // Anmeldezahlen // ${terminPart}`;
+}
+
+// Ein Report je aktiver Veranstaltung (mehrere können gleichzeitig laufen),
+// nur an die für GENAU diese Veranstaltung hinterlegten Empfänger.
 async function handleReport(admin: ReturnType<typeof createClient>, frequency: "daily" | "weekly" | "monthly") {
-  const { data: recipients } = await admin
-    .from("email_recipients").select("*").eq("frequency", frequency).eq("active", true);
-  if (!recipients || !recipients.length) return json({ ok: true, skipped: "no_recipients" });
+  const { data: events } = await admin.from("events").select("*").eq("is_active", true).order("created_at");
+  if (!events || !events.length) return json({ ok: true, skipped: "no_active_events" });
 
-  const { data: events } = await admin.from("events").select("*").eq("is_active", true).limit(1);
-  const event = events && events[0];
-  if (!event) return json({ ok: true, skipped: "no_active_event" });
-
-  const { data: dates } = await admin
-    .from("event_dates").select("*").eq("event_id", event.id).order("sort_order").order("event_date");
-  const { data: regs } = await admin
-    .from("registrations").select("event_date_id, data, created_at").eq("event_id", event.id)
-    .order("created_at");
-
-  const byDate: Record<string, typeof regs> = {};
-  (regs || []).forEach((r) => {
-    (byDate[r.event_date_id] ||= []).push(r);
-  });
-  const total = (regs || []).length;
-
-  const summaryRows = (dates || []).map((d) => `
-    <tr>
-      <td style="padding:6px 14px 6px 0">${escapeHtml(fmtDate(d.event_date))}</td>
-      <td style="padding:6px 14px 6px 0">${escapeHtml(fmtTime(d.start_time))}${d.end_time ? "–" + escapeHtml(fmtTime(d.end_time)) : ""} Uhr</td>
-      <td style="padding:6px 14px 6px 0">${escapeHtml(d.location)}</td>
-      <td style="padding:6px 0;font-weight:800;text-align:right">${(byDate[d.id] || []).length}</td>
-    </tr>`).join("");
-
+  const freqLabel = FREQ_LABEL[frequency] || "Aktueller";
   const personHeaderCells = REPORT_PERSON_FIELDS
     .map(([, label]) => `<th style="padding:4px 12px 4px 0">${escapeHtml(label)}</th>`).join("");
 
-  const dateSections = (dates || []).map((d) => {
-    const people = byDate[d.id] || [];
-    const personRows = people.map((r) => {
-      const cells = REPORT_PERSON_FIELDS
-        .map(([key]) => `<td style="padding:4px 12px 4px 0">${escapeHtml(r.data?.[key] ?? "")}</td>`).join("");
-      return `<tr>${cells}</tr>`;
+  const results: { event: string; sent: number }[] = [];
+
+  for (const event of events) {
+    const { data: recipients } = await admin
+      .from("email_recipients").select("*").eq("event_id", event.id).eq("frequency", frequency).eq("active", true);
+    if (!recipients || !recipients.length) continue;
+
+    const { data: dates } = await admin
+      .from("event_dates").select("*").eq("event_id", event.id).order("sort_order").order("event_date");
+    const { data: regs } = await admin
+      .from("registrations").select("event_date_id, data, created_at").eq("event_id", event.id)
+      .order("created_at");
+
+    const byDate: Record<string, typeof regs> = {};
+    (regs || []).forEach((r) => {
+      (byDate[r.event_date_id] ||= []).push(r);
+    });
+    const total = (regs || []).length;
+
+    const summaryRows = (dates || []).map((d) => `
+      <tr>
+        <td style="padding:6px 14px 6px 0">${escapeHtml(fmtDate(d.event_date))}</td>
+        <td style="padding:6px 14px 6px 0">${escapeHtml(fmtTime(d.start_time))}${d.end_time ? "–" + escapeHtml(fmtTime(d.end_time)) : ""} Uhr</td>
+        <td style="padding:6px 14px 6px 0">${escapeHtml(d.location)}</td>
+        <td style="padding:6px 0;font-weight:800;text-align:right">${(byDate[d.id] || []).length}</td>
+      </tr>`).join("");
+
+    const dateSections = (dates || []).map((d) => {
+      const people = byDate[d.id] || [];
+      const personRows = people.map((r) => {
+        const cells = REPORT_PERSON_FIELDS
+          .map(([key]) => `<td style="padding:4px 12px 4px 0">${escapeHtml(r.data?.[key] ?? "")}</td>`).join("");
+        return `<tr>${cells}</tr>`;
+      }).join("");
+      return `
+        <div style="margin:22px 0 8px;font-weight:800;color:#062A3F">
+          ${escapeHtml(fmtDate(d.event_date))} · ${escapeHtml(fmtTime(d.start_time))} Uhr · ${escapeHtml(d.location)}${fullAddress(d) ? " · " + escapeHtml(fullAddress(d)) : ""}
+          <span style="font-weight:600;color:#5D7284">(${people.length})</span>
+          <a href="${mapsUrl(d)}" style="color:#009FE3;font-weight:700;text-decoration:none;margin-left:6px">📍</a>
+        </div>
+        ${people.length
+          ? `<table style="width:100%;border-collapse:collapse;font-size:13px">
+              <thead><tr style="color:#5D7284;font-size:11px;text-transform:uppercase;text-align:left">${personHeaderCells}</tr></thead>
+              <tbody>${personRows}</tbody>
+            </table>`
+          : `<div style="color:#5D7284;font-size:13px">Noch keine Anmeldungen.</div>`}
+      `;
     }).join("");
-    return `
-      <div style="margin:22px 0 8px;font-weight:800;color:#062A3F">
-        ${escapeHtml(fmtDate(d.event_date))} · ${escapeHtml(fmtTime(d.start_time))} Uhr · ${escapeHtml(d.location)}${fullAddress(d) ? " · " + escapeHtml(fullAddress(d)) : ""}
-        <span style="font-weight:600;color:#5D7284">(${people.length})</span>
-        <a href="${mapsUrl(d)}" style="color:#009FE3;font-weight:700;text-decoration:none;margin-left:6px">📍</a>
+
+    const html = `
+    <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:680px;margin:0 auto;color:#10202C">
+      <div style="background:#10202C;padding:22px 26px;border-radius:14px 14px 0 0">
+        <span style="color:#fff;font-weight:800;font-size:16px">Wertgarantie</span>
       </div>
-      ${people.length
-        ? `<table style="width:100%;border-collapse:collapse;font-size:13px">
-            <thead><tr style="color:#5D7284;font-size:11px;text-transform:uppercase;text-align:left">${personHeaderCells}</tr></thead>
-            <tbody>${personRows}</tbody>
-          </table>`
-        : `<div style="color:#5D7284;font-size:13px">Noch keine Anmeldungen.</div>`}
-    `;
-  }).join("");
+      <div style="border:1px solid #DCE7EE;border-top:none;border-radius:0 0 14px 14px;padding:26px">
+        <p style="margin-top:0">${freqLabel} Anmeldestand für <strong>${escapeHtml(event.title)}</strong>, Stand ${new Date().toLocaleString("de-AT")}.</p>
+        <div style="background:#ECF2F6;border-radius:12px;padding:14px 18px;margin:18px 0;font-weight:800;font-size:20px;color:#062A3F">
+          ${total} Anmeldung${total === 1 ? "" : "en"} gesamt
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:14px">
+          <thead><tr style="color:#5D7284;font-size:11.5px;text-transform:uppercase;text-align:left">
+            <th style="padding-bottom:6px">Datum</th><th style="padding-bottom:6px">Uhrzeit</th><th style="padding-bottom:6px">Ort</th><th style="padding-bottom:6px;text-align:right">Anmeldungen</th>
+          </tr></thead>
+          <tbody>${summaryRows}</tbody>
+        </table>
 
-  const freqLabel = FREQ_LABEL[frequency] || "Aktueller";
-  const html = `
-  <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:680px;margin:0 auto;color:#10202C">
-    <div style="background:#10202C;padding:22px 26px;border-radius:14px 14px 0 0">
-      <span style="color:#fff;font-weight:800;font-size:16px">Wertgarantie</span>
-    </div>
-    <div style="border:1px solid #DCE7EE;border-top:none;border-radius:0 0 14px 14px;padding:26px">
-      <p style="margin-top:0">${freqLabel} Anmeldestand für <strong>${escapeHtml(event.title)}</strong>, Stand ${new Date().toLocaleString("de-AT")}.</p>
-      <div style="background:#ECF2F6;border-radius:12px;padding:14px 18px;margin:18px 0;font-weight:800;font-size:20px;color:#062A3F">
-        ${total} Anmeldung${total === 1 ? "" : "en"} gesamt
+        <div style="margin-top:26px;padding-top:18px;border-top:1px solid #DCE7EE">
+          <div style="font-weight:800;color:#062A3F;margin-bottom:4px">Angemeldete Personen je Termin</div>
+          ${dateSections}
+        </div>
+
+        <p style="color:#5D7284;font-size:13px;margin-top:24px">Diese E-Mail wurde automatisch versendet.</p>
       </div>
-      <table style="width:100%;border-collapse:collapse;font-size:14px">
-        <thead><tr style="color:#5D7284;font-size:11.5px;text-transform:uppercase;text-align:left">
-          <th style="padding-bottom:6px">Datum</th><th style="padding-bottom:6px">Uhrzeit</th><th style="padding-bottom:6px">Ort</th><th style="padding-bottom:6px;text-align:right">Anmeldungen</th>
-        </tr></thead>
-        <tbody>${summaryRows}</tbody>
-      </table>
+    </div>`;
 
-      <div style="margin-top:26px;padding-top:18px;border-top:1px solid #DCE7EE">
-        <div style="font-weight:800;color:#062A3F;margin-bottom:4px">Angemeldete Personen je Termin</div>
-        ${dateSections}
-      </div>
-
-      <p style="color:#5D7284;font-size:13px;margin-top:24px">Diese E-Mail wurde automatisch versendet.</p>
-    </div>
-  </div>`;
-
-  const subject = `${freqLabel} Anmeldestand – ${event.title} (${total} gesamt)`;
-  for (const r of recipients) {
-    await sendMail(subject, r.email, html);
+    const subject = reportSubject(event, dates || []);
+    for (const r of recipients) {
+      await sendMail(subject, r.email, html);
+    }
+    results.push({ event: event.title, sent: recipients.length });
   }
-  return json({ ok: true, sent: recipients.length });
+
+  if (!results.length) return json({ ok: true, skipped: "no_recipients" });
+  return json({ ok: true, results });
+}
+
+// 48h-Reminder an jede Anmeldung mit E-Mail, deren Termin innerhalb der
+// nächsten 48h liegt und die noch keinen Reminder bekommen hat. Wird
+// stündlich per pg_cron aufgerufen (siehe schema.sql); reminder_sent_at
+// verhindert Doppelversand über mehrere Cron-Läufe hinweg.
+async function handleReminders(admin: ReturnType<typeof createClient>) {
+  const { data: dates } = await admin.from("event_dates").select("*");
+  const now = Date.now();
+  const upcoming = (dates || []).filter((d) => {
+    const dt = viennaLocalToUtc(d.event_date, d.start_time).getTime();
+    return dt > now && dt <= now + 48 * 3600000;
+  });
+  if (!upcoming.length) return json({ ok: true, skipped: "no_upcoming_dates" });
+
+  const dateIds = upcoming.map((d) => d.id);
+  const { data: regs } = await admin
+    .from("registrations").select("*")
+    .in("event_date_id", dateIds)
+    .is("reminder_sent_at", null)
+    .not("email", "is", null);
+  if (!regs || !regs.length) return json({ ok: true, skipped: "no_pending_reminders" });
+
+  const eventIds = [...new Set(upcoming.map((d) => d.event_id))];
+  const { data: events } = await admin.from("events").select("*").in("id", eventIds);
+  const eventById = Object.fromEntries((events || []).map((e) => [e.id, e]));
+  const dateById = Object.fromEntries(upcoming.map((d) => [d.id, d]));
+
+  let sent = 0;
+  for (const reg of regs) {
+    const eventDate = dateById[reg.event_date_id];
+    const event = eventDate ? eventById[eventDate.event_id] : null;
+    if (!eventDate || !event) continue;
+
+    const vorname = reg.data?.vorname ? String(reg.data.vorname) : "";
+    const greeting = vorname ? `Hallo ${escapeHtml(vorname)},` : "Hallo,";
+
+    const html = `
+    <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:560px;margin:0 auto;color:#10202C">
+      <div style="background:#10202C;padding:22px 26px;border-radius:14px 14px 0 0">
+        <span style="color:#fff;font-weight:800;font-size:16px">Wertgarantie</span>
+      </div>
+      <div style="border:1px solid #DCE7EE;border-top:none;border-radius:0 0 14px 14px;padding:26px">
+        <p>${greeting}</p>
+        <p>nur noch kurz hin bis <strong>${escapeHtml(event.title)}</strong> – wir wollten dich an deinen Termin erinnern:</p>
+        <div style="background:#F0FAFF;border:1px solid #009FE3;border-radius:12px;padding:16px 18px;margin:18px 0">
+          <div style="font-weight:800;color:#062A3F;margin-bottom:4px">Dein Termin</div>
+          <div>${escapeHtml(fmtDate(eventDate.event_date))}</div>
+          <div>${escapeHtml(fmtTime(eventDate.start_time))}${eventDate.end_time ? "–" + escapeHtml(fmtTime(eventDate.end_time)) : ""} Uhr</div>
+          <div>${escapeHtml(eventDate.location)}</div>
+          ${fullAddress(eventDate) ? `<div>${escapeHtml(fullAddress(eventDate))}</div>` : ""}
+          <div style="margin-top:8px"><a href="${mapsUrl(eventDate)}" style="color:#009FE3;font-weight:700;text-decoration:none">📍 Route planen ›</a></div>
+        </div>
+        <p>Wir freuen uns auf dich!</p>
+        <p style="margin-bottom:0">Dein Wertgarantie Österreich Team</p>
+        <p style="color:#5D7284;font-size:13px;margin-top:24px">Diese E-Mail wurde automatisch versendet. Bei Fragen wende dich bitte an die Kontaktperson deiner Veranstaltung.</p>
+        ${cancelLinkHtml(reg.id)}
+      </div>
+    </div>`;
+
+    try {
+      await sendMail(`Reminder: Anmeldebestätigung – ${event.title}`, reg.email, html);
+      await admin.from("registrations").update({ reminder_sent_at: new Date().toISOString() }).eq("id", reg.id);
+      sent++;
+    } catch (_e) {
+      // best-effort: einzelner Fehler soll die restlichen Reminder nicht blockieren
+    }
+  }
+  return json({ ok: true, sent });
 }
 
 Deno.serve(async (req) => {
@@ -259,6 +401,18 @@ Deno.serve(async (req) => {
     const frequency = body.frequency === "weekly" ? "weekly" : body.frequency === "monthly" ? "monthly" : "daily";
     try {
       return await handleReport(admin, frequency);
+    } catch (e) {
+      return json({ error: "Mailversand fehlgeschlagen: " + String(e) }, 500);
+    }
+  }
+
+  if (body.type === "reminders") {
+    const secret = req.headers.get("x-cron-secret") || "";
+    if (!secret || secret !== Deno.env.get("CRON_SECRET")) {
+      return json({ error: "Nicht autorisiert" }, 401);
+    }
+    try {
+      return await handleReminders(admin);
     } catch (e) {
       return json({ error: "Mailversand fehlgeschlagen: " + String(e) }, 500);
     }

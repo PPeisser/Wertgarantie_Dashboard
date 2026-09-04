@@ -290,36 +290,57 @@ in Supabase: `select * from pending_imports where status='failed' order by recei
 # Event-Landingpage & Event-Admin (`events/`)
 
 Eigenständige Anwendung im Ordner [`events/`](events/) für die Anmeldung zu
-einer Wertgarantie-Veranstaltung (eine Veranstaltung, mehrere Termine/Orte).
-**Bewusst vollständig getrennt** vom Performance-Dashboard: eigenes
-Supabase-Projekt, eigenes Vercel-Projekt, eigene Domain, eigener Login –
-nichts wird zwischen den beiden Anwendungen geteilt.
+Wertgarantie-Veranstaltungen (**mehrere Veranstaltungen gleichzeitig
+möglich**, je mit mehreren Terminen/Orten). **Bewusst vollständig getrennt**
+vom Performance-Dashboard: eigenes Supabase-Projekt, eigenes Vercel-Projekt,
+eigene Domain, eigener Login – nichts wird zwischen den beiden Anwendungen
+geteilt.
 
-- **[`events/index.html`](events/index.html)** – öffentliche Anmeldeseite
-  (kein Login). Zeigt Titel/Beschreibung/Foto der aktiven Veranstaltung, ein
-  Dropdown mit allen Terminen (Datum, Uhrzeit, Ort) und ein Anmeldeformular,
-  dessen Felder im Admin-Panel konfiguriert werden. Nach dem Absenden wird –
-  sofern die E-Mail-Adresse erfasst wurde – automatisch eine
-  Bestätigungsmail verschickt. Ganz unten im Kleingedruckten verlinkt ein
-  „Admin"-Link auf das Admin-Panel.
-- **[`events/admin.html`](events/admin.html)** – Admin-Panel, eigener Login
+**Startseite = Admin-Login, keine öffentliche Übersicht.** Die Domain
+(`events.wgaustria.at` bzw. `/`) zeigt standardmäßig das Admin-Panel mit
+Login. Jede Veranstaltung bekommt stattdessen einen eigenen, sprechenden
+Kurzlink (z.B. `events.wgaustria.at/roadshow-linz`) plus QR-Code zum
+Verschicken – es gibt nirgends eine öffentlich einsehbare Liste aller
+Veranstaltungen, nur wer einen Link/QR-Code bekommt, kommt zur Anmeldeseite.
+
+- **[`events/index.html`](events/index.html)** – Admin-Panel, eigener Login
   (Supabase Auth dieses Projekts, jeder hier registrierte Nutzer ist Admin).
-  Hier werden verwaltet:
-  - **Veranstaltung**: Titel, Foto (Upload), frei editierbare Beschreibung,
-    Datenschutzhinweise (Standardtext per Klick einfügbar, überschreibbar)
-  - **Termine**: Datum, Uhrzeit (von/bis), Ort – hinzufügen, bearbeiten,
-    löschen; zu jedem Termin lässt sich ein **QR-Code** herunterladen (Button
-    „QR-Code" in der Termin-Zeile, zusätzlich automatischer Download direkt
-    nach dem Anlegen eines neuen Termins). Der QR-Code verlinkt auf die
-    Anmeldeseite mit bereits vorausgewähltem Termin (`?termin=<id>`), sodass
-    er z.B. am Veranstaltungsort ausgehängt werden kann.
+  Tabs:
+  - **Veranstaltungen**: Übersicht aller Veranstaltungen (Titel, Kurzlink,
+    Aktiv/Geschlossen-Umschalter, Link & QR-Code, Löschen) sowie Formular zum
+    Anlegen einer neuen Veranstaltung. Ein Klick auf „Öffnen" wählt die
+    Veranstaltung aus – alle anderen Tabs beziehen sich dann auf sie.
+  - **Details**: Titel, Kurzlink (mit „Aus Titel vorschlagen"-Button, frei
+    editierbar), Link kopieren/QR-Code anzeigen, Foto (Upload), frei
+    editierbare Beschreibung, Datenschutzhinweise
+  - **Termine**: Datum, Uhrzeit (von/bis), Veranstaltungsort inkl.
+    Straße/PLZ/Ort und Google-Maps-Link – hinzufügen, bearbeiten, löschen; zu
+    jedem Termin lässt sich ein **QR-Code** anzeigen/herunterladen (Button
+    „QR-Code" in der Termin-Zeile, öffnet sich zusätzlich automatisch direkt
+    nach dem Anlegen eines neuen Termins). Der QR-Code verlinkt auf den
+    Kurzlink der Veranstaltung mit bereits vorausgewähltem Termin
+    (`?termin=<id>`), sodass er z.B. am Veranstaltungsort ausgehängt werden
+    kann.
   - **Formularfelder**: Auswahl aus dem festen Katalog (Vorname, Name, PLZ,
     Ort, Geburtsdatum, AKP-Nummer, FH-Nummer, Fachhändler, Telefonnummer,
     E-Mail-Adresse, Anreise mit Auto, sonstige Bemerkungen) inkl.
     Aktiv/Pflichtfeld-Umschalter, Beschriftung und Reihenfolge
   - **E-Mail-Empfänger**: Adressen, die den automatischen täglichen bzw.
-    wöchentlichen Gesamt-Anmeldestand erhalten
-  - **Anmeldungen**: Übersicht aller Anmeldungen inkl. CSV-Export
+    wöchentlichen Gesamt-Anmeldestand dieser Veranstaltung erhalten
+  - **Anmeldungen**: Übersicht aller Anmeldungen dieser Veranstaltung inkl.
+    Löschen je Anmeldung und CSV-Export (inkl. AKP/FH-Datenbankabgleich)
+- **[`events/register.html`](events/register.html)** – öffentliche
+  Anmeldeseite (kein Login), nur über den individuellen Kurzlink einer
+  Veranstaltung erreichbar (`?event=<slug>`, von Vercel aus `/<slug>`
+  umgeschrieben, siehe `events/vercel.json`). Zeigt Titel/Beschreibung/Foto
+  der Veranstaltung, bei nur einem Termin dessen Adresse direkt, bei
+  mehreren ein Dropdown, und das konfigurierte Anmeldeformular. Ohne
+  gültigen/aktiven Kurzlink erscheint nur ein neutraler Hinweis, keine Liste
+  anderer Veranstaltungen. Nach dem Absenden wird – sofern die E-Mail-Adresse
+  erfasst wurde – automatisch eine Bestätigungsmail verschickt, und im
+  Hintergrund unsichtbar der AKP/FH-Datenbankabgleich angestoßen.
+- **[`events/admin.html`](events/admin.html)** – nur noch ein Redirect-Stub
+  für alte Lesezeichen, leitet auf `/` weiter.
 
 ## Supabase-Projekt
 
@@ -330,7 +351,9 @@ Region `eu-central-1`, Free Tier). Schema: [`events/supabase/schema.sql`](events
 - Anmeldeformular (`registrations`) ist per `INSERT` öffentlich (kein Login),
   Lesen/Löschen nur für eingeloggte Admins.
 - `events`, `event_dates`, `event_form_fields` sind öffentlich lesbar
-  (nötig für die Landingpage ohne Login), Schreiben nur für Admins.
+  (nötig für die Anmeldeseite ohne Login), Schreiben nur für Admins. Jede
+  Veranstaltung hat einen eindeutigen `slug` (Kurzlink); mehrere
+  Veranstaltungen können gleichzeitig `is_active` sein.
 - `email_recipients` ist ausschließlich für Admins sichtbar/änderbar.
 - Storage-Bucket `event-photos` (öffentlich lesbar, Upload nur für Admins).
 
@@ -447,16 +470,42 @@ Edge Functions → Secrets):
 ## Mailversand (Edge Function `event-mailer`)
 
 [`events/supabase/functions/event-mailer/index.ts`](events/supabase/functions/event-mailer/index.ts)
-übernimmt drei Aufgaben:
+übernimmt vier Aufgaben:
 1. **Bestätigungsmail** an den Anmelder direkt nach dem Absenden des
    Formulars – persönlich in Du-Form ("Hallo Vorname, ... Dein Wertgarantie
-   Österreich Team").
-2. **Status-Report** (Anmeldestand je Termin/Ort **inkl. Liste der
-   angemeldeten Personen**) an alle im Admin-Panel hinterlegten Empfänger –
-   täglich, wöchentlich oder monatlich, ausgelöst über `pg_cron` + `pg_net`
-   (siehe unten). Bereits im Projekt deployt.
-3. **SMTP-Test** (`{"type":"test","to":"..."}`, mit `x-cron-secret`-Header):
+   Österreich Team"). Enthält ganz unten einen unauffälligen, klein
+   gehaltenen Abmelde-Link ("Kannst du doch nicht kommen? Hier bis 48
+   Stunden vor der Veranstaltung abmelden"), der zur separaten Edge Function
+   [`cancel-registration`](events/supabase/functions/cancel-registration/index.ts)
+   führt (siehe unten).
+2. **48h-Vorher-Reminder** an jede Anmeldung mit E-Mail, deren Termin
+   innerhalb der nächsten 48 Stunden liegt – Betreff `Reminder: <normaler
+   Betreff>`, inhaltlich wie die Bestätigungsmail (Termin-Details,
+   Maps-Link) plus demselben Abmelde-Link. Ausgelöst stündlich über
+   `pg_cron` + `pg_net` (Job `event-reminder-check`, siehe unten);
+   `registrations.reminder_sent_at` verhindert Doppelversand.
+3. **Status-Report** (Anmeldestand je Termin/Ort **inkl. Liste der
+   angemeldeten Personen**) – **je aktiver Veranstaltung ein eigener Report**
+   an genau die für diese Veranstaltung im Admin-Panel (Tab „E-Mail-Empfänger“)
+   hinterlegten Empfänger, täglich, wöchentlich oder monatlich, ausgelöst über
+   `pg_cron` + `pg_net` (siehe unten). Betreff-Format:
+   `<Veranstaltung> // Anmeldezahlen // <Datum> // <Ort>` (bei mehreren
+   Terminen einer Veranstaltung z.B. `// 3 Termine` statt einem einzelnen
+   Datum/Ort). Bereits im Projekt deployt.
+4. **SMTP-Test** (`{"type":"test","to":"..."}`, mit `x-cron-secret`-Header):
    verschickt eine einzelne Testmail, um die SMTP-Verbindung zu prüfen.
+
+### Selbst-Abmeldung (Edge Function `cancel-registration`)
+
+[`events/supabase/functions/cancel-registration/index.ts`](events/supabase/functions/cancel-registration/index.ts)
+ist öffentlich per einfachem Link (GET, kein Login) aufrufbar –
+`.../functions/v1/cancel-registration?id=<registration_id>`. Die
+Registrierungs-ID (UUID) dient dabei als Zugriffs-Token. Prüft
+serverseitig nochmal die 48h-Frist (Zeitzone Europa/Wien, DST-sicher) und
+löscht die Anmeldung unwiderruflich, falls noch mindestens 48h bis zum
+Termin sind – sonst erscheint ein Hinweis, sich direkt an die Veranstaltung
+zu wenden. Antwortet immer mit einer kleinen, gebrandeten Bestätigungs-
+/Hinweisseite (kein Redirect zurück zur App nötig).
 
 Der Mailversand läuft über **SMTP** (Easyname-Postfach `events@wgaustria.at`)
 und braucht folgende Secrets, die **einmalig manuell** im Supabase-Dashboard

@@ -388,9 +388,11 @@ alter table public.fh_contacts add column if not exists name text;
 -- wird beim Import IMMER auf true gesetzt (jeder FH in der Datei ist Mitglied),
 -- aber nie automatisch wieder zurückgesetzt (siehe fh_sync_miete) - manuelles
 -- Zurücksetzen bleibt im FH-PopUp weiterhin möglich. miete_monthly ("YYYY-MM"
--- -> Vertragsanzahl) und miete_sortiment (Sortiment-Name -> Anzahl) werden per
--- JSONB-Merge aktualisiert, ältere Monate/Sortimente bleiben bei einem neuen
--- Import erhalten, auch wenn die neue Datei sie nicht mehr enthält.
+-- -> Vertragsanzahl) und miete_sortiment ("Jahr" -> Sortiment-Name -> Anzahl,
+-- Nutzervorgabe 30.08.2026: "Verkauftes Sortiment" bezieht sich nur aufs
+-- aktuelle Jahr, davor ein flaches Sortiment-Name -> Anzahl ohne Jahresebene)
+-- werden per JSONB-Merge aktualisiert, ältere Monate/Jahre bleiben bei einem
+-- neuen Import erhalten, auch wenn die neue Datei sie nicht mehr enthält.
 alter table public.fh_contacts add column if not exists club_weiss_mitglied boolean not null default false;
 alter table public.fh_contacts add column if not exists club_weiss_mitgliedsnummer text;
 alter table public.fh_contacts add column if not exists miete_monthly jsonb not null default '{}'::jsonb;
