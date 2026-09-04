@@ -5755,25 +5755,35 @@ function akpFullList(s){
 }
 
 async function saveData(){ try{ await stSet("wg-state",JSON.stringify(state)); }catch(e){} }
+// Bug-Report 04.09.2026 ("Dashboard extrem langsam"): lud bisher 18
+// voneinander unabhängige dashboard_kv-Einstellungen NACHEINANDER (18
+// einzelne Netzwerk-Anfragen im Wasserfall) - bei jedem einzelnen Laden des
+// Dashboards, nicht nur einmalig. Da keiner der Werte vom Ergebnis eines
+// anderen abhängt, laufen sie jetzt parallel (Promise.all) - aus 18
+// nacheinander wartenden Anfragen wird eine einzige Wartezeit. Fehler-
+// Isolation je Einstellung (try/catch) bleibt unverändert erhalten, nur
+// nicht mehr sequenziell.
 async function loadAll(){
-  try{ const d=await stGet("wg-state"); if(d){ const p=JSON.parse(d); if(p&&p.latest) state=p; } }catch(e){}
-  try{ const g=await stGet("wg-goals"); if(g) goals=JSON.parse(g); }catch(e){}
-  try{ perfDialogEnabled=(await stGet("performance_dialog_enabled"))==="1"; }catch(e){}
-  try{ perfDialogAdminEnabled=(await stGet("performance_dialog_admin_enabled"))==="1"; }catch(e){}
-  try{ chefgespraechEnabled=(await stGet("chefgespraech_enabled"))==="1"; }catch(e){}
-  try{ kooperationsgespraechEnabled=(await stGet("kooperationsgespraech_enabled"))==="1"; }catch(e){}
-  try{ auswertungEnabled=(await stGet("auswertung_enabled"))==="1"; }catch(e){}
-  try{ fhZielEnabled=(await stGet("fh_ziel_enabled"))==="1"; }catch(e){}
-  try{ fhSearchEnabled=(await stGet("fh_search_enabled"))==="1"; }catch(e){}
-  try{ akpPeerCompareEnabled=(await stGet("akp_peer_compare_enabled"))==="1"; }catch(e){}
-  try{ karteileichenJahre=parseInt(await stGet("karteileichen_jahre"))||3; }catch(e){}
-  try{ const r=await stGet("karteileichen_review_fh"); fhKarteileichenReview=r?JSON.parse(r):null; }catch(e){}
-  try{ const r=await stGet("karteileichen_review_akp"); akpKarteileichenReview=r?JSON.parse(r):null; }catch(e){}
-  try{ deckungsgradEnabled=(await stGet("deckungsgrad_enabled"))==="1"; }catch(e){}
-  try{ const dgv=await stGet("deckungsgrad_visible_metrics"); if(dgv) dgVisibleMetrics=JSON.parse(dgv); }catch(e){}
-  try{ const erv=await stGet("emp_ranking_enabled"); empRankingEnabled = erv==null ? true : erv==="1"; }catch(e){}
-  try{ stornoquotenEnabled=(await stGet("stornoquoten_enabled"))==="1"; }catch(e){}
-  try{ mieteLastImport=await stGet("miete_last_import"); }catch(e){}
+  await Promise.all([
+    (async()=>{ try{ const d=await stGet("wg-state"); if(d){ const p=JSON.parse(d); if(p&&p.latest) state=p; } }catch(e){} })(),
+    (async()=>{ try{ const g=await stGet("wg-goals"); if(g) goals=JSON.parse(g); }catch(e){} })(),
+    (async()=>{ try{ perfDialogEnabled=(await stGet("performance_dialog_enabled"))==="1"; }catch(e){} })(),
+    (async()=>{ try{ perfDialogAdminEnabled=(await stGet("performance_dialog_admin_enabled"))==="1"; }catch(e){} })(),
+    (async()=>{ try{ chefgespraechEnabled=(await stGet("chefgespraech_enabled"))==="1"; }catch(e){} })(),
+    (async()=>{ try{ kooperationsgespraechEnabled=(await stGet("kooperationsgespraech_enabled"))==="1"; }catch(e){} })(),
+    (async()=>{ try{ auswertungEnabled=(await stGet("auswertung_enabled"))==="1"; }catch(e){} })(),
+    (async()=>{ try{ fhZielEnabled=(await stGet("fh_ziel_enabled"))==="1"; }catch(e){} })(),
+    (async()=>{ try{ fhSearchEnabled=(await stGet("fh_search_enabled"))==="1"; }catch(e){} })(),
+    (async()=>{ try{ akpPeerCompareEnabled=(await stGet("akp_peer_compare_enabled"))==="1"; }catch(e){} })(),
+    (async()=>{ try{ karteileichenJahre=parseInt(await stGet("karteileichen_jahre"))||3; }catch(e){} })(),
+    (async()=>{ try{ const r=await stGet("karteileichen_review_fh"); fhKarteileichenReview=r?JSON.parse(r):null; }catch(e){} })(),
+    (async()=>{ try{ const r=await stGet("karteileichen_review_akp"); akpKarteileichenReview=r?JSON.parse(r):null; }catch(e){} })(),
+    (async()=>{ try{ deckungsgradEnabled=(await stGet("deckungsgrad_enabled"))==="1"; }catch(e){} })(),
+    (async()=>{ try{ const dgv=await stGet("deckungsgrad_visible_metrics"); if(dgv) dgVisibleMetrics=JSON.parse(dgv); }catch(e){} })(),
+    (async()=>{ try{ const erv=await stGet("emp_ranking_enabled"); empRankingEnabled = erv==null ? true : erv==="1"; }catch(e){} })(),
+    (async()=>{ try{ stornoquotenEnabled=(await stGet("stornoquoten_enabled"))==="1"; }catch(e){} })(),
+    (async()=>{ try{ mieteLastImport=await stGet("miete_last_import"); }catch(e){} })(),
+  ]);
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
   else if(emb&&emb.latest&&state.latest){
@@ -6756,12 +6766,26 @@ function akqLeadFor(fhNr){
 // (erster Treffer) - deckt Händler ab, die weder in fh_contacts noch in der
 // AKQ-Liste einen Namen haben, aber in der AKP-Kontaktdatenbank bekannt sind
 // (Bug-Report 04.09.2026: FH-Suche zeigte bei solchen Händlern nur die FH-Nr).
+// Map-Cache statt Object.values().find() bei jedem Aufruf - gleiches Muster
+// wie akqLeadFor() oben: fhAllKnownList() ruft dies für JEDEN fh_contacts-
+// Eintrag ohne eigenen Namen auf, macht bei ~10.000 AKP-Kontakten also pro
+// Aufruf einen vollen linearen Scan. Bei jedem Tastendruck in der FH-Suche
+// (fhAllKnownList() war bis hierher NICHT gecacht, siehe unten) summierte
+// sich das zu mehreren Sekunden Verzögerung PRO Buchstabe (Bug-Report
+// 04.09.2026 "dauert Sekunden bis ein Buchstabe geschrieben ist"). Der Cache
+// wird pro neuer akpContactsIndex-Objektreferenz (also pro Neuladen) einmal
+// aufgebaut.
+let fhAkpFirmaCache=null, fhAkpFirmaCacheSrc=null;
 function fhAkpFirmaFallback(fhNr){
   if(!akpContactsIndex) return null;
-  for(const a of Object.values(akpContactsIndex)){
-    if(a.fh_nr===fhNr&&a.firma) return a.firma;
+  if(fhAkpFirmaCacheSrc!==akpContactsIndex){
+    fhAkpFirmaCache=new Map();
+    for(const a of Object.values(akpContactsIndex)){
+      if(a.fh_nr&&a.firma&&!fhAkpFirmaCache.has(a.fh_nr)) fhAkpFirmaCache.set(a.fh_nr,a.firma);
+    }
+    fhAkpFirmaCacheSrc=akpContactsIndex;
   }
-  return null;
+  return fhAkpFirmaCache.get(fhNr)||null;
 }
 function fhFallbackFromAkp(fhNr){
   // fh_contacts-Name (akq_name > miete_name > manueller Name, siehe
@@ -6805,7 +6829,20 @@ function fhFallbackFromAkp(fhNr){
 // keinen akq_name - die Suche kannte den Namen deshalb nicht, obwohl das
 // FH-PopUp ihn über akqLeadFor längst korrekt anzeigte - Namensauflösung
 // jetzt überall gleich: fh_contacts-Name > AKQ-Liste-Name > FH-Nr).
+// Bug-Report 04.09.2026 ("FH-Suche: Sekunden bis ein Buchstabe geschrieben
+// ist"): renderFhSearch()/renderChefgespraechSearch() riefen dies bei JEDEM
+// Tastendruck neu auf - baute die komplette Liste (heutige Produktion +
+// alle ~3.000 fh_contacts-Zeilen + AKQ-Liste, siehe oben) jedes Mal von
+// Grund auf neu, mit potenziell hunderten Aufrufen von fhAkpFirmaFallback()
+// pro Durchlauf. Gleiches Cache-Muster wie akqLeadFor()/fhAkpFirmaFallback()
+// oben: Ergebnis wird zwischengespeichert und nur neu gebaut, wenn sich
+// eine der vier Quell-Objektreferenzen tatsächlich geändert hat (neuer
+// Import/Reload) - nicht bei jedem Tastendruck.
+let fhAllKnownListCache=null, fhAllKnownListCacheSrc=[null,null,null,null];
 function fhAllKnownList(){
+  const srcs=[state.latest.fh,fhContactsAllIndex,state.latest.akq,akpContactsIndex];
+  if(fhAllKnownListCache&&srcs.every((s,i)=>s===fhAllKnownListCacheSrc[i])) return fhAllKnownListCache;
+  fhAllKnownListCacheSrc=srcs;
   const out=[], seen=new Set();
   // filialbetriebe/weitere_zuordnung kommen nur aus fh_contacts (manuell
   // gepflegt, kein Teil der täglichen Auswertung) - deshalb für JEDEN
@@ -6827,6 +6864,7 @@ function fhAllKnownList(){
     seen.add(a.nr);
     out.push({nr:a.nr,name:a.name||fhAkpFirmaFallback(a.nr)||a.nr,ort:a.ort||null,emp:a.emp||null,filialbetriebe:null,weitereZuordnung:null});
   });
+  fhAllKnownListCache=out;
   return out;
 }
 // Sucht über Name, Ort, Filialbetriebe, Weitere Zuordnung UND FH-Nr.
