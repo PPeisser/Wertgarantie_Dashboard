@@ -1,17 +1,17 @@
-// Kooperationsgespräch – KI-Unterstützt: fasst die aggregierten Kennzahlen
-// EINER Einkaufskooperation (alle ihre Mitglieds-Fachhändler zusammen)
+// Kooperationsgespraech - KI-Unterstuetzt: fasst die aggregierten Kennzahlen
+// EINER Einkaufskooperation (alle ihre Mitglieds-Fachhaendler zusammen)
 // zusammen und vergleicht sie anonymisiert (nur Aggregatwerte je Kooperation,
-// keine Einzelhändler-Daten) mit allen ANDEREN Einkaufskooperationen. Nutzt
+// keine Einzelhaendler-Daten) mit allen ANDEREN Einkaufskooperationen. Nutzt
 // die Mistral Chat-Completions-API (EU-Anbieter, DSGVO-konform, DPA vorhanden
-// - Nutzervorgabe 04.09.2026) mit erzwungenem Tool-Call für eine strukturierte
+// - Nutzervorgabe 04.09.2026) mit erzwungenem Tool-Call fuer eine strukturierte
 // JSON-Antwort (Zusammenfassung + Vergleichswerte je Kennzahl + Empfehlungen).
 // Analog zu chefgespraech-ai-comparison, aber auf Kooperations- statt
-// Einzelhändler-Ebene - "ohne Kooperation" ist keine echte Kooperation und
+// Einzelhaendler-Ebene - "ohne Kooperation" ist keine echte Kooperation und
 // wird sowohl als Ziel als auch aus der Vergleichsgruppe ausgeschlossen.
 //
 // Auth: normale Nutzer-Session (Authorization-Header) - KEIN Admin-Gate,
-// da jeder Außendienst-Mitarbeiter den Kooperationsgespräch-Button nutzen
-// darf (fh_contacts ist ohnehin für alle authentifizierten Nutzer lesbar).
+// da jeder Aussendienst-Mitarbeiter den Kooperationsgespraech-Button nutzen
+// darf (fh_contacts ist ohnehin fuer alle authentifizierten Nutzer lesbar).
 //
 // Secret: MISTRAL_API_KEY (als Supabase-Secret hinterlegt, siehe
 // chefgespraech-ai-comparison).
@@ -99,11 +99,11 @@ type FhRow = Record<string, any>;
 type DailyFhMap = Record<string, Record<string, number>>;
 
 // Tagesproduktion (dashboard_kv "wg-state" -> dailyFH) + Bulk-Import
-// (fh_contacts.prod_monthly) zusammenführen - exakt wie fhMonthlyMerged() im
+// (fh_contacts.prod_monthly) zusammenfuehren - exakt wie fhMonthlyMerged() im
 // Client / mergedMonthly() in chefgespraech-ai-comparison. Ohne dies sah
-// diese Funktion NUR den (oft lückenhaften) Bulk-Import und ignorierte die
-// tägliche Produktionshistorie komplett (Nutzer-Feedback 24.08.2026: "Daten
-// ... können nicht stimmen"). Bulk-Werte gewinnen bei Überschneidung.
+// diese Funktion NUR den (oft lueckenhaften) Bulk-Import und ignorierte die
+// taegliche Produktionshistorie komplett (Nutzer-Feedback 24.08.2026: "Daten
+// ... koennen nicht stimmen"). Bulk-Werte gewinnen bei Ueberschneidung.
 function mergedMonthly(fhNr: string, prodMonthly: Record<string, number> | null | undefined, dailyFH: DailyFhMap): Record<string, number> {
   const daily = dailyFH[fhNr] || {};
   const fromDaily: Record<string, number> = {};
@@ -133,10 +133,10 @@ interface KoopMetrics {
   clubWeissRate: number | null;
 }
 
-// Aggregiert eine Gruppe von Fachhändler-Zeilen (eine Kooperation) zu den
+// Aggregiert eine Gruppe von Fachhaendler-Zeilen (eine Kooperation) zu den
 // Kennzahlen dieser Kooperation, bezogen auf ein fest vorgegebenes Jahr
 // (curYear) - damit sind Kooperationen untereinander vergleichbar, auch wenn
-// einzelne Mitglieds-Händler unterschiedliche Datenstände haben.
+// einzelne Mitglieds-Haendler unterschiedliche Datenstaende haben.
 function aggregateGroup(rows: FhRow[], curYear: string, prevYear: string, dailyFH: DailyFhMap): KoopMetrics {
   let curProd = 0, prevProd = 0, bf = 0, akqSum = 0, akqCount = 0, clubWeissCount = 0;
   for (const r of rows) {
@@ -181,22 +181,22 @@ function rankPercentile(arr: number[], value: number): number | null {
 
 const COMPARISON_TOOL = {
   name: "generate_kooperationsgespraech_comparison",
-  description: "Erstellt die strukturierte Zusammenfassung samt anonymem Vergleich für das Kooperationsgespräch.",
+  description: "Erstellt die strukturierte Zusammenfassung samt anonymem Vergleich fuer das Kooperationsgespraech.",
   parameters: {
     type: "object",
     properties: {
       summary: {
         type: "string",
-        description: "Zusammenfassung der wichtigsten Kennzahlen dieser Einkaufskooperation für das Kooperationsgespräch (2-4 Sätze, sachlich, konkret).",
+        description: "Zusammenfassung der wichtigsten Kennzahlen dieser Einkaufskooperation fuer das Kooperationsgespraech (2-4 Saetze, sachlich, konkret).",
       },
       comparisons: {
         type: "array",
-        description: "Ein Eintrag je Kennzahl, mit Einordnung ggü. den anderen (anonymen) Einkaufskooperationen.",
+        description: "Ein Eintrag je Kennzahl, mit Einordnung ggue. den anderen (anonymen) Einkaufskooperationen.",
         items: {
           type: "object",
           properties: {
-            metric: { type: "string", description: "Name der Kennzahl, z.B. 'Jahresproduktion', 'Wachstum ggü. Vorjahr', '3-für-2-Quote', 'Ø Akquisepunkte je Fachhändler'." },
-            assessment: { type: "string", description: "1 Satz Einordnung: steht die Kooperation besser/schlechter da als die anderen Kooperationen, und was heißt das." },
+            metric: { type: "string", description: "Name der Kennzahl, z.B. 'Jahresproduktion', 'Wachstum ggue. Vorjahr', '3-fuer-2-Quote', 'Durchschnittliche Akquisepunkte je Fachhaendler'." },
+            assessment: { type: "string", description: "1 Satz Einordnung: steht die Kooperation besser/schlechter da als die anderen Kooperationen, und was heisst das." },
           },
           required: ["metric", "assessment"],
         },
@@ -204,7 +204,7 @@ const COMPARISON_TOOL = {
       recommendations: {
         type: "array",
         items: { type: "string" },
-        description: "2-4 konkrete, umsetzbare Empfehlungen/Gesprächsansätze für das Kooperationsgespräch, abgeleitet aus dem Vergleich.",
+        description: "2-4 konkrete, umsetzbare Empfehlungen/Gespraechsansaetze fuer das Kooperationsgespraech, abgeleitet aus dem Vergleich.",
       },
     },
     required: ["summary", "comparisons", "recommendations"],
@@ -225,10 +225,10 @@ Deno.serve(async (req) => {
   );
 
   const { data: { user }, error: userErr } = await admin.auth.getUser(token);
-  if (userErr || !user) return json({ error: "Ungültige Session" }, 401);
+  if (userErr || !user) return json({ error: "Ungueltige Session" }, 401);
 
   let body: Record<string, unknown>;
-  try { body = await req.json(); } catch { return json({ error: "Ungültiger Body" }, 400); }
+  try { body = await req.json(); } catch { return json({ error: "Ungueltiger Body" }, 400); }
   const kooperation = String(body.kooperation || "").trim();
   if (!kooperation) return json({ error: "kooperation fehlt" }, 400);
   if (kooperation === "ohne Kooperation") {
@@ -242,8 +242,8 @@ Deno.serve(async (req) => {
   if (allErr) return json({ error: allErr.message }, 500);
   const rows = allRows || [];
 
-  // Tägliche Produktionshistorie laden (siehe mergedMonthly() oben) - ohne
-  // dies sah diese Funktion nur den lückenhaften Bulk-Import je Fachhändler.
+  // Taegliche Produktionshistorie laden (siehe mergedMonthly() oben) - ohne
+  // dies sah diese Funktion nur den lueckenhaften Bulk-Import je Fachhaendler.
   let dailyFH: DailyFhMap = {};
   try {
     const { data: kvRow } = await admin.from("dashboard_kv").select("value").eq("key", "wg-state").maybeSingle();
@@ -252,7 +252,7 @@ Deno.serve(async (req) => {
       dailyFH = parsed?.dailyFH || {};
     }
   } catch (e) {
-    console.error("dailyFH konnte nicht geladen werden, Vergleich läuft nur mit Bulk-Import-Daten weiter:", e);
+    console.error("dailyFH konnte nicht geladen werden, Vergleich laeuft nur mit Bulk-Import-Daten weiter:", e);
   }
 
   let maxYear = "";
@@ -262,7 +262,7 @@ Deno.serve(async (req) => {
       if (y > maxYear) maxYear = y;
     }
   }
-  if (!maxYear) return json({ error: "Für Einkaufskooperationen liegt noch keine Jahresproduktion vor." }, 400);
+  if (!maxYear) return json({ error: "Fuer Einkaufskooperationen liegt noch keine Jahresproduktion vor." }, 400);
   const prevYear = String(Number(maxYear) - 1);
 
   const byKoop = new Map<string, FhRow[]>();
@@ -274,7 +274,7 @@ Deno.serve(async (req) => {
   }
 
   const targetRows = byKoop.get(kooperation) || [];
-  if (!targetRows.length) return json({ error: `Keine Fachhändler mit Kooperation "${kooperation}" gefunden.` }, 400);
+  if (!targetRows.length) return json({ error: `Keine Fachhaendler mit Kooperation "${kooperation}" gefunden.` }, 400);
   const targetMetrics = aggregateGroup(targetRows, maxYear, prevYear, dailyFH);
 
   const peerGroups: KoopMetrics[] = [];
@@ -314,33 +314,33 @@ Deno.serve(async (req) => {
   const apiKey = Deno.env.get("MISTRAL_API_KEY");
   if (!apiKey) return json({ error: "MISTRAL_API_KEY ist nicht als Supabase-Secret hinterlegt." }, 500);
 
-  const fmtPct = (v: number | null) => v == null ? "–" : (v * 100).toFixed(1).replace(".", ",") + " %";
+  const fmtPct = (v: number | null) => v == null ? "-" : (v * 100).toFixed(1).replace(".", ",") + " %";
   const userPrompt =
-    `Einkaufskooperation "${kooperation}" mit ${targetMetrics.fhCount} Mitglieds-Fachhändlern, ` +
+    `Einkaufskooperation "${kooperation}" mit ${targetMetrics.fhCount} Mitglieds-Fachhaendlern, ` +
     `Vergleichsgruppe: ${peerGroups.length} andere Einkaufskooperationen (anonym).\n\n` +
-    `Kennzahlen dieser Kooperation (Jahr ${maxYear}, aufsummiert über alle Mitglieds-Fachhändler):\n` +
-    `- Jahresproduktion: ${targetMetrics.curProd} Verträge\n` +
-    `- Wachstum ggü. Vorjahr: ${fmtPct(targetMetrics.yoy)}\n` +
-    `- 3-für-2-Quote: ${fmtPct(targetMetrics.q3f2)}\n` +
-    `- Ø Akquisepunkte je Fachhändler: ${targetMetrics.akqPunkte != null ? Math.round(targetMetrics.akqPunkte) : "–"}\n` +
-    `- Club Weiss Mitgliedschaftsquote (Anteil Club-Weiss-Mitglieder unter den Mitglieds-Fachhändlern): ${fmtPct(targetMetrics.clubWeissRate)}\n\n` +
+    `Kennzahlen dieser Kooperation (Jahr ${maxYear}, aufsummiert ueber alle Mitglieds-Fachhaendler):\n` +
+    `- Jahresproduktion: ${targetMetrics.curProd} Vertraege\n` +
+    `- Wachstum ggue. Vorjahr: ${fmtPct(targetMetrics.yoy)}\n` +
+    `- 3-fuer-2-Quote: ${fmtPct(targetMetrics.q3f2)}\n` +
+    `- Durchschnittliche Akquisepunkte je Fachhaendler: ${targetMetrics.akqPunkte != null ? Math.round(targetMetrics.akqPunkte) : "-"}\n` +
+    `- Club Weiss Mitgliedschaftsquote (Anteil Club-Weiss-Mitglieder unter den Mitglieds-Fachhaendlern): ${fmtPct(targetMetrics.clubWeissRate)}\n\n` +
     `Andere Einkaufskooperationen, jeweils Median / oberes Quartil (75%) / Perzentil-Rang dieser Kooperation:\n` +
-    `- Jahresproduktion: Median ${peerStats.curProd.median != null ? Math.round(peerStats.curProd.median) : "–"} / oberes Quartil ${peerStats.curProd.p75 != null ? Math.round(peerStats.curProd.p75) : "–"} / diese Kooperation liegt im ${peerStats.curProd.rank != null ? Math.round(peerStats.curProd.rank * 100) : "–"}. Perzentil\n` +
-    `- Wachstum ggü. Vorjahr: Median ${fmtPct(peerStats.yoy.median)} / oberes Quartil ${fmtPct(peerStats.yoy.p75)} / Perzentil ${peerStats.yoy.rank != null ? Math.round(peerStats.yoy.rank * 100) : "–"}\n` +
-    `- 3-für-2-Quote: Median ${fmtPct(peerStats.q3f2.median)} / oberes Quartil ${fmtPct(peerStats.q3f2.p75)} / Perzentil ${peerStats.q3f2.rank != null ? Math.round(peerStats.q3f2.rank * 100) : "–"}\n` +
-    `- Ø Akquisepunkte je Fachhändler: Median ${peerStats.akqPunkte.median != null ? Math.round(peerStats.akqPunkte.median) : "–"} / oberes Quartil ${peerStats.akqPunkte.p75 != null ? Math.round(peerStats.akqPunkte.p75) : "–"} / Perzentil ${peerStats.akqPunkte.rank != null ? Math.round(peerStats.akqPunkte.rank * 100) : "–"}\n` +
-    `- Club Weiss Mitgliedschaftsquote: Median ${fmtPct(peerStats.clubWeissRate.median)} / oberes Quartil ${fmtPct(peerStats.clubWeissRate.p75)} / Perzentil ${peerStats.clubWeissRate.rank != null ? Math.round(peerStats.clubWeissRate.rank * 100) : "–"}\n`;
+    `- Jahresproduktion: Median ${peerStats.curProd.median != null ? Math.round(peerStats.curProd.median) : "-"} / oberes Quartil ${peerStats.curProd.p75 != null ? Math.round(peerStats.curProd.p75) : "-"} / diese Kooperation liegt im ${peerStats.curProd.rank != null ? Math.round(peerStats.curProd.rank * 100) : "-"}. Perzentil\n` +
+    `- Wachstum ggue. Vorjahr: Median ${fmtPct(peerStats.yoy.median)} / oberes Quartil ${fmtPct(peerStats.yoy.p75)} / Perzentil ${peerStats.yoy.rank != null ? Math.round(peerStats.yoy.rank * 100) : "-"}\n` +
+    `- 3-fuer-2-Quote: Median ${fmtPct(peerStats.q3f2.median)} / oberes Quartil ${fmtPct(peerStats.q3f2.p75)} / Perzentil ${peerStats.q3f2.rank != null ? Math.round(peerStats.q3f2.rank * 100) : "-"}\n` +
+    `- Durchschnittliche Akquisepunkte je Fachhaendler: Median ${peerStats.akqPunkte.median != null ? Math.round(peerStats.akqPunkte.median) : "-"} / oberes Quartil ${peerStats.akqPunkte.p75 != null ? Math.round(peerStats.akqPunkte.p75) : "-"} / Perzentil ${peerStats.akqPunkte.rank != null ? Math.round(peerStats.akqPunkte.rank * 100) : "-"}\n` +
+    `- Club Weiss Mitgliedschaftsquote: Median ${fmtPct(peerStats.clubWeissRate.median)} / oberes Quartil ${fmtPct(peerStats.clubWeissRate.p75)} / Perzentil ${peerStats.clubWeissRate.rank != null ? Math.round(peerStats.clubWeissRate.rank * 100) : "-"}\n`;
 
   const systemPrompt =
-    `Du bereitest ein "Kooperationsgespräch" vor - ein internes Beratungsgespräch eines Wertgarantie-Vertriebsmitarbeiters ` +
-    `mit einer Einkaufskooperation (Vertriebsverbund mehrerer Fachhändler). Du bekommst die aufsummierten/gemittelten ` +
+    `Du bereitest ein "Kooperationsgespraech" vor - ein internes Beratungsgespraech eines Wertgarantie-Vertriebsmitarbeiters ` +
+    `mit einer Einkaufskooperation (Vertriebsverbund mehrerer Fachhaendler). Du bekommst die aufsummierten/gemittelten ` +
     `Kennzahlen dieser einen Kooperation sowie ANONYME Aggregatwerte (Median, oberes Quartil, Perzentil-Rang) einer ` +
     `Vergleichsgruppe aller anderen Einkaufskooperationen (nie Einzeldaten anderer Kooperationen oder einzelner ` +
-    `Fachhändler). Ordne die Zahlen sachlich ein, zeige wo die Kooperation im Vergleich gut dasteht und wo Potenzial ` +
-    `liegt, und leite daraus konkrete, umsetzbare Gesprächsansätze/Empfehlungen ab. Berücksichtige dabei auch die ` +
-    `Club-Weiss-Mitgliedschaftsquote: liegt sie unter dem Vergleichswert, ist das ein konkreter Gesprächsansatz ` +
-    `(mehr Mitglieds-Fachhändler für Club Weiss gewinnen); liegt sie darüber, ist das eine Stärke. Schreibe auf ` +
-    `Deutsch, professionell, prägnant, ohne Floskeln. Antworte ausschließlich über das Tool ` +
+    `Fachhaendler). Ordne die Zahlen sachlich ein, zeige wo die Kooperation im Vergleich gut dasteht und wo Potenzial ` +
+    `liegt, und leite daraus konkrete, umsetzbare Gespraechsansaetze/Empfehlungen ab. Beruecksichtige dabei auch die ` +
+    `Club-Weiss-Mitgliedschaftsquote: liegt sie unter dem Vergleichswert, ist das ein konkreter Gespraechsansatz ` +
+    `(mehr Mitglieds-Fachhaendler fuer Club Weiss gewinnen); liegt sie darueber, ist das eine Staerke. Schreibe auf ` +
+    `Deutsch, professionell, praegnant, ohne Floskeln. Antworte ausschliesslich ueber das Tool ` +
     `"generate_kooperationsgespraech_comparison".`;
 
   const aiResult = await callMistralTool(apiKey, systemPrompt, userPrompt, COMPARISON_TOOL, 6000);
