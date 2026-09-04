@@ -3052,6 +3052,18 @@ function fmtSign(n){ return n==null?"–":(n>0?"+":"")+fmt(n); }
 function fmtPct(n){ if(n==null||!isFinite(n)) return "–"; return (n>0?"+":"")+n.toFixed(1).replace(".",",")+" %"; }
 function fmtDate(s){ if(!s) return "–"; const d=parseISO(s); return String(d.getUTCDate()).padStart(2,"0")+"."+String(d.getUTCMonth()+1).padStart(2,"0")+"."+d.getUTCFullYear(); }
 function fmtNowDateTime(){ const d=new Date(); return String(d.getDate()).padStart(2,"0")+"."+String(d.getMonth()+1).padStart(2,"0")+"."+d.getFullYear()+", "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+" Uhr"; }
+// Wie fmtNowDateTime(), aber für einen konkreten ISO-Zeitstempel statt
+// "jetzt" - Bug-Report 04.09.2026: das Performance-Dialog-PDF zeigte bei
+// "Erstellt am" bisher immer den Zeitpunkt des PDF-Downloads/-Versands
+// (fmtNowDateTime()), nicht den Zeitpunkt, an dem der Mitarbeiter den
+// Bericht tatsächlich abgesendet hat (performance_dialog_reports.
+// submitted_at) - bei einem späteren Admin-Download stand dort faktisch das
+// "Druckdatum" statt des Absende-Zeitpunkts.
+function fmtDateTime(isoStr){
+  if(!isoStr) return fmtNowDateTime();
+  const d=new Date(isoStr); if(isNaN(d)) return fmtNowDateTime();
+  return String(d.getDate()).padStart(2,"0")+"."+String(d.getMonth()+1).padStart(2,"0")+"."+d.getFullYear()+", "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+" Uhr";
+}
 const WOCHENTAGE=["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
 // Für die Miete-Kachel: "Freitag, 21.08.2026" aus einem ISO-Zeitstempel.
 function fmtWeekdayDate(iso){
@@ -5140,13 +5152,14 @@ async function submitPerfReport(){
     // abschließen und den Bericht mit is_draft:true wieder zurückstufen.
     while(perfDraftSaveBusy) await new Promise(r=>setTimeout(r,50));
     const goalsPayload=perfGoalIds.map(g=>({goal_id:g,snapshot:perfSnapshots[g],answers:perfAnswers[g]}));
+    const submittedAt=new Date().toISOString();
     const { error }=await sb.from("performance_dialog_reports").upsert({
       employee:perfEmployee,year:perfReportYear,month:perfReportMonth,goals:goalsPayload,
-      is_draft:false,submitted_at:new Date().toISOString(),submitted_by:supaUser.id,updated_at:new Date().toISOString()
+      is_draft:false,submitted_at:submittedAt,submitted_by:supaUser.id,updated_at:submittedAt
     },{onConflict:"employee,year,month"});
     if(error) throw error;
     toast("Gespeichert ✓ PDF wird erstellt und versendet …");
-    const {mailFailures}=await exportPerfReportPdf(perfEmployee,perfReportYear,perfReportMonth,goalsPayload,{mailToSelf:true,mailToAdmin:true});
+    const {mailFailures}=await exportPerfReportPdf(perfEmployee,perfReportYear,perfReportMonth,goalsPayload,{mailToSelf:true,mailToAdmin:true,submittedAt});
     renderPerfDoneOverview(goalsPayload,mailFailures);
     if(mailFailures&&mailFailures.length){
       toast("Performance Dialog gespeichert ✓ - Mailversand an "+mailFailures.join(", ")+" ist fehlgeschlagen. Bitte Admin informieren.");
@@ -5203,7 +5216,7 @@ function renderPerfDoneOverview(goalsPayload,mailFailures){
 // Admin heruntergeladen) - mehrseitig mit Seitenumbruch an Zielblock-Grenzen,
 // analog zu den übrigen PDF-Exporten. Nutzt dieselben CSS-Klassen (ac-grid/
 // ac-lbl/ac-val) wie die Live-Ansicht, da die Box im selben Dokument hängt.
-async function buildPerfReportPdfDoc(employee,year,month,goalsPayload){
+async function buildPerfReportPdfDoc(employee,year,month,goalsPayload,submittedAt){
   if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)) throw new Error("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals versuchen.");
   const box=document.createElement("div");
   box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
@@ -5225,7 +5238,7 @@ async function buildPerfReportPdfDoc(employee,year,month,goalsPayload){
         <div style="font-size:21px;font-weight:900;color:#062A3F">Performance Dialog</div>
         <div style="font-size:12px;color:#5D7284;margin-top:3px">${escapeHtml(employee)} · ${MONATE[month-1]} ${year}</div>
       </div>
-      <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Performance Dialog<br>Erstellt am: ${fmtNowDateTime()}</div>
+      <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Performance Dialog<br>Erstellt am: ${fmtDateTime(submittedAt)}</div>
     </div>
     ${goalBlocks}
   `;
@@ -5271,7 +5284,7 @@ async function buildPerfReportPdfDoc(employee,year,month,goalsPayload){
 // Download aus der Übersicht nur {download:true}.
 async function exportPerfReportPdf(employee,year,month,goalsPayload,opts){
   opts=opts||{};
-  const {pdf,filename}=await buildPerfReportPdfDoc(employee,year,month,goalsPayload);
+  const {pdf,filename}=await buildPerfReportPdfDoc(employee,year,month,goalsPayload,opts.submittedAt);
   if(opts.download) pdf.save(filename);
   const mailFailures=[];
   if(opts.mailToSelf||opts.mailToAdmin){
@@ -5400,7 +5413,7 @@ function renderPerfAdminGrid(){
       const rep=(perfAdminReports[emp]||{})[m];
       if(!rep) return;
       toast("PDF wird erstellt …");
-      try{ await exportPerfReportPdf(emp,perfAdminYear,m,rep.goals||[],{download:true}); }
+      try{ await exportPerfReportPdf(emp,perfAdminYear,m,rep.goals||[],{download:true,submittedAt:rep.submitted_at}); }
       catch(e){ toast("PDF-Erstellung fehlgeschlagen: "+(e.message||e)); }
     };
   });
@@ -5452,7 +5465,7 @@ async function buildCombinedPerfReportsPdfDoc(reports,year,month){
     }).join("");
     return `<div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:10px;margin:26px 0 16px">
       <div style="font-size:17px;font-weight:900;color:#062A3F">${escapeHtml(rep.employee)}</div>
-      <div style="font-size:10.5px;color:#5D7284;text-align:right">${MONATE[month-1]} ${year}<br>Erstellt am: ${nowStr}</div>
+      <div style="font-size:10.5px;color:#5D7284;text-align:right">${MONATE[month-1]} ${year}<br>Erstellt am: ${fmtDateTime(rep.submitted_at)}</div>
     </div>${goalBlocks}`;
   }).join("");
   box.innerHTML=`
