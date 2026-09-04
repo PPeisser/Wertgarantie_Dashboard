@@ -1,7 +1,8 @@
 // Chefgespraech - KI-Unterstuetzt: fasst die Kennzahlen EINES Fachhaendlers
 // zusammen und vergleicht ihn anonymisiert (nur Aggregatwerte, keine
 // Einzelhaendler-Daten) mit einer Vergleichsgruppe anderer Haendler. Nutzt die
-// Anthropic Messages API mit erzwungenem Tool-Call fuer eine strukturierte
+// Mistral Chat-Completions-API (EU-Anbieter, DSGVO-konform, DPA vorhanden -
+// Nutzervorgabe 04.09.2026) mit erzwungenem Tool-Call fuer eine strukturierte
 // JSON-Antwort (Zusammenfassung + Vergleichswerte je Kennzahl + Empfehlungen).
 //
 // Vergleichsmodi (Nutzervorgabe 22./23./25.08.2026, "mode"-Feld im Request):
@@ -18,11 +19,19 @@
 // da jeder Aussendienst-Mitarbeiter den Chefgespraech-Button nutzen darf
 // (fh_contacts ist ohnehin fuer alle authentifizierten Nutzer lesbar).
 //
-// Secret: ANTHROPIC_API_KEY (bereits als Supabase-Secret hinterlegt, siehe
+// Secret: MISTRAL_API_KEY (als Supabase-Secret hinterlegt, siehe
 // performance-dialog-annual-summary).
 //
+// Pseudonymisierung (Nutzervorgabe 01.09.2026, DSGVO): die echte
+// Fachhaendler-Nummer wird NIE an Mistral uebermittelt. Im Prompt steht
+// stattdessen ein pro Anfrage zufaelliger Platzhalter-Code (FH_CODE); die KI
+// wird angewiesen, ausschliesslich diesen Platzhalter zu verwenden. Erst
+// NACH Erhalt der KI-Antwort (server-seitig, bevor sie ans Dashboard
+// zurueckgeht) wird der Platzhalter wieder durch die echte Nummer ersetzt
+// (deepReplace ueber die komplette Antwortstruktur).
+//
 // Hinweis 25.08.2026: Kommentare/Prompt-Texte in dieser Datei sind bewusst
-// ASCII-transliteriert (ae/oe/ue/ss statt ä/ö/ü/ß) - reine Deploy-Mechanik
+// ASCII-transliteriert (ae/oe/ue/ss statt ae/oe/ue/ss) - reine Deploy-Mechanik
 // (Umlaute im MCP-Deploy-Tool-Aufruf wiederholt korrumpiert), kein Nutzer
 // sieht diesen Text direkt (Code-Kommentare + KI-Tool-Schema/Prompt-Text).
 
@@ -39,6 +48,68 @@ function json(body: unknown, status = 200) {
     status,
     headers: { "Content-Type": "application/json", ...CORS_HEADERS },
   });
+}
+
+// Ruft Mistral mit erzwungenem Tool-Call auf. temperature:0.2 (statt Default)
+// fuer sachliche, konsistente Kennzahlen-Berichte statt kreativer Streuung.
+// Ein automatischer zweiter Versuch (Netzwerkfehler, HTTP-Fehler, fehlender
+// Tool-Call ODER ungueltiges JSON in den Tool-Argumenten) macht die Antwort
+// robust gegen die seltenen, aber moeglichen Ausreisser eines einzelnen
+// API-Aufrufs (Nutzervorgabe 04.09.2026: "es soll einwandfrei sein") - erst
+// wenn auch der zweite Versuch scheitert, wird der Fehler an den Client
+// zurueckgegeben.
+async function callMistralTool(
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string,
+  tool: Record<string, unknown>,
+  maxTokens: number,
+): Promise<{ report?: unknown; error?: string }> {
+  let lastError = "Unbekannter Fehler.";
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    let aiRes: Response;
+    try {
+      aiRes = await fetch("https://api.mistral.ai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + apiKey,
+        },
+        body: JSON.stringify({
+          model: "mistral-large-latest",
+          max_tokens: maxTokens,
+          temperature: 0.2,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          tools: [{ type: "function", function: tool }],
+          tool_choice: "any",
+          parallel_tool_calls: false,
+        }),
+      });
+    } catch (e) {
+      lastError = "Mistral-API nicht erreichbar: " + String(e);
+      continue;
+    }
+    if (!aiRes.ok) {
+      const errText = await aiRes.text();
+      lastError = `Mistral-API-Fehler (${aiRes.status}): ${errText}`;
+      continue;
+    }
+    const aiJson = await aiRes.json();
+    const toolCall = aiJson.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall) {
+      lastError = "KI-Antwort enthielt keine strukturierte Auswertung.";
+      continue;
+    }
+    try {
+      return { report: JSON.parse(toolCall.function.arguments) };
+    } catch (e) {
+      lastError = "KI-Antwort enthielt kein gueltiges JSON: " + String(e);
+    }
+  }
+  return { error: lastError };
 }
 
 // deno-lint-ignore no-explicit-any
@@ -122,6 +193,29 @@ function rankPercentile(arr: number[], value: number): number | null {
   return below / s.length;
 }
 
+// Kurzer, zufaelliger Platzhalter-Code pro Anfrage fuer die Fachhaendler-
+// Nummer (siehe Pseudonymisierungs-Hinweis oben) - crypto.randomUUID() ist
+// in der Deno-Runtime verfuegbar, kein zusaetzlicher Import noetig.
+function randCode(prefix: string): string {
+  return prefix + "-" + crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
+}
+
+// Ersetzt rekursiv jeden String-Wert einer (verschachtelten) Struktur ueber
+// den uebergebenen replacer - genutzt, um den Nummern-Platzhalter nach der
+// KI-Antwort wieder durch die echte Nummer zu ersetzen, unabhaengig davon,
+// in welchem Feld/welcher Verschachtelungstiefe die KI ihn verwendet hat.
+// deno-lint-ignore no-explicit-any
+function deepReplace(value: any, replacer: (s: string) => string): any {
+  if (typeof value === "string") return replacer(value);
+  if (Array.isArray(value)) return value.map((v) => deepReplace(v, replacer));
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) out[k] = deepReplace(v, replacer);
+    return out;
+  }
+  return value;
+}
+
 const PEER_SELECT_COLS = "fh_nr,prod_monthly,beitragsfrei_yearly,akq_punkte,club_weiss_mitglied";
 
 // Fuenf Modi: "region" (Default, erste PLZ-Ziffer), "kooperation",
@@ -174,7 +268,7 @@ async function selectPeerGroup(
 const COMPARISON_TOOL = {
   name: "generate_chefgespraech_comparison",
   description: "Erstellt die strukturierte Zusammenfassung samt anonymem Vergleich fuer das Chefgespraech.",
-  input_schema: {
+  parameters: {
     type: "object",
     properties: {
       summary: {
@@ -307,12 +401,13 @@ Deno.serve(async (req) => {
     clubWeissRate: peerMetrics.length ? peerMetrics.filter((m) => m.clubWeiss).length / peerMetrics.length : null,
   };
 
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!apiKey) return json({ error: "ANTHROPIC_API_KEY ist nicht als Supabase-Secret hinterlegt." }, 500);
+  const apiKey = Deno.env.get("MISTRAL_API_KEY");
+  if (!apiKey) return json({ error: "MISTRAL_API_KEY ist nicht als Supabase-Secret hinterlegt." }, 500);
 
   const fmtPct = (v: number | null) => v == null ? "-" : (v * 100).toFixed(1).replace(".", ",") + " %";
+  const FH_CODE = randCode("FH");
   const userPrompt =
-    `Fachhaendler ${fhNr}, Vergleichsgruppe: ${groupLabel} (${peerMetrics.length} Vergleichshaendler, anonym).\n\n` +
+    `Fachhaendler ${FH_CODE}, Vergleichsgruppe: ${groupLabel} (${peerMetrics.length} Vergleichshaendler, anonym).\n\n` +
     `Kennzahlen dieses Haendlers (Jahr ${targetMetrics.curYear}):\n` +
     `- Jahresproduktion: ${targetMetrics.curProd} Vertraege\n` +
     `- Wachstum vs. Vorjahr: ${fmtPct(targetMetrics.yoy)}\n` +
@@ -347,39 +442,18 @@ Deno.serve(async (req) => {
         `viele Mitglieder aktuell produzieren, aber ueberbewerte eine niedrige Teilnahmequote nicht als Vorwurf an ` +
         `diesen einzelnen Haendler. `
       : "") +
-    `Schreibe auf Deutsch, professionell, praegnant, ohne Floskeln. Antworte ` +
+    `Schreibe auf Deutsch, professionell, praegnant, ohne Floskeln. Die echte Fachhaendler-Nummer wird dir aus ` +
+    `Datenschutzgruenden NICHT mitgeteilt - verwende in deinem GESAMTEN Antworttext (summary, comparisons, ` +
+    `recommendations) ausschliesslich den Platzhalter "${FH_CODE}" anstelle einer Nummer und erfinde oder ` +
+    `rekonstruiere KEINE echte Nummer. Antworte ` +
     `ausschliesslich ueber das Tool "generate_chefgespraech_comparison".`;
 
-  let aiRes: Response;
-  try {
-    aiRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-5",
-        max_tokens: 4000,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }],
-        tools: [COMPARISON_TOOL],
-        tool_choice: { type: "tool", name: "generate_chefgespraech_comparison" },
-      }),
-    });
-  } catch (e) {
-    return json({ error: "Anthropic-API nicht erreichbar: " + String(e) }, 502);
-  }
+  const aiResult = await callMistralTool(apiKey, systemPrompt, userPrompt, COMPARISON_TOOL, 6000);
+  if (aiResult.error) return json({ error: aiResult.error }, 502);
 
-  if (!aiRes.ok) {
-    const errText = await aiRes.text();
-    return json({ error: `Anthropic-API-Fehler (${aiRes.status}): ${errText}` }, 502);
-  }
-
-  const aiJson = await aiRes.json();
-  const toolUse = (aiJson.content || []).find((c: { type: string }) => c.type === "tool_use");
-  if (!toolUse) return json({ error: "KI-Antwort enthielt keine strukturierte Auswertung." }, 502);
+  // Platzhalter erst jetzt, server-seitig vor der Antwort ans Dashboard,
+  // durch die echte Nummer ersetzen (siehe Pseudonymisierungs-Hinweis oben).
+  const report = deepReplace(aiResult.report, (s: string) => s.split(FH_CODE).join(fhNr));
 
   return json({
     ok: true,
@@ -390,6 +464,6 @@ Deno.serve(async (req) => {
     year: targetMetrics.curYear,
     metrics: { target: targetMetrics, peers: peerStats },
     cooperationContext,
-    report: toolUse.input,
+    report,
   });
 });

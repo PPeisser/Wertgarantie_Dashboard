@@ -146,6 +146,48 @@ create table if not exists public.akp_contacts (
 
 alter table public.akp_contacts add column if not exists prod_monthly_other jsonb not null default '{}'::jsonb;
 
+-- PO-Quote und 3-fuer-2-Quote gab es bisher nur als EIN aktueller LJ-Snapshot
+-- (state.latest.akp[].poQuote/.q3fuer2 aus dem Tagesimport), keine Historie wie
+-- bei prod_monthly. Seit Migration akp_contacts_quota_monthly_snapshots wird
+-- pro Kalendermonat der zuletzt bekannte Stand mitgeschrieben.
+--
+-- WICHTIG - andere Semantik als prod_monthly: prod_monthly[YYYY-MM] ist eine
+-- additive, bereits kumulierte Monats-STUECKZAHL (jeder Import ueberschreibt
+-- den Schluessel, am Monatsende steht der Endwert). poquote_monthly[YYYY-MM] /
+-- q3fuer2_monthly[YYYY-MM] sind dagegen Verhaeltniszahlen (Jahres-kumulativer
+-- Anteil, als Bruch z.B. 0.483 = 48,3%) - "Summe eines Monats" ist dafuer
+-- bedeutungslos. Hier gilt: der ZULETZT BEKANNTE WERT innerhalb dieses
+-- Kalendermonats (jeder Import ueberschreibt den Schluessel des laufenden
+-- Monats; am Monatsende bleibt der Stand per Monatsultimo stehen). Ein
+-- "Monatswert" ist also ein Stand zum Monatsende, KEIN Monatsanteil -
+-- rueckwirkend nicht verfuegbar, waechst erst ab jetzt.
+alter table public.akp_contacts add column if not exists poquote_monthly jsonb not null default '{}'::jsonb;
+alter table public.akp_contacts add column if not exists q3fuer2_monthly jsonb not null default '{}'::jsonb;
+
+-- Stornoquoten je AKP (02.09.2026, "Vermittlerübersicht mit Stornoquoten",
+-- siehe parseAkpStornoquoten in index.html) - EIN aktueller Snapshot, keine
+-- Historie (wie poquote_monthly), da die Quelldatei selbst bereits ein
+-- kumuliertes "laufendes Jahr bis Vormonat"-Stand ist. Werte als Bruch
+-- (nicht ×100). NICHT vertraulich - im Gegensatz zu fh_deckungsgrad für
+-- alle authentifizierten Nutzer über die bestehenden akp_contacts-Policies
+-- lesbar (siehe unten), da diese Quoten laut Nutzervorgabe für alle
+-- Mitarbeiter sichtbar sein sollen. Nur 3 der 4 Quoten aus der Quelldatei
+-- werden gespeichert (1) Widerruf, 2) Nichtzahlung Erstprämie, 4) Wegfall
+-- versichertes Interesse) - Quote 3) "Kulanz/Wegfall (erste 6 Monate)" wird
+-- im Dashboard nicht angezeigt.
+alter table public.akp_contacts add column if not exists storno_widerruf_quote numeric;
+alter table public.akp_contacts add column if not exists storno_erstpraemie_quote numeric;
+alter table public.akp_contacts add column if not exists storno_wegfall_quote numeric;
+alter table public.akp_contacts add column if not exists storno_quoten_updated_at timestamptz;
+
+-- Service-Training (02.09.2026): eigenes Feld getrennt von profi_training,
+-- da ein AKP theoretisch BEIDE Programme abgeschlossen haben kann (Profi-
+-- Training UND Service-Training sind unterschiedliche Trainingsreihen laut
+-- Nutzervorgabe) - ein gemeinsames Feld würde eines der beiden verdecken.
+-- Nur 2 Stufen (kein "erledigt"/"500" wie bei profi_training).
+alter table public.akp_contacts add column if not exists service_training text
+  check (service_training is null or service_training in ('1','2'));
+
 alter table public.akp_contacts enable row level security;
 
 -- Kontaktdaten sind Team-Arbeitswerkzeug: jeder eingeloggte Nutzer (jede Rolle)
@@ -177,6 +219,7 @@ create or replace function public.akp_sync_daily(rows jsonb) returns void
 language plpgsql security definer set search_path = public as $$
 declare
   r jsonb; nm text; vn text; nn text; sp int; mval int; mkey text; monthjson jsonb;
+  poval numeric; f2val numeric; pojson jsonb; f2json jsonb;
 begin
   for r in select * from jsonb_array_elements(rows) loop
     if coalesce(r->>'nr','') = '' then continue; end if;
@@ -189,15 +232,32 @@ begin
     end if;
     mkey := r->>'mk';
     mval := coalesce((r->>'mv')::int, 0);
-    monthjson := case when mkey is not null and mval <> 0 then jsonb_build_object(mkey, mval) else '{}'::jsonb end;
+    -- Bugfix 04.09.2026: vormals "and mval <> 0" - dadurch schrieb ein
+    -- korrigierter, echter 0-Wert (z.B. Monatswechsel-Fix im Client) nie in
+    -- prod_monthly, da der Merge unten (coalesce||excluded) eine leere
+    -- monthjson als No-Op behandelt. Ein stehengebliebener alter Wert konnte
+    -- so nie mehr überschrieben werden (Bug-Report: "Schachermayer
+    -- Aktionsgeräteschutz hat im September noch nichts gemacht", 309
+    -- betroffene AKP per Einmalkorrektur bereinigt). Der Monatsschlüssel wird
+    -- jetzt immer geschrieben, auch bei mval=0.
+    monthjson := case when mkey is not null then jsonb_build_object(mkey, mval) else '{}'::jsonb end;
+    -- po/f2: zuletzt bekannter Stand des Kalendermonats, siehe Spaltenkommentar
+    -- oben - kein Additions-/Ist-0-Filter wie bei mval, da 0 ein gueltiger
+    -- Quotenwert ist (nur explizites null im Import ueberspringen).
+    poval := nullif(r->>'po','')::numeric;
+    f2val := nullif(r->>'f2','')::numeric;
+    pojson := case when mkey is not null and poval is not null then jsonb_build_object(mkey, poval) else '{}'::jsonb end;
+    f2json := case when mkey is not null and f2val is not null then jsonb_build_object(mkey, f2val) else '{}'::jsonb end;
 
-    insert into public.akp_contacts (nr, fh_nr, vorname, nachname, firma, ort, prod_monthly)
-    values (r->>'nr', coalesce(r->>'fh',''), vn, nn, r->>'fi', r->>'or', monthjson)
+    insert into public.akp_contacts (nr, fh_nr, vorname, nachname, firma, ort, prod_monthly, poquote_monthly, q3fuer2_monthly)
+    values (r->>'nr', coalesce(r->>'fh',''), vn, nn, r->>'fi', r->>'or', monthjson, pojson, f2json)
     on conflict (nr) do update set
       fh_nr = excluded.fh_nr,
       firma = coalesce(excluded.firma, akp_contacts.firma),
       ort = coalesce(excluded.ort, akp_contacts.ort),
       prod_monthly = coalesce(akp_contacts.prod_monthly,'{}'::jsonb) || excluded.prod_monthly,
+      poquote_monthly = coalesce(akp_contacts.poquote_monthly,'{}'::jsonb) || excluded.poquote_monthly,
+      q3fuer2_monthly = coalesce(akp_contacts.q3fuer2_monthly,'{}'::jsonb) || excluded.q3fuer2_monthly,
       updated_at = now();
   end loop;
 end;
@@ -205,6 +265,57 @@ $$;
 
 revoke execute on function public.akp_sync_daily(jsonb) from public;
 grant execute on function public.akp_sync_daily(jsonb) to authenticated;
+
+-- Bulk-Import der "Profi Training"-Teilnehmerliste (Blatt "Liste zum
+-- Abgleich", siehe parseProfiTraining in index.html): ergänzt profi_training/
+-- service_training NUR bei bereits vorhandenen AKP (kein Insert für
+-- unbekannte AKP-Nr, Nutzervorgabe 02.09.2026 - "nur bei den Vorhandenen
+-- ergänzen") - "not found" nach dem select bricht die Zeile einfach ab.
+--
+-- Downgrade-Schutz (Nutzervorgabe 02.09.2026): ein bereits gesetzter, laut
+-- rank_of HÖHERER Stand wird nie durch einen niedrigeren aus der Liste
+-- ersetzt (z.B. Stufe 3 bleibt Stufe 3, auch wenn die aktuelle Liste nur
+-- eine erfolgreiche Stufe 1 zeigt). Der Sonderwert "500" (500-Verträge-
+-- Meilenstein, fachlich unabhängig vom Training) wird NIE überschrieben.
+create or replace function public.akp_profi_training_upsert(rows jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  r jsonb;
+  new_pt text; new_st text;
+  cur_pt text; cur_st text;
+  rank_of jsonb := '{"1":1,"2":2,"3":3,"erledigt":4,"500":5}'::jsonb;
+begin
+  for r in select * from jsonb_array_elements(rows) loop
+    if coalesce(r->>'nr','') = '' then continue; end if;
+    new_pt := nullif(r->>'profi_training','');
+    new_st := nullif(r->>'service_training','');
+
+    select profi_training, service_training into cur_pt, cur_st
+      from public.akp_contacts where nr = r->>'nr';
+    if not found then continue; end if;
+
+    update public.akp_contacts set
+      profi_training = case
+        when new_pt is null then profi_training
+        when cur_pt = '500' then profi_training
+        when cur_pt is null then new_pt
+        when coalesce((rank_of->>new_pt)::int,0) > coalesce((rank_of->>cur_pt)::int,0) then new_pt
+        else profi_training
+      end,
+      service_training = case
+        when new_st is null then service_training
+        when cur_st is null then new_st
+        when new_st::int > cur_st::int then new_st
+        else service_training
+      end,
+      updated_at = now()
+    where nr = r->>'nr';
+  end loop;
+end;
+$$;
+
+revoke execute on function public.akp_profi_training_upsert(jsonb) from public;
+grant execute on function public.akp_profi_training_upsert(jsonb) to authenticated;
 
 -- ---------- Fachhändler-Zusatzdaten (Adresse, Kontakt, Ansprechpartner, Segmentierung, Besuch, Notizen) ----------
 
@@ -218,8 +329,14 @@ create table if not exists public.fh_contacts (
   ansprechpartner  text,
   ansprechpartner_email text, -- getrennt von der geschäftlichen E-Mail-Adresse
   homepage         text,
-  -- Feste Segmentierung A+/A/B/C+/C/D (Händlerpotenzial).
+  -- Feste Segmentierung A+/A/B/C+/C/D (Händlerpotenzial). segmentierung_prev
+  -- ist der zuletzt bekannte VORMONATSwert, segmentierung_month der
+  -- Kalendermonat ("YYYY-MM"), für den "segmentierung" aktuell gilt - beide
+  -- werden ausschließlich von der RPC fh_segmentierung_upsert gepflegt
+  -- (siehe unten), Basis für den Trendpfeil im FH-PopUp (fhSegmentTrend).
   segmentierung    text check (segmentierung is null or segmentierung in ('A+','A','B','C+','C','D')),
+  segmentierung_prev text check (segmentierung_prev is null or segmentierung_prev in ('A+','A','B','C+','C','D')),
+  segmentierung_month text,
   letzter_besuch   date,
   sonstige_infos   text,
   -- Monatsproduktion je Fachhändler (analog zu akp_contacts.prod_monthly),
@@ -271,9 +388,11 @@ alter table public.fh_contacts add column if not exists name text;
 -- wird beim Import IMMER auf true gesetzt (jeder FH in der Datei ist Mitglied),
 -- aber nie automatisch wieder zurückgesetzt (siehe fh_sync_miete) - manuelles
 -- Zurücksetzen bleibt im FH-PopUp weiterhin möglich. miete_monthly ("YYYY-MM"
--- -> Vertragsanzahl) und miete_sortiment (Sortiment-Name -> Anzahl) werden per
--- JSONB-Merge aktualisiert, ältere Monate/Sortimente bleiben bei einem neuen
--- Import erhalten, auch wenn die neue Datei sie nicht mehr enthält.
+-- -> Vertragsanzahl) und miete_sortiment ("Jahr" -> Sortiment-Name -> Anzahl,
+-- Nutzervorgabe 30.08.2026: "Verkauftes Sortiment" bezieht sich nur aufs
+-- aktuelle Jahr, davor ein flaches Sortiment-Name -> Anzahl ohne Jahresebene)
+-- werden per JSONB-Merge aktualisiert, ältere Monate/Jahre bleiben bei einem
+-- neuen Import erhalten, auch wenn die neue Datei sie nicht mehr enthält.
 alter table public.fh_contacts add column if not exists club_weiss_mitglied boolean not null default false;
 alter table public.fh_contacts add column if not exists club_weiss_mitgliedsnummer text;
 alter table public.fh_contacts add column if not exists miete_monthly jsonb not null default '{}'::jsonb;
@@ -321,6 +440,62 @@ alter table public.fh_contacts add column if not exists ziel numeric;
 alter table public.fh_contacts drop constraint if exists fh_contacts_segmentierung_check;
 alter table public.fh_contacts add constraint fh_contacts_segmentierung_check
   check (segmentierung is null or segmentierung in ('A+','A','B','C+','C','D'));
+
+-- Vormonats-Trendpfeil für die Händlersegmentierung im FH-PopUp (Nutzervorgabe
+-- 04.09.2026): zusätzlich zum aktuellen Wert (segmentierung) wird der zuletzt
+-- bekannte Vormonatswert (segmentierung_prev) sowie der Monat, für den der
+-- aktuelle Wert gilt (segmentierung_month, "YYYY-MM"), mitgeführt.
+alter table public.fh_contacts add column if not exists segmentierung_prev text;
+alter table public.fh_contacts add column if not exists segmentierung_month text;
+
+alter table public.fh_contacts drop constraint if exists fh_contacts_segmentierung_prev_check;
+alter table public.fh_contacts add constraint fh_contacts_segmentierung_prev_check
+  check (segmentierung_prev is null or segmentierung_prev in ('A+','A','B','C+','C','D'));
+
+-- Schreibt die monatliche Händlersegmentierungs-Datei (Admin-Upload oder
+-- automatischer Mail-Import, siehe parseFhSegmentierung/upsertFhSegmentierung)
+-- je Fachhändler fest. Beim ERSTEN Import eines neuen Kalendermonats
+-- (erkannt an segmentierung_month vs. dem aktuellen Monat, server-seitig via
+-- now() statt Client-Uhrzeit) wird der bisherige Wert nach segmentierung_prev
+-- verschoben - das ist die Basis für den Trendpfeil (fhSegmentTrend im
+-- Client). Ein erneuter Import INNERHALB desselben Monats (z.B. eine
+-- Korrektur) überschreibt segmentierung_prev NICHT nochmal, sonst würde der
+-- "Vormonat" bei mehreren Importen im selben Monat verlorengehen.
+create or replace function public.fh_segmentierung_upsert(rows jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  r jsonb; fhnr text; newseg text; curmonth text;
+  oldseg text; oldmonth text; oldprev text; newprev text;
+begin
+  curmonth := to_char(now(), 'YYYY-MM');
+  for r in select * from jsonb_array_elements(rows) loop
+    fhnr := r->>'fh_nr';
+    if coalesce(fhnr,'') = '' then continue; end if;
+    newseg := nullif(r->>'segmentierung','');
+
+    select segmentierung, segmentierung_month, segmentierung_prev
+      into oldseg, oldmonth, oldprev
+      from public.fh_contacts where fh_nr = fhnr;
+
+    if oldmonth is distinct from curmonth then
+      newprev := oldseg;
+    else
+      newprev := oldprev;
+    end if;
+
+    insert into public.fh_contacts (fh_nr, segmentierung, segmentierung_prev, segmentierung_month)
+    values (fhnr, newseg, newprev, curmonth)
+    on conflict (fh_nr) do update set
+      segmentierung = excluded.segmentierung,
+      segmentierung_prev = excluded.segmentierung_prev,
+      segmentierung_month = excluded.segmentierung_month,
+      updated_at = now();
+  end loop;
+end;
+$$;
+
+revoke execute on function public.fh_segmentierung_upsert(jsonb) from public;
+grant execute on function public.fh_segmentierung_upsert(jsonb) to authenticated;
 
 alter table public.fh_contacts drop constraint if exists fh_contacts_hauptzweig_check;
 alter table public.fh_contacts add constraint fh_contacts_hauptzweig_check
@@ -393,7 +568,10 @@ begin
     if coalesce(fhnr,'') = '' then continue; end if;
     mkey := r->>'mk';
     mval := coalesce((r->>'mv')::int, 0);
-    monthjson := case when mkey is not null and mval <> 0 then jsonb_build_object(mkey, mval) else '{}'::jsonb end;
+    -- Bugfix 04.09.2026: siehe gleichnamiger Kommentar in akp_sync_daily -
+    -- vormals "and mval <> 0" verhinderte, dass ein korrigierter echter
+    -- 0-Wert einen stehengebliebenen alten Monatswert überschreiben konnte.
+    monthjson := case when mkey is not null then jsonb_build_object(mkey, mval) else '{}'::jsonb end;
 
     is_new := not exists (select 1 from public.fh_contacts where fh_nr = fhnr);
 
@@ -666,3 +844,310 @@ select cron.schedule(
   );
   $$
 );
+
+-- ==========================================================================
+-- Mitarbeiterstammdaten (Punkt 10, 01.09.2026): ersetzt die frueher
+-- hartcodierten Konstanten EMPLOYEES/PERS_JAHRESZIELE/PERS_MIETEZIELE/
+-- AKQ_STAFFEL_ZIEL/PERF_GOALS_BY_EMPLOYEE im Client. Neue Mitarbeiter
+-- (inkl. Zielwerten) werden ab jetzt ueber das Admin-Panel angelegt statt
+-- per Code-Deployment. Wird einmalig pro Session via loadEmployees() im
+-- Client geladen, vor dem ersten Rendern.
+create table if not exists public.employees (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  pers_jahresziel numeric not null default 0,
+  miete_jahresziel numeric,
+  akq_staffel_ziel numeric not null default 0,
+  perf_goal_ids jsonb not null default '[1,2,3]'::jsonb,
+  match_aliases text[] not null default '{}',
+  admin_only boolean not null default false,
+  active boolean not null default true,
+  sort_order int not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+comment on column public.employees.name is
+  'Kanonischer Anzeigename. Wird auch als Matching-Ziel in EMP_NORM registriert (siehe matchEmployee() im Client) - der Tagesreport-Rohtext muss exakt oder ueber match_aliases hierauf normalisieren.';
+comment on column public.employees.match_aliases is
+  'Alternative/rohe Schreibweisen aus dem Tagesreport fuer matchEmployee()-Matching. Wird u.a. genutzt, um die admin-only Analyse-Eintraege ("Technischer GL", "ohne Zuordnung") auf ihre rohen GL-Label-Texte im Tagesreport zu matchen, sodass Region_nach_GL/FH_Liste/Sparten/AKQ-Parsing diese automatisch unter dem virtuellen Mitarbeiternamen ablegen - keine Sonderbehandlung an anderer Stelle im Code noetig.';
+comment on column public.employees.admin_only is
+  'true = nur im Admin-Dropdown waehlbar (virtuelle Analyse-Mitarbeiter wie "Technischer GL"/"ohne Zuordnung"), nicht Teil der normalen EMPLOYEES-Liste/Benachrichtigungen/Ranking.';
+comment on column public.employees.active is
+  'Soft-Delete-Flag. Historische Daten (snap.gl/snap.fh/state.dailyGL) haengen am Namen - deshalb bewusst kein Hard-Delete im Standardfall.';
+comment on column public.employees.perf_goal_ids is
+  'Welche der 5 Performance-Dialog-Ziele gelten (siehe PERF_GOALS_BY_EMPLOYEE/PERF_GOAL_TITLES im Client). Ziele 4/5 (PO-Quote Telekom, Gebrauchtgeraete-Quote) sind aktuell Dominik-Szendi-spezifische Sondervertriebs-Snapshot-Berechnungen - ein neuer Mitarbeiter mit diesen Zielen braucht weiterhin Code-Anpassung.';
+
+alter table public.employees enable row level security;
+
+-- Jeder eingeloggte Nutzer braucht die Liste (Dropdown, Ranking, Ziel-
+-- Kacheln, Matching) - analog profiles. Schreiben nur Admin, bewusst NICHT
+-- wie fh_contacts/akp_contacts (dort duerfen alle pflegen): Mitarbeiter-
+-- Zielwerte sind sensibler und laut Nutzervorgabe exklusiv ueber das
+-- Admin-UI zu verwalten.
+create policy "Authenticated read employees" on public.employees
+  for select to authenticated using (true);
+create policy "Admins can insert employees" on public.employees
+  for insert to authenticated with check (public.is_admin());
+create policy "Admins can update employees" on public.employees
+  for update to authenticated using (public.is_admin()) with check (public.is_admin());
+create policy "Admins can delete employees" on public.employees
+  for delete to authenticated using (public.is_admin());
+
+create index if not exists employees_active_idx on public.employees (active, sort_order);
+
+-- Seed: bestehende 6 Mitarbeiter 1:1 aus den bisherigen Code-Konstanten.
+insert into public.employees (name, pers_jahresziel, miete_jahresziel, akq_staffel_ziel, perf_goal_ids, sort_order) values
+  ('Klaus Witting',20000,750,30,'[1,2,3]','1'),
+  ('Florian Hasibeder',15000,750,30,'[1,2,3]','2'),
+  ('Dominik Szendi',55000,null,0,'[1,4,5]','3'),
+  ('Helmut Otto',7000,750,30,'[1,2,3]','4'),
+  ('Peter Peißer',7000,750,30,'[1,2,3]','5'),
+  ('Thomas Eitzinger',15000,null,0,'[1]','6')
+on conflict (name) do nothing;
+
+-- Punkt 9: virtuelle, admin-only Analyse-Eintraege. match_aliases = exakter
+-- GL-Rohtext aus dem Tagesreport, damit matchEmployee() sie automatisch auf
+-- diesen Mitarbeiternamen matcht.
+insert into public.employees (name, admin_only, match_aliases, sort_order) values
+  ('Technischer GL', true, '{"Technischer GL CE DE"}', 100),
+  ('ohne Zuordnung', true, '{}', 101)
+on conflict (name) do nothing;
+
+-- ==========================================================================
+-- Deckungsgrad-Auswertung (01.09.2026): absolut vertrauliche Finanzdaten je
+-- Fachhaendler aus einer separaten Excel-Datei ("DG2_Bericht_AT.xlsx",
+-- Spalten u.a. FH Nr/Bestand/Provision/Schaeden/DB1/DG1/DB2/DG2 je LJ/VJ).
+-- Bestand/Provision/Schaeden duerfen als Zahl angezeigt werden, DG1/DG2/DB1/
+-- DB2 NIEMALS im Klartext - auch nicht an Admins (Nutzervorgabe). Deshalb
+-- bewusst KEINE select-Policy auf der Rohdatentabelle - der einzige
+-- Lesezugriff laeuft ueber die security-definer-Funktion
+-- fh_deckungsgrad_for() weiter unten, die ausschliesslich abgeleitete
+-- Ampel-/Tendenz-Werte und die unkritischen Felder zurueckgibt. Kein KI-/
+-- Anthropic-Bezug irgendwo in dieser Kette (Nutzervorgabe: diese Daten
+-- duerfen nie ueber "das Internet/KI" verteilt werden). Trend (besser/
+-- schlechter/gleich zum Vorjahr) kommt direkt aus den VJ-Spalten derselben
+-- Einspielung - keine eigene Zeithistorie noetig, die Quelldatei liefert LJ
+-- und VJ bereits nebeneinander.
+create table if not exists public.fh_deckungsgrad (
+  fh_nr text primary key,
+  bestand numeric,
+  provision_lj numeric,
+  schaeden_lj integer,
+  schadenbetrag_lj numeric,
+  db1_lj numeric,
+  dg1_lj numeric,
+  db2_lj numeric,
+  dg2_lj numeric,
+  db1_vj numeric,
+  dg1_vj numeric,
+  db2_vj numeric,
+  dg2_vj numeric,
+  imported_at timestamptz not null default now(),
+  imported_by uuid references auth.users(id)
+);
+
+alter table public.fh_deckungsgrad enable row level security;
+
+-- Schreiben (Import) nur durch Admin. Bewusst KEINE select-Policy fuer
+-- irgendeine Rolle -> RLS verweigert jeden direkten Lesezugriff, auch fuer
+-- Admin. Der einzige Weg an die Daten ist die untenstehende Funktion.
+create policy "Admins can insert fh_deckungsgrad" on public.fh_deckungsgrad
+  for insert to authenticated with check (public.is_admin());
+create policy "Admins can update fh_deckungsgrad" on public.fh_deckungsgrad
+  for update to authenticated using (public.is_admin()) with check (public.is_admin());
+
+-- DG-Ampel: rot bis 10 %, gelb bis 30 %, gruen ab 30 % (identische Schwellen
+-- fuer DG1 und DG2, Nutzervorgabe). DB-Ampel (absolute Euro-Betraege,
+-- Haendlergroessen extrem unterschiedlich): Perzentil-Rang unter allen
+-- Haendlern dieser Einspielung - rot = unteres Drittel, gelb = mittleres
+-- Drittel, gruen = oberes Drittel. Tendenz DG: Differenz LJ-VJ in
+-- Prozentpunkten, +/-0,5pp Totzone als "gleich". Tendenz DB: relative
+-- Veraenderung LJ-VJ, +/-5% Totzone.
+create or replace function public.fh_deckungsgrad_for(p_fh_nr text)
+returns table (
+  fh_nr text,
+  bestand numeric,
+  provision_lj numeric,
+  schaeden_lj integer,
+  schadenbetrag_lj numeric,
+  dg1_ampel text,
+  dg1_trend text,
+  dg2_ampel text,
+  dg2_trend text,
+  db1_ampel text,
+  db1_trend text,
+  db2_ampel text,
+  db2_trend text,
+  imported_at timestamptz
+)
+language sql
+security definer
+set search_path = public
+as $$
+  with ranked as (
+    select
+      d.*,
+      percent_rank() over (order by d.db1_lj) as db1_rank,
+      percent_rank() over (order by d.db2_lj) as db2_rank
+    from public.fh_deckungsgrad d
+  )
+  select
+    r.fh_nr,
+    r.bestand,
+    r.provision_lj,
+    r.schaeden_lj,
+    r.schadenbetrag_lj,
+    case when r.dg1_lj is null then null when r.dg1_lj < 0.10 then 'rot' when r.dg1_lj < 0.30 then 'gelb' else 'gruen' end as dg1_ampel,
+    case when r.dg1_lj is null or r.dg1_vj is null then null
+         when r.dg1_lj - r.dg1_vj > 0.005 then 'besser'
+         when r.dg1_vj - r.dg1_lj > 0.005 then 'schlechter'
+         else 'gleich' end as dg1_trend,
+    case when r.dg2_lj is null then null when r.dg2_lj < 0.10 then 'rot' when r.dg2_lj < 0.30 then 'gelb' else 'gruen' end as dg2_ampel,
+    case when r.dg2_lj is null or r.dg2_vj is null then null
+         when r.dg2_lj - r.dg2_vj > 0.005 then 'besser'
+         when r.dg2_vj - r.dg2_lj > 0.005 then 'schlechter'
+         else 'gleich' end as dg2_trend,
+    case when r.db1_lj is null then null when r.db1_rank < 0.333 then 'rot' when r.db1_rank < 0.667 then 'gelb' else 'gruen' end as db1_ampel,
+    case when r.db1_lj is null or r.db1_vj is null or r.db1_vj = 0 then null
+         when (r.db1_lj - r.db1_vj) / abs(r.db1_vj) > 0.05 then 'besser'
+         when (r.db1_vj - r.db1_lj) / abs(r.db1_vj) > 0.05 then 'schlechter'
+         else 'gleich' end as db1_trend,
+    case when r.db2_lj is null then null when r.db2_rank < 0.333 then 'rot' when r.db2_rank < 0.667 then 'gelb' else 'gruen' end as db2_ampel,
+    case when r.db2_lj is null or r.db2_vj is null or r.db2_vj = 0 then null
+         when (r.db2_lj - r.db2_vj) / abs(r.db2_vj) > 0.05 then 'besser'
+         when (r.db2_vj - r.db2_lj) / abs(r.db2_vj) > 0.05 then 'schlechter'
+         else 'gleich' end as db2_trend,
+    r.imported_at
+  from ranked r
+  where r.fh_nr = p_fh_nr;
+$$;
+
+revoke execute on function public.fh_deckungsgrad_for(text) from public;
+grant execute on function public.fh_deckungsgrad_for(text) to authenticated;
+
+-- Root Cause (02.09.2026, real-world reproduziert): fh_deckungsgrad hat
+-- bewusst KEINE select-Policy fuer irgendeine Rolle (siehe Tabellenkommentar
+-- oben - selbst Admins duerfen die Rohwerte nie im Klartext sehen). Ein
+-- direkter Client-seitiger .upsert() ueber PostgREST verlangt aber implizit
+-- eine RETURNING-Klausel (representation), was OHNE Select-Policy IMMER mit
+-- "new row violates row-level security policy" fehlschlaegt - bestaetigt per
+-- SQL-Test: dieselbe INSERT-Anweisung MIT "returning" schlaegt fehl, OHNE
+-- "returning" gelingt sie, mit exakt derselben Fehlermeldung wie in den
+-- echten Supabase-Logs (POST 403) - unabhaengig davon, ob der aufrufende
+-- Account tatsaechlich Admin ist (is_admin() wurde separat verifiziert: true).
+--
+-- Fix nach demselben Muster wie fh_sync_daily/fh_sync_miete/akp_sync_daily:
+-- security-definer RPC-Funktion, die serverseitig upsert't und dabei NIE
+-- Daten zurueckgibt (returns void) - dadurch wird die RETURNING-Klausel nie
+-- ausgeloest und die fehlende Select-Policy bleibt unangetastet (weiterhin
+-- niemand kann die Rohwerte lesen). Da dieser Import (anders als die anderen
+-- sync-Funktionen) admin-only sein soll, wird is_admin() explizit im
+-- Funktionskoerper geprueft (grant execute geht an alle authenticated, da
+-- Postgres EXECUTE nicht rollenspezifisch feiner granular ist).
+create or replace function public.fh_deckungsgrad_upsert(rows jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  r jsonb;
+begin
+  if not public.is_admin() then
+    raise exception 'Nur für Admins';
+  end if;
+  for r in select * from jsonb_array_elements(rows) loop
+    if coalesce(r->>'fh_nr','') = '' then continue; end if;
+    insert into public.fh_deckungsgrad (
+      fh_nr, bestand, provision_lj, schaeden_lj, schadenbetrag_lj,
+      db1_lj, dg1_lj, db2_lj, dg2_lj, db1_vj, dg1_vj, db2_vj, dg2_vj,
+      imported_by, imported_at
+    ) values (
+      r->>'fh_nr',
+      (r->>'bestand')::numeric,
+      (r->>'provision_lj')::numeric,
+      (r->>'schaeden_lj')::integer,
+      (r->>'schadenbetrag_lj')::numeric,
+      (r->>'db1_lj')::numeric, (r->>'dg1_lj')::numeric,
+      (r->>'db2_lj')::numeric, (r->>'dg2_lj')::numeric,
+      (r->>'db1_vj')::numeric, (r->>'dg1_vj')::numeric,
+      (r->>'db2_vj')::numeric, (r->>'dg2_vj')::numeric,
+      auth.uid(), now()
+    )
+    on conflict (fh_nr) do update set
+      bestand = excluded.bestand,
+      provision_lj = excluded.provision_lj,
+      schaeden_lj = excluded.schaeden_lj,
+      schadenbetrag_lj = excluded.schadenbetrag_lj,
+      db1_lj = excluded.db1_lj, dg1_lj = excluded.dg1_lj,
+      db2_lj = excluded.db2_lj, dg2_lj = excluded.dg2_lj,
+      db1_vj = excluded.db1_vj, dg1_vj = excluded.dg1_vj,
+      db2_vj = excluded.db2_vj, dg2_vj = excluded.dg2_vj,
+      imported_by = excluded.imported_by, imported_at = excluded.imported_at;
+  end loop;
+end;
+$$;
+
+revoke execute on function public.fh_deckungsgrad_upsert(jsonb) from public;
+grant execute on function public.fh_deckungsgrad_upsert(jsonb) to authenticated;
+
+-- ---------- FH-Duplikate zusammenführen (04.09.2026) ----------
+-- Manche Fachhändler stehen unter zwei FH-Nr in den Quelldateien (Bug-Report
+-- "Elektrotechnik Vallant KG" - zweifach mit unterschiedlicher FH-Nr, gleicher
+-- Telefonnummer-Kern, vermutlich eine bei Wertgarantie intern vergebene neue
+-- Kundennummer statt Weiterverwendung der bestehenden). Ein Admin kann hier
+-- zwei FH-Nr als denselben realen Betrieb markieren - der Client löst
+-- alias_fh_nr dann ÜBERALL, wo eine FH-Nr aus einer Quelle gelesen wird
+-- (parseAuswertung/buildFhContactsIndices/loadAkpContactsIndex, siehe
+-- resolveFhDup() in index.html), auf canonical_fh_nr auf. Alias-Nr
+-- verschwindet dadurch als eigener Eintrag, Kennzahlen werden addiert.
+create table if not exists public.fh_duplicate_merges (
+  alias_fh_nr     text primary key,
+  canonical_fh_nr text not null,
+  note            text,
+  created_by      uuid references auth.users(id),
+  created_at      timestamptz not null default now(),
+  constraint fh_duplicate_merges_not_self check (alias_fh_nr <> canonical_fh_nr)
+);
+
+alter table public.fh_duplicate_merges enable row level security;
+
+create policy "Authenticated read fh_duplicate_merges"
+  on public.fh_duplicate_merges for select
+  to authenticated
+  using (true);
+
+create policy "Admins can insert fh_duplicate_merges"
+  on public.fh_duplicate_merges for insert
+  to authenticated
+  with check (public.is_admin());
+
+create policy "Admins can delete fh_duplicate_merges"
+  on public.fh_duplicate_merges for delete
+  to authenticated
+  using (public.is_admin());
+
+-- Verhindert Ketten (Alias, der selbst schon kanonisch fuer andere Aliase
+-- ist, oder ein Alias, der schon einer anderen Kanonisch-Nr zugeordnet ist) -
+-- resolveFhDup() im Client bleibt dadurch ein einfacher, nicht rekursiver
+-- Map-Lookup ohne Ketten-Aufloesung.
+create or replace function public.fh_duplicate_merges_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if exists (select 1 from public.fh_duplicate_merges where canonical_fh_nr = new.alias_fh_nr) then
+    raise exception 'FH-Nr % ist bereits kanonische Nummer fuer andere Aliase - keine Ketten erlaubt', new.alias_fh_nr;
+  end if;
+  if exists (select 1 from public.fh_duplicate_merges where alias_fh_nr = new.canonical_fh_nr) then
+    raise exception 'FH-Nr % ist selbst bereits als Alias markiert - keine Ketten erlaubt', new.canonical_fh_nr;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists fh_duplicate_merges_guard_trg on public.fh_duplicate_merges;
+create trigger fh_duplicate_merges_guard_trg
+  before insert or update on public.fh_duplicate_merges
+  for each row execute function public.fh_duplicate_merges_guard();
+
+create index if not exists fh_duplicate_merges_canonical_idx on public.fh_duplicate_merges (canonical_fh_nr);
