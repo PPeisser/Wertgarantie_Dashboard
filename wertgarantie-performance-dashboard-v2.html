@@ -3052,6 +3052,18 @@ function fmtSign(n){ return n==null?"–":(n>0?"+":"")+fmt(n); }
 function fmtPct(n){ if(n==null||!isFinite(n)) return "–"; return (n>0?"+":"")+n.toFixed(1).replace(".",",")+" %"; }
 function fmtDate(s){ if(!s) return "–"; const d=parseISO(s); return String(d.getUTCDate()).padStart(2,"0")+"."+String(d.getUTCMonth()+1).padStart(2,"0")+"."+d.getUTCFullYear(); }
 function fmtNowDateTime(){ const d=new Date(); return String(d.getDate()).padStart(2,"0")+"."+String(d.getMonth()+1).padStart(2,"0")+"."+d.getFullYear()+", "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+" Uhr"; }
+// Wie fmtNowDateTime(), aber für einen konkreten ISO-Zeitstempel statt
+// "jetzt" - Bug-Report 04.09.2026: das Performance-Dialog-PDF zeigte bei
+// "Erstellt am" bisher immer den Zeitpunkt des PDF-Downloads/-Versands
+// (fmtNowDateTime()), nicht den Zeitpunkt, an dem der Mitarbeiter den
+// Bericht tatsächlich abgesendet hat (performance_dialog_reports.
+// submitted_at) - bei einem späteren Admin-Download stand dort faktisch das
+// "Druckdatum" statt des Absende-Zeitpunkts.
+function fmtDateTime(isoStr){
+  if(!isoStr) return fmtNowDateTime();
+  const d=new Date(isoStr); if(isNaN(d)) return fmtNowDateTime();
+  return String(d.getDate()).padStart(2,"0")+"."+String(d.getMonth()+1).padStart(2,"0")+"."+d.getFullYear()+", "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+" Uhr";
+}
 const WOCHENTAGE=["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
 // Für die Miete-Kachel: "Freitag, 21.08.2026" aus einem ISO-Zeitstempel.
 function fmtWeekdayDate(iso){
@@ -3243,7 +3255,7 @@ state = {
   dailyFH: { fhNr: {vortagDatum: vt} }
 }
 ------------------------------------ */
-let state = { latest:null, dailyGL:{}, dailyFH:{}, dailyAKP:{}, dailyAktivierungsquote:{} };
+let state = { latest:null, dailyGL:{}, dailyFH:{}, dailyAKP:{}, dailyAktivierungsquote:{}, dailyGLTotals:{} };
 let akpPeriod="monat";
 // Vollständige AKP-Kontaktdatenbank (10.000+, siehe akp_contacts), einmal pro
 // Sitzung geladen. Ergänzt die Tages-Einspielliste (state.latest.akp) um AKP,
@@ -4167,9 +4179,20 @@ async function handleMieteFile(files){
 
 function mergeSnapshot(snap){
   // Tageshistorie fortschreiben (Prod. Vortag → unter Vortagsdatum ablegen)
+  if(!state.dailyGLTotals) state.dailyGLTotals={};
   for(const [k,g] of Object.entries(snap.gl)){
     if(!state.dailyGL[k]) state.dailyGL[k]={};
     state.dailyGL[k][snap.vortag]=g.vt;
+    // Zusätzlich die vom Report SELBST bereits berechneten kumulierten
+    // Monats-/Jahreswerte (Region_nach_GL, Spalten "Prod. Monat M"/"Prod. J")
+    // je Tag ablegen - robuster als die Summe der täglichen Vortags-Deltas
+    // (state.dailyGL), die bei fehlenden Einspieltagen Lücken hat (Bug-Report
+    // 04.09.2026: Peter Peißers "Monat" im Performance Dialog zeigte 665
+    // statt korrekt 780, weil an mehreren Tagen im August keine Einspielung
+    // vorlag - der Report selbst kennt den korrekten kumulierten Wert aber
+    // trotzdem, siehe perfGoal1Snapshot()/glTotalsFromHistory()).
+    if(!state.dailyGLTotals[k]) state.dailyGLTotals[k]={};
+    state.dailyGLTotals[k][snap.vortag]={monat:g.monat,jahr:g.jahr};
   }
   for(const [nr,f] of Object.entries(snap.fh)){
     if(f.vt>0){ if(!state.dailyFH[nr]) state.dailyFH[nr]={}; state.dailyFH[nr][snap.vortag]=f.vt; }
@@ -4187,38 +4210,23 @@ function mergeSnapshot(snap){
     if(!state.dailyAktivierungsquote[emp]) state.dailyAktivierungsquote[emp]={};
     state.dailyAktivierungsquote[emp][snap.vortag]=q;
   }
-  // Offizielle Monatsproduktion je GL (Blatt "Region_nach_GL", Spalte "Prod.
-  // Monat M", bereits vom Report selbst kumuliert) je Berichtstag ablegen -
-  // analog zur Aktivierungsquote oben. Grund (Bug-Report 04.09.2026, Florian
-  // Hasibeder: App zeigte 781 statt korrekt 999 für August): perfGoal1Snapshot()
-  // berechnet die Monatsproduktion eines abgeschlossenen Berichtsmonats bisher
-  // ausschließlich durch Aufsummieren von state.dailyGL - das setzt lückenlose
-  // Tageshistorie für JEDEN Tag des Monats voraus. Fehlte auch nur an einem
-  // Tag die Einspielung (real: 9 von 26 Berichtstagen im August, bei ALLEN
-  // Mitarbeitern gleichermaßen betroffen), fehlt genau dieser Betrag in der
-  // Summe. Die hier abgelegte, vom Report bereits fertig kumulierte
-  // Monatssumme braucht dagegen nur EINEN erfassten Tag im Zielmonat (im
-  // Idealfall den letzten), um korrekt zu sein - siehe monatIstFromHistory().
-  if(!state.dailyGLMonat) state.dailyGLMonat={};
-  for(const [emp,g] of Object.entries(snap.gl)){
-    if(!state.dailyGLMonat[emp]) state.dailyGLMonat[emp]={};
-    state.dailyGLMonat[emp][snap.vortag]=g.monat;
-  }
-  // "monat" (aktuelle Monatsproduktion) wird ab jetzt NICHT mehr aus der
-  // rohen Report-Spalte bzw. per Monatswechsel-Sonderfallerkennung
-  // übernommen, sondern direkt aus der Tageshistorie (state.dailyFH/
-  // state.dailyAKP, siehe oben) aufsummiert - dieselbe bereits bewährte
-  // Technik wie bei perfGoal1Snapshot() (Bug-Report 03./04.09.2026: die
-  // bisherige Monatswechsel-Erkennung "state.latest.monat!==snap.monat"
-  // ist pro Browser-Sitzung lokal und griff nicht zuverlässig - real
-  // geprüft zeigten danach ~68% aller AKP weiterhin exakt ihren
-  // Vormonatswert als "aktuellen Monat", u.a. bei echten Personen wie
-  // Ronja Hausbauer/Florian Frantar, nicht nur bei Kampagnen-Einträgen).
-  // Ein Monatswechsel "erledigt sich" dadurch von selbst (neuer Monat =
-  // noch leere Tageshistorie = 0), die bisherige monatswechsel-Erkennung
-  // unten für fehlende FH/AKP entfällt komplett.
-  for(const [nr,f] of Object.entries(snap.fh)) f.monat=sumMonthFromDaily(state.dailyFH[nr]||{},snap.jahr,snap.monat);
-  snap.akp.forEach(a=>{ a.monat=sumMonthFromDaily(state.dailyAKP[a.nr||a.name+"@"+a.firma]||{},snap.jahr,snap.monat); });
+  // "monat" (aktuelle Monatsproduktion) für FH/AKP, die HEUTE im Report
+  // stehen, bleibt beim frisch geparsten Rohwert (FH_Liste-/AKP-Liste-Spalte
+  // "Prod. Monat") - der ist für den heutigen Tag bereits authoritativ,
+  // exakt wie die analoge Region_nach_GL-Spalte (siehe glTotalsFromHistory()/
+  // Ziel-1-Fix im Performance Dialog). Bug-Report 04.09.2026 (Folgefund,
+  // nachdem derselbe Fehler bereits bei Ziel 1 im Performance Dialog
+  // gefunden wurde): die VORHERIGE Version hier überschrieb den frischen,
+  // korrekten Rohwert AUCH für heute gelistete FH/AKP mit der Summe der
+  // täglichen Vortags-Deltas (state.dailyFH/state.dailyAKP) - das
+  // unterschätzte "Monat" systemweit im GESAMTEN Dashboard an jedem Tag nach
+  // einer Lücke im Einspielkalender (bestätigt: 14 fehlende Einspieltage im
+  // August 2026), da diese Summe nicht lückenlos ist. NUR für FH/AKP, die
+  // HEUTE NICHT im Report stehen (unten, "fehlender FH/AKP"), gibt es keinen
+  // frischen Rohwert - dort bleibt die Rekonstruktion aus der Tageshistorie
+  // nötig, um nach einem Monatswechsel nicht den alten Vormonatswert
+  // weiterzuschleppen (ursprünglicher Bug-Report 03.09.2026, ~68% aller AKP
+  // betroffen).
   if(!state.latest || snap.date>=state.latest.date){
     // Manche Quellen (z.B. die automatische Tages-Mail "ZE+Produktion_Vortag...")
     // enthalten nicht alle optionalen Pivot-Blätter der vollständigen
@@ -4653,12 +4661,13 @@ function sumDailyAfterMonth(map,year,month){
   let sum=0; for(const d in map) if(d>cutoff) sum+=map[d];
   return sum;
 }
-// Sucht in state.dailyGLMonat[emp] (Tageshistorie der bereits vom Report
-// selbst kumulierten Monatsproduktion, siehe mergeSnapshot()) den letzten
-// Eintrag INNERHALB des angefragten Berichtsmonats - i.d.R. exakt der Report
-// vom letzten Tag dieses Monats. Analog zu aktivierungsquoteFromHistory().
-function monatIstFromHistory(emp,year,month){
-  const dm=state.dailyGLMonat&&state.dailyGLMonat[emp];
+// Findet in state.dailyGLTotals[k] (Tageshistorie der vom Report SELBST
+// berechneten kumulierten Monats-/Jahreswerte, siehe mergeSnapshot()) den
+// letzten Eintrag INNERHALB des angefragten Berichtsmonats - i.d.R. exakt
+// der Report vom letzten Tag dieses Monats. Gleiches Prinzip wie
+// aktivierungsquoteFromHistory().
+function glTotalsFromHistory(k,year,month){
+  const dm=state.dailyGLTotals&&state.dailyGLTotals[k];
   if(!dm) return null;
   const prefix=year+"-"+String(month).padStart(2,"0");
   let best=null;
@@ -4668,38 +4677,40 @@ function monatIstFromHistory(emp,year,month){
 // Ziel 1: Persönliches Produktionsziel. Der Performance Dialog berichtet
 // immer über den ABGESCHLOSSENEN Vormonat - state.latest/glRow() zeigen zu
 // diesem Zeitpunkt aber bereits den NEUEN, laufenden Monat (die tägliche
-// Einspielung ist inzwischen weitergelaufen). Monats-/Jahreswert werden
-// deshalb aus der Tages-Historie für genau den berichteten Monat/Zeitraum
-// nachgerechnet, statt die "aktuellen" glRow()-Werte zu verwenden, die zum
-// Ausfüllzeitpunkt den falschen Monat zeigen würden.
+// Einspielung ist inzwischen weitergelaufen).
+// Bug-Report 04.09.2026 (zwei Ursachen, nacheinander gefunden): (1)
+// Jahreswert aus der GESAMTEN Tageshistorie seit Jahresbeginn berechnet -
+// reicht nicht lückenlos zurück (Dominik Szendi: state.dailyGL erst seit
+// 21.07.2026 geführt) - Zwischenfix: Jahreswert = aktueller kumulierter Wert
+// minus Tage NACH dem Berichtsmonat. (2) Auch dieser Zwischenfix und der
+// bisherige Monatswert (Summe der täglichen Vortags-Deltas) waren weiterhin
+// anfällig für einzelne FEHLENDE Einspieltage MITTEN im Berichtsmonat (Peter
+// Peißer, August 2026: mehrere Tage ohne Einspielung, Monatswert dadurch
+// 665 statt korrekt 780 lt. Report). Endgültiger Fix: der Report liefert
+// den kumulierten Monats-/Jahreswert (Region_nach_GL, "Prod. Monat M"/
+// "Prod. J") bereits selbst fertig berechnet - dieser wird jetzt direkt für
+// den letzten Tag des Berichtsmonats übernommen (glTotalsFromHistory()),
+// statt ihn aus lückenhaften Tages-Deltas neu zusammenzurechnen. Die
+// bisherige Tageshistorie-Berechnung bleibt nur Fallback für Berichtsmonate
+// ohne erfassten dailyGLTotals-Eintrag (z.B. sehr alte Berichte vor
+// Einführung dieser Historie).
 function perfGoal1Snapshot(emp,year,month){
-  const dm=state.dailyGL[glKey(emp)]||{};
-  // Monatswert bevorzugt aus der bereits vom Report kumulierten Summe
-  // (monatIstFromHistory, braucht nur einen erfassten Tag im Zielmonat) statt
-  // durch Aufsummieren der einzelnen Tagesdeltas (sumMonthFromDaily) - letzteres
-  // unterschlägt lautlos jeden Tag, an dem keine Einspielung erfolgte (Bug-
-  // Report 04.09.2026, siehe mergeSnapshot()-Kommentar bei dailyGLMonat).
-  // Fallback auf die Summe nur für Monate ohne erfassten Historie-Eintrag
-  // (z.B. vor Einführung von dailyGLMonat).
-  const officialMonat=monatIstFromHistory(glKey(emp),year,month);
-  const monatIst=officialMonat!=null?officialMonat:sumMonthFromDaily(dm,year,month);
-  let jahrIst;
-  if(state.latest.jahr===year){
-    // Jahreswert bis Ende des berichteten Monats = aktueller kumulierter
-    // Jahreswert (glRow().jahr, immer korrekt "bis heute") MINUS die Tage
-    // NACH dem berichteten Monat bis heute - robuster als die Summe der
-    // GESAMTEN Tageshistorie seit Jahresbeginn (vorherige Berechnung), die
-    // nicht lückenlos bis Jahresanfang zurückreicht (Bug-Report 04.09.2026:
-    // "Persönliches Ziel Jahr" zeigte bei Dominik Szendi 3.965 statt korrekt
-    // 34.583, da state.dailyGL erst seit 21.07.2026 geführt wird). Die neue
-    // Berechnung braucht nur Tageshistorie ab Ende des berichteten Monats,
-    // nicht seit Jahresbeginn.
-    jahrIst=((state.latest.gl[glKey(emp)]||{}).jahr||0)-sumDailyAfterMonth(dm,year,month);
+  const k=glKey(emp);
+  const dm=state.dailyGL[k]||{};
+  const official=glTotalsFromHistory(k,year,month);
+  let jahrIst, monatIst;
+  if(official){
+    jahrIst=official.jahr;
+    monatIst=official.monat;
+  }else if(state.latest.jahr===year){
+    jahrIst=((state.latest.gl[k]||{}).jahr||0)-sumDailyAfterMonth(dm,year,month);
+    monatIst=sumMonthFromDaily(dm,year,month);
   }else{
     // Berichtsjahr liegt nicht im aktuellen Jahr (z.B. Nacherfassung eines
     // Vorjahres) - kein aktueller Jahreswert verfügbar, daher weiterhin
     // best-effort aus der Tageshistorie.
     jahrIst=sumYearThroughMonthFromDaily(dm,year,month);
+    monatIst=sumMonthFromDaily(dm,year,month);
   }
   const jahrZiel=PERS_JAHRESZIELE[emp]||0;
   const monatZiel=goals[emp+"|"+year+"-"+String(month).padStart(2,"0")]||0;
@@ -5152,13 +5163,14 @@ async function submitPerfReport(){
     // abschließen und den Bericht mit is_draft:true wieder zurückstufen.
     while(perfDraftSaveBusy) await new Promise(r=>setTimeout(r,50));
     const goalsPayload=perfGoalIds.map(g=>({goal_id:g,snapshot:perfSnapshots[g],answers:perfAnswers[g]}));
+    const submittedAt=new Date().toISOString();
     const { error }=await sb.from("performance_dialog_reports").upsert({
       employee:perfEmployee,year:perfReportYear,month:perfReportMonth,goals:goalsPayload,
-      is_draft:false,submitted_at:new Date().toISOString(),submitted_by:supaUser.id,updated_at:new Date().toISOString()
+      is_draft:false,submitted_at:submittedAt,submitted_by:supaUser.id,updated_at:submittedAt
     },{onConflict:"employee,year,month"});
     if(error) throw error;
     toast("Gespeichert ✓ PDF wird erstellt und versendet …");
-    const {mailFailures}=await exportPerfReportPdf(perfEmployee,perfReportYear,perfReportMonth,goalsPayload,{mailToSelf:true,mailToAdmin:true});
+    const {mailFailures}=await exportPerfReportPdf(perfEmployee,perfReportYear,perfReportMonth,goalsPayload,{mailToSelf:true,mailToAdmin:true,submittedAt});
     renderPerfDoneOverview(goalsPayload,mailFailures);
     if(mailFailures&&mailFailures.length){
       toast("Performance Dialog gespeichert ✓ - Mailversand an "+mailFailures.join(", ")+" ist fehlgeschlagen. Bitte Admin informieren.");
@@ -5215,7 +5227,7 @@ function renderPerfDoneOverview(goalsPayload,mailFailures){
 // Admin heruntergeladen) - mehrseitig mit Seitenumbruch an Zielblock-Grenzen,
 // analog zu den übrigen PDF-Exporten. Nutzt dieselben CSS-Klassen (ac-grid/
 // ac-lbl/ac-val) wie die Live-Ansicht, da die Box im selben Dokument hängt.
-async function buildPerfReportPdfDoc(employee,year,month,goalsPayload){
+async function buildPerfReportPdfDoc(employee,year,month,goalsPayload,submittedAt){
   if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)) throw new Error("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals versuchen.");
   const box=document.createElement("div");
   box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
@@ -5237,7 +5249,7 @@ async function buildPerfReportPdfDoc(employee,year,month,goalsPayload){
         <div style="font-size:21px;font-weight:900;color:#062A3F">Performance Dialog</div>
         <div style="font-size:12px;color:#5D7284;margin-top:3px">${escapeHtml(employee)} · ${MONATE[month-1]} ${year}</div>
       </div>
-      <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Performance Dialog<br>Erstellt am: ${fmtNowDateTime()}</div>
+      <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Performance Dialog<br>Erstellt am: ${fmtDateTime(submittedAt)}</div>
     </div>
     ${goalBlocks}
   `;
@@ -5283,7 +5295,7 @@ async function buildPerfReportPdfDoc(employee,year,month,goalsPayload){
 // Download aus der Übersicht nur {download:true}.
 async function exportPerfReportPdf(employee,year,month,goalsPayload,opts){
   opts=opts||{};
-  const {pdf,filename}=await buildPerfReportPdfDoc(employee,year,month,goalsPayload);
+  const {pdf,filename}=await buildPerfReportPdfDoc(employee,year,month,goalsPayload,opts.submittedAt);
   if(opts.download) pdf.save(filename);
   const mailFailures=[];
   if(opts.mailToSelf||opts.mailToAdmin){
@@ -5412,7 +5424,7 @@ function renderPerfAdminGrid(){
       const rep=(perfAdminReports[emp]||{})[m];
       if(!rep) return;
       toast("PDF wird erstellt …");
-      try{ await exportPerfReportPdf(emp,perfAdminYear,m,rep.goals||[],{download:true}); }
+      try{ await exportPerfReportPdf(emp,perfAdminYear,m,rep.goals||[],{download:true,submittedAt:rep.submitted_at}); }
       catch(e){ toast("PDF-Erstellung fehlgeschlagen: "+(e.message||e)); }
     };
   });
@@ -5464,7 +5476,7 @@ async function buildCombinedPerfReportsPdfDoc(reports,year,month){
     }).join("");
     return `<div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:10px;margin:26px 0 16px">
       <div style="font-size:17px;font-weight:900;color:#062A3F">${escapeHtml(rep.employee)}</div>
-      <div style="font-size:10.5px;color:#5D7284;text-align:right">${MONATE[month-1]} ${year}<br>Erstellt am: ${nowStr}</div>
+      <div style="font-size:10.5px;color:#5D7284;text-align:right">${MONATE[month-1]} ${year}<br>Erstellt am: ${fmtDateTime(rep.submitted_at)}</div>
     </div>${goalBlocks}`;
   }).join("");
   box.innerHTML=`
@@ -5851,6 +5863,12 @@ function migrateState(){
   const L=state.latest; if(!L) return;
   let changed=false;
   if(!state.dailyAKP){ state.dailyAKP={}; changed=true; }
+  // Neuere Tageshistorie-Felder (erst nach diesem Datum eingeführt) - ein
+  // aus der Datenbank geladener älterer Speicherstand (state=p in loadAll())
+  // hat sie noch nicht, mergeSnapshot() würde sonst beim ersten Zugriff
+  // abstürzen (Cannot set properties of undefined).
+  if(!state.dailyGLTotals){ state.dailyGLTotals={}; changed=true; }
+  if(!state.dailyAktivierungsquote){ state.dailyAktivierungsquote={}; changed=true; }
   if(L.glPlan==null){
     L.glPlan={}; L.glPlan[AT_KEY]=0;
     for(const f of Object.values(L.fh||{})){
@@ -6252,7 +6270,7 @@ function renderEmpRanking(){
         <span style="width:20px;flex:none;font-weight:800;color:var(--muted)">${i+1}.</span>
         <div style="flex:1;min-width:0">
           <div style="font-weight:700">${escapeHtml(r.emp)}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Ziel ${fmt(r.ziel)} · Stand ${fmt(r.ist)} · Hochr. ${fmt(r.hr)} <span style="color:${r.hrDelta==null?"var(--muted)":r.hrDelta>=0?"var(--pos)":"var(--neg)"};font-weight:700">(${fmtPct(r.hrDelta)})</span></div>
+          <div style="font-size:11px;color:var(--muted);margin-top:1px">Ziel ${fmt(r.ziel)} · Stand ${fmt(r.ist)} · Hochr. ${fmt(r.hr)} <span style="color:${r.hrDelta==null?"var(--muted)":r.hrDelta>=0?"var(--pos)":"var(--neg)"};font-weight:700">(${fmtPct(r.hrDelta)})</span></div>
         </div>
         <div class="bar" style="flex:2;height:10px"><div class="fill" style="width:${Math.min(r.pct,100)}%;background:${r.pct>=100?"var(--pos)":"var(--wg-blue)"}"></div></div>
         <b style="width:60px;text-align:right;flex:none">${r.pct.toFixed(1).replace(".",",")+" %"}</b>
