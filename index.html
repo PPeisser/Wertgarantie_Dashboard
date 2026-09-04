@@ -4178,6 +4178,23 @@ function mergeSnapshot(snap){
     if(!state.dailyAktivierungsquote[emp]) state.dailyAktivierungsquote[emp]={};
     state.dailyAktivierungsquote[emp][snap.vortag]=q;
   }
+  // Offizielle Monatsproduktion je GL (Blatt "Region_nach_GL", Spalte "Prod.
+  // Monat M", bereits vom Report selbst kumuliert) je Berichtstag ablegen -
+  // analog zur Aktivierungsquote oben. Grund (Bug-Report 04.09.2026, Florian
+  // Hasibeder: App zeigte 781 statt korrekt 999 für August): perfGoal1Snapshot()
+  // berechnet die Monatsproduktion eines abgeschlossenen Berichtsmonats bisher
+  // ausschließlich durch Aufsummieren von state.dailyGL - das setzt lückenlose
+  // Tageshistorie für JEDEN Tag des Monats voraus. Fehlte auch nur an einem
+  // Tag die Einspielung (real: 9 von 26 Berichtstagen im August, bei ALLEN
+  // Mitarbeitern gleichermaßen betroffen), fehlt genau dieser Betrag in der
+  // Summe. Die hier abgelegte, vom Report bereits fertig kumulierte
+  // Monatssumme braucht dagegen nur EINEN erfassten Tag im Zielmonat (im
+  // Idealfall den letzten), um korrekt zu sein - siehe monatIstFromHistory().
+  if(!state.dailyGLMonat) state.dailyGLMonat={};
+  for(const [emp,g] of Object.entries(snap.gl)){
+    if(!state.dailyGLMonat[emp]) state.dailyGLMonat[emp]={};
+    state.dailyGLMonat[emp][snap.vortag]=g.monat;
+  }
   // "monat" (aktuelle Monatsproduktion) wird ab jetzt NICHT mehr aus der
   // rohen Report-Spalte bzw. per Monatswechsel-Sonderfallerkennung
   // übernommen, sondern direkt aus der Tageshistorie (state.dailyFH/
@@ -4627,16 +4644,36 @@ function sumDailyAfterMonth(map,year,month){
   let sum=0; for(const d in map) if(d>cutoff) sum+=map[d];
   return sum;
 }
+// Sucht in state.dailyGLMonat[emp] (Tageshistorie der bereits vom Report
+// selbst kumulierten Monatsproduktion, siehe mergeSnapshot()) den letzten
+// Eintrag INNERHALB des angefragten Berichtsmonats - i.d.R. exakt der Report
+// vom letzten Tag dieses Monats. Analog zu aktivierungsquoteFromHistory().
+function monatIstFromHistory(emp,year,month){
+  const dm=state.dailyGLMonat&&state.dailyGLMonat[emp];
+  if(!dm) return null;
+  const prefix=year+"-"+String(month).padStart(2,"0");
+  let best=null;
+  for(const d in dm) if(d.startsWith(prefix)&&(best==null||d>best)) best=d;
+  return best==null?null:dm[best];
+}
 // Ziel 1: Persönliches Produktionsziel. Der Performance Dialog berichtet
 // immer über den ABGESCHLOSSENEN Vormonat - state.latest/glRow() zeigen zu
 // diesem Zeitpunkt aber bereits den NEUEN, laufenden Monat (die tägliche
 // Einspielung ist inzwischen weitergelaufen). Monats-/Jahreswert werden
-// deshalb aus der Tages-Historie (state.dailyGL) für genau den berichteten
-// Monat/Zeitraum nachgerechnet, statt die "aktuellen" glRow()-Werte zu
-// verwenden, die zum Ausfüllzeitpunkt den falschen Monat zeigen würden.
+// deshalb aus der Tages-Historie für genau den berichteten Monat/Zeitraum
+// nachgerechnet, statt die "aktuellen" glRow()-Werte zu verwenden, die zum
+// Ausfüllzeitpunkt den falschen Monat zeigen würden.
 function perfGoal1Snapshot(emp,year,month){
   const dm=state.dailyGL[glKey(emp)]||{};
-  const monatIst=sumMonthFromDaily(dm,year,month);
+  // Monatswert bevorzugt aus der bereits vom Report kumulierten Summe
+  // (monatIstFromHistory, braucht nur einen erfassten Tag im Zielmonat) statt
+  // durch Aufsummieren der einzelnen Tagesdeltas (sumMonthFromDaily) - letzteres
+  // unterschlägt lautlos jeden Tag, an dem keine Einspielung erfolgte (Bug-
+  // Report 04.09.2026, siehe mergeSnapshot()-Kommentar bei dailyGLMonat).
+  // Fallback auf die Summe nur für Monate ohne erfassten Historie-Eintrag
+  // (z.B. vor Einführung von dailyGLMonat).
+  const officialMonat=monatIstFromHistory(glKey(emp),year,month);
+  const monatIst=officialMonat!=null?officialMonat:sumMonthFromDaily(dm,year,month);
   let jahrIst;
   if(state.latest.jahr===year){
     // Jahreswert bis Ende des berichteten Monats = aktueller kumulierter
