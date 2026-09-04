@@ -4642,37 +4642,50 @@ function akqStaffelnInJahrFor(emp,year){
   }
   return {alle,erst};
 }
-// Ob ein FH im gegebenen Jahr mind. 1 Vertrag produziert hat: bevorzugt aus
-// der heutigen Tages-Auswertung (f.lj = Jahresproduktion laut FH_Liste),
-// sonst Fallback auf die durable fh_contacts.prod_monthly-Summe des Jahres
-// (fhContactsBulkIndex) - sonst gilt ein Händler ohne HEUTIGE Produktion
-// als "nicht aktiviert", selbst wenn er dieses Jahr bereits produziert hat
-// (Nutzeranfrage 30.08.2026: Aktivierungsquote im Mitarbeitergespräch nicht
-// künstlich niedrig durch reine Tageszufälligkeit).
-function fhActiveThisYear(nr,year){
+// Ob ein FH BIS EINSCHLIESSLICH eines bestimmten Berichtsmonats mind. 1
+// Vertrag produziert hat. Wie beim Ziel-1-Jahreswert (perfGoal1Snapshot,
+// Bug-Report 04.09.2026) reicht die Tageshistorie (state.dailyFH) nicht
+// lückenlos bis Jahresanfang zurück - deshalb wird der aktuelle,
+// kumulierte Jahreswert (fh.lj, "bis heute") um die Tage NACH dem
+// Berichtsmonat bereinigt, statt die gesamte Tageshistorie zu summieren.
+// Fallback auf die durable fh_contacts.prod_monthly-Summe (fhContactsBulkIndex,
+// monatsgenaue Schlüssel "YYYY-MM"), wenn der FH gar nicht in state.latest.fh
+// steht - ebenfalls nur Monate bis einschließlich des Berichtsmonats.
+function fhProdThroughMonth(nr,year,month){
   const fh=state.latest.fh[nr];
-  if(fh) return fh.lj>0;
+  if(fh) return fh.lj-sumDailyAfterMonth(state.dailyFH[nr]||{},year,month);
   const pm=fhContactsBulkIndex&&fhContactsBulkIndex[nr];
-  if(!pm) return false;
-  const prefix=String(year);
-  return Object.entries(pm).some(([k,v])=>k.startsWith(prefix)&&(v||0)>0);
+  if(!pm) return 0;
+  const cutoff=year+"-"+String(month).padStart(2,"0");
+  return Object.entries(pm).filter(([k])=>k.startsWith(String(year))&&k<=cutoff).reduce((s,[,v])=>s+(v||0),0);
 }
+function fhActiveThroughMonth(nr,year,month){ return fhProdThroughMonth(nr,year,month)>0; }
 const AKTIVIERUNGSQUOTE_JAHRE=[2024,2025,2026]; // fix lt. Zieldefinition, nicht automatisch rollierend
-function aktivierungsquoteFor(emp,year){
+// Bug-Report 04.09.2026: Aktivierungsquote im Performance Dialog wurde bisher
+// komplett aus dem LIVE-Stand von HEUTE berechnet (state.latest.akq/fh) statt
+// aus dem Stand per Ende des Berichtsmonats - ein Bericht für August zeigte
+// dadurch, abhängig davon wann er ausgefüllt/angesehen wurde, einen anderen
+// Wert als den tatsächlichen Stand per 31.08. Fix: sowohl die Grundgesamtheit
+// ("angelegt", per a.beginn <= Berichtsmonat-Ende) als auch die Aktivierung
+// ("aktiv", über fhActiveThroughMonth) sind jetzt auf den Berichtsmonat
+// eingefroren, exakt wie beim Ziel-1-Jahreswert.
+function aktivierungsquoteFor(emp,year,month){
   const s=state.latest; if(!s||!s.akq) return {angelegt:0,aktiv:0,quote:null};
+  const cutoff=year+"-"+String(month).padStart(2,"0")+"-31";
   const seen=new Set(); let angelegt=0,aktiv=0;
   for(const a of s.akq){
     if(a.emp!==emp) continue;
     if(!AKTIVIERUNGSQUOTE_JAHRE.includes(a.beginnJahr)) continue;
+    if(a.beginn&&a.beginn>cutoff) continue;
     if(seen.has(a.nr)) continue; seen.add(a.nr);
     angelegt++;
-    if(fhActiveThisYear(a.nr,year)) aktiv++;
+    if(fhActiveThroughMonth(a.nr,year,month)) aktiv++;
   }
   return {angelegt,aktiv,quote:angelegt>0?aktiv/angelegt:null};
 }
-function perfGoal2Snapshot(emp,year){
+function perfGoal2Snapshot(emp,year,month){
   const staffeln=akqStaffelnInJahrFor(emp,year);
-  const akt=aktivierungsquoteFor(emp,year);
+  const akt=aktivierungsquoteFor(emp,year,month);
   return {year,staffeln_ist:staffeln.alle,staffeln_ziel:AKQ_STAFFEL_ZIEL[emp]||0,
     aktivierung_angelegt:akt.angelegt,aktivierung_aktiv:akt.aktiv,aktivierung_quote:akt.quote};
 }
@@ -4734,7 +4747,7 @@ function perfGoal5Snapshot(emp){
 }
 function perfGoalSnapshot(goalId,emp,year,month){
   if(goalId===1) return perfGoal1Snapshot(emp,year,month);
-  if(goalId===2) return perfGoal2Snapshot(emp,year);
+  if(goalId===2) return perfGoal2Snapshot(emp,year,month);
   if(goalId===3) return perfGoal3Snapshot(emp,year,month);
   if(goalId===4) return perfGoal4Snapshot(emp);
   if(goalId===5) return perfGoal5Snapshot(emp);
