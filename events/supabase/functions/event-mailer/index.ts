@@ -79,11 +79,15 @@ function viennaLocalToUtc(dateStr: string, timeStr: string): Date {
   return new Date(naiveUtc.getTime() - offsetHours * 3600000);
 }
 
-// Unauffälliger Abmelde-Link am Ende von Bestätigungs-/Reminder-Mails - führt
-// zur separaten cancel-registration Edge Function, die die 48h-Frist selbst
-// nochmal serverseitig prüft.
+// Unauffälliger Abmelde-Link am Ende von Bestätigungs-/Reminder-Mails -
+// führt zur statischen Seite events/abmelden.html (NICHT direkt zur
+// cancel-registration Edge Function: Supabase liefert bei GET-Requests
+// kein HTML aus, sondern schreibt den Content-Type zwangsweise auf
+// text/plain um, wodurch nur der rohe HTML-Quelltext angezeigt würde).
+// abmelden.html ruft die Edge Function per fetch() als JSON-API auf und
+// prüft dort serverseitig nochmal die 48h-Frist.
 function cancelLinkHtml(registrationId: string) {
-  const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/cancel-registration?id=${registrationId}`;
+  const url = `https://events.wgaustria.at/abmelden.html?id=${registrationId}`;
   return `<p style="color:#9BB0BE;font-size:11.5px;margin-top:22px">Kannst du doch nicht kommen? <a href="${url}" style="color:#9BB0BE;text-decoration:underline">Hier von der Veranstaltung abmelden</a>.</p>`;
 }
 

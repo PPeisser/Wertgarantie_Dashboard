@@ -475,9 +475,8 @@ Edge Functions → Secrets):
    Formulars – persönlich in Du-Form ("Hallo Vorname, ... Dein Wertgarantie
    Österreich Team"). Enthält ganz unten einen unauffälligen, klein
    gehaltenen Abmelde-Link ("Kannst du doch nicht kommen? Hier von der
-   Veranstaltung abmelden"), der zur separaten Edge Function
-   [`cancel-registration`](events/supabase/functions/cancel-registration/index.ts)
-   führt (siehe unten).
+   Veranstaltung abmelden"), der zur statischen Seite
+   [`events/abmelden.html`](events/abmelden.html) führt (siehe unten).
 2. **Zwei Reminder** an jede Anmeldung mit E-Mail – Betreff `Reminder:
    <normaler Betreff>`, inhaltlich wie die Bestätigungsmail (Termin-Details,
    Maps-Link) plus demselben Abmelde-Link:
@@ -499,22 +498,31 @@ Edge Functions → Secrets):
 4. **SMTP-Test** (`{"type":"test","to":"..."}`, mit `x-cron-secret`-Header):
    verschickt eine einzelne Testmail, um die SMTP-Verbindung zu prüfen.
 
-### Selbst-Abmeldung (Edge Function `cancel-registration`)
+### Selbst-Abmeldung (`events/abmelden.html` + Edge Function `cancel-registration`)
 
+Der Abmelde-Link in Bestätigungs-/Reminder-Mails führt zur statischen Seite
+[`events/abmelden.html`](events/abmelden.html) (`.../abmelden.html?id=<registration_id>`,
+Registrierungs-ID als UUID-Zugriffs-Token, kein Login nötig) – **nicht**
+direkt zur Edge Function. Grund: Supabase Edge Functions liefern bei
+GET-Requests grundsätzlich kein `text/html` aus – die Plattform schreibt
+den Content-Type zwangsweise auf `text/plain` um (offiziell dokumentiertes
+Verhalten, kein Bug), wodurch ein direkter Funktions-Link im Browser nur
+den rohen HTML-Quelltext als Text angezeigt hätte statt einer gerenderten
+Seite.
+
+`abmelden.html` ruft dafür
 [`events/supabase/functions/cancel-registration/index.ts`](events/supabase/functions/cancel-registration/index.ts)
-ist öffentlich per einfachem Link (kein Login) aufrufbar –
-`.../functions/v1/cancel-registration?id=<registration_id>`. Die
-Registrierungs-ID (UUID) dient dabei als Zugriffs-Token. Prüft
-serverseitig die 48h-Frist (Zeitzone Europa/Wien, DST-sicher); ist noch
-mindestens 48h bis zum Termin, zeigt **GET** nur eine Bestätigungsseite mit
-Termin-Info und Button, gelöscht wird erst durch den **POST** beim
-tatsächlichen Klick auf den Button. Grund: Firmen-Mailgateways rufen Links
-in eingehenden Mails automatisch per GET ab, um sie auf Schadsoftware zu
-prüfen ("Link-Prefetching") – ein sofort löschendes GET würde dadurch
-Anmeldungen löschen, ohne dass die Person die Mail überhaupt gesehen hat.
-Ist die 48h-Frist bereits vorbei, erscheint ein Hinweis, sich direkt an die
-Veranstaltung zu wenden. Antwortet immer mit einer kleinen, gebrandeten
-Bestätigungs-/Hinweisseite (kein Redirect zurück zur App nötig).
+per `fetch()` als reine JSON-API auf. **GET** liefert nur Anzeige-Infos
+(Termin, ob eine Abmeldung noch möglich ist) und löscht nichts; **POST**
+löscht wirklich. Die Seite löst den POST erst beim tatsächlichen Klick auf
+den "Ja, endgültig abmelden"-Button aus, nicht schon beim Laden – Grund:
+Firmen-Mailgateways rufen Links in eingehenden Mails automatisch per GET
+ab, um sie auf Schadsoftware zu prüfen ("Link-Prefetching"); ein sofort
+löschendes GET würde dadurch Anmeldungen löschen, ohne dass die Person die
+Mail überhaupt gesehen hat (das ist real passiert). Die Function prüft bei
+beiden Methoden serverseitig die 48h-Frist (Zeitzone Europa/Wien,
+DST-sicher); ist sie bereits vorbei, zeigt die Seite einen Hinweis, sich
+direkt an die Veranstaltung zu wenden.
 
 Der Mailversand läuft über **SMTP** (Easyname-Postfach `events@wgaustria.at`)
 und braucht folgende Secrets, die **einmalig manuell** im Supabase-Dashboard
