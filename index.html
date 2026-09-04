@@ -658,6 +658,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div class="goals" id="goalCards"></div>
     <div id="empRankingBlock"></div>
     <div id="akqStaffelBar"></div>
+    <div id="aktivierungsquoteBar"></div>
 
     <h2 class="sec"><svg class="arr" viewBox="0 0 60 30"><path d="M4 22 C 20 10, 35 8, 48 12" fill="none" stroke="#009FE3" stroke-width="6" stroke-linecap="round"/><path d="M39 4 L 56 13 L 37 20 Z" fill="#009FE3"/></svg> Produktmix &amp; Sparten</h2>
     <div class="quad">
@@ -3242,7 +3243,7 @@ state = {
   dailyFH: { fhNr: {vortagDatum: vt} }
 }
 ------------------------------------ */
-let state = { latest:null, dailyGL:{}, dailyFH:{}, dailyAKP:{} };
+let state = { latest:null, dailyGL:{}, dailyFH:{}, dailyAKP:{}, dailyAktivierungsquote:{} };
 let akpPeriod="monat";
 // Vollständige AKP-Kontaktdatenbank (10.000+, siehe akp_contacts), einmal pro
 // Sitzung geladen. Ergänzt die Tages-Einspielliste (state.latest.akp) um AKP,
@@ -3477,6 +3478,32 @@ function parseAuswertung(wb){
     }
     snap.akq=Array.from(akqMap.values());
   }
+
+  /* --- PO + AKQ: offizielle Aktivierungsquote je RVL/GL ---
+     Bug-Report 04.09.2026: die App berechnete die "Aktivierungsquote" (Ziel 2
+     im Performance Dialog) bisher SELBST aus AKQ-Liste + FH_Liste - mit
+     anderen Kriterien als der bereits im Report enthaltene, offizielle Wert
+     (Blatt "PO + AKQ", Tabelle "RVL / GL" / "Aktivierungsquote", pro GL/
+     Analyse-Mitarbeiter). Beim Nutzer wich die selbstgerechnete Quote spürbar
+     ab (Peter Peißer, Bericht 31.08.2026: App 76,9 % statt korrekt 83,7 %
+     lt. Report). Fix: der offizielle Wert wird ab jetzt direkt übernommen
+     statt neu berechnet - siehe aktivierungsquoteFor()/state.dailyAktivierungsquote. */
+  (function(){
+    const po=toRows(sheetByName(wb,"poakq"));
+    let hi=-1;
+    for(let i=0;i<po.length;i++){
+      if(po[i]&&String(po[i][4]||"").trim()==="RVL / GL"&&String(po[i][5]||"").trim()==="Aktivierungsquote"){ hi=i; break; }
+    }
+    snap.aktivierungsquote={};
+    if(hi>-1){
+      for(let i=hi+1;i<po.length;i++){
+        const r=po[i]; const glRaw=String((r&&r[4])||"").trim();
+        if(!glRaw) break;
+        const emp=matchEmployee(glRaw);
+        if(emp) snap.aktivierungsquote[emp]=num(r[5]);
+      }
+    }
+  })();
 
   /* --- ZE_Region Detailblock: Komplettschutz vs. Geräteschutz ---
      KS = WG beitragspflichtig + WG beitragsfrei + Komplettschutz Bike
@@ -4142,6 +4169,15 @@ function mergeSnapshot(snap){
     const k=a.nr||a.name+"@"+a.firma;
     if(a.vt>0){ if(!state.dailyAKP) state.dailyAKP={}; if(!state.dailyAKP[k]) state.dailyAKP[k]={}; state.dailyAKP[k][snap.vortag]=a.vt; }
   });
+  // Offizielle Aktivierungsquote (Blatt "PO + AKQ") je Berichtstag ablegen -
+  // ermöglicht perfGoal2Snapshot(), den Wert exakt für den abgeschlossenen
+  // Berichtsmonat nachzuschlagen statt ihn selbst (mit abweichendem Ergebnis,
+  // siehe Bug-Report 04.09.2026) neu zu berechnen.
+  if(!state.dailyAktivierungsquote) state.dailyAktivierungsquote={};
+  for(const [emp,q] of Object.entries(snap.aktivierungsquote||{})){
+    if(!state.dailyAktivierungsquote[emp]) state.dailyAktivierungsquote[emp]={};
+    state.dailyAktivierungsquote[emp][snap.vortag]=q;
+  }
   // "monat" (aktuelle Monatsproduktion) wird ab jetzt NICHT mehr aus der
   // rohen Report-Spalte bzw. per Monatswechsel-Sonderfallerkennung
   // übernommen, sondern direkt aus der Tageshistorie (state.dailyFH/
@@ -4642,39 +4678,72 @@ function akqStaffelnInJahrFor(emp,year){
   }
   return {alle,erst};
 }
-// Ob ein FH im gegebenen Jahr mind. 1 Vertrag produziert hat: bevorzugt aus
-// der heutigen Tages-Auswertung (f.lj = Jahresproduktion laut FH_Liste),
-// sonst Fallback auf die durable fh_contacts.prod_monthly-Summe des Jahres
-// (fhContactsBulkIndex) - sonst gilt ein Händler ohne HEUTIGE Produktion
-// als "nicht aktiviert", selbst wenn er dieses Jahr bereits produziert hat
-// (Nutzeranfrage 30.08.2026: Aktivierungsquote im Mitarbeitergespräch nicht
-// künstlich niedrig durch reine Tageszufälligkeit).
-function fhActiveThisYear(nr,year){
+// Ob ein FH BIS EINSCHLIESSLICH eines bestimmten Berichtsmonats mind. 1
+// Vertrag produziert hat. Wie beim Ziel-1-Jahreswert (perfGoal1Snapshot,
+// Bug-Report 04.09.2026) reicht die Tageshistorie (state.dailyFH) nicht
+// lückenlos bis Jahresanfang zurück - deshalb wird der aktuelle,
+// kumulierte Jahreswert (fh.lj, "bis heute") um die Tage NACH dem
+// Berichtsmonat bereinigt, statt die gesamte Tageshistorie zu summieren.
+// Fallback auf die durable fh_contacts.prod_monthly-Summe (fhContactsBulkIndex,
+// monatsgenaue Schlüssel "YYYY-MM"), wenn der FH gar nicht in state.latest.fh
+// steht - ebenfalls nur Monate bis einschließlich des Berichtsmonats.
+function fhProdThroughMonth(nr,year,month){
   const fh=state.latest.fh[nr];
-  if(fh) return fh.lj>0;
+  if(fh) return fh.lj-sumDailyAfterMonth(state.dailyFH[nr]||{},year,month);
   const pm=fhContactsBulkIndex&&fhContactsBulkIndex[nr];
-  if(!pm) return false;
-  const prefix=String(year);
-  return Object.entries(pm).some(([k,v])=>k.startsWith(prefix)&&(v||0)>0);
+  if(!pm) return 0;
+  const cutoff=year+"-"+String(month).padStart(2,"0");
+  return Object.entries(pm).filter(([k])=>k.startsWith(String(year))&&k<=cutoff).reduce((s,[,v])=>s+(v||0),0);
 }
+function fhActiveThroughMonth(nr,year,month){ return fhProdThroughMonth(nr,year,month)>0; }
 const AKTIVIERUNGSQUOTE_JAHRE=[2024,2025,2026]; // fix lt. Zieldefinition, nicht automatisch rollierend
-function aktivierungsquoteFor(emp,year){
+// Findet in state.dailyAktivierungsquote[emp] (Tageshistorie der offiziellen
+// Quote aus dem Blatt "PO + AKQ", siehe parseAuswertung()/mergeSnapshot())
+// den letzten Eintrag INNERHALB des angefragten Berichtsmonats - i.d.R. exakt
+// der Report vom letzten Tag dieses Monats (z.B. "Auswertung von 31.08.").
+function aktivierungsquoteFromHistory(emp,year,month){
+  const dm=state.dailyAktivierungsquote&&state.dailyAktivierungsquote[emp];
+  if(!dm) return null;
+  const prefix=year+"-"+String(month).padStart(2,"0");
+  let best=null;
+  for(const d in dm) if(d.startsWith(prefix)&&(best==null||d>best)) best=d;
+  return best==null?null:dm[best];
+}
+// Bug-Report 04.09.2026 (zwei Ursachen, nacheinander gefunden): (1) die
+// Aktivierungsquote im Performance Dialog wurde komplett aus dem LIVE-Stand
+// von HEUTE berechnet statt aus dem Stand per Ende des Berichtsmonats - schon
+// behoben (fhActiveThroughMonth/a.beginn<=cutoff, siehe unten, Fallback-Pfad).
+// (2) Selbst punkt-in-Zeit-korrekt gerechnet, wich die SELBST berechnete
+// Quote weiterhin vom bereits im Report enthaltenen OFFIZIELLEN Wert ab
+// (Blatt "PO + AKQ" - Peter Peißer, 31.08.2026: App 76,9 % statt korrekt
+// 83,7 % lt. Report, andere Grundgesamtheit/Kriterien als die eigene
+// Berechnung). Fix: der offizielle Wert (aktivierungsquoteFromHistory) wird
+// jetzt bevorzugt übernommen; die eigene Berechnung bleibt nur Fallback für
+// Berichtsmonate ohne erfassten Tageshistorie-Eintrag (z.B. sehr alte
+// Berichte vor Einführung dieser Historie, oder ein Automatik-Import ohne
+// das Blatt "PO + AKQ" am letzten Tag des Monats).
+function aktivierungsquoteFor(emp,year,month){
+  const official=aktivierungsquoteFromHistory(emp,year,month);
+  if(official!=null) return {angelegt:null,aktiv:null,quote:official,official:true};
   const s=state.latest; if(!s||!s.akq) return {angelegt:0,aktiv:0,quote:null};
+  const cutoff=year+"-"+String(month).padStart(2,"0")+"-31";
   const seen=new Set(); let angelegt=0,aktiv=0;
   for(const a of s.akq){
     if(a.emp!==emp) continue;
     if(!AKTIVIERUNGSQUOTE_JAHRE.includes(a.beginnJahr)) continue;
+    if(a.beginn&&a.beginn>cutoff) continue;
     if(seen.has(a.nr)) continue; seen.add(a.nr);
     angelegt++;
-    if(fhActiveThisYear(a.nr,year)) aktiv++;
+    if(fhActiveThroughMonth(a.nr,year,month)) aktiv++;
   }
   return {angelegt,aktiv,quote:angelegt>0?aktiv/angelegt:null};
 }
-function perfGoal2Snapshot(emp,year){
+function perfGoal2Snapshot(emp,year,month){
   const staffeln=akqStaffelnInJahrFor(emp,year);
-  const akt=aktivierungsquoteFor(emp,year);
+  const akt=aktivierungsquoteFor(emp,year,month);
   return {year,staffeln_ist:staffeln.alle,staffeln_ziel:AKQ_STAFFEL_ZIEL[emp]||0,
-    aktivierung_angelegt:akt.angelegt,aktivierung_aktiv:akt.aktiv,aktivierung_quote:akt.quote};
+    aktivierung_angelegt:akt.angelegt,aktivierung_aktiv:akt.aktiv,aktivierung_quote:akt.quote,
+    aktivierung_official:!!akt.official};
 }
 // Ziel 3: Miete. "Neu gewonnene Miet-FH" = FH dieses Mitarbeiters, deren
 // ERSTER Miete-Vertragsmonat (kleinster Schlüssel in miete_monthly) in das
@@ -4734,7 +4803,7 @@ function perfGoal5Snapshot(emp){
 }
 function perfGoalSnapshot(goalId,emp,year,month){
   if(goalId===1) return perfGoal1Snapshot(emp,year,month);
-  if(goalId===2) return perfGoal2Snapshot(emp,year);
+  if(goalId===2) return perfGoal2Snapshot(emp,year,month);
   if(goalId===3) return perfGoal3Snapshot(emp,year,month);
   if(goalId===4) return perfGoal4Snapshot(emp);
   if(goalId===5) return perfGoal5Snapshot(emp);
@@ -4759,7 +4828,7 @@ function perfGoalSystemHtml(goalId,snap){
     const aq=snap.aktivierung_quote==null?null:snap.aktivierung_quote*100;
     return `<div class="ac-grid">
       <div><span class="ac-lbl">Akquisestufen ${snap.year}</span><div class="ac-val"><b class="${cls(sp,100)}">${fmt(snap.staffeln_ist)}</b> / ${snap.staffeln_ziel>0?fmt(snap.staffeln_ziel):"–"}${sp!=null?` (${sp.toFixed(1).replace(".",",")} %)`:""}</div></div>
-      <div><span class="ac-lbl">Aktivierungsquote (FH ${AKTIVIERUNGSQUOTE_JAHRE.join("/")})</span><div class="ac-val"><b class="${cls(aq,80)}">${pct(snap.aktivierung_quote)}</b> <span style="color:var(--muted);font-weight:600">Ziel mind. 80 % (${fmt(snap.aktivierung_aktiv)} von ${fmt(snap.aktivierung_angelegt)} FH mit mind. 1 Vertrag ${snap.year})</span></div></div>
+      <div><span class="ac-lbl">Aktivierungsquote (FH ${AKTIVIERUNGSQUOTE_JAHRE.join("/")})</span><div class="ac-val"><b class="${cls(aq,80)}">${pct(snap.aktivierung_quote)}</b> <span style="color:var(--muted);font-weight:600">Ziel mind. 80 % ${snap.aktivierung_official?"(lt. Auswertung \"PO + AKQ\")":`(${fmt(snap.aktivierung_aktiv)} von ${fmt(snap.aktivierung_angelegt)} FH mit mind. 1 Vertrag ${snap.year})`}</span></div></div>
     </div>`;
   }
   if(goalId===3){
@@ -4945,7 +5014,7 @@ function renderPerfStep(){
 function renderPerfWelcomeStep(){
   $("perfBody").innerHTML=`<div style="text-align:center;padding:34px 10px">
     <div style="font-size:20px;font-weight:900;color:var(--wg-navy);margin-bottom:10px">Willkommen beim Performance Dialog</div>
-    <div style="font-size:15px;color:var(--muted);margin-bottom:26px">Monat: ${MONATE[perfReportMonth-1]} ${perfReportYear} · lieber ${escapeHtml(perfEmployee)}</div>
+    <div style="font-size:15px;color:var(--muted);margin-bottom:26px">Monat: ${MONATE[perfReportMonth-1]} ${perfReportYear} · ${escapeHtml(perfEmployee)}</div>
     ${perfExistingReport?(perfExistingReport.is_draft
       ?`<div style="color:var(--muted);font-size:12.5px;margin-bottom:14px">ℹ️ Für diesen Monat liegt ein automatisch gespeicherter Entwurf vor (Stand: ${fmtDate(perfExistingReport.updated_at.slice(0,10))}) - noch nicht abgeschickt. Deine bisherigen Eingaben sind vorausgefüllt.</div>`
       :`<div style="color:var(--muted);font-size:12.5px;margin-bottom:14px">ℹ️ Für diesen Monat liegt bereits ein abgeschickter Bericht vor (${fmtDate(perfExistingReport.submitted_at.slice(0,10))}) - deine bisherigen Antworten sind vorausgefüllt.</div>`
@@ -5810,7 +5879,7 @@ function render(){
   const s=state.latest;
   $("datenstand").innerHTML=`Auswertung vom <b>${fmtDate(s.date)}</b> · Produktionsstand (Vortag): <b>${fmtDate(s.vortag)}</b> · Ansicht: <b>${currentEmp}</b>`;
   $("secKpiWho").textContent="– "+currentEmp;
-  renderGoals(); renderEmpRanking(); renderAkqStaffelBar(); renderMix(); renderGW(); renderPO(); renderSparten();
+  renderGoals(); renderEmpRanking(); renderAkqStaffelBar(); renderAktivierungsquoteBar(); renderMix(); renderGW(); renderPO(); renderSparten();
   renderKPIs(); renderTopFlop(); renderObs(); renderAKP(); renderAKQ();
   renderAkqOhneProd(); renderNeunWochen();
   if($("akpSearchInput")) renderAkpSearch();
@@ -6143,6 +6212,36 @@ function renderAkqStaffelBar(){
     </div>
     <span class="akq-bar-sub">${escapeHtml(currentEmp)} · erreichte Staffeln (alle Stufen) in diesem Jahr · davon <b>${fmt(erststaffeln)}</b> Erststaffeln · Stand: ${escapeHtml(akqStaffelnStandLabel())}</span>
     <div class="akq-bar-track"><div class="akq-bar-fill" style="width:${width}%;background:${good?"var(--pos)":"var(--neg)"}"></div></div>
+  </div>`;
+}
+// Aktuellste verfügbare Aktivierungsquote (Blatt "PO + AKQ") für einen
+// Mitarbeiter - unabhängig vom Berichtsmonat, einfach der jüngste erfasste
+// Tageseintrag in state.dailyAktivierungsquote. Anders als
+// aktivierungsquoteFor()/aktivierungsquoteFromHistory() (auf einen konkreten
+// Berichtsmonat für den Performance Dialog eingefroren) zeigt diese Funktion
+// bewusst den LIVE-Stand von heute - Nutzervorgabe 04.09.2026: "Stand 31.08.
+// wichtig für den Performance Dialog, sie soll aber auch aktuell sein - du
+// bekommst jeden Tag die Quote mit".
+function aktivierungsquoteLive(emp){
+  const dm=state.dailyAktivierungsquote&&state.dailyAktivierungsquote[emp];
+  if(!dm) return null;
+  let best=null;
+  for(const d in dm) if(best==null||d>best) best=d;
+  return best==null?null:{quote:dm[best],date:best};
+}
+function renderAktivierungsquoteBar(){
+  const box=$("aktivierungsquoteBar"); if(!box) return;
+  if(currentEmp===AT_GESAMT){ box.innerHTML=""; return; }
+  const live=aktivierungsquoteLive(currentEmp);
+  if(!live){ box.innerHTML=""; return; }
+  const pct=live.quote*100, good=pct>=80;
+  box.innerHTML=`<div class="akq-bar">
+    <div class="akq-bar-top">
+      <span style="font-size:12.5px;font-weight:800;color:var(--wg-navy)">🎯 Aktivierungsquote (FH ${AKTIVIERUNGSQUOTE_JAHRE.join("/")})</span>
+      <div class="akq-bar-num"><span class="akq-bar-pct" style="color:${good?"var(--pos)":"var(--neg)"}">${pct.toFixed(1).replace(".",",")} %</span></div>
+    </div>
+    <span class="akq-bar-sub">${escapeHtml(currentEmp)} · Ziel mind. 80 % · lt. Auswertung "PO + AKQ" · Stand: ${fmtDate(live.date)}</span>
+    <div class="akq-bar-track"><div class="akq-bar-fill" style="width:${Math.min(pct,100)}%;background:${good?"var(--pos)":"var(--neg)"}"></div></div>
   </div>`;
 }
 // Gesamtauflistung hinter der Akquisestaffeln-Kachel (PopUp + PDF) - dieselbe
