@@ -3243,7 +3243,7 @@ state = {
   dailyFH: { fhNr: {vortagDatum: vt} }
 }
 ------------------------------------ */
-let state = { latest:null, dailyGL:{}, dailyFH:{}, dailyAKP:{}, dailyAktivierungsquote:{} };
+let state = { latest:null, dailyGL:{}, dailyFH:{}, dailyAKP:{}, dailyAktivierungsquote:{}, dailyGLTotals:{} };
 let akpPeriod="monat";
 // Vollständige AKP-Kontaktdatenbank (10.000+, siehe akp_contacts), einmal pro
 // Sitzung geladen. Ergänzt die Tages-Einspielliste (state.latest.akp) um AKP,
@@ -4158,9 +4158,20 @@ async function handleMieteFile(files){
 
 function mergeSnapshot(snap){
   // Tageshistorie fortschreiben (Prod. Vortag → unter Vortagsdatum ablegen)
+  if(!state.dailyGLTotals) state.dailyGLTotals={};
   for(const [k,g] of Object.entries(snap.gl)){
     if(!state.dailyGL[k]) state.dailyGL[k]={};
     state.dailyGL[k][snap.vortag]=g.vt;
+    // Zusätzlich die vom Report SELBST bereits berechneten kumulierten
+    // Monats-/Jahreswerte (Region_nach_GL, Spalten "Prod. Monat M"/"Prod. J")
+    // je Tag ablegen - robuster als die Summe der täglichen Vortags-Deltas
+    // (state.dailyGL), die bei fehlenden Einspieltagen Lücken hat (Bug-Report
+    // 04.09.2026: Peter Peißers "Monat" im Performance Dialog zeigte 665
+    // statt korrekt 780, weil an mehreren Tagen im August keine Einspielung
+    // vorlag - der Report selbst kennt den korrekten kumulierten Wert aber
+    // trotzdem, siehe perfGoal1Snapshot()/glTotalsFromHistory()).
+    if(!state.dailyGLTotals[k]) state.dailyGLTotals[k]={};
+    state.dailyGLTotals[k][snap.vortag]={monat:g.monat,jahr:g.jahr};
   }
   for(const [nr,f] of Object.entries(snap.fh)){
     if(f.vt>0){ if(!state.dailyFH[nr]) state.dailyFH[nr]={}; state.dailyFH[nr][snap.vortag]=f.vt; }
@@ -4627,33 +4638,56 @@ function sumDailyAfterMonth(map,year,month){
   let sum=0; for(const d in map) if(d>cutoff) sum+=map[d];
   return sum;
 }
+// Findet in state.dailyGLTotals[k] (Tageshistorie der vom Report SELBST
+// berechneten kumulierten Monats-/Jahreswerte, siehe mergeSnapshot()) den
+// letzten Eintrag INNERHALB des angefragten Berichtsmonats - i.d.R. exakt
+// der Report vom letzten Tag dieses Monats. Gleiches Prinzip wie
+// aktivierungsquoteFromHistory().
+function glTotalsFromHistory(k,year,month){
+  const dm=state.dailyGLTotals&&state.dailyGLTotals[k];
+  if(!dm) return null;
+  const prefix=year+"-"+String(month).padStart(2,"0");
+  let best=null;
+  for(const d in dm) if(d.startsWith(prefix)&&(best==null||d>best)) best=d;
+  return best==null?null:dm[best];
+}
 // Ziel 1: Persönliches Produktionsziel. Der Performance Dialog berichtet
 // immer über den ABGESCHLOSSENEN Vormonat - state.latest/glRow() zeigen zu
 // diesem Zeitpunkt aber bereits den NEUEN, laufenden Monat (die tägliche
-// Einspielung ist inzwischen weitergelaufen). Monats-/Jahreswert werden
-// deshalb aus der Tages-Historie (state.dailyGL) für genau den berichteten
-// Monat/Zeitraum nachgerechnet, statt die "aktuellen" glRow()-Werte zu
-// verwenden, die zum Ausfüllzeitpunkt den falschen Monat zeigen würden.
+// Einspielung ist inzwischen weitergelaufen).
+// Bug-Report 04.09.2026 (zwei Ursachen, nacheinander gefunden): (1)
+// Jahreswert aus der GESAMTEN Tageshistorie seit Jahresbeginn berechnet -
+// reicht nicht lückenlos zurück (Dominik Szendi: state.dailyGL erst seit
+// 21.07.2026 geführt) - Zwischenfix: Jahreswert = aktueller kumulierter Wert
+// minus Tage NACH dem Berichtsmonat. (2) Auch dieser Zwischenfix und der
+// bisherige Monatswert (Summe der täglichen Vortags-Deltas) waren weiterhin
+// anfällig für einzelne FEHLENDE Einspieltage MITTEN im Berichtsmonat (Peter
+// Peißer, August 2026: mehrere Tage ohne Einspielung, Monatswert dadurch
+// 665 statt korrekt 780 lt. Report). Endgültiger Fix: der Report liefert
+// den kumulierten Monats-/Jahreswert (Region_nach_GL, "Prod. Monat M"/
+// "Prod. J") bereits selbst fertig berechnet - dieser wird jetzt direkt für
+// den letzten Tag des Berichtsmonats übernommen (glTotalsFromHistory()),
+// statt ihn aus lückenhaften Tages-Deltas neu zusammenzurechnen. Die
+// bisherige Tageshistorie-Berechnung bleibt nur Fallback für Berichtsmonate
+// ohne erfassten dailyGLTotals-Eintrag (z.B. sehr alte Berichte vor
+// Einführung dieser Historie).
 function perfGoal1Snapshot(emp,year,month){
-  const dm=state.dailyGL[glKey(emp)]||{};
-  const monatIst=sumMonthFromDaily(dm,year,month);
-  let jahrIst;
-  if(state.latest.jahr===year){
-    // Jahreswert bis Ende des berichteten Monats = aktueller kumulierter
-    // Jahreswert (glRow().jahr, immer korrekt "bis heute") MINUS die Tage
-    // NACH dem berichteten Monat bis heute - robuster als die Summe der
-    // GESAMTEN Tageshistorie seit Jahresbeginn (vorherige Berechnung), die
-    // nicht lückenlos bis Jahresanfang zurückreicht (Bug-Report 04.09.2026:
-    // "Persönliches Ziel Jahr" zeigte bei Dominik Szendi 3.965 statt korrekt
-    // 34.583, da state.dailyGL erst seit 21.07.2026 geführt wird). Die neue
-    // Berechnung braucht nur Tageshistorie ab Ende des berichteten Monats,
-    // nicht seit Jahresbeginn.
-    jahrIst=((state.latest.gl[glKey(emp)]||{}).jahr||0)-sumDailyAfterMonth(dm,year,month);
+  const k=glKey(emp);
+  const dm=state.dailyGL[k]||{};
+  const official=glTotalsFromHistory(k,year,month);
+  let jahrIst, monatIst;
+  if(official){
+    jahrIst=official.jahr;
+    monatIst=official.monat;
+  }else if(state.latest.jahr===year){
+    jahrIst=((state.latest.gl[k]||{}).jahr||0)-sumDailyAfterMonth(dm,year,month);
+    monatIst=sumMonthFromDaily(dm,year,month);
   }else{
     // Berichtsjahr liegt nicht im aktuellen Jahr (z.B. Nacherfassung eines
     // Vorjahres) - kein aktueller Jahreswert verfügbar, daher weiterhin
     // best-effort aus der Tageshistorie.
     jahrIst=sumYearThroughMonthFromDaily(dm,year,month);
+    monatIst=sumMonthFromDaily(dm,year,month);
   }
   const jahrZiel=PERS_JAHRESZIELE[emp]||0;
   const monatZiel=goals[emp+"|"+year+"-"+String(month).padStart(2,"0")]||0;
@@ -5805,6 +5839,12 @@ function migrateState(){
   const L=state.latest; if(!L) return;
   let changed=false;
   if(!state.dailyAKP){ state.dailyAKP={}; changed=true; }
+  // Neuere Tageshistorie-Felder (erst nach diesem Datum eingeführt) - ein
+  // aus der Datenbank geladener älterer Speicherstand (state=p in loadAll())
+  // hat sie noch nicht, mergeSnapshot() würde sonst beim ersten Zugriff
+  // abstürzen (Cannot set properties of undefined).
+  if(!state.dailyGLTotals){ state.dailyGLTotals={}; changed=true; }
+  if(!state.dailyAktivierungsquote){ state.dailyAktivierungsquote={}; changed=true; }
   if(L.glPlan==null){
     L.glPlan={}; L.glPlan[AT_KEY]=0;
     for(const f of Object.values(L.fh||{})){
