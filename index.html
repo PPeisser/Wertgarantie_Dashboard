@@ -5973,14 +5973,24 @@ function goalCard(name,target,ist,soll,extra,editable,hr,lbls,note){
   lbls=lbls||{}; lbls.ahead=lbls.ahead||"▲ vor Soll"; lbls.behind=lbls.behind||"▼ hinter Soll"; lbls.target=lbls.target||"Ziel";
   const pct=target>0?ist/target*100:0;
   const diff=Math.round(ist-soll), dp=soll>0?(ist-soll)/soll*100:0;
-  const good=diff>=0, col=good?"var(--pos)":"var(--neg)";
+  const good=diff>=0;
   const sollPct=target>0?Math.min(soll/target*100,100):0;
   const hasHr=hr&&hr.val>0;
+  const hrT=hasHr?(hr.target||target):null;
+  const hp=hasHr&&hrT>0?hr.val/hrT*100:null;
+  const hGood=hasHr?(hp!=null?hp>=100:true):null; // grün ab 100 % des Bezugswerts (Plan bzw. Ziel)
+  // Bug-Report 04.09.2026: liegt der Ist-Stand (noch) hinter der Soll-Linie
+  // (z.B. bei den Vorjahresvergleichs-Karten, deren "Soll" der VOLLE
+  // Vorjahreswert ist, nicht saisonal auf den bisherigen Zeitraum
+  // herunterskaliert - mitten im Monat also fast immer "hinter Soll"), die
+  // Hochrechnung zum Jahres-/Monatsende aber bereits über dem Ziel/Vorjahr,
+  // wirkte eine rote "hinter Soll"-Warnung neben einer grünen "über Plan"-
+  // Hochrechnung widersprüchlich. In diesem Fall jetzt neutral statt rot.
+  const neutral=!good&&hasHr&&hGood;
+  const col=good?"var(--pos)":(neutral?"var(--wg-navy)":"var(--neg)");
+  const pillClass=good?"pos":(neutral?"neu":"neg");
   let bigBlock, smallLine="";
   if(hasHr){
-    const hrT=hr.target||target;
-    const hp=hrT>0?hr.val/hrT*100:null;
-    const hGood=hp!=null?hp>=100:true; // grün ab 100 % des Bezugswerts (Plan bzw. Ziel)
     // Die Hochrechnungs-Quote (% vom Plan/Ziel) ist die große, fette Zahl -
     // die absolute Summe rückt als kleine Beschriftung daneben nach.
     bigBlock=`<div class="big">
@@ -6015,7 +6025,7 @@ function goalCard(name,target,ist,soll,extra,editable,hr,lbls,note){
     <div class="bar"><div class="fill" style="width:${Math.min(pct,100)}%;background:${col}"></div>
       ${target>0?`<div class="soll" style="left:${sollPct}%" title="Soll heute"></div>`:""}</div>
     <div class="delta">
-      ${target>0?`<span class="pill ${good?"pos":"neg"}">${good?lbls.ahead:lbls.behind}: ${fmtSign(diff)} Stk. (${fmtPct(dp)})</span>`:""}
+      ${target>0?`<span class="pill ${pillClass}">${good?lbls.ahead:lbls.behind}: ${fmtSign(diff)} Stk. (${fmtPct(dp)})</span>`:""}
       <span>${extra}</span>
     </div>
     ${smallLine}
@@ -6200,18 +6210,29 @@ function renderAkqStaffelBar(){
   const {alle:reached,erst:erststaffeln}=akqStaffelnInJahr();
   const pct=ziel>0?reached/ziel*100:null;
   const good=pct!=null?pct>=100:true;
+  // Hochrechnung zum Jahresende - dasselbe saisonale Hochrechnungssystem wie
+  // bei den Ziel-Kacheln (goalCard()/seasonShare()), statt den aktuellen
+  // Stand nur gegen das VOLLE Jahresziel zu vergleichen. Sonst zeigt der
+  // Balken fast das ganze Jahr über Rot, obwohl man voll im (saisonalen)
+  // Plan liegt - Nutzervorgabe 04.09.2026.
+  const share=seasonShare(s.vortag,s.jahr);
+  const hrReached=share>0?reached/share:reached;
+  const hp=ziel>0?hrReached/ziel*100:null;
+  const hGood=hp!=null?hp>=100:true;
   // Ohne vorgegebenes Ziel (Ziel=0, z.B. Dominik Szendi) war der Balken
   // bisher leer (Breite 0%), obwohl schon Staffeln erreicht wurden - jetzt
   // zeigt er in diesem Fall stattdessen einen vollen grünen Balken.
+  const neutral=!good&&hGood;
+  const col=good?"var(--pos)":(neutral?"var(--wg-navy)":"var(--neg)");
   const width=pct!=null?Math.min(pct,100):(reached>0?100:0);
   box.innerHTML=`<div class="akq-bar">
     <div class="akq-bar-top">
       <button type="button" class="akq-bar-title" id="akqStaffelnDetailBtn" title="Gesamtliste öffnen">🏅 Akquisestaffeln ${s.jahr}</button>
       <div class="akq-bar-num"><b>${fmt(reached)}</b><span class="akq-bar-of"> / ${ziel>0?fmt(ziel):"–"}</span>
-        ${pct!=null?`<span class="akq-bar-pct" style="color:${good?"var(--pos)":"var(--neg)"}">${pct.toFixed(0)} %</span>`:""}</div>
+        ${pct!=null?`<span class="akq-bar-pct" style="color:${col}">${pct.toFixed(0)} %</span>`:""}</div>
     </div>
-    <span class="akq-bar-sub">${escapeHtml(currentEmp)} · erreichte Staffeln (alle Stufen) in diesem Jahr · davon <b>${fmt(erststaffeln)}</b> Erststaffeln · Stand: ${escapeHtml(akqStaffelnStandLabel())}</span>
-    <div class="akq-bar-track"><div class="akq-bar-fill" style="width:${width}%;background:${good?"var(--pos)":"var(--neg)"}"></div></div>
+    <span class="akq-bar-sub">${escapeHtml(currentEmp)} · erreichte Staffeln (alle Stufen) in diesem Jahr · davon <b>${fmt(erststaffeln)}</b> Erststaffeln · Stand: ${escapeHtml(akqStaffelnStandLabel())}${ziel>0&&hp!=null?` · Hochrechnung Jahresende: <b style="color:${hGood?"var(--pos)":"var(--neg)"}">${hp.toFixed(0)} %</b>`:""}</span>
+    <div class="akq-bar-track"><div class="akq-bar-fill" style="width:${width}%;background:${col}"></div></div>
   </div>`;
 }
 // Aktuellste verfügbare Aktivierungsquote (Blatt "PO + AKQ") für einen
