@@ -658,6 +658,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div class="goals" id="goalCards"></div>
     <div id="empRankingBlock"></div>
     <div id="akqStaffelBar"></div>
+    <div id="aktivierungsquoteBar"></div>
 
     <h2 class="sec"><svg class="arr" viewBox="0 0 60 30"><path d="M4 22 C 20 10, 35 8, 48 12" fill="none" stroke="#009FE3" stroke-width="6" stroke-linecap="round"/><path d="M39 4 L 56 13 L 37 20 Z" fill="#009FE3"/></svg> Produktmix &amp; Sparten</h2>
     <div class="quad">
@@ -5878,7 +5879,7 @@ function render(){
   const s=state.latest;
   $("datenstand").innerHTML=`Auswertung vom <b>${fmtDate(s.date)}</b> · Produktionsstand (Vortag): <b>${fmtDate(s.vortag)}</b> · Ansicht: <b>${currentEmp}</b>`;
   $("secKpiWho").textContent="– "+currentEmp;
-  renderGoals(); renderEmpRanking(); renderAkqStaffelBar(); renderMix(); renderGW(); renderPO(); renderSparten();
+  renderGoals(); renderEmpRanking(); renderAkqStaffelBar(); renderAktivierungsquoteBar(); renderMix(); renderGW(); renderPO(); renderSparten();
   renderKPIs(); renderTopFlop(); renderObs(); renderAKP(); renderAKQ();
   renderAkqOhneProd(); renderNeunWochen();
   if($("akpSearchInput")) renderAkpSearch();
@@ -6211,6 +6212,36 @@ function renderAkqStaffelBar(){
     </div>
     <span class="akq-bar-sub">${escapeHtml(currentEmp)} · erreichte Staffeln (alle Stufen) in diesem Jahr · davon <b>${fmt(erststaffeln)}</b> Erststaffeln · Stand: ${escapeHtml(akqStaffelnStandLabel())}</span>
     <div class="akq-bar-track"><div class="akq-bar-fill" style="width:${width}%;background:${good?"var(--pos)":"var(--neg)"}"></div></div>
+  </div>`;
+}
+// Aktuellste verfügbare Aktivierungsquote (Blatt "PO + AKQ") für einen
+// Mitarbeiter - unabhängig vom Berichtsmonat, einfach der jüngste erfasste
+// Tageseintrag in state.dailyAktivierungsquote. Anders als
+// aktivierungsquoteFor()/aktivierungsquoteFromHistory() (auf einen konkreten
+// Berichtsmonat für den Performance Dialog eingefroren) zeigt diese Funktion
+// bewusst den LIVE-Stand von heute - Nutzervorgabe 04.09.2026: "Stand 31.08.
+// wichtig für den Performance Dialog, sie soll aber auch aktuell sein - du
+// bekommst jeden Tag die Quote mit".
+function aktivierungsquoteLive(emp){
+  const dm=state.dailyAktivierungsquote&&state.dailyAktivierungsquote[emp];
+  if(!dm) return null;
+  let best=null;
+  for(const d in dm) if(best==null||d>best) best=d;
+  return best==null?null:{quote:dm[best],date:best};
+}
+function renderAktivierungsquoteBar(){
+  const box=$("aktivierungsquoteBar"); if(!box) return;
+  if(currentEmp===AT_GESAMT){ box.innerHTML=""; return; }
+  const live=aktivierungsquoteLive(currentEmp);
+  if(!live){ box.innerHTML=""; return; }
+  const pct=live.quote*100, good=pct>=80;
+  box.innerHTML=`<div class="akq-bar">
+    <div class="akq-bar-top">
+      <span style="font-size:12.5px;font-weight:800;color:var(--wg-navy)">🎯 Aktivierungsquote (FH ${AKTIVIERUNGSQUOTE_JAHRE.join("/")})</span>
+      <div class="akq-bar-num"><span class="akq-bar-pct" style="color:${good?"var(--pos)":"var(--neg)"}">${pct.toFixed(1).replace(".",",")} %</span></div>
+    </div>
+    <span class="akq-bar-sub">${escapeHtml(currentEmp)} · Ziel mind. 80 % · lt. Auswertung "PO + AKQ" · Stand: ${fmtDate(live.date)}</span>
+    <div class="akq-bar-track"><div class="akq-bar-fill" style="width:${Math.min(pct,100)}%;background:${good?"var(--pos)":"var(--neg)"}"></div></div>
   </div>`;
 }
 // Gesamtauflistung hinter der Akquisestaffeln-Kachel (PopUp + PDF) - dieselbe
