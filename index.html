@@ -3621,17 +3621,26 @@ function parseAuswertung(wb){
     }
   })();
 
-  /* --- Bugfix 01.09.2026: "Prod Monat VJ" je GL (rec.monatVJ oben, aus der
-     sichtbaren Region_nach_GL-Pivot-Spalte D) liefert im Tagesreport-Export
-     systematisch 0 für JEDE Zeile (auch "Auswertung") - anhand eines echten
-     Tagesreports geprüft: die Kopfzeile/Spaltenindizes oben (r[1..7]) sind
-     korrekt, "Prod VJ" (Jahr, Spalte H) ist ebenfalls korrekt befüllt, nur
-     die Monats-VJ-Spalte der PIVOT-ANSICHT selbst ist leer/0 - kein Bug im
-     Parser, sondern in der Report-Vorlage. Die korrekten Werte liegen
-     (analog zur Gebrauchtgeräte-Quote oben) in einem Pivot-Hilfsblatt
-     ("data_Region_nach_GL_...") unter der Kopfzeile "Vertriebsproduktion_
-     VJ" - wird hier gesucht und overschreibt rec.monatVJ je GL. Für
-     Österreich gesamt (AT_KEY) gibt es in diesem Hilfsblatt keine
+  /* --- Bugfix 01.09.2026 (und Nachbesserung 04.09.2026): "Prod Monat VJ" je
+     GL (rec.monatVJ oben, aus der sichtbaren Region_nach_GL-Pivot-Spalte D)
+     liefert im Tagesreport-Export systematisch 0 für JEDE Zeile (auch
+     "Auswertung") - anhand eines echten Tagesreports geprüft: die Kopfzeile/
+     Spaltenindizes oben (r[1..7]) sind korrekt, "Prod VJ" (Jahr, Spalte H)
+     ist ebenfalls korrekt befüllt, nur die Monats-VJ-Spalte der PIVOT-
+     ANSICHT selbst ist leer/0 - kein Bug im Parser, sondern in der Report-
+     Vorlage. Die korrekten Werte liegen (analog zur Gebrauchtgeräte-Quote
+     oben) in einem Pivot-Hilfsblatt ("data_Region_nach_GL_...") - wird hier
+     gesucht und overschreibt rec.monatVJ je GL.
+     Nachbesserung 04.09.2026 (Bug-Report, Florian Hasibeder: App zeigte 921
+     statt korrekt 136 als Vorjahresmonat): das Hilfsblatt enthält ZWEI
+     ähnlich benannte Spalten - "Vertriebsproduktion_ VJ Vortag" (die
+     tatsächlich gesuchte Monats-VJ-Kennzahl) UND "Vertriebsproduktion_ VJ"
+     (eine andere, hier nicht relevante Kennzahl). Nach dem Entfernen aller
+     Leerzeichen wurde bisher nach "vertriebsproduktion_vj" gesucht - das
+     matchte NICHT die gewünschte "...VJVortag"-Spalte, sondern fälschlich
+     die zweite, falsche Spalte (deren Werte bei allen acht Mitarbeitern
+     real ca. 7-9x zu hoch lagen). Fix: explizit nach "...vjvortag" suchen.
+     Für Österreich gesamt (AT_KEY) gibt es in diesem Hilfsblatt keine
      Summenzeile - dort stattdessen der bereits weiter oben aus ZE_Region
      K12 ermittelte Wert (snap.zeAtMonatVJ, "Ist VJ Summe" der Zeile
      "Auswertung") verwendet, falls vorhanden. */
@@ -3644,7 +3653,7 @@ function parseAuswertung(wb){
       for(let i=0;i<rows.length;i++){
         const r=rows[i]; if(!r) continue;
         for(let j=0;j<r.length;j++){
-          if(String(r[j]||"").trim().toLowerCase().replace(/\s+/g,"")==="vertriebsproduktion_vj"){ hi=i; vjCol=j; }
+          if(String(r[j]||"").trim().toLowerCase().replace(/\s+/g,"")==="vertriebsproduktion_vjvortag"){ hi=i; vjCol=j; }
         }
         if(hi>-1) break;
       }
