@@ -1,8 +1,8 @@
-// AKP-Peer-Vergleich – KI-Unterstuetzt: fasst die Leistung EINES Aktivpartners
+// AKP-Peer-Vergleich - KI-Unterstuetzt: fasst die Leistung EINES Aktivpartners
 // (AKP, Verkaeufer beim Fachhaendler) zusammen und vergleicht ihn anonymisiert
 // (nur Aggregatwerte, keine Einzeldaten anderer AKP) mit einer Vergleichsgruppe
 // anderer Aktivpartner. Struktur/Muster bewusst identisch zu
-// chefgespraech-ai-comparison (gleiches CORS-/Auth-/Anthropic-Geruest,
+// chefgespraech-ai-comparison (gleiches CORS-/Auth-/Mistral-Geruest,
 // gleiche median/percentile/rankPercentile-Helfer), nur die Peer-Aufloesung
 // ist ein Zwei-Hop-Konstrukt statt einem direkten fh_contacts-Filter:
 // AKP -> fh_nr -> fh_contacts.<mode> = Wert -> alle FH mit diesem Wert ->
@@ -27,16 +27,16 @@
 // analog chefgespraech-ai-comparison (akp_contacts ist ohnehin fuer alle
 // authentifizierten Nutzer lesbar).
 //
-// Secret: ANTHROPIC_API_KEY (bereits als Supabase-Secret hinterlegt).
+// Secret: MISTRAL_API_KEY (als Supabase-Secret hinterlegt).
 //
 // Pseudonymisierung (Nutzervorgabe 01.09.2026, erweitert 01.09.2026, DSGVO):
 // weder der echte Name der Zielperson noch ihre AKP-/Fachhaendler-Nummer
-// werden an Anthropic uebermittelt. Im Prompt stehen stattdessen die
+// werden an Mistral uebermittelt. Im Prompt stehen stattdessen die
 // Platzhalter NAME_TOKEN/AKP_CODE/FH_CODE (Codes sind pro Anfrage zufaellig,
 // siehe randCode()); die KI wird angewiesen, ausschliesslich diese
 // Platzhalter in ihrem gesamten Antworttext zu verwenden. Erst NACH Erhalt
 // der KI-Antwort (also server-seitig hier, bevor die Antwort ueberhaupt an
-// das Dashboard zurückgeht) werden die Platzhalter wieder durch die echten
+// das Dashboard zurueckgeht) werden die Platzhalter wieder durch die echten
 // Werte ersetzt (deepReplace ueber die komplette Antwortstruktur).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -52,6 +52,68 @@ function json(body: unknown, status = 200) {
     status,
     headers: { "Content-Type": "application/json", ...CORS_HEADERS },
   });
+}
+
+// Ruft Mistral mit erzwungenem Tool-Call auf. temperature:0.2 (statt Default)
+// fuer sachliche, konsistente Kennzahlen-Berichte statt kreativer Streuung.
+// Ein automatischer zweiter Versuch (Netzwerkfehler, HTTP-Fehler, fehlender
+// Tool-Call ODER ungueltiges JSON in den Tool-Argumenten) macht die Antwort
+// robust gegen die seltenen, aber moeglichen Ausreisser eines einzelnen
+// API-Aufrufs (Nutzervorgabe 04.09.2026: "es soll einwandfrei sein") - erst
+// wenn auch der zweite Versuch scheitert, wird der Fehler an den Client
+// zurueckgegeben.
+async function callMistralTool(
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string,
+  tool: Record<string, unknown>,
+  maxTokens: number,
+): Promise<{ report?: unknown; error?: string }> {
+  let lastError = "Unbekannter Fehler.";
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    let aiRes: Response;
+    try {
+      aiRes = await fetch("https://api.mistral.ai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + apiKey,
+        },
+        body: JSON.stringify({
+          model: "mistral-large-latest",
+          max_tokens: maxTokens,
+          temperature: 0.2,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          tools: [{ type: "function", function: tool }],
+          tool_choice: "any",
+          parallel_tool_calls: false,
+        }),
+      });
+    } catch (e) {
+      lastError = "Mistral-API nicht erreichbar: " + String(e);
+      continue;
+    }
+    if (!aiRes.ok) {
+      const errText = await aiRes.text();
+      lastError = `Mistral-API-Fehler (${aiRes.status}): ${errText}`;
+      continue;
+    }
+    const aiJson = await aiRes.json();
+    const toolCall = aiJson.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall) {
+      lastError = "KI-Antwort enthielt keine strukturierte Auswertung.";
+      continue;
+    }
+    try {
+      return { report: JSON.parse(toolCall.function.arguments) };
+    } catch (e) {
+      lastError = "KI-Antwort enthielt kein gueltiges JSON: " + String(e);
+    }
+  }
+  return { error: lastError };
 }
 
 // deno-lint-ignore no-explicit-any
@@ -185,7 +247,7 @@ const MODE_DESCRIPTION: Record<string, string> = {
 };
 
 // Zwei-Hop-Peer-Aufloesung, Client-Pendant: akpPeerFhNrs + akpPeerRows in
-// index.html. .in()-Chunking à 200 FH-Nummern, da eine grosse Dimension
+// index.html. .in()-Chunking je 200 FH-Nummern, da eine grosse Dimension
 // (z.B. hauptzweig="Vollsortiment") tausende FH treffen kann und ein
 // einzelnes .in() mit zu vielen Werten die PostgREST-URL-Laenge sprengt.
 async function selectAkpPeerGroup(
@@ -234,7 +296,7 @@ async function selectAkpPeerGroup(
 const COMPARISON_TOOL = {
   name: "generate_akp_peer_comparison",
   description: "Erstellt die strukturierte Staerken-/Schwaechen-Einordnung eines Aktivpartners im Vergleich zu einer anonymen Vergleichsgruppe.",
-  input_schema: {
+  parameters: {
     type: "object",
     properties: {
       summary: { type: "string", description: "Zusammenfassung der Leistung dieses Aktivpartners (2-4 Saetze, sachlich, konkret)." },
@@ -339,8 +401,8 @@ Deno.serve(async (req) => {
     q3f2: statFor(peerMetrics.map((m) => m.q3f2), targetMetrics.q3f2),
   };
 
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!apiKey) return json({ error: "ANTHROPIC_API_KEY ist nicht als Supabase-Secret hinterlegt." }, 500);
+  const apiKey = Deno.env.get("MISTRAL_API_KEY");
+  if (!apiKey) return json({ error: "MISTRAL_API_KEY ist nicht als Supabase-Secret hinterlegt." }, 500);
 
   const fmtPct = (v: number | null) => v == null ? "-" : v.toFixed(1).replace(".", ",") + " %";
   const fmtQ = (v: number | null) => v == null ? "-" : v.toFixed(1).replace(".", ",") + " %";
@@ -391,40 +453,12 @@ Deno.serve(async (req) => {
     `rekonstruiere KEINEN echten Namen oder echte Nummer. Antworte ausschliesslich ueber das Tool ` +
     `"generate_akp_peer_comparison".`;
 
-  let aiRes: Response;
-  try {
-    aiRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-5",
-        max_tokens: 4000,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }],
-        tools: [COMPARISON_TOOL],
-        tool_choice: { type: "tool", name: "generate_akp_peer_comparison" },
-      }),
-    });
-  } catch (e) {
-    return json({ error: "Anthropic-API nicht erreichbar: " + String(e) }, 502);
-  }
-
-  if (!aiRes.ok) {
-    const errText = await aiRes.text();
-    return json({ error: `Anthropic-API-Fehler (${aiRes.status}): ${errText}` }, 502);
-  }
-
-  const aiJson = await aiRes.json();
-  const toolUse = (aiJson.content || []).find((c: { type: string }) => c.type === "tool_use");
-  if (!toolUse) return json({ error: "KI-Antwort enthielt keine strukturierte Auswertung." }, 502);
+  const aiResult = await callMistralTool(apiKey, systemPrompt, userPrompt, COMPARISON_TOOL, 6000);
+  if (aiResult.error) return json({ error: aiResult.error }, 502);
 
   // Platzhalter erst jetzt, server-seitig vor der Antwort ans Dashboard,
   // durch die echten Werte ersetzen (siehe Pseudonymisierungs-Hinweis oben).
-  const report = deepReplace(toolUse.input, (s: string) =>
+  const report = deepReplace(aiResult.report, (s: string) =>
     s.split(NAME_TOKEN).join(name).split(AKP_CODE).join(akpNr).split(FH_CODE).join(target.fh_nr || "-"));
 
   return json({
