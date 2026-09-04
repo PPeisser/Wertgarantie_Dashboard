@@ -5408,12 +5408,28 @@ function akpQuarterSum(rec,jahr,monat){
   const prev=sum(keysBack(py,pm2,3));
   return {cur,prev};
 }
+// Manche AKP-Nummern gehören keiner echten Person, sondern einer Aktion/
+// Kampagne (z.B. "Aktionsgeräteschutz") - erkennbar daran, dass die
+// zugehörige akp_contacts-Zeile einen Vornamen, aber KEINEN Nachnamen hat:
+// akp_sync_daily (siehe schema.sql) splittet den Rohnamen nur bei einem
+// Leerzeichen - ein einzelnes Wort wie "Aktionsgeräteschutz" landet komplett
+// im Vornamen, der Nachname bleibt leer. Echte AKP ohne jeden erfassten
+// Namen haben dagegen BEIDE Felder leer (kein Treffer hier). Solche
+// Kampagnen-Einträge sollen nirgends als "Person" in AKP-Listen auftauchen
+// (Nutzer-Bug-Report 04.09.2026: "Aktionsgeräteschutz" stand in Top&Flop 5
+// AKP) - ihre Produktion zählt aber unverändert in allen FH-/Gesamtsummen
+// mit, da die aus der FH_Liste kommen, nicht aus dieser AKP-Liste.
+function isAkpCampaignEntry(nr){
+  const rec=akpContactsIndex&&akpContactsIndex[nr];
+  return !!(rec&&rec.vorname&&!rec.nachname);
+}
 // Ergänzt die Tages-Einspielliste (s.akp) um AKP aus der Kontaktdatenbank, die
 // an diesem Tag nicht produziert haben und deshalb nicht im Excel-Export
 // stehen – sonst fehlen sie in Woche/Monat/Jahr-Ansichten je Mitarbeiter
-// komplett, obwohl sie im gewählten Zeitraum produziert haben.
+// komplett, obwohl sie im gewählten Zeitraum produziert haben. Filtert dabei
+// Aktions-/Kampagnen-Einträge (siehe isAkpCampaignEntry) heraus, siehe oben.
 function akpFullList(s){
-  if(!akpContactsIndex) return s.akp;
+  if(!akpContactsIndex) return s.akp.filter(a=>!isAkpCampaignEntry(a.nr));
   // akpIndexGen (statt nur der Anzahl) im Cache-Key, damit ein Neuladen der
   // Kontaktdatenbank (z.B. über den Aktualisieren-Button) den Cache immer
   // invalidiert - auch wenn die Anzahl der Einträge zufällig gleich bleibt.
@@ -5423,6 +5439,7 @@ function akpFullList(s){
     const extra=[];
     for(const [nr,rec] of Object.entries(akpContactsIndex)){
       if(seen.has(nr)) continue;
+      if(isAkpCampaignEntry(nr)) continue;
       const {lj,vj,monat}=akpContactSums(rec,s.jahr,s.monat);
       if(!lj&&!vj&&!monat) continue;
       const fh=s.fh[rec.fh_nr];
@@ -5432,7 +5449,8 @@ function akpFullList(s){
     }
     akpExtrasCache=extra; akpExtrasCacheKey=key;
   }
-  return akpExtrasCache.length? s.akp.concat(akpExtrasCache) : s.akp;
+  const combined=akpExtrasCache.length? s.akp.concat(akpExtrasCache) : s.akp;
+  return combined.filter(a=>!isAkpCampaignEntry(a.nr));
 }
 
 async function saveData(){ try{ await stSet("wg-state",JSON.stringify(state)); }catch(e){} }
