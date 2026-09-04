@@ -117,9 +117,10 @@ function getSmtpClient() {
 // in Subject/From-Headern fehlerhaft (RFC-2047-widriges "encoded word" mit
 // rohen Leerzeichen darin) - Mail-Clients wie Apple Mail geben dadurch den
 // kompletten Header auf: Betreff erscheint als kryptischer Rohtext, Absender
-// als "Kein Absender". Fix: Subject/From-Anzeigename vor dem Versand auf
-// reines ASCII transliterieren, damit denomailer sie gar nicht erst als
-// "encoded word" kodieren muss.
+// als "Kein Absender". Betrifft nur die Kopfzeilen, nicht den HTML-Body
+// (der hat eine eigene, korrekt funktionierende UTF-8-Kodierung). Fix:
+// Subject/From-Anzeigename vor dem Versand auf reines ASCII transliterieren,
+// damit denomailer sie gar nicht erst als "encoded word" kodieren muss.
 function asciiHeader(s: string): string {
   return s
     .replace(/ß/g, "ss")
@@ -128,36 +129,6 @@ function asciiHeader(s: string): string {
     .replace(/[–—]/g, "-")
     .normalize("NFD").replace(/[̀-ͯ]/g, "")
     .replace(/[^\x20-\x7E]/g, "");
-}
-
-// denomailer 1.6.0 kodiert auch den HTML-Body fehlerhaft: quotedPrintableEncode()
-// (config/mail/encoding.ts) zerschneidet den GESAMTEN Body ohne Rücksicht auf
-// Wortgrenzen oder bereits vorhandene Zeilenumbrüche stur alle 74 Zeichen und
-// fügt dort einen "weichen" Zeilenumbruch ein - dadurch kann (und wird real
-// beobachtet) ein einzelnes Zeichen mitten in einem Wort/einer URL verloren
-// gehen (bestätigter Fall: "events.wgaustria.at" im Abmelde-Link kam beim
-// Empfänger als "eventswgaustria.at" an, der Punkt fiel exakt einer
-// Umbruchstelle zum Opfer). Betrifft nur den HTML-Body über das "html"-Feld,
-// das intern quotedPrintableEncode() aufruft - nicht Subject/From (siehe
-// asciiHeader oben, separater Bug) und nicht den kurzen Text-Fallback unten
-// (der bleibt unter 74 Zeichen, wird also nie umgebrochen).
-//
-// Fix: HTML-Body nicht über das "html"-Feld schicken (das landet automatisch
-// bei quotedPrintableEncode), sondern selbst Base64-kodieren und als
-// "mimeContent" mit transferEncoding "base64" übergeben. denomailer schreibt
-// mimeContent[].content unverändert auf die Leitung (client/basic/client.ts) -
-// Base64 ist unempfindlich gegenüber der Umbruchstelle, weil dort nie
-// einzelne Zeichen/Escape-Sequenzen zerschnitten werden können.
-function toBase64Utf8(str: string): string {
-  const bytes = new TextEncoder().encode(str);
-  let binary = "";
-  for (const b of bytes) binary += String.fromCharCode(b);
-  return btoa(binary);
-}
-function wrapBase64(b64: string): string {
-  const lines: string[] = [];
-  for (let i = 0; i < b64.length; i += 76) lines.push(b64.slice(i, i + 76));
-  return lines.join("\r\n");
 }
 
 async function sendMail(subject: string, to: string, html: string) {
@@ -169,12 +140,8 @@ async function sendMail(subject: string, to: string, html: string) {
       from: `${fromName} <${fromEmail}>`,
       to,
       subject: asciiHeader(subject),
+      html,
       content: "Bitte verwenden Sie einen E-Mail-Client mit HTML-Unterstützung.",
-      mimeContent: [{
-        mimeType: 'text/html; charset="utf-8"',
-        content: wrapBase64(toBase64Utf8(html)),
-        transferEncoding: "base64",
-      }],
     });
   } finally {
     await client.close();
