@@ -232,7 +232,15 @@ begin
     end if;
     mkey := r->>'mk';
     mval := coalesce((r->>'mv')::int, 0);
-    monthjson := case when mkey is not null and mval <> 0 then jsonb_build_object(mkey, mval) else '{}'::jsonb end;
+    -- Bugfix 04.09.2026: vormals "and mval <> 0" - dadurch schrieb ein
+    -- korrigierter, echter 0-Wert (z.B. Monatswechsel-Fix im Client) nie in
+    -- prod_monthly, da der Merge unten (coalesce||excluded) eine leere
+    -- monthjson als No-Op behandelt. Ein stehengebliebener alter Wert konnte
+    -- so nie mehr überschrieben werden (Bug-Report: "Schachermayer
+    -- Aktionsgeräteschutz hat im September noch nichts gemacht", 309
+    -- betroffene AKP per Einmalkorrektur bereinigt). Der Monatsschlüssel wird
+    -- jetzt immer geschrieben, auch bei mval=0.
+    monthjson := case when mkey is not null then jsonb_build_object(mkey, mval) else '{}'::jsonb end;
     -- po/f2: zuletzt bekannter Stand des Kalendermonats, siehe Spaltenkommentar
     -- oben - kein Additions-/Ist-0-Filter wie bei mval, da 0 ein gueltiger
     -- Quotenwert ist (nur explizites null im Import ueberspringen).
@@ -558,7 +566,10 @@ begin
     if coalesce(fhnr,'') = '' then continue; end if;
     mkey := r->>'mk';
     mval := coalesce((r->>'mv')::int, 0);
-    monthjson := case when mkey is not null and mval <> 0 then jsonb_build_object(mkey, mval) else '{}'::jsonb end;
+    -- Bugfix 04.09.2026: siehe gleichnamiger Kommentar in akp_sync_daily -
+    -- vormals "and mval <> 0" verhinderte, dass ein korrigierter echter
+    -- 0-Wert einen stehengebliebenen alten Monatswert überschreiben konnte.
+    monthjson := case when mkey is not null then jsonb_build_object(mkey, mval) else '{}'::jsonb end;
 
     is_new := not exists (select 1 from public.fh_contacts where fh_nr = fhnr);
 

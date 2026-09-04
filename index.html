@@ -6035,6 +6035,18 @@ function openAkpModal(){
 // Fällt auf die AKP-Kontaktdatenbank (Firma/Ort) zurück, wenn ein Händler am
 // aktuellen Tag keine Produktion hatte und daher nicht in state.latest.fh
 // steht - sonst zeigt das Popup weder Name noch Ort (z.B. Bug bei "KURTZ").
+// Firma-Name aus der AKP-Kontaktdatenbank für eine FH-Nr (erster Treffer) -
+// gemeinsamer Baustein für fhFallbackFromAkp() und fhAllKnownList(), siehe
+// dort für den Hintergrund (Bug-Report 04.09.2026: FH-Suche zeigte bei
+// Händlern ohne Namen in fh_contacts/state.latest.fh nur die FH-Nr statt
+// eines Namens).
+function fhAkpFirmaFallback(fhNr){
+  if(!akpContactsIndex) return null;
+  for(const a of Object.values(akpContactsIndex)){
+    if(a.fh_nr===fhNr&&a.firma) return a.firma;
+  }
+  return null;
+}
 function fhFallbackFromAkp(fhNr){
   // fh_contacts-Fallback (Ort + bestmöglicher Name: akq_name > miete_name >
   // manueller Name, siehe fhContactsAllIndex/buildFhContactsIndices) - EINE
@@ -6065,12 +6077,12 @@ function fhAllKnownList(){
   const out=[], seen=new Set();
   Object.entries(state.latest.fh||{}).forEach(([nr,f])=>{
     seen.add(nr);
-    out.push({nr,name:f.name,ort:f.ort,emp:f.emp});
+    out.push({nr,name:f.name||fhAkpFirmaFallback(nr),ort:f.ort,emp:f.emp});
   });
   Object.entries(fhContactsAllIndex||{}).forEach(([nr,r])=>{
     if(seen.has(nr)) return;
     seen.add(nr);
-    out.push({nr,name:r.name||nr,ort:r.ort||null,emp:matchEmployee(r.gl||"")||null});
+    out.push({nr,name:r.name||fhAkpFirmaFallback(nr)||nr,ort:r.ort||null,emp:matchEmployee(r.gl||"")||null});
   });
   return out;
 }
