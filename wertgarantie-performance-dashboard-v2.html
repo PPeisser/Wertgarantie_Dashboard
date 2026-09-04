@@ -4945,7 +4945,7 @@ function renderPerfStep(){
 function renderPerfWelcomeStep(){
   $("perfBody").innerHTML=`<div style="text-align:center;padding:34px 10px">
     <div style="font-size:20px;font-weight:900;color:var(--wg-navy);margin-bottom:10px">Willkommen beim Performance Dialog</div>
-    <div style="font-size:15px;color:var(--muted);margin-bottom:26px">Monat: ${MONATE[perfReportMonth-1]} ${perfReportYear} · lieber ${escapeHtml(perfEmployee)}</div>
+    <div style="font-size:15px;color:var(--muted);margin-bottom:26px">Monat: ${MONATE[perfReportMonth-1]} ${perfReportYear} · ${escapeHtml(perfEmployee)}</div>
     ${perfExistingReport?(perfExistingReport.is_draft
       ?`<div style="color:var(--muted);font-size:12.5px;margin-bottom:14px">ℹ️ Für diesen Monat liegt ein automatisch gespeicherter Entwurf vor (Stand: ${fmtDate(perfExistingReport.updated_at.slice(0,10))}) - noch nicht abgeschickt. Deine bisherigen Eingaben sind vorausgefüllt.</div>`
       :`<div style="color:var(--muted);font-size:12.5px;margin-bottom:14px">ℹ️ Für diesen Monat liegt bereits ein abgeschickter Bericht vor (${fmtDate(perfExistingReport.submitted_at.slice(0,10))}) - deine bisherigen Antworten sind vorausgefüllt.</div>`
