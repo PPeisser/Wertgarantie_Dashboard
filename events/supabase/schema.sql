@@ -184,9 +184,12 @@ create table if not exists public.registrations (
   email                 text,
   consent_at            timestamptz not null default now(),
   confirmation_sent_at  timestamptz,
-  -- Gesetzt, sobald der automatische 48h-Vorher-Reminder verschickt wurde
-  -- (siehe event-mailer action "reminders"); verhindert Doppelversand.
-  reminder_sent_at      timestamptz,
+  -- Gesetzt, sobald der jeweilige automatische Reminder verschickt wurde
+  -- (siehe event-mailer action "reminders"); verhindert Doppelversand über
+  -- mehrere stündliche Cron-Läufe hinweg. Zwei getrennte Reminder: 72h vor
+  -- dem Termin, und am Tag der Veranstaltung ab 12:00 Wiener Ortszeit.
+  reminder_72h_sent_at  timestamptz,
+  reminder_day_sent_at  timestamptz,
   -- Ergebnis des serverseitigen AKP/FH-Datenabgleichs mit dem
   -- Dashboard-Projekt (siehe supabase/functions/match-registration und
   -- lookup-akp im Dashboard-Projekt). Wird nicht im Anmeldeschritt
@@ -336,11 +339,13 @@ select cron.schedule(
   $$
 );
 
--- ---------- Automatischer 48h-Vorher-Reminder (pg_cron + pg_net) ----------
--- Stündlicher Check: verschickt an jede Anmeldung mit E-Mail, deren Termin
--- innerhalb der nächsten 48h liegt und die noch keinen Reminder bekommen
--- hat, eine Erinnerungsmail (Betreff "Reminder: ..."). reminder_sent_at
--- verhindert Doppelversand über mehrere Cron-Läufe hinweg.
+-- ---------- Automatische Reminder (pg_cron + pg_net) ----------
+-- Stündlicher Check, verschickt zwei getrennte Erinnerungsmails (Betreff
+-- "Reminder: ...") an jede Anmeldung mit E-Mail:
+--  - 72h vor dem Termin (reminder_72h_sent_at)
+--  - am Tag der Veranstaltung ab 12:00 Wiener Ortszeit (reminder_day_sent_at)
+-- Die jeweilige *_sent_at-Spalte verhindert Doppelversand über mehrere
+-- Cron-Läufe hinweg.
 
 select cron.schedule(
   'event-reminder-check',

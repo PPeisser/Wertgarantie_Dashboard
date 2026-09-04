@@ -474,16 +474,20 @@ Edge Functions → Secrets):
 1. **Bestätigungsmail** an den Anmelder direkt nach dem Absenden des
    Formulars – persönlich in Du-Form ("Hallo Vorname, ... Dein Wertgarantie
    Österreich Team"). Enthält ganz unten einen unauffälligen, klein
-   gehaltenen Abmelde-Link ("Kannst du doch nicht kommen? Hier bis 48
-   Stunden vor der Veranstaltung abmelden"), der zur separaten Edge Function
+   gehaltenen Abmelde-Link ("Kannst du doch nicht kommen? Hier von der
+   Veranstaltung abmelden"), der zur separaten Edge Function
    [`cancel-registration`](events/supabase/functions/cancel-registration/index.ts)
    führt (siehe unten).
-2. **48h-Vorher-Reminder** an jede Anmeldung mit E-Mail, deren Termin
-   innerhalb der nächsten 48 Stunden liegt – Betreff `Reminder: <normaler
-   Betreff>`, inhaltlich wie die Bestätigungsmail (Termin-Details,
-   Maps-Link) plus demselben Abmelde-Link. Ausgelöst stündlich über
-   `pg_cron` + `pg_net` (Job `event-reminder-check`, siehe unten);
-   `registrations.reminder_sent_at` verhindert Doppelversand.
+2. **Zwei Reminder** an jede Anmeldung mit E-Mail – Betreff `Reminder:
+   <normaler Betreff>`, inhaltlich wie die Bestätigungsmail (Termin-Details,
+   Maps-Link) plus demselben Abmelde-Link:
+   - **72h vor dem Termin** (`registrations.reminder_72h_sent_at`)
+   - **am Tag der Veranstaltung ab 12:00 Wiener Ortszeit**, unabhängig von
+     der Startzeit (`registrations.reminder_day_sent_at`)
+
+   Beide ausgelöst stündlich über `pg_cron` + `pg_net` (Job
+   `event-reminder-check`, siehe unten); die jeweilige `*_sent_at`-Spalte
+   verhindert Doppelversand.
 3. **Status-Report** (Anmeldestand je Termin/Ort **inkl. Liste der
    angemeldeten Personen**) – **je aktiver Veranstaltung ein eigener Report**
    an genau die für diese Veranstaltung im Admin-Panel (Tab „E-Mail-Empfänger“)
@@ -498,14 +502,19 @@ Edge Functions → Secrets):
 ### Selbst-Abmeldung (Edge Function `cancel-registration`)
 
 [`events/supabase/functions/cancel-registration/index.ts`](events/supabase/functions/cancel-registration/index.ts)
-ist öffentlich per einfachem Link (GET, kein Login) aufrufbar –
+ist öffentlich per einfachem Link (kein Login) aufrufbar –
 `.../functions/v1/cancel-registration?id=<registration_id>`. Die
 Registrierungs-ID (UUID) dient dabei als Zugriffs-Token. Prüft
-serverseitig nochmal die 48h-Frist (Zeitzone Europa/Wien, DST-sicher) und
-löscht die Anmeldung unwiderruflich, falls noch mindestens 48h bis zum
-Termin sind – sonst erscheint ein Hinweis, sich direkt an die Veranstaltung
-zu wenden. Antwortet immer mit einer kleinen, gebrandeten Bestätigungs-
-/Hinweisseite (kein Redirect zurück zur App nötig).
+serverseitig die 48h-Frist (Zeitzone Europa/Wien, DST-sicher); ist noch
+mindestens 48h bis zum Termin, zeigt **GET** nur eine Bestätigungsseite mit
+Termin-Info und Button, gelöscht wird erst durch den **POST** beim
+tatsächlichen Klick auf den Button. Grund: Firmen-Mailgateways rufen Links
+in eingehenden Mails automatisch per GET ab, um sie auf Schadsoftware zu
+prüfen ("Link-Prefetching") – ein sofort löschendes GET würde dadurch
+Anmeldungen löschen, ohne dass die Person die Mail überhaupt gesehen hat.
+Ist die 48h-Frist bereits vorbei, erscheint ein Hinweis, sich direkt an die
+Veranstaltung zu wenden. Antwortet immer mit einer kleinen, gebrandeten
+Bestätigungs-/Hinweisseite (kein Redirect zurück zur App nötig).
 
 Der Mailversand läuft über **SMTP** (Easyname-Postfach `events@wgaustria.at`)
 und braucht folgende Secrets, die **einmalig manuell** im Supabase-Dashboard

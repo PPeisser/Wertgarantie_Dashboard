@@ -6,7 +6,8 @@
 // - action "report": Status-Mail mit dem aktuellen Gesamt-Anmeldestand an alle
 //   konfigurierten Empfänger einer Häufigkeit (täglich/wöchentlich/monatlich).
 //   Wird von einem pg_cron-Job aufgerufen und ist über CRON_SECRET geschützt.
-// - action "reminders": 48h-Vorher-Reminder an jede Anmeldung mit E-Mail.
+// - action "reminders": zwei Reminder an jede Anmeldung mit E-Mail - einer
+//   72h vor dem Termin, einer am Tag der Veranstaltung um 12:00 (Wien).
 //   Wird stündlich per pg_cron aufgerufen, ebenfalls über CRON_SECRET.
 //
 // Läuft serverseitig in Supabase, nutzt den service_role Key (nur hier, nie im
@@ -83,7 +84,19 @@ function viennaLocalToUtc(dateStr: string, timeStr: string): Date {
 // nochmal serverseitig prüft.
 function cancelLinkHtml(registrationId: string) {
   const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/cancel-registration?id=${registrationId}`;
-  return `<p style="color:#9BB0BE;font-size:11.5px;margin-top:22px">Kannst du doch nicht kommen? <a href="${url}" style="color:#9BB0BE;text-decoration:underline">Hier bis 48 Stunden vor der Veranstaltung abmelden</a>.</p>`;
+  return `<p style="color:#9BB0BE;font-size:11.5px;margin-top:22px">Kannst du doch nicht kommen? <a href="${url}" style="color:#9BB0BE;text-decoration:underline">Hier von der Veranstaltung abmelden</a>.</p>`;
+}
+
+// Wandzeit Wien "jetzt": Datum (YYYY-MM-DD) und Stunde (0-23), für den
+// Tages-Reminder (fixe Uhrzeit statt fixer Stundenabstand zum Termin).
+function viennaNow(): { dateStr: string; hour: number } {
+  const now = new Date();
+  const dateStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Vienna" }).format(now);
+  const hour = parseInt(
+    new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Vienna", hour: "2-digit", hourCycle: "h23" }).format(now),
+    10,
+  );
+  return { dateStr, hour };
 }
 
 function getSmtpClient() {
@@ -302,36 +315,33 @@ async function handleReport(admin: ReturnType<typeof createClient>, frequency: "
   return json({ ok: true, results });
 }
 
-// 48h-Reminder an jede Anmeldung mit E-Mail, deren Termin innerhalb der
-// nächsten 48h liegt und die noch keinen Reminder bekommen hat. Wird
-// stündlich per pg_cron aufgerufen (siehe schema.sql); reminder_sent_at
-// verhindert Doppelversand über mehrere Cron-Läufe hinweg.
-async function handleReminders(admin: ReturnType<typeof createClient>) {
-  const { data: dates } = await admin.from("event_dates").select("*");
-  const now = Date.now();
-  const upcoming = (dates || []).filter((d) => {
-    const dt = viennaLocalToUtc(d.event_date, d.start_time).getTime();
-    return dt > now && dt <= now + 48 * 3600000;
-  });
-  if (!upcoming.length) return json({ ok: true, skipped: "no_upcoming_dates" });
-
-  const dateIds = upcoming.map((d) => d.id);
+// Verschickt eine Reminder-Mail an jede Anmeldung mit E-Mail zu den
+// übergebenen Terminen, die für die übergebene Spalte noch keinen Eintrag
+// hat (reminder_72h_sent_at / reminder_day_sent_at), und markiert sie
+// danach dort - verhindert Doppelversand über mehrere Cron-Läufe hinweg.
+async function sendReminderBatch(
+  admin: ReturnType<typeof createClient>,
+  eventDates: Record<string, unknown>[],
+  sentColumn: "reminder_72h_sent_at" | "reminder_day_sent_at",
+): Promise<number> {
+  if (!eventDates.length) return 0;
+  const dateIds = eventDates.map((d) => d.id as string);
   const { data: regs } = await admin
     .from("registrations").select("*")
     .in("event_date_id", dateIds)
-    .is("reminder_sent_at", null)
+    .is(sentColumn, null)
     .not("email", "is", null);
-  if (!regs || !regs.length) return json({ ok: true, skipped: "no_pending_reminders" });
+  if (!regs || !regs.length) return 0;
 
-  const eventIds = [...new Set(upcoming.map((d) => d.event_id))];
+  const eventIds = [...new Set(eventDates.map((d) => d.event_id as string))];
   const { data: events } = await admin.from("events").select("*").in("id", eventIds);
   const eventById = Object.fromEntries((events || []).map((e) => [e.id, e]));
-  const dateById = Object.fromEntries(upcoming.map((d) => [d.id, d]));
+  const dateById = Object.fromEntries(eventDates.map((d) => [d.id as string, d]));
 
   let sent = 0;
   for (const reg of regs) {
-    const eventDate = dateById[reg.event_date_id];
-    const event = eventDate ? eventById[eventDate.event_id] : null;
+    const eventDate = dateById[reg.event_date_id] as Record<string, unknown> | undefined;
+    const event = eventDate ? eventById[eventDate.event_id as string] : null;
     if (!eventDate || !event) continue;
 
     const vorname = reg.data?.vorname ? String(reg.data.vorname) : "";
@@ -344,14 +354,14 @@ async function handleReminders(admin: ReturnType<typeof createClient>) {
       </div>
       <div style="border:1px solid #DCE7EE;border-top:none;border-radius:0 0 14px 14px;padding:26px">
         <p>${greeting}</p>
-        <p>nur noch kurz hin bis <strong>${escapeHtml(event.title)}</strong> – wir wollten dich an deinen Termin erinnern:</p>
+        <p>nur noch kurz hin bis <strong>${escapeHtml(event.title as string)}</strong> – wir wollten dich an deinen Termin erinnern:</p>
         <div style="background:#F0FAFF;border:1px solid #009FE3;border-radius:12px;padding:16px 18px;margin:18px 0">
           <div style="font-weight:800;color:#062A3F;margin-bottom:4px">Dein Termin</div>
-          <div>${escapeHtml(fmtDate(eventDate.event_date))}</div>
-          <div>${escapeHtml(fmtTime(eventDate.start_time))}${eventDate.end_time ? "–" + escapeHtml(fmtTime(eventDate.end_time)) : ""} Uhr</div>
-          <div>${escapeHtml(eventDate.location)}</div>
-          ${fullAddress(eventDate) ? `<div>${escapeHtml(fullAddress(eventDate))}</div>` : ""}
-          <div style="margin-top:8px"><a href="${mapsUrl(eventDate)}" style="color:#009FE3;font-weight:700;text-decoration:none">📍 Route planen ›</a></div>
+          <div>${escapeHtml(fmtDate(eventDate.event_date as string))}</div>
+          <div>${escapeHtml(fmtTime(eventDate.start_time as string))}${eventDate.end_time ? "–" + escapeHtml(fmtTime(eventDate.end_time as string)) : ""} Uhr</div>
+          <div>${escapeHtml(eventDate.location as string)}</div>
+          ${fullAddress(eventDate as { street?: string; zip?: string; city?: string }) ? `<div>${escapeHtml(fullAddress(eventDate as { street?: string; zip?: string; city?: string }))}</div>` : ""}
+          <div style="margin-top:8px"><a href="${mapsUrl(eventDate as { location?: string; street?: string; zip?: string; city?: string })}" style="color:#009FE3;font-weight:700;text-decoration:none">📍 Route planen ›</a></div>
         </div>
         <p>Wir freuen uns auf dich!</p>
         <p style="margin-bottom:0">Dein Wertgarantie Österreich Team</p>
@@ -361,14 +371,39 @@ async function handleReminders(admin: ReturnType<typeof createClient>) {
     </div>`;
 
     try {
-      await sendMail(`Reminder: Anmeldebestätigung – ${event.title}`, reg.email, html);
-      await admin.from("registrations").update({ reminder_sent_at: new Date().toISOString() }).eq("id", reg.id);
+      await sendMail(`Reminder: Anmeldebestätigung – ${event.title as string}`, reg.email, html);
+      await admin.from("registrations").update({ [sentColumn]: new Date().toISOString() }).eq("id", reg.id);
       sent++;
     } catch (_e) {
       // best-effort: einzelner Fehler soll die restlichen Reminder nicht blockieren
     }
   }
-  return json({ ok: true, sent });
+  return sent;
+}
+
+// Zwei Reminder je Anmeldung: 72h vor dem Termin, und am Tag der
+// Veranstaltung ab 12:00 Wiener Ortszeit (unabhängig von der Startzeit -
+// bei einer Abendveranstaltung z.B. 7h vorher). Wird stündlich per pg_cron
+// aufgerufen (siehe schema.sql).
+async function handleReminders(admin: ReturnType<typeof createClient>) {
+  const { data: dates } = await admin.from("event_dates").select("*");
+  const now = Date.now();
+  const { dateStr: todayVienna, hour: viennaHour } = viennaNow();
+
+  const upcoming72h = (dates || []).filter((d) => {
+    const dt = viennaLocalToUtc(d.event_date, d.start_time).getTime();
+    return dt > now && dt <= now + 72 * 3600000;
+  });
+  const dayOf = (dates || []).filter((d) => {
+    const dt = viennaLocalToUtc(d.event_date, d.start_time).getTime();
+    return d.event_date === todayVienna && dt > now && viennaHour >= 12;
+  });
+
+  const sent72h = await sendReminderBatch(admin, upcoming72h, "reminder_72h_sent_at");
+  const sentDayOf = await sendReminderBatch(admin, dayOf, "reminder_day_sent_at");
+
+  if (!upcoming72h.length && !dayOf.length) return json({ ok: true, skipped: "no_upcoming_dates" });
+  return json({ ok: true, sent_72h: sent72h, sent_day_of: sentDayOf });
 }
 
 Deno.serve(async (req) => {
