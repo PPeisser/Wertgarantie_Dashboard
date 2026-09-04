@@ -4797,6 +4797,14 @@ const PERF_MIN_LEN=50;
 const PERF_ADMIN_EMAIL="k.scheiermann@wertgarantie.com";
 let perfEmployee=null, perfReportYear=null, perfReportMonth=null;
 let perfDraftSaveTimer=null, perfDraftSaveBusy=false, perfDraftSaveQueued=false;
+// Verhindert eine Race Condition zwischen Entwurf-Autosave und finalem
+// Absenden (Bug-Report 04.09.2026): war ein Entwurf-Autosave gerade in
+// Arbeit oder durch die letzte Texteingabe kurz vor "Abschließen und
+// absenden" noch als "queued" markiert, konnte dessen is_draft:true NACH
+// dem finalen Speichern schreiben und den Bericht wieder als Entwurf
+// zurückstufen - obwohl submitted_at bereits gesetzt war (bei Dominik
+// Szendi so aufgetreten: submitted_at vorhanden, is_draft trotzdem true).
+let perfSubmitDone=false;
 let perfGoalIds=[], perfStepIdx=0, perfAnswers={}, perfSnapshots={}, perfExistingReport=null;
 // Berichtszeitraum = immer der abgeschlossene Vormonat zum Öffnungszeitpunkt
 // (das Protokoll ist laut Vorgabe "immer vom Vormonat", unabhängig davon, ob
@@ -4864,6 +4872,7 @@ async function openPerfModal(){
   if(!perfDialogEnabled){ toast("Der Performance Dialog ist aktuell nicht aktiviert."); return; }
   if(!myName||!PERF_GOALS_BY_EMPLOYEE[myName]){ toast("Für "+(myName||"deinen Account")+" ist kein Performance Dialog hinterlegt."); return; }
   perfEmployee=myName;
+  perfSubmitDone=false;
   await loadPerfActivePeriod();
   const p=perfActivePeriod(); perfReportYear=p.year; perfReportMonth=p.month;
   perfGoalIds=PERF_GOALS_BY_EMPLOYEE[myName];
@@ -4900,6 +4909,9 @@ function updatePerfSaveStatus(state){
 async function savePerfDraft(){
   if(!sb||!perfEmployee||!perfGoalIds.length) return;
   clearTimeout(perfDraftSaveTimer);
+  // Nach dem finalen Absenden nie wieder als Entwurf drüberspeichern (siehe
+  // perfSubmitDone-Kommentar oben).
+  if(perfSubmitDone) return;
   if(perfDraftSaveBusy){ perfDraftSaveQueued=true; return; }
   perfDraftSaveBusy=true;
   updatePerfSaveStatus("saving");
@@ -4916,7 +4928,7 @@ async function savePerfDraft(){
     updatePerfSaveStatus("error");
   }finally{
     perfDraftSaveBusy=false;
-    if(perfDraftSaveQueued){ perfDraftSaveQueued=false; savePerfDraft(); }
+    if(perfDraftSaveQueued&&!perfSubmitDone){ perfDraftSaveQueued=false; savePerfDraft(); }
   }
 }
 function schedulePerfDraftSave(){
@@ -5010,11 +5022,21 @@ let perfSubmitBusy=false;
 async function submitPerfReport(){
   if(perfSubmitBusy) return;
   perfSubmitBusy=true;
+  // Ab hier schreibt kein Entwurf-Autosave mehr (savePerfDraft() prüft
+  // perfSubmitDone) - verhindert, dass ein durch die letzte Texteingabe noch
+  // ausstehender/laufender Autosave nach dem finalen Speichern unten mit
+  // is_draft:true drüberschreibt (siehe Kommentar bei perfSubmitDone oben).
+  perfSubmitDone=true;
   $("perfSubmitBtn").disabled=true;
   $("perfSubmitHint").textContent="";
   try{
-    const goalsPayload=perfGoalIds.map(g=>({goal_id:g,snapshot:perfSnapshots[g],answers:perfAnswers[g]}));
     clearTimeout(perfDraftSaveTimer);
+    // Falls ein Entwurf-Autosave GERADE in Arbeit ist (z.B. durch die letzte
+    // Texteingabe kurz vor diesem Klick ausgelöst), dessen Netzwerk-Aufruf
+    // erst abwarten - sonst könnte er NACH dem folgenden finalen Speichern
+    // abschließen und den Bericht mit is_draft:true wieder zurückstufen.
+    while(perfDraftSaveBusy) await new Promise(r=>setTimeout(r,50));
+    const goalsPayload=perfGoalIds.map(g=>({goal_id:g,snapshot:perfSnapshots[g],answers:perfAnswers[g]}));
     const { error }=await sb.from("performance_dialog_reports").upsert({
       employee:perfEmployee,year:perfReportYear,month:perfReportMonth,goals:goalsPayload,
       is_draft:false,submitted_at:new Date().toISOString(),submitted_by:supaUser.id,updated_at:new Date().toISOString()
@@ -5031,6 +5053,10 @@ async function submitPerfReport(){
   }catch(e){
     console.error("submitPerfReport failed:",e);
     $("perfSubmitHint").textContent="Fehler: "+(e.message||e);
+    // Absenden fehlgeschlagen - Entwurf-Autosave wieder erlauben, sonst
+    // würden weitere Eingaben des Nutzers bis zu einem erneuten Versuch gar
+    // nicht mehr gespeichert.
+    perfSubmitDone=false;
   }finally{
     perfSubmitBusy=false;
     $("perfSubmitBtn").disabled=false;
@@ -5169,13 +5195,16 @@ const PERF_DIALOG_START_YEAR=2026, PERF_DIALOG_START_MONTH=8;
 function perfMonthBeforeFeatureStart(year,month){
   return year<PERF_DIALOG_START_YEAR || (year===PERF_DIALOG_START_YEAR && month<PERF_DIALOG_START_MONTH);
 }
-// Zukünftige, noch gar nicht erreichte Monate bleiben neutral "–" - erst
-// der aktuelle Kalendermonat (und alles davor) bekommt ✓/✗, damit die
-// Übersicht nicht "vorab" Monate als negativ markiert, die noch gar nicht
-// begonnen haben (lt. Nutzervorgabe 18.08.2026).
+// Zukünftige UND der noch laufende aktuelle Kalendermonat bleiben neutral
+// "–" - ein Monat wird erst ab dem 1. des FOLGEMonats fällig (✓/✗), damit
+// die Übersicht nicht schon während des laufenden Monats ein "✗" zeigt,
+// obwohl der Mitarbeiter noch bis Monatsende Zeit hat (Bug-Report
+// 04.09.2026: am 01.09. zeigte September selbst bereits ein ✗ statt erst
+// August fällig zu machen - lt. Nutzervorgabe soll ab 1. Oktober der
+// September fällig werden, ab 1. November der Oktober usw.).
 function perfMonthIsFuture(year,month){
   const now=new Date();
-  return year>now.getFullYear() || (year===now.getFullYear() && month>now.getMonth()+1);
+  return year>now.getFullYear() || (year===now.getFullYear() && month>=now.getMonth()+1);
 }
 let perfAdminYear=new Date().getFullYear();
 let perfAdminReports={};
