@@ -4201,21 +4201,23 @@ function mergeSnapshot(snap){
     if(!state.dailyAktivierungsquote[emp]) state.dailyAktivierungsquote[emp]={};
     state.dailyAktivierungsquote[emp][snap.vortag]=q;
   }
-  // "monat" (aktuelle Monatsproduktion) wird ab jetzt NICHT mehr aus der
-  // rohen Report-Spalte bzw. per Monatswechsel-Sonderfallerkennung
-  // übernommen, sondern direkt aus der Tageshistorie (state.dailyFH/
-  // state.dailyAKP, siehe oben) aufsummiert - dieselbe bereits bewährte
-  // Technik wie bei perfGoal1Snapshot() (Bug-Report 03./04.09.2026: die
-  // bisherige Monatswechsel-Erkennung "state.latest.monat!==snap.monat"
-  // ist pro Browser-Sitzung lokal und griff nicht zuverlässig - real
-  // geprüft zeigten danach ~68% aller AKP weiterhin exakt ihren
-  // Vormonatswert als "aktuellen Monat", u.a. bei echten Personen wie
-  // Ronja Hausbauer/Florian Frantar, nicht nur bei Kampagnen-Einträgen).
-  // Ein Monatswechsel "erledigt sich" dadurch von selbst (neuer Monat =
-  // noch leere Tageshistorie = 0), die bisherige monatswechsel-Erkennung
-  // unten für fehlende FH/AKP entfällt komplett.
-  for(const [nr,f] of Object.entries(snap.fh)) f.monat=sumMonthFromDaily(state.dailyFH[nr]||{},snap.jahr,snap.monat);
-  snap.akp.forEach(a=>{ a.monat=sumMonthFromDaily(state.dailyAKP[a.nr||a.name+"@"+a.firma]||{},snap.jahr,snap.monat); });
+  // "monat" (aktuelle Monatsproduktion) für FH/AKP, die HEUTE im Report
+  // stehen, bleibt beim frisch geparsten Rohwert (FH_Liste-/AKP-Liste-Spalte
+  // "Prod. Monat") - der ist für den heutigen Tag bereits authoritativ,
+  // exakt wie die analoge Region_nach_GL-Spalte (siehe glTotalsFromHistory()/
+  // Ziel-1-Fix im Performance Dialog). Bug-Report 04.09.2026 (Folgefund,
+  // nachdem derselbe Fehler bereits bei Ziel 1 im Performance Dialog
+  // gefunden wurde): die VORHERIGE Version hier überschrieb den frischen,
+  // korrekten Rohwert AUCH für heute gelistete FH/AKP mit der Summe der
+  // täglichen Vortags-Deltas (state.dailyFH/state.dailyAKP) - das
+  // unterschätzte "Monat" systemweit im GESAMTEN Dashboard an jedem Tag nach
+  // einer Lücke im Einspielkalender (bestätigt: 14 fehlende Einspieltage im
+  // August 2026), da diese Summe nicht lückenlos ist. NUR für FH/AKP, die
+  // HEUTE NICHT im Report stehen (unten, "fehlender FH/AKP"), gibt es keinen
+  // frischen Rohwert - dort bleibt die Rekonstruktion aus der Tageshistorie
+  // nötig, um nach einem Monatswechsel nicht den alten Vormonatswert
+  // weiterzuschleppen (ursprünglicher Bug-Report 03.09.2026, ~68% aller AKP
+  // betroffen).
   if(!state.latest || snap.date>=state.latest.date){
     // Manche Quellen (z.B. die automatische Tages-Mail "ZE+Produktion_Vortag...")
     // enthalten nicht alle optionalen Pivot-Blätter der vollständigen
