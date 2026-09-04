@@ -5755,25 +5755,35 @@ function akpFullList(s){
 }
 
 async function saveData(){ try{ await stSet("wg-state",JSON.stringify(state)); }catch(e){} }
+// Bug-Report 04.09.2026 ("Dashboard extrem langsam"): lud bisher 18
+// voneinander unabhängige dashboard_kv-Einstellungen NACHEINANDER (18
+// einzelne Netzwerk-Anfragen im Wasserfall) - bei jedem einzelnen Laden des
+// Dashboards, nicht nur einmalig. Da keiner der Werte vom Ergebnis eines
+// anderen abhängt, laufen sie jetzt parallel (Promise.all) - aus 18
+// nacheinander wartenden Anfragen wird eine einzige Wartezeit. Fehler-
+// Isolation je Einstellung (try/catch) bleibt unverändert erhalten, nur
+// nicht mehr sequenziell.
 async function loadAll(){
-  try{ const d=await stGet("wg-state"); if(d){ const p=JSON.parse(d); if(p&&p.latest) state=p; } }catch(e){}
-  try{ const g=await stGet("wg-goals"); if(g) goals=JSON.parse(g); }catch(e){}
-  try{ perfDialogEnabled=(await stGet("performance_dialog_enabled"))==="1"; }catch(e){}
-  try{ perfDialogAdminEnabled=(await stGet("performance_dialog_admin_enabled"))==="1"; }catch(e){}
-  try{ chefgespraechEnabled=(await stGet("chefgespraech_enabled"))==="1"; }catch(e){}
-  try{ kooperationsgespraechEnabled=(await stGet("kooperationsgespraech_enabled"))==="1"; }catch(e){}
-  try{ auswertungEnabled=(await stGet("auswertung_enabled"))==="1"; }catch(e){}
-  try{ fhZielEnabled=(await stGet("fh_ziel_enabled"))==="1"; }catch(e){}
-  try{ fhSearchEnabled=(await stGet("fh_search_enabled"))==="1"; }catch(e){}
-  try{ akpPeerCompareEnabled=(await stGet("akp_peer_compare_enabled"))==="1"; }catch(e){}
-  try{ karteileichenJahre=parseInt(await stGet("karteileichen_jahre"))||3; }catch(e){}
-  try{ const r=await stGet("karteileichen_review_fh"); fhKarteileichenReview=r?JSON.parse(r):null; }catch(e){}
-  try{ const r=await stGet("karteileichen_review_akp"); akpKarteileichenReview=r?JSON.parse(r):null; }catch(e){}
-  try{ deckungsgradEnabled=(await stGet("deckungsgrad_enabled"))==="1"; }catch(e){}
-  try{ const dgv=await stGet("deckungsgrad_visible_metrics"); if(dgv) dgVisibleMetrics=JSON.parse(dgv); }catch(e){}
-  try{ const erv=await stGet("emp_ranking_enabled"); empRankingEnabled = erv==null ? true : erv==="1"; }catch(e){}
-  try{ stornoquotenEnabled=(await stGet("stornoquoten_enabled"))==="1"; }catch(e){}
-  try{ mieteLastImport=await stGet("miete_last_import"); }catch(e){}
+  await Promise.all([
+    (async()=>{ try{ const d=await stGet("wg-state"); if(d){ const p=JSON.parse(d); if(p&&p.latest) state=p; } }catch(e){} })(),
+    (async()=>{ try{ const g=await stGet("wg-goals"); if(g) goals=JSON.parse(g); }catch(e){} })(),
+    (async()=>{ try{ perfDialogEnabled=(await stGet("performance_dialog_enabled"))==="1"; }catch(e){} })(),
+    (async()=>{ try{ perfDialogAdminEnabled=(await stGet("performance_dialog_admin_enabled"))==="1"; }catch(e){} })(),
+    (async()=>{ try{ chefgespraechEnabled=(await stGet("chefgespraech_enabled"))==="1"; }catch(e){} })(),
+    (async()=>{ try{ kooperationsgespraechEnabled=(await stGet("kooperationsgespraech_enabled"))==="1"; }catch(e){} })(),
+    (async()=>{ try{ auswertungEnabled=(await stGet("auswertung_enabled"))==="1"; }catch(e){} })(),
+    (async()=>{ try{ fhZielEnabled=(await stGet("fh_ziel_enabled"))==="1"; }catch(e){} })(),
+    (async()=>{ try{ fhSearchEnabled=(await stGet("fh_search_enabled"))==="1"; }catch(e){} })(),
+    (async()=>{ try{ akpPeerCompareEnabled=(await stGet("akp_peer_compare_enabled"))==="1"; }catch(e){} })(),
+    (async()=>{ try{ karteileichenJahre=parseInt(await stGet("karteileichen_jahre"))||3; }catch(e){} })(),
+    (async()=>{ try{ const r=await stGet("karteileichen_review_fh"); fhKarteileichenReview=r?JSON.parse(r):null; }catch(e){} })(),
+    (async()=>{ try{ const r=await stGet("karteileichen_review_akp"); akpKarteileichenReview=r?JSON.parse(r):null; }catch(e){} })(),
+    (async()=>{ try{ deckungsgradEnabled=(await stGet("deckungsgrad_enabled"))==="1"; }catch(e){} })(),
+    (async()=>{ try{ const dgv=await stGet("deckungsgrad_visible_metrics"); if(dgv) dgVisibleMetrics=JSON.parse(dgv); }catch(e){} })(),
+    (async()=>{ try{ const erv=await stGet("emp_ranking_enabled"); empRankingEnabled = erv==null ? true : erv==="1"; }catch(e){} })(),
+    (async()=>{ try{ stornoquotenEnabled=(await stGet("stornoquoten_enabled"))==="1"; }catch(e){} })(),
+    (async()=>{ try{ mieteLastImport=await stGet("miete_last_import"); }catch(e){} })(),
+  ]);
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
   else if(emb&&emb.latest&&state.latest){
