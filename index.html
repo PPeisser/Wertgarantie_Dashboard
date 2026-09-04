@@ -4381,6 +4381,13 @@ function sumYearThroughMonthFromDaily(map,year,month){
   let sum=0; for(const d in map) if(d.slice(0,4)===String(year)&&d<=to) sum+=map[d];
   return sum;
 }
+// Summe der Tageshistorie NACH dem angegebenen Monat (exklusive) bis heute -
+// Gegenstück zu sumYearThroughMonthFromDaily(), siehe perfGoal1Snapshot().
+function sumDailyAfterMonth(map,year,month){
+  const cutoff=year+"-"+String(month).padStart(2,"0")+"-31";
+  let sum=0; for(const d in map) if(d>cutoff) sum+=map[d];
+  return sum;
+}
 // Ziel 1: Persönliches Produktionsziel. Der Performance Dialog berichtet
 // immer über den ABGESCHLOSSENEN Vormonat - state.latest/glRow() zeigen zu
 // diesem Zeitpunkt aber bereits den NEUEN, laufenden Monat (die tägliche
@@ -4391,7 +4398,24 @@ function sumYearThroughMonthFromDaily(map,year,month){
 function perfGoal1Snapshot(emp,year,month){
   const dm=state.dailyGL[glKey(emp)]||{};
   const monatIst=sumMonthFromDaily(dm,year,month);
-  const jahrIst=sumYearThroughMonthFromDaily(dm,year,month);
+  let jahrIst;
+  if(state.latest.jahr===year){
+    // Jahreswert bis Ende des berichteten Monats = aktueller kumulierter
+    // Jahreswert (glRow().jahr, immer korrekt "bis heute") MINUS die Tage
+    // NACH dem berichteten Monat bis heute - robuster als die Summe der
+    // GESAMTEN Tageshistorie seit Jahresbeginn (vorherige Berechnung), die
+    // nicht lückenlos bis Jahresanfang zurückreicht (Bug-Report 04.09.2026:
+    // "Persönliches Ziel Jahr" zeigte bei Dominik Szendi 3.965 statt korrekt
+    // 34.583, da state.dailyGL erst seit 21.07.2026 geführt wird). Die neue
+    // Berechnung braucht nur Tageshistorie ab Ende des berichteten Monats,
+    // nicht seit Jahresbeginn.
+    jahrIst=((state.latest.gl[glKey(emp)]||{}).jahr||0)-sumDailyAfterMonth(dm,year,month);
+  }else{
+    // Berichtsjahr liegt nicht im aktuellen Jahr (z.B. Nacherfassung eines
+    // Vorjahres) - kein aktueller Jahreswert verfügbar, daher weiterhin
+    // best-effort aus der Tageshistorie.
+    jahrIst=sumYearThroughMonthFromDaily(dm,year,month);
+  }
   const jahrZiel=PERS_JAHRESZIELE[emp]||0;
   const monatZiel=goals[emp+"|"+year+"-"+String(month).padStart(2,"0")]||0;
   return {year,month,jahr_ist:jahrIst,jahr_ziel:jahrZiel,monat_ist:monatIst,monat_ziel:monatZiel};
