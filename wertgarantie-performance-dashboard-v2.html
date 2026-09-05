@@ -207,7 +207,7 @@ h2.sec small{font-weight:600;text-transform:none;color:var(--muted);letter-spaci
 .goal .delta{margin-top:9px;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);flex-wrap:wrap}
 .goal .edit{margin-left:auto;background:none;border:none;color:var(--wg-blue);font-weight:700;font-size:12px;cursor:pointer;padding:2px}
 .goal .edit:hover{text-decoration:underline}
-.pos-t{color:var(--pos)} .neg-t{color:var(--neg)}
+.pos-t{color:var(--pos)} .neg-t{color:var(--neg)} .neu-t{color:var(--wg-navy)}
 /* Miete-Kachel (Club.Weiss) - farblich abgehoben (Gelb der Mietabteilung,
    blaue Schrift), Ziel-Balken/Pillen (pos/neg) behalten ihre eigenen Farben. */
 .goal.goal-miete{background:rgba(255,222,89,.35);border:1px solid rgba(232,185,0,.5)}
@@ -4798,7 +4798,11 @@ function aktivierungsquoteFor(emp,year,month){
 function perfGoal2Snapshot(emp,year,month){
   const staffeln=akqStaffelnInJahrFor(emp,year);
   const akt=aktivierungsquoteFor(emp,year,month);
-  return {year,staffeln_ist:staffeln.alle,staffeln_ziel:AKQ_STAFFEL_ZIEL[emp]||0,
+  // month wird erst seit 05.09.2026 mitgespeichert (Hochrechnungs-Farblogik
+  // in perfGoalSystemHtml(), siehe perfHochrechnungCls()) - bei älteren,
+  // bereits abgeschickten Berichten fehlt das Feld im gespeicherten
+  // Snapshot; perfHochrechnungCls() faengt das mit einem Fallback ab.
+  return {year,month,staffeln_ist:staffeln.alle,staffeln_ziel:AKQ_STAFFEL_ZIEL[emp]||0,
     aktivierung_angelegt:akt.angelegt,aktivierung_aktiv:akt.aktiv,aktivierung_quote:akt.quote,
     aktivierung_official:!!akt.official};
 }
@@ -4869,6 +4873,38 @@ function perfGoalSnapshot(goalId,emp,year,month){
 // Formatiert die "Auswertung aus dem System" je Ziel als HTML-Block (im
 // PopUp UND im PDF genutzt) - gleicher Rechen-/Anzeigestil wie im übrigen
 // Dashboard (fmt/fmtSign/fmtPct, pos/neg-Pillen).
+// Bug-Report 05.09.2026 (Peter Peißer): "im PDF sind die neuen Farben noch
+// nicht eingebaut" - perfGoalSystemHtml() nutzte bislang durchgehend ein
+// einfaches 2-Farben-System (cls(), nur Rot/Grün anhand des rohen
+// Ist/Ziel-Stands), unabhängig vom 3-Farben-Hochrechnungssystem, das für die
+// Ziel-Kacheln im Hauptdashboard (goalCard()) und den Akquisestaffeln-Balken
+// (renderAkqStaffelBar()) bereits eingeführt wurde (Nutzervorgabe
+// 04.09.2026). Das galt unverändert weiter, unabhängig vom Berichtsmonat -
+// keine Frage von "erst ab nächstem Monat".
+// Betroffen sind dieselben zwei Kennzahlen, die auch im Hauptdashboard die
+// Hochrechnung nutzen: Ziel 1 "Jahr" und Ziel 2 "Akquisestufen" - beide sind
+// Jahressummen mit saisonalem Verlauf, bei denen "noch unter Ziel" mitten im
+// Jahr trotz auf Kurs liegender Hochrechnung fälschlich rot wirkt. "Monat"
+// (Ziel 1) und die Aktivierungsquote bleiben bewusst 2-farbig: der
+// Berichtsmonat ist beim Ausfüllen bereits abgeschlossen (nichts mehr
+// hochzurechnen), die Aktivierungsquote ist bereits im Hauptdashboard
+// (renderAktivierungsquoteBar()) 2-farbig ohne Hochrechnung.
+function perfHochrechnungCls(ist,ziel,year,month){
+  const p=ziel>0?ist/ziel*100:null;
+  const good=p!=null?p>=100:true;
+  // Aeltere, vor Einfuehrung dieser Funktion abgeschickte Berichte speichern
+  // kein "month" im Snapshot (siehe Kommentar bei perfGoal2Snapshot) - ohne
+  // Berichtsmonat ist keine Hochrechnung moeglich, dann bleibt es beim
+  // einfachen 2-Farben-Vergleich wie zuvor.
+  if(!month||!year) return good?"pos-t":"neg-t";
+  const monthEndIso=year+"-"+String(month).padStart(2,"0")+"-"+String(new Date(Date.UTC(year,month,0)).getUTCDate()).padStart(2,"0");
+  const share=seasonShare(monthEndIso,year);
+  const hrJahr=share>0?ist/share:ist;
+  const hp=ziel>0?hrJahr/ziel*100:null;
+  const hGood=hp!=null?hp>=100:true;
+  const neutral=!good&&hGood;
+  return good?"pos-t":(neutral?"neu-t":"neg-t");
+}
 function perfGoalSystemHtml(goalId,snap){
   const pct=v=>v==null?"–":(v*100).toFixed(1).replace(".",",")+" %";
   const cls=(v,ziel)=>v==null||ziel==null?"":(v>=ziel?"pos-t":"neg-t");
@@ -4876,7 +4912,7 @@ function perfGoalSystemHtml(goalId,snap){
     const jp=snap.jahr_ziel>0?snap.jahr_ist/snap.jahr_ziel*100:null;
     const mp=snap.monat_ziel>0?snap.monat_ist/snap.monat_ziel*100:null;
     return `<div class="ac-grid">
-      <div><span class="ac-lbl">Jahr ${snap.year}</span><div class="ac-val"><b class="${cls(jp,100)}">${fmt(snap.jahr_ist)}</b> / ${snap.jahr_ziel>0?fmt(snap.jahr_ziel):"–"} Stk.${jp!=null?` (${jp.toFixed(1).replace(".",",")} %)`:""}</div></div>
+      <div><span class="ac-lbl">Jahr ${snap.year}</span><div class="ac-val"><b class="${perfHochrechnungCls(snap.jahr_ist,snap.jahr_ziel,snap.year,snap.month)}">${fmt(snap.jahr_ist)}</b> / ${snap.jahr_ziel>0?fmt(snap.jahr_ziel):"–"} Stk.${jp!=null?` (${jp.toFixed(1).replace(".",",")} %)`:""}</div></div>
       <div><span class="ac-lbl">Monat ${MONATE[snap.month-1]}</span><div class="ac-val"><b class="${cls(mp,100)}">${fmt(snap.monat_ist)}</b> / ${snap.monat_ziel>0?fmt(snap.monat_ziel):"–"} Stk.${mp!=null?` (${mp.toFixed(1).replace(".",",")} %)`:""}</div></div>
     </div>`;
   }
@@ -4884,7 +4920,7 @@ function perfGoalSystemHtml(goalId,snap){
     const sp=snap.staffeln_ziel>0?snap.staffeln_ist/snap.staffeln_ziel*100:null;
     const aq=snap.aktivierung_quote==null?null:snap.aktivierung_quote*100;
     return `<div class="ac-grid">
-      <div><span class="ac-lbl">Akquisestufen ${snap.year}</span><div class="ac-val"><b class="${cls(sp,100)}">${fmt(snap.staffeln_ist)}</b> / ${snap.staffeln_ziel>0?fmt(snap.staffeln_ziel):"–"}${sp!=null?` (${sp.toFixed(1).replace(".",",")} %)`:""}</div></div>
+      <div><span class="ac-lbl">Akquisestufen ${snap.year}</span><div class="ac-val"><b class="${perfHochrechnungCls(snap.staffeln_ist,snap.staffeln_ziel,snap.year,snap.month)}">${fmt(snap.staffeln_ist)}</b> / ${snap.staffeln_ziel>0?fmt(snap.staffeln_ziel):"–"}${sp!=null?` (${sp.toFixed(1).replace(".",",")} %)`:""}</div></div>
       <div><span class="ac-lbl">Aktivierungsquote (FH ${AKTIVIERUNGSQUOTE_JAHRE.join("/")})</span><div class="ac-val"><b class="${cls(aq,80)}">${pct(snap.aktivierung_quote)}</b> <span style="color:var(--muted);font-weight:600">Ziel mind. 80 % ${snap.aktivierung_official?"(lt. Auswertung \"PO + AKQ\")":`(${fmt(snap.aktivierung_aktiv)} von ${fmt(snap.aktivierung_angelegt)} FH mit mind. 1 Vertrag ${snap.year})`}</span></div></div>
     </div>`;
   }
