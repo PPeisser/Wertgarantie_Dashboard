@@ -76,7 +76,13 @@ async function callMistralTool(
           "Authorization": "Bearer " + apiKey,
         },
         body: JSON.stringify({
-          model: "mistral-large-latest",
+          // Bug-Report 04.09.2026: "mistral-large-latest" liefert fuer den
+          // hinterlegten API-Key HTTP 403 "This model is not available in
+          // your subscription tier" - im aktuellen Mistral-Tarif nicht
+          // freigeschaltet. "mistral-small-latest" ist fuer diesen Key
+          // verfuegbar und unterstuetzt Chat-Completions + function_calling
+          // (per /v1/models verifiziert).
+          model: "mistral-small-latest",
           max_tokens: maxTokens,
           temperature: 0.2,
           messages: [
