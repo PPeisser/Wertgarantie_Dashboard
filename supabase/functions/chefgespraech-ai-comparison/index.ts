@@ -76,13 +76,15 @@ async function callMistralTool(
           "Authorization": "Bearer " + apiKey,
         },
         body: JSON.stringify({
-          // Bug-Report 04.09.2026: "mistral-large-latest" liefert fuer den
+          // Bug-Report 04.09.2026: "mistral-large-latest" lieferte fuer den
           // hinterlegten API-Key HTTP 403 "This model is not available in
-          // your subscription tier" - im aktuellen Mistral-Tarif nicht
-          // freigeschaltet. "mistral-small-latest" ist fuer diesen Key
-          // verfuegbar und unterstuetzt Chat-Completions + function_calling
-          // (per /v1/models verifiziert).
-          model: "mistral-small-latest",
+          // your subscription tier" (Free-Tier), Zwischenfix auf
+          // "mistral-small-latest". Nach Aktivierung von Pay-as-you-go
+          // (05.09.2026, vom Nutzer bestaetigt und per /v1/models +
+          // Testaufruf verifiziert) ist "mistral-large-latest" wieder
+          // verfuegbar und liefert saubere Tool-Call-Antworten - zurueck auf
+          // das groessere Modell fuer bessere Berichtsqualitaet.
+          model: "mistral-large-latest",
           max_tokens: maxTokens,
           temperature: 0.2,
           messages: [
