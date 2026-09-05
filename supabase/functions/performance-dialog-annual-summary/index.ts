@@ -332,12 +332,27 @@ Deno.serve(async (req) => {
   const tokenList = employeeList.map((n) => tokenOf.get(n));
   const promptBody = reports.map((r) => formatReportForPrompt(r, tokenOf)).join("\n\n---\n\n");
 
+  // Bug-Report 05.09.2026 (Peter Peißer): die KI schrieb im Fliesstext
+  // "Akquisequote (63,3 %)" - tatsaechlich die Akquisestufen-Erreichung
+  // (staffeln_ist/staffeln_ziel), nicht die separat und korrekt beschriftet
+  // uebergebene Aktivierungsquote (83,7 %, siehe formatSnapshot() Ziel 2
+  // oben: "Akquisestufen ...; Aktivierungsquote: ..."). Explizite
+  // Anti-Verwechslungs-Anweisung als zusaetzliche Abschwaechung - ersetzt
+  // NICHT den eigentlichen Fix (perfKiSystemDataHtml() im Client zeigt die
+  // System-Kennzahlen zum Abgleich direkt neben diesem KI-Text an), da
+  // Prompting allein Halluzinationen nicht zuverlaessig auf 0 senkt.
+  const antiVerwechslungHinweis =
+    `WICHTIG gegen Zahlenverwechslung: uebernimm jede Kennzahl EXAKT mit dem Wert und der Bezeichnung, die dir im ` +
+    `Rohdatenblock gegeben wird (z.B. "Akquisestufen" und "Aktivierungsquote" sind zwei VERSCHIEDENE Kennzahlen mit ` +
+    `unterschiedlichen Werten - verwechsle, vertausche oder vermische sie nie, auch nicht unter einer neuen, eigenen ` +
+    `Bezeichnung wie "Akquisequote"). Erfinde niemals einen Wert und runde nicht anders, als er dir vorliegt.`;
   const systemPrompt = month != null
     ? `Du erstellst einen internen Monatsbericht fuer das Wertgarantie Performance Dashboard auf Basis der ` +
       `"Performance Dialog"-Protokolle von Vertriebsmitarbeitern fuer GENAU EINEN Monat. Jedes Protokoll enthaelt ` +
       `System-Kennzahlen zu den persoenlichen Zielen des Monats sowie vier Freitext-Antworten des Mitarbeiters. ` +
       `Analysiere die Daten sachlich und konkret - Kennzahlen-Stand, was aus den Antworten hervorsticht, ggf. ` +
       `Unterstuetzungsbedarf. Da nur ein Monat vorliegt, gibt es KEINEN Trend ueber mehrere Monate - erfinde keinen. ` +
+      `${antiVerwechslungHinweis} ` +
       `Schreibe auf Deutsch, professionell, praegnant, ohne Floskeln. Gehe NUR auf Mitarbeiter ein, fuer die ` +
       `tatsaechlich ein Protokoll vorliegt. Die echten Mitarbeiternamen werden dir aus Datenschutzgruenden NICHT ` +
       `mitgeteilt - jeder Mitarbeiter ist ausschliesslich ueber einen Platzhalter wie "MITARBEITER_1" referenziert. ` +
@@ -348,6 +363,7 @@ Deno.serve(async (req) => {
       `Kennzahlen zu den persoenlichen Zielen des Monats sowie vier Freitext-Antworten des Mitarbeiters. ` +
       `Analysiere die Daten sachlich und konkret, erkenne Muster/Trends ueber die Monate hinweg (z.B. wiederkehrende ` +
       `Themen, Verbesserung/Verschlechterung der Zielerreichung, wiederholt genannter Unterstuetzungsbedarf). ` +
+      `${antiVerwechslungHinweis} ` +
       `Schreibe auf Deutsch, professionell, praegnant, ohne Floskeln. Gehe NUR auf Monate/Mitarbeiter ein, fuer die ` +
       `tatsaechlich Protokolle vorliegen - erfinde nichts fuer fehlende Monate. Die echten Mitarbeiternamen werden ` +
       `dir aus Datenschutzgruenden NICHT mitgeteilt - jeder Mitarbeiter ist ausschliesslich ueber einen Platzhalter ` +
