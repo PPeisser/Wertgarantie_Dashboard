@@ -5002,6 +5002,19 @@ async function openPerfModal(){
     if(data){
       perfExistingReport=data;
       (data.goals||[]).forEach(g=>{ if(perfAnswers[g.goal_id]) perfAnswers[g.goal_id]={...perfAnswers[g.goal_id],...g.answers}; });
+      // Bug-Report 05.09.2026 (Peter Peißer, August): für diesen Monat lag
+      // bereits ein ABGESCHICKTER Bericht vor (is_draft:false, submitted_at
+      // gesetzt) - trotzdem stand perfSubmitDone=false (s.o., pauschal bei
+      // jedem Öffnen zurückgesetzt). Ein bloßes erneutes Ansehen/Durchklicken
+      // (Weiter/Zurück, siehe savePerfDraft()-Aufrufe in den Step-Handlern)
+      // loeste dadurch einen Entwurf-Autosave aus, der is_draft wieder auf
+      // true zurueckstufte und den Bericht im Admin-Grid (Filter
+      // is_draft=false) faelschlich wieder als "nicht abgegeben" zeigte -
+      // obwohl inhaltlich nichts geaendert wurde. Fix: ist der geladene
+      // Bericht bereits final abgeschickt, gilt savePerfDraft()'s
+      // perfSubmitDone-Schutz von Anfang an, nicht erst nach einem erneuten
+      // Absenden in dieser Sitzung.
+      if(data.is_draft===false) perfSubmitDone=true;
     }
   }catch(e){}
   perfStepIdx=0;
