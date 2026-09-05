@@ -221,6 +221,15 @@ declare
   r jsonb; nm text; vn text; nn text; sp int; mval int; mkey text; monthjson jsonb;
   poval numeric; f2val numeric; pojson jsonb; f2json jsonb;
 begin
+  -- Haertung (DSGVO-Pruefung 05.09.2026): trotz "revoke ... from public /
+  -- grant ... to authenticated" unten meldete der Supabase Security Advisor
+  -- diese Funktion als fuer die Rolle anon ausfuehrbar - die genaue Ursache
+  -- der Rechte-Drift wurde nicht abschliessend geklaert. Diese explizite
+  -- Laufzeitpruefung schuetzt unabhaengig von den GRANT/REVOKE-Rechten auf
+  -- Datenbankebene und ist damit robust gegen ein erneutes Auftreten.
+  if auth.uid() is null then
+    raise exception 'Anmeldung erforderlich';
+  end if;
   for r in select * from jsonb_array_elements(rows) loop
     if coalesce(r->>'nr','') = '' then continue; end if;
     nm := nullif(trim(r->>'nm'), '');
@@ -285,6 +294,10 @@ declare
   cur_pt text; cur_st text;
   rank_of jsonb := '{"1":1,"2":2,"3":3,"erledigt":4,"500":5}'::jsonb;
 begin
+  -- Haertung (DSGVO-Pruefung 05.09.2026), analog akp_sync_daily oben.
+  if auth.uid() is null then
+    raise exception 'Anmeldung erforderlich';
+  end if;
   for r in select * from jsonb_array_elements(rows) loop
     if coalesce(r->>'nr','') = '' then continue; end if;
     new_pt := nullif(r->>'profi_training','');
@@ -467,6 +480,10 @@ declare
   r jsonb; fhnr text; newseg text; curmonth text;
   oldseg text; oldmonth text; oldprev text; newprev text;
 begin
+  -- Haertung (DSGVO-Pruefung 05.09.2026), analog akp_sync_daily oben.
+  if auth.uid() is null then
+    raise exception 'Anmeldung erforderlich';
+  end if;
   curmonth := to_char(now(), 'YYYY-MM');
   for r in select * from jsonb_array_elements(rows) loop
     fhnr := r->>'fh_nr';
@@ -563,6 +580,10 @@ declare
   r jsonb; mval int; mkey text; monthjson jsonb; fhnr text;
   is_new boolean; pending_koop text;
 begin
+  -- Haertung (DSGVO-Pruefung 05.09.2026), analog akp_sync_daily oben.
+  if auth.uid() is null then
+    raise exception 'Anmeldung erforderlich';
+  end if;
   for r in select * from jsonb_array_elements(rows) loop
     fhnr := r->>'nr';
     if coalesce(fhnr,'') = '' then continue; end if;
@@ -608,6 +629,10 @@ language plpgsql security definer set search_path = public as $$
 declare
   r jsonb; monthlyj jsonb; sortimentj jsonb; clubnr text; mietename text;
 begin
+  -- Haertung (DSGVO-Pruefung 05.09.2026), analog akp_sync_daily oben.
+  if auth.uid() is null then
+    raise exception 'Anmeldung erforderlich';
+  end if;
   for r in select * from jsonb_array_elements(rows) loop
     if coalesce(r->>'fh_nr','') = '' then continue; end if;
     monthlyj := coalesce(r->'monthly','{}'::jsonb);
@@ -981,10 +1006,20 @@ returns table (
   db2_trend text,
   imported_at timestamptz
 )
-language sql
+language plpgsql
 security definer
 set search_path = public
 as $$
+begin
+  -- Haertung (DSGVO-Pruefung 05.09.2026), analog akp_sync_daily oben - vorher
+  -- war diese Lesefunktion trotz der bewusst fehlenden select-Policy auf
+  -- fh_deckungsgrad selbst (siehe Tabellenkommentar) ohne eigene
+  -- Sitzungspruefung ausfuehrbar, also der einzige tatsaechliche Schutz nur
+  -- "Funktionsname/Format unbekannt" statt einer echten Zugriffskontrolle.
+  if auth.uid() is null then
+    raise exception 'Anmeldung erforderlich';
+  end if;
+  return query
   with ranked as (
     select
       d.*,
@@ -1021,6 +1056,7 @@ as $$
     r.imported_at
   from ranked r
   where r.fh_nr = p_fh_nr;
+end;
 $$;
 
 revoke execute on function public.fh_deckungsgrad_for(text) from public;
