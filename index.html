@@ -163,6 +163,21 @@ h2.sec small{font-weight:600;text-transform:none;color:var(--muted);letter-spaci
 .goals.cols3{grid-template-columns:repeat(3,1fr);gap:14px}
 .goals.cols4 .goal,.goals.cols3 .goal{padding:16px 18px}
 .goals.cols4 .goal .pct,.goals.cols3 .goal .pct{font-size:28px}
+/* Bug-Report 05.09.2026 (Nutzer: Mitarbeiter-Kacheln plötzlich viel zu groß):
+   die Zeilen-Ausrichtungs-Mindesthöhen weiter unten (.goal .name/.big/.delta/
+   .delta+.hr) wurden am WORST CASE der schmalen 6-spaltigen AT-gesamt-Ansicht
+   (220px Kachelbreite) bemessen, wo lange Titel/Pill-/Stand-Texte umbrechen.
+   In der breiteren 3-spaltigen Mitarbeiter-Ansicht (~450px Kachelbreite,
+   .cols3/.cols4) bricht so gut wie nichts um - dieselben Mindesthöhen waren
+   dort also reiner, unnötiger Leerraum und ließen die Kacheln aufgebläht
+   wirken. Eigene, kleinere Mindesthöhen (per gemessenem Ist-Zustand dieser
+   Breite) statt der für die schmale Ansicht bemessenen Werte. Höhere
+   Selektor-Spezifität (4 statt 2 Klassen) gewinnt unabhängig von der
+   Reihenfolge im Stylesheet gegenüber den Basisregeln weiter unten. */
+.goals.cols4 .goal .name,.goals.cols3 .goal .name{min-height:2.9em}
+.goals.cols4 .goal .big,.goals.cols3 .goal .big{min-height:4.7em}
+.goals.cols4 .goal .delta,.goals.cols3 .goal .delta{min-height:1.6em}
+.goals.cols4 .goal .delta+.hr,.goals.cols3 .goal .delta+.hr{min-height:4.4em}
 /* Österreich gesamt mit 6 Karten (Nutzervorgabe 02.09.2026): bewusst EINE
    längliche Reihe wie bei 5 Karten statt der zweizeiligen, quadratischeren
    .cols3-Kachelform (die bei der Mitarbeiter-Ansicht mit ihren immer 6
@@ -526,7 +541,10 @@ td .betr{font-size:11px;color:var(--muted)}
      Schriftgrößen s.o.) würde dieselbe em-Reservierung unnötig große
      Leerräume erzeugen und dem "~2 Seiten"-Ziel dieses Layouts (Kommentar
      oben) widersprechen. Für den Druck daher zurückgesetzt. */
-  .goal .name,.goal .big,.goal .delta,.goal .delta+.hr{min-height:0}
+  /* !important nötig: die cols3/cols4-Mindesthöhen (Mitarbeiter-Ansicht,
+     s.o.) haben mit 4 Klassen im Selektor höhere Spezifität als diese
+     Rücksetzregel hier (2 Klassen) und würden sie sonst überstimmen. */
+  .goal .name,.goal .big,.goal .delta,.goal .delta+.hr{min-height:0 !important}
   .bar{height:7px}
   .kpi{padding:6px 9px 6px}
   .kpi .num{font-size:19px}
@@ -587,7 +605,7 @@ body.pdf-mode .goal .pct,body.pdf-mode .goals .goal .pct,body.pdf-mode .goals.co
 body.pdf-mode .bar{height:7px}
 /* Wie bei @media print (Kommentar dort): die Reihen-Ausrichtung ist nur für
    die Live-Ansicht gedacht, im kompakten PDF-Export nur unnötiger Leerraum. */
-body.pdf-mode .goal .name,body.pdf-mode .goal .big,body.pdf-mode .goal .delta,body.pdf-mode .goal .delta+.hr{min-height:0}
+body.pdf-mode .goal .name,body.pdf-mode .goal .big,body.pdf-mode .goal .delta,body.pdf-mode .goal .delta+.hr{min-height:0 !important}
 body.pdf-mode .kpi{padding:6px 9px 6px}
 body.pdf-mode .kpi .num{font-size:19px}
 body.pdf-mode .panel{padding:6px 8px}
