@@ -5592,6 +5592,39 @@ async function exportPerfAllReportsPdf(year,month){
   }
 }
 
+// Bug-Report 05.09.2026 (Peter Peißer): der KI-Monats-/Jahresbericht zeigte
+// bisher AUSSCHLIESSLICH den frei formulierten KI-Text - keine der vom
+// SYSTEM (nicht der KI) berechneten Kennzahlen standen zum Abgleich daneben.
+// Konkreter Fehler: Mistral schrieb im Fließtext "Die Akquisequote
+// (63,3 %) ist ebenfalls positiv" - tatsächlich ist 63,3 % die
+// Akquisestufen-Zielerreichung (19/30), nicht die echte Aktivierungsquote
+// (83,7 %). Beide Werte wurden dem Modell nachweislich korrekt UND korrekt
+// beschriftet übergeben (siehe formatSnapshot() in der Edge Function
+// performance-dialog-annual-summary/index.ts: "Akquisestufen 2026: 19 / 30
+// (63,3 %); Aktivierungsquote: 83,7 % (...)") - die KI hat beim freien
+// Formulieren zwei ähnlich benannte Kennzahlen verwechselt/zusammengeführt.
+// Das ist ein bekanntes, grundsätzliches Risiko bei generativem Freitext
+// über Zahlen und lässt sich durch Prompting allein NICHT zuverlässig auf
+// 0 % senken (siehe verschärfte System-Prompt-Anweisung in der Edge
+// Function als zusätzliche Abschwächung).
+//
+// Eigentlicher Fix hier: unter jedem KI-Absatz zusätzlich dieselben
+// System-Kennzahlen einblenden, die auch dem Modell übergeben wurden -
+// UNVERÄNDERT über perfGoalSystemHtml() (dieselbe Funktion wie im
+// Einzelprotokoll), also NICHT von der KI erzeugt oder neu berechnet,
+// sondern direkt aus dem bereits geladenen perfAdminReports (exakt der
+// Datensatz, aus dem der Prompt serverseitig gebaut wurde). Dadurch ist
+// jede Zahl im KI-Fließtext sofort im selben Dokument gegen die
+// Originaldaten prüfbar, statt unbemerkt falsch zu bleiben.
+function perfKiSystemDataHtml(employee,year,month){
+  const rep=(perfAdminReports[employee]||{})[month];
+  if(!rep||!rep.goals||!rep.goals.length) return "";
+  const blocks=rep.goals.map(g=>perfGoalSystemHtml(g.goal_id,g.snapshot)).join("");
+  return `<div style="background:#F5F9FC;border-radius:8px;padding:10px 12px;margin-top:8px">
+    <div style="font-weight:800;font-size:9.5px;color:#5D7284;letter-spacing:.3px;margin-bottom:4px">SYSTEM-KENNZAHLEN (nicht von der KI erzeugt)</div>
+    ${blocks}
+  </div>`;
+}
 // KI-Jahresbericht: ZUSÄTZLICHER, einmal im Jahr abrufbarer Sammelbericht
 // (Nutzervorgabe 22.08.2026) - ersetzt NICHT die Einzel-/Monatsprotokolle
 // oben, sondern lässt die Mistral API (EU-Anbieter, DSGVO-konform, seit
@@ -5618,6 +5651,7 @@ function buildAnnualSummaryPdfDoc(year, report){
         <div style="margin-top:10px">
           <div style="font-weight:800;font-size:10px;color:#5D7284;letter-spacing:.3px">${escapeHtml(MONATE[m.month-1]||("Monat "+m.month))}</div>
           <div style="font-size:11.5px;color:#10202C;white-space:pre-wrap;margin-top:3px;line-height:1.4">${escapeHtml(m.summary||"")}</div>
+          ${perfKiSystemDataHtml(emp.employee,year,m.month)}
         </div>`).join("");
       return `<div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:14px;font-size:11px">
         <div style="font-size:15px;font-weight:900;color:#062A3F;margin-bottom:4px">${escapeHtml(emp.employee)}</div>
@@ -5712,6 +5746,7 @@ function buildMonthlySummaryPdfDoc(year,month,report){
       <div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:14px;font-size:11px">
         <div style="font-size:15px;font-weight:900;color:#062A3F;margin-bottom:8px">${escapeHtml(emp.employee)}</div>
         <div style="font-size:11.5px;color:#10202C;white-space:pre-wrap;line-height:1.4">${escapeHtml(emp.summary||"")}</div>
+        ${perfKiSystemDataHtml(emp.employee,year,month)}
       </div>`).join("");
     box.innerHTML=`
       <div class="pdf-block" style="border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:8px">
