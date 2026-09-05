@@ -6232,18 +6232,30 @@ function renderGoals(){
   // Vorjahresproduktion + Veränderung zu heuer, jeweils bis zum aktuellen
   // Kalendermonat (Nutzervorgabe 02.09.2026) - in derselben Kachel unter dem
   // Freitagsreport-Hinweis angezeigt statt einer eigenen Karte.
+  //
+  // Optik-Fix (Nutzervorgabe 05.09.2026): stand bisher nur als zweite,
+  // per <br> angehängte Zeile INNERHALB des kursiv-grauen Freitagsreport-
+  // Hinweistexts, mit hart auf font-style:normal zurückgesetzten Fett-/
+  // Farbwerten mittendrin - wirkte wie ein Bruch im Fließtext (in der
+  // Mitarbeitereinzelansicht besonders auffällig, da hier eine echte
+  // Vorjahresvergleichs-Zahl steht statt nur des ATgesamt-Kontexts). Jetzt
+  // eine eigene, mit den übrigen Kennzahlen-Zeilen (📌 Ist-Stand, 📈
+  // Hochrechnung ...) konsistente .hr-Zeile mit eigenem Icon und
+  // Trenner-Linie - und laut Vorgabe VOR statt nach dem Freitagsreport-
+  // Hinweis platziert.
   const mieteVJBisMonat=mieteBisMonatFor(currentEmp,s.jahr-1,s.monat);
   const mieteHeuerBisMonat=mieteBisMonatFor(currentEmp,s.jahr,s.monat);
   const mieteVJDelta=mieteVJBisMonat>0?(mieteHeuerBisMonat-mieteVJBisMonat)/mieteVJBisMonat*100:null;
-  const mieteVJLine=mieteVJBisMonat>0
-    ?`<br>Vorjahr bis ${MONATE[s.monat-1]}: <b style="font-style:normal;color:var(--ink)">${fmt(mieteVJBisMonat)}</b> Stk. · <span style="font-style:normal;font-weight:700;color:${mieteVJDelta>=0?"var(--pos)":"var(--neg)"}">${fmtPct(mieteVJDelta)}</span> zum Vorjahr`
+  const mieteVJRow=mieteVJBisMonat>0
+    ?`<div class="hr"><span class="hr-ic">📊</span> Vorjahr bis ${MONATE[s.monat-1]}: <b>${fmt(mieteVJBisMonat)}</b> Stk. · <span style="font-weight:700;color:${mieteVJDelta>=0?"var(--pos)":"var(--neg)"}">${fmtPct(mieteVJDelta)}</span> zum Vorjahr</div>`
     :"";
   const mieteCard=goalCard("🏠 Miete-Jahresziel "+s.jahr, mieteTarget, mieteIst, mieteTarget*mieteShare,
     "", false,
     mieteTarget>0?{val:mieteHrJahr,lbl:"Jahresende (gleichmäßig)"}:null,
     null,
-    "Zahlen aus Freitagsreport, letzte Einspielung: "+(fmtWeekdayDate(mieteLastImport)||MIETE_REPORT_STAND_FALLBACK)+mieteVJLine
-  ).replace('class="goal"','class="goal goal-miete" style="cursor:pointer" onclick="openMieteListModal()"');
+    "Zahlen aus Freitagsreport, letzte Einspielung: "+(fmtWeekdayDate(mieteLastImport)||MIETE_REPORT_STAND_FALLBACK)
+  ).replace('class="goal"','class="goal goal-miete" style="cursor:pointer" onclick="openMieteListModal()"')
+   .replace('<div class="hr" style="color:var(--muted);font-style:italic">', mieteVJRow+'<div class="hr" style="color:var(--muted);font-style:italic">');
   // Reihenfolge (Nutzervorgabe 01.09.2026): Persönliches Jahresziel VOR der
   // Miete-Kachel - deshalb wird hier zuerst das Jahresziel gepusht.
   if(!isATv){
