@@ -96,7 +96,7 @@ header{
    nimmt - auch wenn es (nach dem Umbruch) allein auf seiner Zeile steht. */
 .header-top{display:flex;align-items:flex-start;gap:18px;flex-wrap:nowrap}
 header img.logo{height:52px;width:auto;flex-shrink:0}
-.title-block{min-width:420px}
+.title-block{min-width:460px}
 .title-block h1{font-size:21px;font-weight:800;letter-spacing:-.3px;color:var(--wg-navy)}
 .title-block .sub{font-size:12.5px;color:var(--muted);margin-top:2px}
 .controls{display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:1;min-width:0;margin-left:auto}
@@ -715,16 +715,16 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <h1>Performance Dashboard Österreich</h1>
       <div class="sub">Vertragsproduktion · Ziele · Händler &amp; AKP im Blick</div>
       <div class="hidden" id="welcomeMsg" style="font-size:12.5px;color:var(--wg-blue-dark);font-weight:700;margin-top:2px"></div>
+      <div class="controls-row" style="margin-top:10px;justify-content:flex-start">
+        <div class="hidden no-print akp-search" id="fhSearchBox" style="width:230px;margin-top:0;padding-top:0;border-top:none">
+          <input type="text" id="fhSearchInput" placeholder="Fachhändlersuche: Name, Ort oder FH-Nr. …" autocomplete="off">
+          <div id="fhSearchResults"></div>
+        </div>
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" class="hidden" multiple>
+        <select id="mitarbeiter" title="Mitarbeiter wählen"></select>
+      </div>
     </div>
     <div class="controls no-print">
-     <div class="controls-row">
-      <div class="hidden no-print akp-search" id="fhSearchBox" style="width:230px;margin-top:0;padding-top:0;border-top:none">
-        <input type="text" id="fhSearchInput" placeholder="Fachhändlersuche: Name, Ort oder FH-Nr. …" autocomplete="off">
-        <div id="fhSearchResults"></div>
-      </div>
-      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" class="hidden" multiple>
-      <select id="mitarbeiter" title="Mitarbeiter wählen"></select>
-     </div>
      <div class="controls-row">
       <button class="btn btn-ghost" id="pdfBtn" title="Als PDF drucken / speichern">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
