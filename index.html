@@ -6043,14 +6043,12 @@ function akpFullList(s){
 }
 
 async function saveData(){ try{ await stSet("wg-state",JSON.stringify(state)); }catch(e){} }
-// Bug-Report 04.09.2026 ("Dashboard extrem langsam"): lud bisher 18
-// voneinander unabhängige dashboard_kv-Einstellungen NACHEINANDER (18
-// einzelne Netzwerk-Anfragen im Wasserfall) - bei jedem einzelnen Laden des
-// Dashboards, nicht nur einmalig. Da keiner der Werte vom Ergebnis eines
-// anderen abhängt, laufen sie jetzt parallel (Promise.all) - aus 18
-// nacheinander wartenden Anfragen wird eine einzige Wartezeit. Fehler-
-// Isolation je Einstellung (try/catch) bleibt unverändert erhalten, nur
-// nicht mehr sequenziell.
+// Bug-Report 04.09.2026 ("Dashboard extrem langsam"): 18 voneinander
+// unabhängige dashboard_kv-Einstellungen liefen ursprünglich NACHEINANDER,
+// eine frühere Iteration parallelisierte das per Promise.all (18 gleich-
+// zeitige statt 18 nacheinander wartende Anfragen). 06.09.2026 nochmals
+// verbessert (Kommentar unten bei stGetMany()): aus 18 parallelen wurde
+// EINE gebündelte Anfrage - Fehler-Isolation je Einstellung bleibt erhalten.
 async function loadAll(){
   // Performance-Fix 06.09.2026 (siehe stGetMany()-Kommentar): 18 einzelne
   // stGet()-Requests zu einem einzigen Batch-Request gebündelt.
@@ -6997,17 +6995,43 @@ function renderAkpSearch(){
   if(!hasData()){ box.innerHTML=""; return; }
   const s=state.latest;
   const rows=akpFullList(s).filter(a=>currentEmp===AT_GESAMT||a.emp===currentEmp);
-  const ranked=akpRanked(rows,akpPeriod);
-  const enriched=ranked?ranked.top:rows.map(r=>({...r,val:null,pill:""}));
-  const hits=enriched.filter(r=>
+  // Performance-Fix 06.09.2026 ("Buchstaben mit Sekundenverzögerung" beim
+  // Tippen, Vollcheck): akpRanked() rankt/sortiert bei jedem Aufruf die
+  // KOMPLETTE AKP-Liste - bei den 10.000+ Datensätzen aus der Produktions-
+  // datenbank per Playwright-Messung ~25-35ms allein für diese eine Funktion,
+  // bei JEDEM einzelnen Tastendruck im Suchfeld (oninput, siehe unten). Dabei
+  // werden am Ende nur maximal 20 gefilterte Treffer angezeigt. Jetzt zuerst
+  // (billig) gefiltert, Wert/Pille erst danach nur noch für die tatsächlich
+  // angezeigten Treffer berechnet - exakt dieselbe Formel wie in akpRanked(),
+  // akpRanked() selbst bewusst unverändert gelassen (5 andere Verwendungs-
+  // stellen wie Top/Flop-PopUp/PDF-Export brauchen weiterhin die volle,
+  // sortierte Liste).
+  // Filter zuerst ÜBER ALLE Treffer (noch nicht auf 20 gekürzt) - akpRanked()
+  // zeigte bei mehr als 20 Treffern bisher die 20 WERTSTÄRKSTEN (weil auf der
+  // bereits nach val sortierten Gesamtliste gefiltert wurde), nicht einfach
+  // die ersten 20 in Einfügereihenfolge. Um dieses Verhalten exakt zu
+  // erhalten, wird erst NACH dem Filtern (auf die - in der Praxis meist sehr
+  // kleine - Trefferzahl) sortiert, nicht vorher auf dem kompletten Datensatz.
+  const hits=rows.filter(r=>
     (r.name||"").toLowerCase().includes(q) ||
     (r.nr||"").toLowerCase().includes(q) ||
     (r.fhNr||"").toLowerCase().includes(q) ||
     (r.firma||"").toLowerCase().includes(q)
-  ).slice(0,20);
+  );
   if(!hits.length){ box.innerHTML=`<div class="empty-note">Keine AKP gefunden.</div>`; return; }
+  const p=akpPeriod;
+  const noVal=(p==="woche"&&historyDays().length<2)||(p==="quartal"&&!akpContactsIndex);
+  const valFor=noVal ? null
+    : p==="tag" ? r=>r.vt
+    : p==="woche" ? r=>sumWeek((state.dailyAKP||{})[akpKey(r)]||{},s.vortag).sum
+    : p==="monat" ? r=>r.monat
+    : p==="quartal" ? r=>(akpQuarterSum(akpContactsIndex&&akpContactsIndex[r.nr],s.jahr,s.monat)||{}).cur||0
+    : r=>r.lj;
+  const valued=hits.map(r=>noVal?{...r,val:null,pill:""}:{...r,val:valFor(r),vjDiff:r.lj-r.vj,
+    pill:`<span class="pill ${(r.lj-r.vj)>=0?"pos":"neg"}">${fmtSign(r.lj-r.vj)} vs. VJ (${fmtPct(pctOf(r.lj,r.vj))})</span>`});
+  const enriched=(noVal?valued:[...valued].sort((a,b)=>b.val-a.val||(b.vjDiff??0)-(a.vjDiff??0))).slice(0,20);
   const unit=akpUnitLabel(akpPeriod);
-  box.innerHTML=hits.map(r=>`<div class="akp-search-row">
+  box.innerHTML=enriched.map(r=>`<div class="akp-search-row">
       <span><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b>
       <span class="betr"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.fhNr||"")}">${escapeHtml(r.firma||"")}</button> · ${escapeHtml(r.ort||"")}</span></span>
       <span class="val"><span class="val-num">${fmt(r.val)}<small> ${unit}</small></span>${r.pill||""}</span>
@@ -8996,10 +9020,19 @@ function renderAuswertungMultiSearch(){
       .slice(0,25);
   }else if(auswertungTyp==="akp"){
     if(!akpContactsIndex){ box.innerHTML=`<div class="empty-note">AKP-Kontaktdatenbank lädt noch …</div>`; return; }
+    // Performance-Fix 06.09.2026 (Vollcheck, "Buchstaben mit Sekundenverzögerung"):
+    // baute bisher bei JEDEM Tastendruck für ALLE 10.000+ AKP-Kontakte erst
+    // die formatierten label/sub-Strings, um DANACH erst zu filtern (~14-19ms
+    // gemessen) - jetzt zuerst (billig) auf den Rohfeldern gefiltert, Label/
+    // Sub-Text erst für die tatsächlichen Treffer gebaut. Gleiches Ergebnis,
+    // da dieselben Felder (Vorname/Nachname/Firma/Ort/FH-Nr.) durchsucht werden.
     rows=Object.values(akpContactsIndex)
+      .filter(a=>!auswertungMultiKeys.includes(a.nr))
+      .filter(a=>{
+        const hay=[a.vorname,a.nachname,a.nr,a.firma,a.ort,a.fh_nr].filter(Boolean).join(" ").toLowerCase();
+        return hay.includes(q);
+      })
       .map(a=>({key:a.nr,label:[a.vorname,a.nachname].filter(Boolean).join(" ")||a.nr,sub:(a.firma||"")+(a.ort?" · "+a.ort:"")+(a.fh_nr?" · FH-Nr. "+a.fh_nr:"")}))
-      .filter(r=>!auswertungMultiKeys.includes(r.key))
-      .filter(r=>r.label.toLowerCase().includes(q)||r.sub.toLowerCase().includes(q))
       .slice(0,25);
   }
   if(!rows.length){ box.innerHTML=`<div class="empty-note">Nichts gefunden.</div>`; return; }
