@@ -2345,7 +2345,15 @@ function asciiFilenamePart(s){
 async function loadAdminUsers(){
   const box=$("adUserList");
   box.innerHTML="<p style='color:var(--muted)'>Lädt …</p>";
-  const { data, error } = await sb.from("profiles").select("id,email,name,role").order("email");
+  // Bug-Fund 06.09.2026 (Vollcheck): openAdminModal() ruft diese Funktion
+  // ohne await auf (fire-and-forget) - ein ungefangener Fehler hier (z.B.
+  // Netzwerkhänger) wurde bisher zu einer unhandled promise rejection und
+  // ließ das Panel für immer bei "Lädt …" hängen. try/catch + Retry wie bei
+  // loadEmployees() (siehe supaWithRetry()-Kommentar).
+  let data, error;
+  try{
+    ({ data, error } = await supaWithRetry(()=>sb.from("profiles").select("id,email,name,role").order("email")));
+  }catch(e){ error=e; }
   if(error || !data){ box.innerHTML="<p style='color:var(--muted)'>Fehler beim Laden.</p>"; return; }
   box.innerHTML = data.map(u=>`
     <div data-id="${u.id}" data-email="${escapeHtml(u.email)}" style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
@@ -2416,7 +2424,14 @@ async function createAdminUser(){
 async function loadEmployeesAdmin(){
   const box=$("empList");
   box.innerHTML="<p style='color:var(--muted)'>Lädt …</p>";
-  const { data, error } = await sb.from("employees").select("*").order("sort_order").order("name");
+  // Fire-and-forget-Aufruf (adminEmployeesBtn.onclick ruft ohne await auf) -
+  // try/catch + Retry wie bei loadAdminUsers()/loadEmployees() (Vollcheck
+  // 06.09.2026), sonst haengt das Panel bei einem Netzwerkfehler fuer immer
+  // bei "Lädt …".
+  let data, error;
+  try{
+    ({ data, error } = await supaWithRetry(()=>sb.from("employees").select("*").order("sort_order").order("name")));
+  }catch(e){ error=e; }
   if(error||!data){ box.innerHTML="<p style='color:var(--muted)'>Fehler beim Laden.</p>"; return; }
   box.innerHTML = data.map(e=>`
     <div data-id="${e.id}" style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
@@ -3337,7 +3352,12 @@ async function deleteFhDupMerge(aliasNr){
 async function loadFhDupList(){
   const box=$("fhDupList"); if(!box) return;
   if(!sb){ box.innerHTML=""; return; }
-  const { data, error } = await sb.from("fh_duplicate_merges").select("alias_fh_nr,canonical_fh_nr,note,created_at").order("created_at",{ascending:false});
+  // Fire-and-forget-Aufruf (fhDupBtn.onclick ruft ohne await auf) - try/catch
+  // + Retry wie bei loadAdminUsers() (Vollcheck 06.09.2026).
+  let data, error;
+  try{
+    ({ data, error } = await supaWithRetry(()=>sb.from("fh_duplicate_merges").select("alias_fh_nr,canonical_fh_nr,note,created_at").order("created_at",{ascending:false})));
+  }catch(e){ error=e; }
   if(error){ box.innerHTML=`<div class="empty-note">Fehler beim Laden.</div>`; return; }
   if(!data||!data.length){ box.innerHTML=`<div class="empty-note">Noch keine Zusammenführungen angelegt.</div>`; return; }
   const nameFor=(nr)=>{ const f=(fhContactsAllIndex&&fhContactsAllIndex[nr]); return (f&&f.name)||nr; };
@@ -10622,7 +10642,15 @@ async function exportFhTopFlopPdf(){
       flopNoHist=true;
     }
     const card=r=>{
-      const metric=flopNoHist
+      // Bug-Fund 06.09.2026 (Vollcheck): flopNoHist gilt nur für die
+      // FLOP-Liste (Fallback ohne Wochenhistorie, z.B. Tag 1 nach einer
+      // Einspielung) - card() wird aber für BEIDE Listen (TOP und FLOP) mit
+      // demselben card()-Closure aufgerufen. Bei gesetztem flopNoHist griff
+      // der "kein Verlauf"-Zweig fälschlich auch für die TOP-Zeilen, die kein
+      // r.avg besitzen (nur r.cur/r.diff/r.pct) -> "Cannot read properties of
+      // undefined (reading 'toFixed')", der PDF-Export brach komplett ab.
+      // Jetzt pro Zeile an r.avg statt am äußeren flopNoHist-Flag erkannt.
+      const metric=r.avg!=null
         ? `<span style="font-weight:900;white-space:nowrap">0 <small style="font-weight:600;color:#5D7284">Stk.</small></span><span style="font-size:9px">Ø ${r.avg.toFixed(1).replace(".",",")}/Tag · Monat ${fmt(r.monat)}</span>`
         : `<span style="font-weight:900;white-space:nowrap">${fmt(r.cur)} <small style="font-weight:600;color:#5D7284">Stk.</small></span><span style="font-size:9px;color:${r.diff>0?"#0B8A3E":(r.diff<0?"#C4291E":"#5D7284")}">${r.diff==null?"–":(r.diff>0?"▲ ":r.diff<0?"▼ ":"■ ")+fmtSign(r.diff)} (${fmtPct(r.pct)})</span>`;
       return `<div class="pdf-block" style="padding:6px 8px;border:1px solid #E4EDF3;border-radius:6px;font-size:10px;line-height:1.35">
