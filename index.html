@@ -178,7 +178,6 @@ h2.sec small{font-weight:600;text-transform:none;color:var(--muted);letter-spaci
    Breite) statt der für die schmale Ansicht bemessenen Werte. Höhere
    Selektor-Spezifität (4 statt 2 Klassen) gewinnt unabhängig von der
    Reihenfolge im Stylesheet gegenüber den Basisregeln weiter unten. */
-.goals.cols4 .goal .name,.goals.cols3 .goal .name{min-height:2.9em}
 .goals.cols4 .goal .big,.goals.cols3 .goal .big{min-height:4.7em}
 .goals.cols4 .goal .delta,.goals.cols3 .goal .delta{min-height:1.6em}
 .goals.cols4 .goal .delta+.hr,.goals.cols3 .goal .delta+.hr{min-height:4.4em}
@@ -227,16 +226,22 @@ h2.sec small{font-weight:600;text-transform:none;color:var(--muted);letter-spaci
 .goal .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 /* Nutzervorgabe 05.09.2026: "Ist Stand sowie Hochrechnung bei allen Kacheln
    in der gleichen Höhe" - Titel/Pill/Stand-Zeile sind je Kachel unterschied-
-   lich lang (z.B. "Vorjahresvergleich · September" umbricht auf 2 Zeilen,
-   "PLAN Jahr 2026" nicht; "Arbeitstag 203/301 · erwarteter Jahresanteil
-   63,8 %" ist länger als "Tag 3/26") und würden ohne feste Mindesthöhen die
-   Prozentzahl/Ist-Stand/Hochrechnungs-Zeile jeder Kachel unterschiedlich weit
-   nach unten schieben. min-height in em (skaliert automatisch mit der
-   jeweiligen Schriftgröße der dichten .goals- bzw. größeren .cols3/.cols4-
-   Kachelvariante) reserviert für jeden Abschnitt so viel Platz wie die
-   längstmögliche Zeilenzahl braucht, damit alle Kacheln einer Reihe exakt
-   auf gleicher Höhe abschließen, unabhängig vom tatsächlichen Tagesinhalt. */
-.goal .name{font-size:13px;font-weight:800;color:var(--wg-navy);min-height:4.2em}
+   lich lang und würden ohne feste Mindesthöhen die Prozentzahl/Ist-Stand/
+   Hochrechnungs-Zeile jeder Kachel unterschiedlich weit nach unten schieben.
+   min-height in em (skaliert automatisch mit der jeweiligen Schriftgröße der
+   dichten .goals- bzw. größeren .cols3/.cols4-Kachelvariante) reserviert für
+   jeden Abschnitt so viel Platz wie die längstmögliche Zeilenzahl braucht,
+   damit alle Kacheln einer Reihe exakt auf gleicher Höhe abschließen,
+   unabhängig vom tatsächlichen Tagesinhalt.
+   06.09.2026 (Nutzer: "Das zwischen Titel und Prozent geht nicht schmäler?"):
+   der Titel "Vorjahresvergleich · September" war der einzige Grund für die
+   ursprünglich reservierten 4.2em (2 Zeilen) - brach in den 220px schmalen
+   AT-gesamt-Kacheln um, alle anderen Titel passten schon vorher in 1 Zeile
+   und bekamen dadurch sichtbaren Leerraum unter dem Titel verpasst. Titel
+   auf "Vorjahr · September" gekürzt (passt jetzt auch in 1 Zeile, siehe
+   Kommentar bei der Kartendefinition) und Mindesthöhe entsprechend auf den
+   neuen einheitlichen 1-Zeilen-Bedarf abgesenkt. */
+.goal .name{font-size:13px;font-weight:800;color:var(--wg-navy);min-height:2.9em}
 .goal .target{font-size:11.5px;color:var(--muted)}
 .goal .target b{color:var(--ink)}
 .goal .big{display:flex;align-items:baseline;gap:10px;margin:10px 0 8px;flex-wrap:wrap;min-height:5.4em}
@@ -6299,7 +6304,15 @@ function renderGoals(){
     // eine echte, aussagekraeftige Hochrechnung-vs-Vorjahr-Quote, konsistent
     // mit Balken/Pille. vsLbl wurde nirgends in goalCard() ausgelesen (totes
     // Feld) und faellt damit ebenfalls weg.
-    : goalCard("📊 Vorjahresvergleich · "+MONATE[s.monat-1],
+    //
+    // Titel von "Vorjahresvergleich" auf "Vorjahr" gekürzt (06.09.2026,
+    // Nutzer: Leerraum zwischen Titel und Prozentzahl) - war der einzige
+    // Kartentitel, der in den 220px schmalen AT-gesamt-Kacheln auf 2 Zeilen
+    // umbrach und dadurch die einheitliche Titel-Mindesthöhe für ALLE
+    // Kacheln unnötig aufblähte (siehe Kommentar bei .goal .name in der
+    // CSS). "Vorjahr" ist im Kontext (Ziel-Spalte zeigt "Vorjahr: X",
+    // Pill-Text "▲/▼ ü./u. Vorjahr") eindeutig genug.
+    : goalCard("📊 Vorjahr · "+MONATE[s.monat-1],
         me.monatVJ, me.monat, me.monatVJ*mfrac,
         "", false,
         me.monatVJ>0&&s.tageIst>0?{val:hrMe,lbl:"Monatsende",stand:standM}:null,
@@ -6330,7 +6343,7 @@ function renderGoals(){
   if(isATv&&s.zeAtMonatVJ!=null){
     // "Soll" tagesanteilig statt voller Vorjahreswert - siehe Kommentar bei
     // der Mitarbeiter-Variante von card3 oben (identischer Fix, 05.09.2026).
-    cards.splice(3,0, goalCard("📊 Vorjahresvergleich · "+MONATE[s.monat-1],
+    cards.splice(3,0, goalCard("📊 Vorjahr · "+MONATE[s.monat-1],
       s.zeAtMonatVJ, at.monat, s.zeAtMonatVJ*mfrac,
       "", false,
       // Große Prozentzahl = Hochrechnung Monatsende / voller Vorjahreswert
