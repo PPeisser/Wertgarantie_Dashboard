@@ -2106,6 +2106,26 @@ async function stGet(k){
   try{ if(window.storage){ const r = await window.storage.get(k); return r ? r.value : null; } }catch(e){}
   return mem[k] ?? null;
 }
+// Bündelt mehrere stGet()-Abfragen in EINE Anfrage (Performance-Check
+// 06.09.2026: loadAll() rief bisher 18× stGet() einzeln auf - zwar parallel
+// per Promise.all, aber trotzdem 18 separate Supabase-Requests statt einem;
+// laut Log ("dashboard_kv", 2385 Requests/24h) mit vereinzelten Ausreißern
+// bis 727ms, die dann als jeweils langsamster von 18 parallelen Requests
+// das gesamte loadAll() ausbremsen). supaWithRetry() wie bei loadEmployees()
+// (Bug-Report "nach Login manchmal leer") - ein einzelner Request ist auch
+// die einzige Chance, die es gibt, ein Fehlschlag hier träfe ALLE 18 Werte
+// auf einmal statt nur einen.
+async function stGetMany(keys){
+  const out={}; for(const k of keys) out[k]=null;
+  if(sb && supaUser){
+    const { data, error } = await supaWithRetry(()=>sb.from("dashboard_kv").select("key,value").in("key",keys));
+    if(!error && data){ for(const r of data) out[r.key]=r.value; return out; }
+  }
+  // Fallback (kein Supabase, oder Batch-Request trotz Retry fehlgeschlagen):
+  // einzeln wie bisher (window.storage/mem) - langsamer, aber korrekt.
+  for(const k of keys) out[k]=await stGet(k);
+  return out;
+}
 async function stSet(k,v){
   try{
     if(sb && supaUser){
@@ -3151,6 +3171,29 @@ function matchEmployee(gl){
   }
   return null; // z. B. "ohne Zuordnung", "Technischer GL CE DE", "Akquise" → nur Österreich gesamt
 }
+// Bug-Report 07.09.2026 ("nach Login oft keine Mitarbeiter/Mietkachel leer,
+// hilft nur Neuladen"): loadEmployees() (und andere einmalige Startup-
+// Requests wie loadFhDuplicateMerges()) gaben bei einem fehlgeschlagenen
+// Request (kurzer Netzwerk-/Cold-Start-Hänger direkt nach dem Login reicht)
+// einfach auf - EMPLOYEES/PERS_MIETEZIELE blieben dauerhaft leer (Dropdown
+// zeigt nur "Österreich gesamt", Miete-Kachel-Ziel ist 0), ohne jede
+// sichtbare Fehlermeldung. Nur ein manueller Reload (= neuer Versuch) half.
+// Kleine Retry-Hilfe: fn liefert ein Supabase-Query-Promise ({data,error});
+// bei Netzwerkfehlern wirft der Client zusätzlich, daher try/catch UND
+// error-Check. 3 Versuche mit steigender Pause reichen für die kurzen,
+// transienten Hänger, um die es hier geht (keine Endlosschleife).
+async function supaWithRetry(fn, tries=3, delayMs=700){
+  let lastErr=null;
+  for(let i=0;i<tries;i++){
+    try{
+      const res=await fn();
+      if(!res.error) return res;
+      lastErr=res.error;
+    }catch(e){ lastErr=e; }
+    if(i<tries-1) await new Promise(r=>setTimeout(r,delayMs*(i+1)));
+  }
+  return { data:null, error:lastErr };
+}
 // Lädt die Mitarbeiterstammdaten aus Supabase (Tabelle "employees", Punkt 10
 // 01.09.2026) und befüllt damit EMPLOYEES/PERS_JAHRESZIELE/PERS_MIETEZIELE/
 // AKQ_STAFFEL_ZIEL/PERF_GOALS_BY_EMPLOYEE/EMP_NORM/ADMIN_ONLY_EMPLOYEES neu -
@@ -3180,8 +3223,12 @@ async function loadEmployees(){
     ADMIN_ONLY_EMPLOYEES=[];
     return;
   }
-  const { data, error } = await sb.from("employees").select("*").eq("active",true).order("sort_order").order("name");
-  if(error||!data){ console.error("loadEmployees fehlgeschlagen:",error); return; }
+  const { data, error } = await supaWithRetry(()=>sb.from("employees").select("*").eq("active",true).order("sort_order").order("name"));
+  if(error||!data){
+    console.error("loadEmployees fehlgeschlagen (auch nach Wiederholungsversuchen):",error);
+    toast("Mitarbeiterliste konnte nicht geladen werden – bitte Seite neu laden.");
+    return;
+  }
   const real=data.filter(e=>!e.admin_only);
   EMPLOYEES=real.map(e=>e.name);
   PERS_JAHRESZIELE={}; PERS_MIETEZIELE={}; AKQ_STAFFEL_ZIEL={}; PERF_GOALS_BY_EMPLOYEE={};
@@ -3217,8 +3264,10 @@ let FH_DUP_MAP={}; // alias_fh_nr -> canonical_fh_nr
 let FH_DUP_ALIASES={}; // canonical_fh_nr -> [alias_fh_nr,...] (Kehrwert von FH_DUP_MAP, für Deckungsgrad-Fallback)
 async function loadFhDuplicateMerges(){
   if(!sb){ FH_DUP_MAP={}; FH_DUP_ALIASES={}; return; }
-  const { data, error } = await sb.from("fh_duplicate_merges").select("alias_fh_nr,canonical_fh_nr");
-  if(error){ console.error("loadFhDuplicateMerges fehlgeschlagen:",error); return; }
+  // Retry wie bei loadEmployees() oben (gleiches Muster: einmaliger
+  // Startup-Request ohne Wiederholung, Bug-Report 07.09.2026).
+  const { data, error } = await supaWithRetry(()=>sb.from("fh_duplicate_merges").select("alias_fh_nr,canonical_fh_nr"));
+  if(error){ console.error("loadFhDuplicateMerges fehlgeschlagen (auch nach Wiederholungsversuchen):",error); return; }
   FH_DUP_MAP={}; FH_DUP_ALIASES={};
   for(const r of (data||[])){
     FH_DUP_MAP[r.alias_fh_nr]=r.canonical_fh_nr;
@@ -5983,26 +6032,33 @@ async function saveData(){ try{ await stSet("wg-state",JSON.stringify(state)); }
 // Isolation je Einstellung (try/catch) bleibt unverändert erhalten, nur
 // nicht mehr sequenziell.
 async function loadAll(){
-  await Promise.all([
-    (async()=>{ try{ const d=await stGet("wg-state"); if(d){ const p=JSON.parse(d); if(p&&p.latest) state=p; } }catch(e){} })(),
-    (async()=>{ try{ const g=await stGet("wg-goals"); if(g) goals=JSON.parse(g); }catch(e){} })(),
-    (async()=>{ try{ perfDialogEnabled=(await stGet("performance_dialog_enabled"))==="1"; }catch(e){} })(),
-    (async()=>{ try{ perfDialogAdminEnabled=(await stGet("performance_dialog_admin_enabled"))==="1"; }catch(e){} })(),
-    (async()=>{ try{ chefgespraechEnabled=(await stGet("chefgespraech_enabled"))==="1"; }catch(e){} })(),
-    (async()=>{ try{ kooperationsgespraechEnabled=(await stGet("kooperationsgespraech_enabled"))==="1"; }catch(e){} })(),
-    (async()=>{ try{ auswertungEnabled=(await stGet("auswertung_enabled"))==="1"; }catch(e){} })(),
-    (async()=>{ try{ fhZielEnabled=(await stGet("fh_ziel_enabled"))==="1"; }catch(e){} })(),
-    (async()=>{ try{ fhSearchEnabled=(await stGet("fh_search_enabled"))==="1"; }catch(e){} })(),
-    (async()=>{ try{ akpPeerCompareEnabled=(await stGet("akp_peer_compare_enabled"))==="1"; }catch(e){} })(),
-    (async()=>{ try{ karteileichenJahre=parseInt(await stGet("karteileichen_jahre"))||3; }catch(e){} })(),
-    (async()=>{ try{ const r=await stGet("karteileichen_review_fh"); fhKarteileichenReview=r?JSON.parse(r):null; }catch(e){} })(),
-    (async()=>{ try{ const r=await stGet("karteileichen_review_akp"); akpKarteileichenReview=r?JSON.parse(r):null; }catch(e){} })(),
-    (async()=>{ try{ deckungsgradEnabled=(await stGet("deckungsgrad_enabled"))==="1"; }catch(e){} })(),
-    (async()=>{ try{ const dgv=await stGet("deckungsgrad_visible_metrics"); if(dgv) dgVisibleMetrics=JSON.parse(dgv); }catch(e){} })(),
-    (async()=>{ try{ const erv=await stGet("emp_ranking_enabled"); empRankingEnabled = erv==null ? true : erv==="1"; }catch(e){} })(),
-    (async()=>{ try{ stornoquotenEnabled=(await stGet("stornoquoten_enabled"))==="1"; }catch(e){} })(),
-    (async()=>{ try{ mieteLastImport=await stGet("miete_last_import"); }catch(e){} })(),
+  // Performance-Fix 06.09.2026 (siehe stGetMany()-Kommentar): 18 einzelne
+  // stGet()-Requests zu einem einzigen Batch-Request gebündelt.
+  const kv=await stGetMany([
+    "wg-state","wg-goals","performance_dialog_enabled","performance_dialog_admin_enabled",
+    "chefgespraech_enabled","kooperationsgespraech_enabled","auswertung_enabled","fh_ziel_enabled",
+    "fh_search_enabled","akp_peer_compare_enabled","karteileichen_jahre","karteileichen_review_fh",
+    "karteileichen_review_akp","deckungsgrad_enabled","deckungsgrad_visible_metrics",
+    "emp_ranking_enabled","stornoquoten_enabled","miete_last_import"
   ]);
+  try{ const d=kv["wg-state"]; if(d){ const p=JSON.parse(d); if(p&&p.latest) state=p; } }catch(e){}
+  try{ const g=kv["wg-goals"]; if(g) goals=JSON.parse(g); }catch(e){}
+  perfDialogEnabled=kv["performance_dialog_enabled"]==="1";
+  perfDialogAdminEnabled=kv["performance_dialog_admin_enabled"]==="1";
+  chefgespraechEnabled=kv["chefgespraech_enabled"]==="1";
+  kooperationsgespraechEnabled=kv["kooperationsgespraech_enabled"]==="1";
+  auswertungEnabled=kv["auswertung_enabled"]==="1";
+  fhZielEnabled=kv["fh_ziel_enabled"]==="1";
+  fhSearchEnabled=kv["fh_search_enabled"]==="1";
+  akpPeerCompareEnabled=kv["akp_peer_compare_enabled"]==="1";
+  karteileichenJahre=parseInt(kv["karteileichen_jahre"])||3;
+  try{ const r=kv["karteileichen_review_fh"]; fhKarteileichenReview=r?JSON.parse(r):null; }catch(e){}
+  try{ const r=kv["karteileichen_review_akp"]; akpKarteileichenReview=r?JSON.parse(r):null; }catch(e){}
+  deckungsgradEnabled=kv["deckungsgrad_enabled"]==="1";
+  try{ const dgv=kv["deckungsgrad_visible_metrics"]; if(dgv) dgVisibleMetrics=JSON.parse(dgv); }catch(e){}
+  { const erv=kv["emp_ranking_enabled"]; empRankingEnabled = erv==null ? true : erv==="1"; }
+  stornoquotenEnabled=kv["stornoquoten_enabled"]==="1";
+  mieteLastImport=kv["miete_last_import"];
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
   else if(emb&&emb.latest&&state.latest){
