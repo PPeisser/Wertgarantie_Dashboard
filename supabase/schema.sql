@@ -130,8 +130,6 @@ create table if not exists public.akp_contacts (
   email            text,
   geburtsdatum     date,
   aktionsteilnahme boolean,
-  -- '1'/'2'/'3' = Trainingsstufe, 'erledigt' = abgeschlossen, '500' = 500-Verträge-Meilenstein.
-  profi_training   text check (profi_training is null or profi_training in ('1','2','3','erledigt','500')),
   -- Monatsproduktion als offene Kalender-Map "YYYY-MM" -> Verträge, damit
   -- künftige Monate bei jeder täglichen Einspielung einfach ergänzt werden
   -- können, ohne das Schema zu ändern.
@@ -180,13 +178,40 @@ alter table public.akp_contacts add column if not exists storno_erstpraemie_quot
 alter table public.akp_contacts add column if not exists storno_wegfall_quote numeric;
 alter table public.akp_contacts add column if not exists storno_quoten_updated_at timestamptz;
 
--- Service-Training (02.09.2026): eigenes Feld getrennt von profi_training,
--- da ein AKP theoretisch BEIDE Programme abgeschlossen haben kann (Profi-
--- Training UND Service-Training sind unterschiedliche Trainingsreihen laut
--- Nutzervorgabe) - ein gemeinsames Feld würde eines der beiden verdecken.
--- Nur 2 Stufen (kein "erledigt"/"500" wie bei profi_training).
-alter table public.akp_contacts add column if not exists service_training text
-  check (service_training is null or service_training in ('1','2'));
+-- Profi-Training/Service-Training zu einem einzigen Feld "training_status"
+-- zusammengefuehrt (Nutzervorgabe 06.09.2026 - "sie sollen alle im 'Profi
+-- Training' angezeigt werden"; ursprünglich am 02.09.2026 als zwei getrennte
+-- Felder eingeführt, da ein AKP theoretisch beide Programme abschließen
+-- konnte - das kam in der Praxis aber kaum vor und wurde beim Zusammenführen
+-- per höherwertigem Stand aufgelöst). "keines" = null.
+-- verkauf1/2/3, service1/2 = einzelne Trainingsstufen (Verkauf = normales
+-- Profi-Training, Service = ServiceTraining). "abgeschlossen" wird beim
+-- Import gesetzt, wenn die jeweils HÖCHSTE Stufe (Verkauf 3 bzw. Service 2)
+-- erfolgreich erreicht wurde - ersetzt dann verkauf3/service2 direkt, damit
+-- diese beiden Werte nicht redundant neben "abgeschlossen" auftauchen (sie
+-- bleiben im Enum nur für manuelle Sonderfälle wählbar). "teilgenommen" kommt
+-- (noch) aus keiner automatisierten Einspielung, sondern ist ein manuell
+-- pflegbarer Stand für Personen, die nur am Trainingsevent teilgenommen,
+-- aber keine Stufe erfolgreich abgeschlossen haben - laut Nutzervorgabe soll
+-- dafür künftig eine eigene, separate Teilnahmeliste eingespielt werden
+-- (Format/Parser noch nicht vorhanden). "500" = 500-Verträge-Meilenstein,
+-- fachlich unabhängig vom Training - siehe akp_sync_daily weiter unten für
+-- die (vorbereitete) Automatik.
+alter table public.akp_contacts drop column if exists profi_training;
+alter table public.akp_contacts drop column if exists service_training;
+alter table public.akp_contacts add column if not exists training_status text
+  check (training_status is null or training_status in
+    ('verkauf1','verkauf2','verkauf3','service1','service2','abgeschlossen','teilgenommen','500'));
+
+-- Hält den zuletzt bekannten training_status je Kalenderjahr fest (offene
+-- Map wie prod_monthly/poquote_monthly oben) - Grundlage für die "500
+-- Verträge"-Automatik: sobald für ein Vorjahr ein echter Snapshot existiert,
+-- kann geprüft werden, ob der AKP im Vorjahr "abgeschlossen" oder
+-- "teilgenommen" war. Wird bei jeder Änderung von training_status für das
+-- AKTUELLE Jahr mitgeschrieben (akp_profi_training_upsert unten sowie der
+-- manuelle Speicherpfad in index.html/saveAkpContact) - "das kommende Jahr"
+-- (Nutzervorgabe 06.09.2026) hat dadurch ab Tag 1 einen echten Vorjahreswert.
+alter table public.akp_contacts add column if not exists training_status_by_year jsonb not null default '{}'::jsonb;
 
 alter table public.akp_contacts enable row level security;
 
@@ -220,6 +245,8 @@ language plpgsql security definer set search_path = public as $$
 declare
   r jsonb; nm text; vn text; nn text; sp int; mval int; mkey text; monthjson jsonb;
   poval numeric; f2val numeric; pojson jsonb; f2json jsonb;
+  cur_year text; prev_year text; prev_status text; year_prod numeric;
+  cur_ts text; cur_tsby jsonb; cur_prod jsonb;
 begin
   -- Haertung (DSGVO-Pruefung 05.09.2026): trotz "revoke ... from public /
   -- grant ... to authenticated" unten meldete der Supabase Security Advisor
@@ -268,6 +295,39 @@ begin
       poquote_monthly = coalesce(akp_contacts.poquote_monthly,'{}'::jsonb) || excluded.poquote_monthly,
       q3fuer2_monthly = coalesce(akp_contacts.q3fuer2_monthly,'{}'::jsonb) || excluded.q3fuer2_monthly,
       updated_at = now();
+
+    -- "500 Verträge"-Automatik (Nutzervorgabe 06.09.2026, vorbereitet für
+    -- die Zukunft - siehe training_status_by_year-Kommentar bei der Spalte
+    -- oben): war der AKP im VORJAHR "abgeschlossen" oder "teilgenommen" und
+    -- hat er heuer bereits 500 Verträge Jahresproduktion (Summe prod_monthly
+    -- des laufenden Jahres) erreicht, wird training_status automatisch auf
+    -- "500" gesetzt (nie zurückgestuft, siehe akp_profi_training_upsert
+    -- unten). Greift real erst, sobald für ein Vorjahr ein echter Snapshot
+    -- existiert (ab 2027 für 2026) - für 2026 selbst aktuell ein No-Op, da
+    -- noch kein Vorjahreswert vorliegt ("nur vorbereitet für das kommende
+    -- Jahr").
+    if mkey is not null then
+      select training_status, training_status_by_year, prod_monthly
+        into cur_ts, cur_tsby, cur_prod
+        from public.akp_contacts where nr = r->>'nr';
+      if cur_ts is distinct from '500' then
+        cur_year := left(mkey,4);
+        prev_year := (cur_year::int - 1)::text;
+        prev_status := cur_tsby->>prev_year;
+        if prev_status in ('abgeschlossen','teilgenommen') then
+          select coalesce(sum(e.value::numeric),0) into year_prod
+            from jsonb_each_text(coalesce(cur_prod,'{}'::jsonb)) e
+            where e.key like cur_year || '-%';
+          if year_prod >= 500 then
+            update public.akp_contacts
+              set training_status = '500',
+                  training_status_by_year = jsonb_set(cur_tsby, array[cur_year], '"500"'::jsonb, true),
+                  updated_at = now()
+              where nr = r->>'nr';
+          end if;
+        end if;
+      end if;
+    end if;
   end loop;
 end;
 $$;
@@ -276,23 +336,26 @@ revoke execute on function public.akp_sync_daily(jsonb) from public;
 grant execute on function public.akp_sync_daily(jsonb) to authenticated;
 
 -- Bulk-Import der "Profi Training"-Teilnehmerliste (Blatt "Liste zum
--- Abgleich", siehe parseProfiTraining in index.html): ergänzt profi_training/
--- service_training NUR bei bereits vorhandenen AKP (kein Insert für
--- unbekannte AKP-Nr, Nutzervorgabe 02.09.2026 - "nur bei den Vorhandenen
--- ergänzen") - "not found" nach dem select bricht die Zeile einfach ab.
+-- Abgleich", siehe parseProfiTraining in index.html): ergänzt training_status
+-- NUR bei bereits vorhandenen AKP (kein Insert für unbekannte AKP-Nr,
+-- Nutzervorgabe 02.09.2026 - "nur bei den Vorhandenen ergänzen") - "not
+-- found" nach dem select bricht die Zeile einfach ab.
 --
--- Downgrade-Schutz (Nutzervorgabe 02.09.2026): ein bereits gesetzter, laut
--- rank_of HÖHERER Stand wird nie durch einen niedrigeren aus der Liste
--- ersetzt (z.B. Stufe 3 bleibt Stufe 3, auch wenn die aktuelle Liste nur
--- eine erfolgreiche Stufe 1 zeigt). Der Sonderwert "500" (500-Verträge-
--- Meilenstein, fachlich unabhängig vom Training) wird NIE überschrieben.
+-- Downgrade-Schutz (Nutzervorgabe 02.09.2026, 06.09.2026 auf das
+-- zusammengeführte Feld erweitert): ein bereits gesetzter, laut rank_of
+-- HÖHERER Stand wird nie durch einen niedrigeren aus der Liste ersetzt (z.B.
+-- Stufe 2 bleibt Stufe 2, auch wenn die aktuelle Liste nur eine erfolgreiche
+-- Stufe 1 zeigt). Der Sonderwert "500" (500-Verträge-Meilenstein, fachlich
+-- unabhängig vom Training) wird NIE überschrieben. Jede Aktualisierung
+-- schreibt zusätzlich den Jahres-Snapshot fort (training_status_by_year).
 create or replace function public.akp_profi_training_upsert(rows jsonb) returns void
 language plpgsql security definer set search_path = public as $$
 declare
   r jsonb;
-  new_pt text; new_st text;
-  cur_pt text; cur_st text;
-  rank_of jsonb := '{"1":1,"2":2,"3":3,"erledigt":4,"500":5}'::jsonb;
+  new_ts text;
+  cur_ts text;
+  rank_of jsonb := '{"teilgenommen":1,"service1":1,"verkauf1":1,"verkauf2":2,"service2":2,"verkauf3":2,"abgeschlossen":3,"500":4}'::jsonb;
+  cur_year text := to_char(now(),'YYYY');
 begin
   -- Haertung (DSGVO-Pruefung 05.09.2026), analog akp_sync_daily oben.
   if auth.uid() is null then
@@ -300,29 +363,20 @@ begin
   end if;
   for r in select * from jsonb_array_elements(rows) loop
     if coalesce(r->>'nr','') = '' then continue; end if;
-    new_pt := nullif(r->>'profi_training','');
-    new_st := nullif(r->>'service_training','');
+    new_ts := nullif(r->>'training_status','');
+    if new_ts is null then continue; end if;
 
-    select profi_training, service_training into cur_pt, cur_st
-      from public.akp_contacts where nr = r->>'nr';
+    select training_status into cur_ts from public.akp_contacts where nr = r->>'nr';
     if not found then continue; end if;
 
-    update public.akp_contacts set
-      profi_training = case
-        when new_pt is null then profi_training
-        when cur_pt = '500' then profi_training
-        when cur_pt is null then new_pt
-        when coalesce((rank_of->>new_pt)::int,0) > coalesce((rank_of->>cur_pt)::int,0) then new_pt
-        else profi_training
-      end,
-      service_training = case
-        when new_st is null then service_training
-        when cur_st is null then new_st
-        when new_st::int > cur_st::int then new_st
-        else service_training
-      end,
-      updated_at = now()
-    where nr = r->>'nr';
+    if cur_ts is distinct from '500'
+       and (cur_ts is null or coalesce((rank_of->>new_ts)::int,0) > coalesce((rank_of->>cur_ts)::int,0)) then
+      update public.akp_contacts set
+        training_status = new_ts,
+        training_status_by_year = jsonb_set(training_status_by_year, array[cur_year], to_jsonb(new_ts), true),
+        updated_at = now()
+      where nr = r->>'nr';
+    end if;
   end loop;
 end;
 $$;

@@ -1230,7 +1230,6 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div><span class="ac-lbl">Geburtsdatum</span><div class="ac-val" id="acGebView">–</div></div>
         <div><span class="ac-lbl">Aktionsteilnahme</span><div class="ac-val" id="acAktView">–</div></div>
         <div><span class="ac-lbl">Profi-Training</span><div class="ac-val" id="acTrainView">–</div></div>
-        <div><span class="ac-lbl">Service-Training</span><div class="ac-val" id="acServiceTrainView">–</div></div>
         <div><span class="ac-lbl">Letzte Produktion</span><div class="ac-val" id="acLastProdView">–</div></div>
       </div>
       <div id="acGesperrtNotice" class="hidden" style="margin-top:14px;border-left:4px solid var(--neg);background:#FDF1F4;border-radius:8px;padding:10px 14px">
@@ -1252,10 +1251,12 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
           <select id="acAktEdit"><option value="">–</option><option value="ja">Ja</option><option value="nein">Nein</option></select>
         </div>
         <div><label class="ac-lbl" for="acTrainEdit">Profi-Training</label>
-          <select id="acTrainEdit"><option value="">Keines</option><option value="1">Stufe 1</option><option value="2">Stufe 2</option><option value="3">Stufe 3</option><option value="erledigt">erledigt</option><option value="500">500 Verträge</option></select>
-        </div>
-        <div><label class="ac-lbl" for="acServiceTrainEdit">Service-Training</label>
-          <select id="acServiceTrainEdit"><option value="">Keines</option><option value="1">Stufe 1</option><option value="2">Stufe 2</option></select>
+          <select id="acTrainEdit"><option value="">keines</option>
+            <option value="verkauf1">Verkauf Stufe 1</option><option value="verkauf2">Verkauf Stufe 2</option><option value="verkauf3">Verkauf Stufe 3</option>
+            <option value="service1">Service Stufe 1</option><option value="service2">Service Stufe 2</option>
+            <option value="abgeschlossen">abgeschlossen</option><option value="teilgenommen">teilgenommen</option>
+            <option value="500">500 Verträge</option>
+          </select>
         </div>
       </div>
       <div class="actions" style="margin-top:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
@@ -4042,21 +4043,39 @@ async function handleAkpStornoFile(files){
   }
 }
 
-// Profi-Training-Teilnehmerliste (02.09.2026): Blatt "Liste zum Abgleich",
-// eine Zeile je Trainingsteilnahme (nicht je AKP - ein AKP kann mehrere
-// Zeilen haben, z.B. mehrere Stufen oder mehrere Versuche). Nur
+// Profi-Training-Teilnehmerliste (02.09.2026, 06.09.2026 auf das
+// zusammengeführte training_status-Feld umgestellt): Blatt "Liste zum
+// Abgleich", eine Zeile je Trainingsteilnahme (nicht je AKP - ein AKP kann
+// mehrere Zeilen haben, z.B. mehrere Stufen oder mehrere Versuche). Nur
 // erfolgreiche Teilnahmen (Erfolgskennzeichen="ja") fließen ein, deutsche
 // AKP werden über die PLZ-Länge rausgefiltert (Nutzervorgabe: FH PLZ
 // vierstellig = Österreich, fünfstellig = Deutschland - in der Praxis
-// eindeutig, keine Mischfälle). "Profi-Training Event" (keine Stufen-
-// Nummer) wird als "erledigt" gewertet, aber nur falls keine nummerierte
-// Profi-Training-Stufe für denselben AKP vorliegt (eine Stufenzahl ist
-// aussagekräftiger). "Service-Training" ist ein eigenes, unabhängiges
-// Programm (2 Stufen) - eigenes Feld service_training, nicht profi_training
-// (ein AKP kann beides abgeschlossen haben). Bei mehreren erfolgreichen
-// Stufen je AKP wird jeweils die höchste übernommen; der eigentliche
+// eindeutig, keine Mischfälle).
+//
+// Verkauf (normales Profi-Training) und Service (ServiceTraining) sind
+// unterschiedliche Trainingsreihen, laufen aber jetzt im selben Feld
+// zusammen. Nutzervorgabe 06.09.2026: wird die jeweils HÖCHSTE Stufe
+// (Verkauf 3 bzw. Service 2) erfolgreich erreicht, wird direkt "abgeschlossen"
+// gesetzt statt "Verkauf/Service Stufe X". "Profi-Training Event" (keine
+// Stufen-Nummer) wird als "teilgenommen" gewertet, aber nur falls für
+// denselben AKP weder eine Verkaufs- noch eine Service-Stufe vorliegt (eine
+// erfolgreiche Stufe ist aussagekräftiger). Hat ein AKP ausnahmsweise BEIDE
+// Reihen (Verkauf und Service) mit einer erfolgreichen Stufe - laut
+// Prüfung vom 06.09.2026 15 Fälle in der Bestandsdatenbank, entgegen der
+// ursprünglichen Annahme "kommt praktisch nicht vor" -, gewinnt der
+// höherwertige Stand, bei Gleichstand Verkauf (analog zur einmaligen
+// Migration bestehender Datensätze, siehe schema.sql). Der eigentliche
 // Downgrade-/"500"-Schutz beim Zusammenführen mit dem bestehenden Stand
 // passiert serverseitig in akp_profi_training_upsert() (siehe schema.sql).
+function resolveTrainingStatus(profiStufe,serviceStufe,event){
+  const verkaufVal=profiStufe?(profiStufe==="3"?"abgeschlossen":"verkauf"+profiStufe):null;
+  const serviceVal=serviceStufe?(serviceStufe==="2"?"abgeschlossen":"service"+serviceStufe):null;
+  const rank=v=>v==null?0:(v==="abgeschlossen"?3:(v.slice(-1)==="2"?2:1));
+  let best=null;
+  for(const v of [verkaufVal,serviceVal]) if(v!=null&&rank(v)>rank(best)) best=v;
+  if(best) return best;
+  return event?"teilgenommen":null;
+}
 function parseProfiTraining(wb){
   let ws=null;
   for(const n of wb.SheetNames){ if(/^liste\s*zum\s*abgleich$/i.test(n.trim())){ ws=wb.Sheets[n]; break; } }
@@ -4086,9 +4105,8 @@ function parseProfiTraining(wb){
   }
   const out=Object.entries(byAkp).map(([nr,a])=>({
     nr,
-    profi_training:a.profiStufe||(a.event?"erledigt":null),
-    service_training:a.serviceStufe
-  })).filter(a=>a.profi_training||a.service_training);
+    training_status:resolveTrainingStatus(a.profiStufe,a.serviceStufe,a.event)
+  })).filter(a=>a.training_status);
   return out.length?out:null;
 }
 async function upsertAkpProfiTraining(rows){
@@ -8072,17 +8090,17 @@ async function chefgespraechUnterlagenSectionHtml(fhNr,idx,total,showBranding){
 
   let akpRows=[];
   try{
-    const {data}=await sb.from("akp_contacts").select("nr,vorname,nachname,profi_training,prod_monthly,prod_monthly_other").eq("fh_nr",fhNr);
+    const {data}=await sb.from("akp_contacts").select("nr,vorname,nachname,training_status,prod_monthly,prod_monthly_other").eq("fh_nr",fhNr);
     akpRows=data||[];
   }catch(e){}
-  const trainCounts={"1":0,"2":0,"3":0,"erledigt":0,"500":0};
+  const trainCounts={verkauf1:0,verkauf2:0,verkauf3:0,service1:0,service2:0,abgeschlossen:0,teilgenommen:0,"500":0};
   let trainOffen=0;
-  akpRows.forEach(a=>{ if(a.profi_training&&trainCounts[a.profi_training]!=null) trainCounts[a.profi_training]++; else trainOffen++; });
+  akpRows.forEach(a=>{ if(a.training_status&&trainCounts[a.training_status]!=null) trainCounts[a.training_status]++; else trainOffen++; });
   const trainChart=akpRows.length?svgPieChart([
-    {label:"Stufe 1",value:trainCounts["1"],color:"#8FC1E3"},
-    {label:"Stufe 2",value:trainCounts["2"],color:"#4695C4"},
-    {label:"Stufe 3",value:trainCounts["3"],color:"#0B5A8A"},
-    {label:"Erledigt",value:trainCounts["erledigt"],color:"#2E9E5B"},
+    {label:"Verkauf Stufe 1-3",value:trainCounts.verkauf1+trainCounts.verkauf2+trainCounts.verkauf3,color:"#8FC1E3"},
+    {label:"Service Stufe 1-2",value:trainCounts.service1+trainCounts.service2,color:"#4695C4"},
+    {label:"Abgeschlossen",value:trainCounts.abgeschlossen,color:"#0B5A8A"},
+    {label:"Teilgenommen",value:trainCounts.teilgenommen,color:"#2E9E5B"},
     {label:"500 Verträge",value:trainCounts["500"],color:"#D9A400"},
     {label:"Kein Training",value:trainOffen,color:"#C9D6DE"}
   ]):null;
@@ -8090,7 +8108,7 @@ async function chefgespraechUnterlagenSectionHtml(fhNr,idx,total,showBranding){
     const name=[a.vorname,a.nachname].filter(Boolean).join(" ")||a.nr;
     const prod={...(a.prod_monthly||{}),...(a.prod_monthly_other||{})};
     const sum=Object.values(prod).reduce((x,y)=>x+(y||0),0);
-    return `<tr><td>${escapeHtml(name)}</td><td class="r">${fmt(sum)}</td><td>${a.profi_training?(TRAIN_LBL[a.profi_training]||a.profi_training):"–"}</td></tr>`;
+    return `<tr><td>${escapeHtml(name)}</td><td class="r">${fmt(sum)}</td><td>${a.training_status?(TRAINING_STATUS_LBL[a.training_status]||a.training_status):"–"}</td></tr>`;
   }).join("");
 
   const prevFhModalCurrent=fhModalCurrent;
@@ -10202,7 +10220,7 @@ async function exportAkpPeerAiPdf(){
 async function openAkpContact(nr,fallbackName){
   if(!nr) return;
   akpContactModalCurrent=nr;
-  akpContactCurrent={nr,vorname:null,nachname:null,firma:null,telefon:null,email:null,geburtsdatum:null,aktionsteilnahme:null,profi_training:null,service_training:null,prod_monthly:{},prod_monthly_other:{},poquote_monthly:{},q3fuer2_monthly:{},gesperrt_am:null};
+  akpContactCurrent={nr,vorname:null,nachname:null,firma:null,telefon:null,email:null,geburtsdatum:null,aktionsteilnahme:null,training_status:null,prod_monthly:{},prod_monthly_other:{},poquote_monthly:{},q3fuer2_monthly:{},gesperrt_am:null};
   akpPeerFhNrsCache={}; akpPeerFhContact=null; akpPeerLoadingNr=nr;
   $("acName").textContent=fallbackName||nr;
   $("acMeta").textContent="AKP-Nr. "+nr+" · lädt …";
@@ -10247,8 +10265,7 @@ function renderAkpContactView(){
   $("acEmailView").textContent=c.email||"–";
   $("acGebView").textContent=c.geburtsdatum?fmtDate(c.geburtsdatum):"–";
   $("acAktView").textContent=c.aktionsteilnahme==null?"–":(c.aktionsteilnahme?"Ja":"Nein");
-  $("acTrainView").textContent=c.profi_training?(TRAIN_LBL[c.profi_training]||c.profi_training):"Keines";
-  $("acServiceTrainView").textContent=c.service_training?(SERVICE_TRAIN_LBL[c.service_training]||c.service_training):"Keines";
+  $("acTrainView").textContent=c.training_status?(TRAINING_STATUS_LBL[c.training_status]||c.training_status):"Keines";
   const lastDay=akpLastProdDay(c.nr);
   $("acLastProdView").textContent=lastDay?fmtDate(lastDay):"Noch keine Tagesdaten erfasst";
   // PO-/3-für-2-Quote kommen aus der heutigen Einspielung (state.latest.akp),
@@ -10359,8 +10376,13 @@ function renderAkpYearlyTrend(){
     <table class="ac-yearly-table"><thead><tr><th>Jahr</th><th>Erfasst</th><th>Summe</th><th>vs. Vorjahr</th></tr></thead><tbody>${rows}</tbody></table>
     <div class="ac-month-note">Jahre mit weniger als 12 erfassten Monaten sind noch nicht vollständig – der Vergleich ist dann nicht 1:1.</div>`;
 }
-const TRAIN_LBL={"1":"Stufe 1","2":"Stufe 2","3":"Stufe 3",erledigt:"erledigt",500:"500 Verträge"};
-const SERVICE_TRAIN_LBL={"1":"Stufe 1","2":"Stufe 2"};
+// Profi-Training/Service-Training zu einem Feld zusammengeführt (Nutzer-
+// vorgabe 06.09.2026, siehe training_status-Spaltenkommentar in schema.sql).
+const TRAINING_STATUS_LBL={
+  verkauf1:"Verkauf Stufe 1", verkauf2:"Verkauf Stufe 2", verkauf3:"Verkauf Stufe 3",
+  service1:"Service Stufe 1", service2:"Service Stufe 2",
+  abgeschlossen:"abgeschlossen", teilgenommen:"teilgenommen", "500":"500 Verträge"
+};
 let akpPdfBusy=false;
 // Eigenständiges, festes Ein-Seiten-A4-Hochformat-Datenblatt für den aktuell
 // geöffneten AKP – unabhängig vom Haupt-Dashboard-PDF (Querformat, mehrseitig).
@@ -10393,8 +10415,7 @@ async function exportAkpPdf(){
         ${field("E-Mail",escapeHtml(c.email||"–"))}
         ${field("Geburtsdatum",c.geburtsdatum?fmtDate(c.geburtsdatum):"–")}
         ${field("Aktionsteilnahme",c.aktionsteilnahme==null?"–":(c.aktionsteilnahme?"Ja":"Nein"))}
-        ${field("Profi-Training",c.profi_training?(TRAIN_LBL[c.profi_training]||escapeHtml(c.profi_training)):"Keines")}
-        ${field("Service-Training",c.service_training?(SERVICE_TRAIN_LBL[c.service_training]||escapeHtml(c.service_training)):"Keines")}
+        ${field("Profi-Training",c.training_status?(TRAINING_STATUS_LBL[c.training_status]||escapeHtml(c.training_status)):"Keines")}
         ${field("Letzte Produktion",lastDay?fmtDate(lastDay):"Noch keine Tagesdaten erfasst")}
       </div>
       <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Monatsproduktion</div>
@@ -10700,8 +10721,7 @@ function toggleAkpEdit(on){
     $("acEmailEdit").value=c.email||"";
     $("acGebEdit").value=c.geburtsdatum||"";
     $("acAktEdit").value=c.aktionsteilnahme==null?"":(c.aktionsteilnahme?"ja":"nein");
-    $("acTrainEdit").value=c.profi_training||"";
-    $("acServiceTrainEdit").value=c.service_training||"";
+    $("acTrainEdit").value=c.training_status||"";
   }
 }
 async function saveAkpContact(){
@@ -10712,17 +10732,20 @@ async function saveAkpContact(){
   const aktSel=$("acAktEdit").value;
   const aktionsteilnahme=aktSel===""?null:(aktSel==="ja");
   const trainSel=$("acTrainEdit").value;
-  const profi_training=trainSel===""?null:trainSel;
-  const serviceTrainSel=$("acServiceTrainEdit").value;
-  const service_training=serviceTrainSel===""?null:serviceTrainSel;
+  const training_status=trainSel===""?null:trainSel;
+  // Jahres-Snapshot (training_status_by_year, siehe Spaltenkommentar in
+  // schema.sql) bei jeder manuellen Änderung fürs laufende Jahr mitpflegen -
+  // analog zu akp_profi_training_upsert() serverseitig beim Listen-Import.
+  const training_status_by_year={...(akpContactCurrent.training_status_by_year||{})};
+  if(training_status) training_status_by_year[String(new Date().getFullYear())]=training_status;
   $("acSaveBtn").disabled=true;
   const {error}=await sb.from("akp_contacts").upsert({
-    nr,telefon,email,geburtsdatum,aktionsteilnahme,profi_training,service_training,
+    nr,telefon,email,geburtsdatum,aktionsteilnahme,training_status,training_status_by_year,
     updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()
   },{onConflict:"nr"});
   $("acSaveBtn").disabled=false;
   if(error){ $("acSaveHint").textContent="Fehler: "+error.message; return; }
-  Object.assign(akpContactCurrent,{telefon,email,geburtsdatum,aktionsteilnahme,profi_training,service_training});
+  Object.assign(akpContactCurrent,{telefon,email,geburtsdatum,aktionsteilnahme,training_status,training_status_by_year});
   renderAkpContactView();
   toggleAkpEdit(false);
   toast("Kontaktdaten gespeichert ✓");
