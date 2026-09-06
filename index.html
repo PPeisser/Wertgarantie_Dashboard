@@ -159,9 +159,13 @@ h2.sec small{font-weight:600;text-transform:none;color:var(--muted);letter-spaci
 .goals .goal .hr{font-size:10.5px}
 .goals .goal .hr b{font-size:12px}
 .goals .goal .hr .hr-stand{width:100%;margin-left:0}
-.goals.cols4{grid-template-columns:repeat(4,1fr);gap:14px}
-.goals.cols3{grid-template-columns:repeat(3,1fr);gap:14px}
-.goals.cols4 .goal,.goals.cols3 .goal{padding:16px 18px}
+/* Nutzervorgabe 06.09.2026 ("schmäler, mit weniger Abständen, ohne die
+   Übersicht zu verlieren"): Gap/Padding der Mitarbeiter-Kacheln (3/4-spaltig)
+   verkleinert - Höhe/Schriftgrößen/Spaltenzahl bleiben unverändert, es wird
+   nur weniger reiner Leerraum pro Kachel verwendet. */
+.goals.cols4{grid-template-columns:repeat(4,1fr);gap:10px}
+.goals.cols3{grid-template-columns:repeat(3,1fr);gap:10px}
+.goals.cols4 .goal,.goals.cols3 .goal{padding:13px 15px}
 .goals.cols4 .goal .pct,.goals.cols3 .goal .pct{font-size:28px}
 /* Bug-Report 05.09.2026 (Nutzer: Mitarbeiter-Kacheln plötzlich viel zu groß):
    die Zeilen-Ausrichtungs-Mindesthöhen weiter unten (.goal .name/.big/.delta/
@@ -193,12 +197,15 @@ h2.sec small{font-weight:600;text-transform:none;color:var(--muted);letter-spaci
 .goal .hr .hr-stand{margin-left:auto;font-size:10.5px;color:var(--muted)}
 /* Die erste .hr-Zeile (Ist-Stand + darunter die volle Breite einnehmende
    Stand-Angabe, siehe .hr-stand{width:100%} weiter unten) ist bei
-   Jahres-Kacheln ("Stand: ... Arbeitstag 203/301 · erwarteter Jahresanteil
-   63,8 %") länger als bei Monats-Kacheln ("Stand: ... Tag 3/26") - ohne
-   Mindesthöhe würde das die danach folgende Hochrechnungs-Diff-Zeile
-   unterschiedlich weit nach unten schieben (Nutzervorgabe 05.09.2026, siehe
-   Kommentar bei .goal .name oben).*/
-.goal .delta+.hr{min-height:9.4em}
+   Jahres-Kacheln ("Stand: ... Tag 203/301") minimal länger als bei
+   Monats-Kacheln ("Stand: ... Tag 3/26") - ohne Mindesthöhe würde das die
+   danach folgende Hochrechnungs-Diff-Zeile unterschiedlich weit nach unten
+   schieben (Nutzervorgabe 05.09.2026, siehe Kommentar bei .goal .name
+   oben). Wert 06.09.2026 von 9.4em auf 6.6em gesenkt, nachdem standJ oben
+   um den redundanten "erwarteter Jahresanteil"-Zusatz gekürzt wurde und
+   dadurch nicht mehr auf 2 Zeilen umbricht (Nutzer: "Kacheln schon sehr
+   lang") - per Playwright nachgemessener neuer, kleinerer Ist-Zustand. */
+.goal .delta+.hr{min-height:6.6em}
 .akp-h{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin:8px 0 2px}
 .mix-lbl{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin:8px 0 4px}
 .mixbar{display:flex;height:26px;border-radius:9px;overflow:hidden;background:#E4EDF3}
@@ -6244,7 +6251,14 @@ function renderGoals(){
   const g=isATv?(AT_MONATSZIELE[s.monat]||0):(goals[goalKey(currentEmp)]||0);
   const mfrac=(s.tageIst&&s.tageSoll)?s.tageIst/s.tageSoll:1;
   const share=seasonShare(s.vortag,s.jahr);                                // saisonaler Jahresanteil
-  const standJ=`${fmtDate(s.vortag)} · Arbeitstag ${yf.done}/${yf.total} · erwarteter Jahresanteil ${(share*100).toFixed(1).replace(".",",")} %`;
+  // Nutzervorgabe 06.09.2026: "erwarteter Jahresanteil X%" entfernt (steht
+  // bereits als Methodik im Section-Header, siehe "Jahresziele saisonal
+  // gerechnet...") - kürzt die Stand-Zeile bei den Jahres-Kacheln auf eine
+  // Zeile statt zwei und macht die AT-gesamt-Kacheln dadurch spürbar kürzer.
+  // "Tag" statt "Arbeitstag" (analog standM unten) - "Arbeitstag 203/301"
+  // brach in den schmalen AT-gesamt-Kacheln (220px) trotz Entfernens des
+  // Jahresanteil-Zusatzes oben immer noch auf 2 Zeilen um.
+  const standJ=`${fmtDate(s.vortag)} · Tag ${yf.done}/${yf.total}`;
   const standM=`${fmtDate(s.vortag)} · Tag ${s.tageIst}/${s.tageSoll}`;
   // Hochrechnungen (Jahr saisonal: 40 % der Produktion in Q4)
   const hrJahr=share>0?at.jahr/share:0;
@@ -6291,11 +6305,16 @@ function renderGoals(){
         me.monatVJ>0&&s.tageIst>0?{val:hrMe,lbl:"Monatsende",stand:standM}:null,
         {ahead:"▲ ü. Vorjahr",behind:"▼ u. Vorjahr",target:"Vorjahr"});
   const persJZ=PERS_JAHRESZIELE[currentEmp]||0;
+  // "(saisonal)"-Zusatz beim Hochrechnungs-Label entfernt (Nutzervorgabe
+  // 06.09.2026, gleicher Grund wie bei standJ oben): steht bereits im
+  // Section-Header ("Jahresziele saisonal gerechnet...") und ließ das
+  // "📈 Hochrechnung Jahresende (saisonal): ..." in den schmalen AT-gesamt-
+  // Kacheln unnötig auf 2 Zeilen umbrechen.
   const cards=[
     goalCard("🇦🇹 Jahresziel "+s.jahr, ZIEL_AT, at.jahr, ZIEL_AT*share, "", false,
-      {val:hrJahr,lbl:"Jahresende (saisonal)",stand:standJ}),
+      {val:hrJahr,lbl:"Jahresende",stand:standJ}),
     goalCard("🏢 PLAN Jahr "+s.jahr, ZIEL_FIRMA, at.jahr, ZIEL_FIRMA*share, "", false,
-      {val:hrJahr,lbl:"Jahresende (saisonal)",stand:standJ}),
+      {val:hrJahr,lbl:"Jahresende",stand:standJ}),
     card3,
     goalCard("🎯 Pers. Monatsziel · "+MONATE[s.monat-1],
       g, me.monat, g*mfrac,
@@ -6344,30 +6363,46 @@ function renderGoals(){
   // Hinweistexts, mit hart auf font-style:normal zurückgesetzten Fett-/
   // Farbwerten mittendrin - wirkte wie ein Bruch im Fließtext (in der
   // Mitarbeitereinzelansicht besonders auffällig, da hier eine echte
-  // Vorjahresvergleichs-Zahl steht statt nur des ATgesamt-Kontexts). Jetzt
-  // eine eigene, mit den übrigen Kennzahlen-Zeilen (📌 Ist-Stand, 📈
-  // Hochrechnung ...) konsistente .hr-Zeile mit eigenem Icon und
-  // Trenner-Linie - und laut Vorgabe VOR statt nach dem Freitagsreport-
-  // Hinweis platziert.
+  // Vorjahresvergleichs-Zahl steht statt nur des ATgesamt-Kontexts).
+  //
+  // Optik-Fix (Nutzervorgabe 06.09.2026, "das hat ja locker Platz. damit
+  // Werdens kleiner"): stand zwischenzeitlich (05.09.2026) als eigene
+  // .hr-Zeile zwischen Ist-Stand und dem Freitagsreport-Hinweis - kostete
+  // damit eine ganze Kachelzeile extra und machte die ohnehin schon lange
+  // Miete-Kachel noch länger. Jetzt direkt IN die Ist-Stand-Zeile
+  // eingehängt (per String-Splice auf den von goalCard() erzeugten
+  // Ist-Stand-Block, da Miete kein hr.stand setzt und "Stk.</span></div>"
+  // dort garantiert nur einmal vorkommt - die Zahl selbst bleibt exakt
+  // dieselbe, nur die Zeile spart sich das Dashboard).
   const mieteVJBisMonat=mieteBisMonatFor(currentEmp,s.jahr-1,s.monat);
   const mieteHeuerBisMonat=mieteBisMonatFor(currentEmp,s.jahr,s.monat);
   const mieteVJDelta=mieteVJBisMonat>0?(mieteHeuerBisMonat-mieteVJBisMonat)/mieteVJBisMonat*100:null;
-  const mieteVJRow=mieteVJBisMonat>0
-    ?`<div class="hr"><span class="hr-ic">📊</span> Vorjahr bis ${MONATE[s.monat-1]}: <b>${fmt(mieteVJBisMonat)}</b> Stk. · <span style="font-weight:700;color:${mieteVJDelta>=0?"var(--pos)":"var(--neg)"}">${fmtPct(mieteVJDelta)}</span> zum Vorjahr</div>`
+  const mieteVJInline=mieteVJBisMonat>0
+    ?` · Vorjahr bis ${MONATE[s.monat-1]}: <b>${fmt(mieteVJBisMonat)}</b> Stk. (<span style="font-weight:700;color:${mieteVJDelta>=0?"var(--pos)":"var(--neg)"}">${fmtPct(mieteVJDelta)}</span>)`
     :"";
-  const mieteCard=goalCard("🏠 Miete-Jahresziel "+s.jahr, mieteTarget, mieteIst, mieteTarget*mieteShare,
+  let mieteCard=goalCard("🏠 Miete-Jahresziel "+s.jahr, mieteTarget, mieteIst, mieteTarget*mieteShare,
     "", false,
     mieteTarget>0?{val:mieteHrJahr,lbl:"Jahresende (gleichmäßig)"}:null,
     null,
     "Zahlen aus Freitagsreport, letzte Einspielung: "+(fmtWeekdayDate(mieteLastImport)||MIETE_REPORT_STAND_FALLBACK)
-  ).replace('class="goal"','class="goal goal-miete" style="cursor:pointer" onclick="openMieteListModal()"')
-   .replace('<div class="hr" style="color:var(--muted);font-style:italic">', mieteVJRow+'<div class="hr" style="color:var(--muted);font-style:italic">');
+  ).replace('class="goal"','class="goal goal-miete" style="cursor:pointer" onclick="openMieteListModal()"');
+  // Splice-Ziel existiert nur, wenn goalCard() oben tatsächlich eine
+  // Ist-Stand-Zeile erzeugt hat (hasHr, also mieteIst>0) - Fallback für den
+  // Rand-Fall "Vorjahresdaten vorhanden, heuer aber noch kein Miete-Ist"
+  // (z.B. neuer Mitarbeiter): dann als eigene Zeile vor dem Freitagsreport-
+  // Hinweis, statt die Information sonst stillschweigend zu verlieren.
+  if(mieteVJInline&&mieteCard.includes('Stk.</span></div>')){
+    mieteCard=mieteCard.replace('Stk.</span></div>', 'Stk.</span>'+mieteVJInline+'</div>');
+  }else if(mieteVJBisMonat>0){
+    mieteCard=mieteCard.replace('<div class="hr" style="color:var(--muted);font-style:italic">',
+      `<div class="hr"><span class="hr-ic">📊</span> Vorjahr bis ${MONATE[s.monat-1]}: <b>${fmt(mieteVJBisMonat)}</b> Stk. (<span style="font-weight:700;color:${mieteVJDelta>=0?"var(--pos)":"var(--neg)"}">${fmtPct(mieteVJDelta)}</span>)</div><div class="hr" style="color:var(--muted);font-style:italic">`);
+  }
   // Reihenfolge (Nutzervorgabe 01.09.2026): Persönliches Jahresziel VOR der
   // Miete-Kachel - deshalb wird hier zuerst das Jahresziel gepusht.
   if(!isATv){
     cards.push(goalCard("🏁 Persönliches Jahresziel "+s.jahr+"<br><span style='font-weight:600;font-size:11px;color:var(--muted)'>"+currentEmp+" · fest hinterlegt</span>",
       persJZ, me.jahr, persJZ*share, "", false,
-      persJZ>0?{val:hrMeJahr,lbl:"Jahresende (saisonal)",stand:standJ}:null));
+      persJZ>0?{val:hrMeJahr,lbl:"Jahresende",stand:standJ}:null));
   }
   // Nur für Österreich gesamt und die Mitarbeiter mit Club.Weiss-Ziel
   // anzeigen - Szendi und Eitzinger haben keines (mieteTarget=0), bei ihnen
