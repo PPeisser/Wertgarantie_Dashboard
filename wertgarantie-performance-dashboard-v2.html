@@ -2088,6 +2088,16 @@ let dgVisibleMetrics = ["dg1","dg2","db1","db2"];
 // der Schalter eingeführt wurde: ein Default von false hätte es für alle
 // Nutzer unangekündigt ausgeblendet, bis ein Admin es manuell aktiviert.
 let empRankingEnabled = true;
+// Zwei unabhängige Umschalter im Mitarbeiter-Ranking (Nutzervorgabe
+// 07.09.2026, siehe renderEmpRanking()): empRankingMetric = welche Kennzahl
+// ("ziel" = pers. Jahreszielerreichung, bisheriges Verhalten; "vj" =
+// Steigerung gegenüber Vorjahr); empRankingBasis = welcher Wert dafür
+// herangezogen wird ("aktuell" = heutiger Stand, bisheriges Verhalten;
+// "hochrechnung" = saisonale Hochrechnung Jahresende). Default bewusst
+// "ziel"/"aktuell" - identisch zum bisherigen, einzigen Verhalten vor
+// dieser Erweiterung.
+let empRankingMetric = "ziel";
+let empRankingBasis = "aktuell";
 // Stornoquoten AKP (02.09.2026) - Admin-Freischalter für den
 // "Stornoquoten"-Abschnitt im AKP-PopUp (renderAkpStornoSection). Default
 // false wie bei anderen neuen Features, bis ein Admin es aktiviert.
@@ -6652,26 +6662,73 @@ function akqStaffelnInJahr(){
 // = ist/ziel*100, exakt dieselbe Formel wie goalCard()s große Prozentzahl -
 // bewusst NICHT pctOf() (das berechnet eine Wachstumsrate zwischen zwei
 // Werten, keine Zielerreichung).
+//
+// Zwei unabhängige Umschalter (Nutzervorgabe 07.09.2026, "gleicher Titel"
+// - beide in derselben Kachel statt eigener Blöcke):
+// 1) Kennzahl: "Zielerreichung" (bisheriges Verhalten) oder "Steigerung
+//    ggü. Vorjahr" (gegen den vollen Vorjahreswert glRow().jahrVJ).
+// 2) Basis: "Aktuell" (heutiger Stand, glRow().jahr - bisheriges Verhalten)
+//    oder "Hochrechnung" (saisonale Jahresend-Hochrechnung, seasonShare()/
+//    unser übliches Q4-Gewichtungsschema: 71 % bis 30.9., 29 % im Q4 -
+//    dieselbe Methodik wie bei den Ziel-Kacheln/goalCard()).
+// Beide Umschalter wirken unabhängig auf dieselbe Formel (pct bzw. growth),
+// die Unterzeile zeigt immer Stand UND Hochrechnung zum Vergleich, egal
+// welche Basis gerade für Sortierung/große Zahl/Balken aktiv ist.
+function setEmpRankingMetric(v){ empRankingMetric=v; renderEmpRanking(); }
+function setEmpRankingBasis(v){ empRankingBasis=v; renderEmpRanking(); }
 function renderEmpRanking(){
   const box=$("empRankingBlock"); if(!box) return;
   if(!empRankingEnabled){ box.innerHTML=""; return; }
   if(currentEmp!==AT_GESAMT){ box.innerHTML=""; return; }
   const s=state.latest; if(!s){ box.innerHTML=""; return; }
   // Hochrechnung Jahresende (saisonal) - dieselbe Logik wie bei den Ziel-
-  // Kacheln (goalCard()/renderGoals(), hrJahr=at.jahr/share) - Nutzervorgabe
-  // 01.09.2026: Zielzahl, Stand und Hochrechnung (±% zum Ziel) zusätzlich
-  // zur Zielerreichung anzeigen. Als Unterzeile unter dem Namen (nicht als
-  // weitere Spalte VOR dem Balken), damit der Balken nicht schmäler wird.
+  // Kacheln (goalCard()/renderGoals(), hrJahr=at.jahr/share).
   const share=seasonShare(s.vortag,s.jahr);
+  const isVJ=empRankingMetric==="vj", isHr=empRankingBasis==="hochrechnung";
+  const tabs=`<span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <span class="tabs mini no-print">
+      <button onclick="setEmpRankingMetric('ziel')" class="${!isVJ?"on":""}">Zielerreichung</button>
+      <button onclick="setEmpRankingMetric('vj')" class="${isVJ?"on":""}">Steigerung ggü. Vorjahr</button>
+    </span>
+    <span class="tabs mini no-print">
+      <button onclick="setEmpRankingBasis('aktuell')" class="${!isHr?"on":""}">Aktuell</button>
+      <button onclick="setEmpRankingBasis('hochrechnung')" class="${isHr?"on":""}">Hochrechnung</button>
+    </span>
+  </span>`;
+  if(isVJ){
+    const rows=EMPLOYEES.map(emp=>{
+      const g=glRow(emp), ist=g.jahr, vj=g.jahrVJ||0;
+      const hr=share>0?ist/share:null;
+      const basisVal=isHr?hr:ist;
+      const growth=(vj>0&&basisVal!=null)?(basisVal/vj-1)*100:null;
+      return {emp, ist, vj, hr, growth, barPct:(vj>0&&basisVal!=null)?Math.max(0,Math.min(100,basisVal/vj*100)):0};
+    }).filter(r=>r.vj>0).sort((a,b)=>(b.growth??-Infinity)-(a.growth??-Infinity));
+    if(!rows.length){ box.innerHTML=""; return; }
+    box.innerHTML=`<div class="panel" style="margin:14px 0">
+      <h3 style="justify-content:space-between;flex-wrap:wrap;row-gap:8px"><span style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--wg-blue)"></span>Mitarbeiter-Ranking · Steigerung ggü. Vorjahr ${s.jahr}</span>${tabs}</h3>
+      ${rows.map((r,i)=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0${i<rows.length-1?';border-bottom:1px solid var(--line)':""}">
+          <span style="width:20px;flex:none;font-weight:800;color:var(--muted)">${i+1}.</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700">${escapeHtml(r.emp)}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px">Vorjahr ${fmt(r.vj)} · Stand ${fmt(r.ist)} · Hochr. ${fmt(r.hr)}</div>
+          </div>
+          <div class="bar" style="flex:2;height:10px"><div class="fill" style="width:${r.barPct}%;background:${r.growth==null||r.growth>=0?"var(--pos)":"var(--neg)"}"></div></div>
+          <b style="width:76px;text-align:right;flex:none;white-space:nowrap;color:${r.growth==null?"var(--muted)":r.growth>=0?"var(--pos)":"var(--neg)"}">${fmtPct(r.growth)}</b>
+        </div>`).join("")}
+    </div>`;
+    return;
+  }
   const rows=EMPLOYEES.map(emp=>{
     const ist=glRow(emp).jahr, ziel=PERS_JAHRESZIELE[emp]||0;
     const hr=share>0?ist/share:null;
+    const basisVal=isHr?hr:ist;
     const hrDelta=(ziel>0&&hr!=null)?(hr/ziel-1)*100:null;
-    return {emp, ist, ziel, hr, hrDelta, pct: ziel>0?ist/ziel*100:null};
+    return {emp, ist, ziel, hr, hrDelta, pct:(ziel>0&&basisVal!=null)?basisVal/ziel*100:null};
   }).filter(r=>r.ziel>0).sort((a,b)=>(b.pct??-1)-(a.pct??-1));
   if(!rows.length){ box.innerHTML=""; return; }
   box.innerHTML=`<div class="panel" style="margin:14px 0">
-    <h3><span class="dot" style="background:var(--wg-blue)"></span>Mitarbeiter-Ranking · pers. Jahreszielerreichung ${s.jahr}</h3>
+    <h3 style="justify-content:space-between;flex-wrap:wrap;row-gap:8px"><span style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--wg-blue)"></span>Mitarbeiter-Ranking · pers. Jahreszielerreichung ${s.jahr}</span>${tabs}</h3>
     ${rows.map((r,i)=>`
       <div style="display:flex;align-items:center;gap:10px;padding:8px 0${i<rows.length-1?';border-bottom:1px solid var(--line)':""}">
         <span style="width:20px;flex:none;font-weight:800;color:var(--muted)">${i+1}.</span>
@@ -6680,7 +6737,7 @@ function renderEmpRanking(){
           <div style="font-size:11px;color:var(--muted);margin-top:1px">Ziel ${fmt(r.ziel)} · Stand ${fmt(r.ist)} · Hochr. ${fmt(r.hr)} <span style="color:${r.hrDelta==null?"var(--muted)":r.hrDelta>=0?"var(--pos)":"var(--neg)"};font-weight:700">(${fmtPct(r.hrDelta)})</span></div>
         </div>
         <div class="bar" style="flex:2;height:10px"><div class="fill" style="width:${Math.min(r.pct,100)}%;background:${r.pct>=100?"var(--pos)":"var(--wg-blue)"}"></div></div>
-        <b style="width:60px;text-align:right;flex:none">${r.pct.toFixed(1).replace(".",",")+" %"}</b>
+        <b style="width:76px;text-align:right;flex:none;white-space:nowrap">${r.pct.toFixed(1).replace(".",",")+" %"}</b>
       </div>`).join("")}
   </div>`;
 }
