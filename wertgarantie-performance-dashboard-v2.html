@@ -5136,21 +5136,24 @@ function perfGoalSystemHtml(goalId,snap){
     // Gewichtung (seasonShare()) wie bei den Ziel-Kacheln im Hauptdashboard
     // und bereits INTERN in perfHochrechnungCls() berechnet - dort aber
     // bisher nur zur Einfärbung der Ist-Zahl genutzt, nicht als eigener Wert
-    // angezeigt. Absichtlich dieselbe 3-Farben-Logik (rot/blau/grün, siehe
-    // perfHochrechnungCls()-Kommentar) statt eines eigenen 2-Farben-Schemas,
-    // damit Ist-Zahl und Hochrechnung nie widersprüchlich eingefärbt sind.
-    // Nur bei "Jahr" (nicht "Monat") - der Berichtsmonat ist beim Ausfüllen
-    // bereits abgeschlossen, da gibt es nichts mehr hochzurechnen.
+    // angezeigt. Nur bei "Jahr" (nicht "Monat") - der Berichtsmonat ist beim
+    // Ausfüllen bereits abgeschlossen, da gibt es nichts mehr hochzurechnen.
+    //
+    // Farbe (Nutzerkorrektur 07.09.2026): bewusst NICHT dieselbe 3-Farben-
+    // Logik wie die Ist-Zahl (die zusätzlich den aktuellen Ist-Stand
+    // berücksichtigt und dadurch "blau" zeigen kann, obwohl die Hochrechnung
+    // selbst schon über dem Ziel liegt) - die Hochrechnung ist bereits das
+    // Ergebnis der saisonalen Vorausschau, braucht also keinen eigenen
+    // "noch nicht, aber auf Kurs"-Zwischenzustand mehr: über dem Ziel = grün,
+    // sonst rot.
     let hrLine="";
     if(snap.year&&snap.month){
       const monthEndIso=snap.year+"-"+String(snap.month).padStart(2,"0")+"-"+String(new Date(Date.UTC(snap.year,snap.month,0)).getUTCDate()).padStart(2,"0");
       const share=seasonShare(monthEndIso,snap.year);
       const hrJahr=share>0?snap.jahr_ist/share:snap.jahr_ist;
       const hp=snap.jahr_ziel>0?hrJahr/snap.jahr_ziel*100:null;
-      const good=jp!=null?jp>=100:true;
       const hGood=hp!=null?hp>=100:true;
-      const neutral=!good&&hGood;
-      const hrCls=good?"pos-t":(neutral?"neu-t":"neg-t");
+      const hrCls=hGood?"pos-t":"neg-t";
       hrLine=`<div><span class="ac-lbl">Hochrechnung Jahresende</span><div class="ac-val"><b class="${hrCls}">${fmt(Math.round(hrJahr))}</b> Stk.${hp!=null?` (${hp.toFixed(1).replace(".",",")} %)`:""}</div></div>`;
     }
     return `<div class="ac-grid">
