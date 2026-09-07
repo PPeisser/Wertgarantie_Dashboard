@@ -5132,8 +5132,30 @@ function perfGoalSystemHtml(goalId,snap){
   if(goalId===1){
     const jp=snap.jahr_ziel>0?snap.jahr_ist/snap.jahr_ziel*100:null;
     const mp=snap.monat_ziel>0?snap.monat_ist/snap.monat_ziel*100:null;
+    // Hochrechnung Jahresende (Nutzervorgabe 07.09.2026): dieselbe saisonale
+    // Gewichtung (seasonShare()) wie bei den Ziel-Kacheln im Hauptdashboard
+    // und bereits INTERN in perfHochrechnungCls() berechnet - dort aber
+    // bisher nur zur Einfärbung der Ist-Zahl genutzt, nicht als eigener Wert
+    // angezeigt. Absichtlich dieselbe 3-Farben-Logik (rot/blau/grün, siehe
+    // perfHochrechnungCls()-Kommentar) statt eines eigenen 2-Farben-Schemas,
+    // damit Ist-Zahl und Hochrechnung nie widersprüchlich eingefärbt sind.
+    // Nur bei "Jahr" (nicht "Monat") - der Berichtsmonat ist beim Ausfüllen
+    // bereits abgeschlossen, da gibt es nichts mehr hochzurechnen.
+    let hrLine="";
+    if(snap.year&&snap.month){
+      const monthEndIso=snap.year+"-"+String(snap.month).padStart(2,"0")+"-"+String(new Date(Date.UTC(snap.year,snap.month,0)).getUTCDate()).padStart(2,"0");
+      const share=seasonShare(monthEndIso,snap.year);
+      const hrJahr=share>0?snap.jahr_ist/share:snap.jahr_ist;
+      const hp=snap.jahr_ziel>0?hrJahr/snap.jahr_ziel*100:null;
+      const good=jp!=null?jp>=100:true;
+      const hGood=hp!=null?hp>=100:true;
+      const neutral=!good&&hGood;
+      const hrCls=good?"pos-t":(neutral?"neu-t":"neg-t");
+      hrLine=`<div><span class="ac-lbl">Hochrechnung Jahresende</span><div class="ac-val"><b class="${hrCls}">${fmt(Math.round(hrJahr))}</b> Stk.${hp!=null?` (${hp.toFixed(1).replace(".",",")} %)`:""}</div></div>`;
+    }
     return `<div class="ac-grid">
       <div><span class="ac-lbl">Jahr ${snap.year}</span><div class="ac-val"><b class="${perfHochrechnungCls(snap.jahr_ist,snap.jahr_ziel,snap.year,snap.month)}">${fmt(snap.jahr_ist)}</b> / ${snap.jahr_ziel>0?fmt(snap.jahr_ziel):"–"} Stk.${jp!=null?` (${jp.toFixed(1).replace(".",",")} %)`:""}</div></div>
+      ${hrLine}
       <div><span class="ac-lbl">Monat ${MONATE[snap.month-1]}</span><div class="ac-val"><b class="${cls(mp,100)}">${fmt(snap.monat_ist)}</b> / ${snap.monat_ziel>0?fmt(snap.monat_ziel):"–"} Stk.${mp!=null?` (${mp.toFixed(1).replace(".",",")} %)`:""}</div></div>
     </div>`;
   }
