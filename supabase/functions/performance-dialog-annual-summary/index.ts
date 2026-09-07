@@ -141,6 +141,60 @@ function pct(v: number | null | undefined): string {
   return v == null ? "-" : (v * 100).toFixed(1).replace(".", ",") + " %";
 }
 
+// Saisonale Jahres-Hochrechnung - 1:1-Portierung von seasonShare() (und
+// dessen Abhaengigkeiten easter()/holidaysAT()/workdaysBetween()) aus dem
+// Client (index.html), damit die "Hochrechnung Jahresende" hier exakt
+// denselben Wert liefert wie im Dashboard/PDF (siehe perfGoalSystemHtml()
+// im Client) - Nutzervorgabe 07.09.2026: "auch bei der KI-Zusammenfassung
+// integrieren". Bewusste Duplizierung statt gemeinsames Modul, wie bei den
+// anderen Funktionen dieser Edge Function.
+const Q4_ANTEIL = 0.29; // 71 % bis 30.9., 29 % der Jahresproduktion in Q4
+function easterUTC(y: number): Date {
+  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25),
+    g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4,
+    l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451),
+    mo = Math.floor((h + l - 7 * m + 114) / 31), da = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(Date.UTC(y, mo - 1, da));
+}
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+const holidayCache: Record<number, Set<string>> = {};
+function holidaysAT(y: number): Set<string> {
+  if (holidayCache[y]) return holidayCache[y];
+  const s = new Set<string>();
+  const add = (d: Date) => s.add(isoDate(d));
+  ([[0, 1], [0, 6], [4, 1], [7, 15], [9, 26], [10, 1], [11, 8], [11, 25], [11, 26]] as [number, number][])
+    .forEach(([m, d]) => add(new Date(Date.UTC(y, m, d))));
+  const e = easterUTC(y);
+  [1, 39, 50, 60].forEach((off) => { const d = new Date(e); d.setUTCDate(d.getUTCDate() + off); add(d); });
+  holidayCache[y] = s;
+  return s;
+}
+function isWorkday(d: Date): boolean {
+  const wd = d.getUTCDay();
+  if (wd === 0) return false;
+  return !holidaysAT(d.getUTCFullYear()).has(isoDate(d));
+}
+function addDaysUTC(d: Date, n: number): Date {
+  const x = new Date(d);
+  x.setUTCDate(x.getUTCDate() + n);
+  return x;
+}
+function workdaysBetween(a: Date, b: Date): number {
+  let n = 0, x = new Date(a);
+  while (x <= b) { if (isWorkday(x)) n++; x = addDaysUTC(x, 1); }
+  return n;
+}
+function seasonShare(dISO: string, jahr: number): number {
+  const d = new Date(dISO + "T00:00:00Z");
+  const jan1 = new Date(Date.UTC(jahr, 0, 1)), sep30 = new Date(Date.UTC(jahr, 8, 30)),
+    okt1 = new Date(Date.UTC(jahr, 9, 1)), dez31 = new Date(Date.UTC(jahr, 11, 31));
+  const wd19 = workdaysBetween(jan1, sep30), wdQ4 = workdaysBetween(okt1, dez31);
+  if (d <= sep30) return (1 - Q4_ANTEIL) * workdaysBetween(jan1, d) / wd19;
+  return (1 - Q4_ANTEIL) + Q4_ANTEIL * workdaysBetween(okt1, d) / wdQ4;
+}
+
 // Textform der "Auswertung aus dem System" je Ziel - dieselben Feldnamen
 // wie perfGoalSnapshot()/perfGoalSystemHtml() im Client (index.html), aber
 // als Klartext statt HTML, da hier keine Anzeige, sondern ein KI-Prompt
@@ -152,7 +206,21 @@ function formatSnapshot(goalId: number, snap: any): string {
   if (goalId === 1) {
     const jp = snap.jahr_ziel > 0 ? (snap.jahr_ist / snap.jahr_ziel * 100).toFixed(1) : null;
     const mp = snap.monat_ziel > 0 ? (snap.monat_ist / snap.monat_ziel * 100).toFixed(1) : null;
-    return `Jahr ${snap.year}: ${snap.jahr_ist} / ${snap.jahr_ziel || "-"} Stk.${jp ? ` (${jp} %)` : ""}; ` +
+    // Hochrechnung Jahresende (Nutzervorgabe 07.09.2026): dieselbe saisonale
+    // Gewichtung wie im Dashboard, damit die KI dieselbe Zahl kennt, die auch
+    // im PDF unter "SYSTEM-KENNZAHLEN" (perfKiSystemDataHtml() im Client)
+    // neben ihrem Text steht - nur bei "Jahr", nicht bei "Monat" (der
+    // Berichtsmonat ist bereits abgeschlossen, siehe Client-Kommentar).
+    let hrPart = "";
+    if (snap.year && snap.month) {
+      const monthEndIso = `${snap.year}-${String(snap.month).padStart(2, "0")}-` +
+        `${String(new Date(Date.UTC(snap.year, snap.month, 0)).getUTCDate()).padStart(2, "0")}`;
+      const share = seasonShare(monthEndIso, snap.year);
+      const hrJahr = share > 0 ? snap.jahr_ist / share : snap.jahr_ist;
+      const hp = snap.jahr_ziel > 0 ? (hrJahr / snap.jahr_ziel * 100).toFixed(1) : null;
+      hrPart = `; Hochrechnung Jahresende (saisonal gewichtet): ${Math.round(hrJahr)} Stk.${hp ? ` (${hp} %)` : ""}`;
+    }
+    return `Jahr ${snap.year}: ${snap.jahr_ist} / ${snap.jahr_ziel || "-"} Stk.${jp ? ` (${jp} %)` : ""}${hrPart}; ` +
       `Monat ${MONATE[snap.month - 1]}: ${snap.monat_ist} / ${snap.monat_ziel || "-"} Stk.${mp ? ` (${mp} %)` : ""}`;
   }
   if (goalId === 2) {
