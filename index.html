@@ -2090,13 +2090,12 @@ let dgVisibleMetrics = ["dg1","dg2","db1","db2"];
 let empRankingEnabled = true;
 // Zwei unabhängige Umschalter im Mitarbeiter-Ranking (Nutzervorgabe
 // 07.09.2026, siehe renderEmpRanking()): empRankingMetric = welche Kennzahl
-// ("ziel" = pers. Jahreszielerreichung, bisheriges Verhalten; "vj" =
-// Steigerung gegenüber Vorjahr); empRankingBasis = welcher Wert dafür
-// herangezogen wird ("aktuell" = heutiger Stand, bisheriges Verhalten;
-// "hochrechnung" = saisonale Hochrechnung Jahresende). Default bewusst
-// "ziel"/"aktuell" - identisch zum bisherigen, einzigen Verhalten vor
-// dieser Erweiterung.
-let empRankingMetric = "ziel";
+// ("ziel" = pers. Jahreszielerreichung; "vj" = Steigerung gegenüber
+// Vorjahr); empRankingBasis = welcher Wert dafür herangezogen wird
+// ("aktuell" = heutiger Stand; "hochrechnung" = saisonale Hochrechnung
+// Jahresende). Default "vj"/"aktuell" (Nutzervorgabe 07.09.2026: "Steigerung
+// aktuell soll standardmäßig als erstes angezeigt werden").
+let empRankingMetric = "vj";
 let empRankingBasis = "aktuell";
 // Stornoquoten AKP (02.09.2026) - Admin-Freischalter für den
 // "Stornoquoten"-Abschnitt im AKP-PopUp (renderAkpStornoSection). Default
@@ -6696,14 +6695,23 @@ function renderEmpRanking(){
     </span>
   </span>`;
   if(isVJ){
-    const rows=EMPLOYEES.map(emp=>{
+    const base=EMPLOYEES.map(emp=>{
       const g=glRow(emp), ist=g.jahr, vj=g.jahrVJ||0;
       const hr=share>0?ist/share:null;
       const basisVal=isHr?hr:ist;
       const growth=(vj>0&&basisVal!=null)?(basisVal/vj-1)*100:null;
-      return {emp, ist, vj, hr, growth, barPct:(vj>0&&basisVal!=null)?Math.max(0,Math.min(100,basisVal/vj*100)):0};
+      return {emp, ist, vj, hr, growth};
     }).filter(r=>r.vj>0).sort((a,b)=>(b.growth??-Infinity)-(a.growth??-Infinity));
-    if(!rows.length){ box.innerHTML=""; return; }
+    if(!base.length){ box.innerHTML=""; return; }
+    // Balkenbreite relativ zum stärksten Wachstum in der Liste (Nutzer-
+    // korrektur 07.09.2026) - vorher war die Breite "Wert als % vom
+    // Vorjahr, bei 100 % gedeckelt", wodurch JEDER positive Wachstumswert
+    // sofort einen (fast) vollen Balken zeigte, egal ob +5 % oder +300 %,
+    // und die Balken die eigentliche Größenordnung nicht mehr unterschieden.
+    // Rückläufige Werte (growth<0) zeigen bewusst keinen Balken (0 %) - der
+    // Wert steht ohnehin daneben in Rot.
+    const maxGrowth=Math.max(0,...base.map(r=>r.growth??0));
+    const rows=base.map(r=>({...r, barPct:(maxGrowth>0&&r.growth>0)?Math.min(100,r.growth/maxGrowth*100):0}));
     box.innerHTML=`<div class="panel" style="margin:14px 0">
       <h3 style="justify-content:space-between;flex-wrap:wrap;row-gap:8px"><span style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--wg-blue)"></span>Mitarbeiter-Ranking · Steigerung ggü. Vorjahr ${s.jahr}</span>${tabs}</h3>
       ${rows.map((r,i)=>`
