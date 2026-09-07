@@ -6747,7 +6747,8 @@ function renderEmpRanking(){
       const hr=share>0?ist/share:null;
       const basisVal=isHr?hr:ist;
       const growth=(vj>0&&basisVal!=null)?(basisVal/vj-1)*100:null;
-      return {emp, ist, vj, hr, growth};
+      const delta=(vj>0&&basisVal!=null)?basisVal-vj:null;
+      return {emp, ist, vj, hr, growth, delta};
     }).filter(r=>r.vj>0).sort((a,b)=>(b.growth??-Infinity)-(a.growth??-Infinity));
     if(!base.length){ box.innerHTML=""; return; }
     // Balkenbreite relativ zum stärksten Wachstum in der Liste (Nutzer-
@@ -6769,7 +6770,10 @@ function renderEmpRanking(){
             <div style="font-size:11px;color:var(--muted);margin-top:1px">Vorjahr ${fmt(r.vj)} · Stand ${fmt(r.ist)} · Hochr. ${fmt(r.hr)}</div>
           </div>
           <div class="bar" style="flex:2;height:10px"><div class="fill" style="width:${r.barPct}%;background:${r.growth==null||r.growth>=0?"var(--pos)":"var(--neg)"}"></div></div>
-          <b style="width:76px;text-align:right;flex:none;white-space:nowrap;color:${r.growth==null?"var(--muted)":r.growth>=0?"var(--pos)":"var(--neg)"}">${fmtPct(r.growth)}</b>
+          <div style="width:92px;text-align:right;flex:none;white-space:nowrap">
+            <b style="color:${r.growth==null?"var(--muted)":r.growth>=0?"var(--pos)":"var(--neg)"}">${fmtPct(r.growth)}</b>
+            <div style="font-size:10.5px;font-weight:700;color:${r.delta==null?"var(--muted)":r.delta>=0?"var(--pos)":"var(--neg)"}">(${fmtSign(r.delta)})</div>
+          </div>
         </div>`).join("")}
     </div>`;
     return;
