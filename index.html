@@ -5216,10 +5216,15 @@ function perfErgReviewRows(goalId,emp,year,month){
   const prevG=perfPrevReport&&(perfPrevReport.goals||[]).find(g=>g.goal_id===goalId);
   const prevSelected=(prevG&&prevG.answers&&prevG.answers.erg&&prevG.answers.erg.selected)||[];
   if(!prevSelected.length) return [];
+  // Nutzervorgabe 09.09.2026: den im Vormonat eingetragenen "Geplante
+  // Maßnahmen"-Text als Referenz mit anzeigen, damit dieser beim
+  // Review-Kommentar direkt zur Hand ist ("damit man diesen kommentieren
+  // kann").
+  const prevPlans=(prevG&&prevG.answers&&prevG.answers.erg&&prevG.answers.erg.plans)||{};
   const prevP=prevMonthOf(year,month);
   return prevSelected.map(nr=>{
     const monatIst=fhMonatIst(nr,year,month);
-    const row={nr,name:perfFhNameLookup(nr),monatIst};
+    const row={nr,name:perfFhNameLookup(nr),monatIst,prevPlan:prevPlans[nr]||""};
     if(goalId===1){
       const vormonatIst=fhMonatIst(nr,prevP.year,prevP.month);
       const vjIst=fhMonatVJValue(nr,year,month);
@@ -5889,6 +5894,7 @@ function renderPerfErgBlock(goalId){
           <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${goalId===1
             ?`Produktion ${fmt(r.monatIst)} Stk. · ${fmtSign(r.diff)} zum Vormonat · ${vjPart}`
             :`Produktion ${fmt(r.monatIst)} Stk. · Ziel ${r.zielErreicht?"erreicht ✓":"nicht erreicht"}`}</div>
+          ${r.prevPlan?`<div style="font-size:11.5px;font-style:italic;color:var(--muted);background:var(--card);border-left:3px solid var(--line);border-radius:4px;padding:6px 10px;margin-bottom:6px;white-space:pre-wrap">Vorgenommen im ${MONATE[prevP.month-1]}: „${escapeHtml(r.prevPlan)}“</div>`:""}
           <textarea class="erg-review-ta" data-nr="${r.nr}" rows="2" placeholder="Konnten die geplanten Maßnahmen umgesetzt werden, wie war die Wirkung?" style="width:100%;font:inherit;border:2px solid var(--line);border-radius:8px;padding:6px 8px">${escapeHtml(erg.reviewTexts[r.nr]||"")}</textarea>
           <div style="font-size:10.5px;color:var(--muted)" id="perfErgReviewCount_${r.nr}"></div>
         </div>`;
@@ -6058,13 +6064,18 @@ function perfErgReadonlyHtml(goalId,snapshot,answers){
   // Prozentzahl, analog zum interaktiven Schritt in renderPerfErgBlock())
   // war hier im Read-only-Bereich (Overview + beide PDFs) bisher nicht
   // ergänzt worden.
+  // Nutzervorgabe 09.09.2026: den im Vormonat eingetragenen "Geplante
+  // Maßnahmen"-Text als Referenz mit anzeigen (analog renderPerfErgBlock()).
+  const prevP=(snapshot&&snapshot.year&&snapshot.month)?prevMonthOf(snapshot.year,snapshot.month):null;
   html+=review.map(r=>{
     const vjPart=goalId===1
       ?(r.vjIst!=null?` · VJ-Monat ${fmt(r.vjIst)} Stk. (${fmtPct(r.vjMonatPct)})`:` · VJ-Monat unbekannt`)
       :"";
+    const prevPlanPart=r.prevPlan?`<div style="font-size:11px;font-style:italic;color:var(--muted);background:var(--card);border-left:3px solid var(--line);border-radius:4px;padding:5px 9px;margin:4px 0;white-space:pre-wrap">Vorgenommen${prevP?" im "+MONATE[prevP.month-1]:""}: „${escapeHtml(r.prevPlan)}“</div>`:"";
     return `<div style="margin-bottom:8px">
     <span class="ac-lbl">${escapeHtml(r.name)} · FH ${escapeHtml(r.nr)}</span>
     <div class="ac-val" style="font-weight:600">${goalId===1?`${fmt(r.monatIst)} Stk. · ${fmtSign(r.diff)} zum Vormonat${vjPart}`:`${fmt(r.monatIst)} Stk. · Ziel ${r.zielErreicht?"erreicht ✓":"nicht erreicht"}`}</div>
+    ${prevPlanPart}
     <div style="font-size:12px;white-space:pre-wrap">${escapeHtml((erg.reviewTexts&&erg.reviewTexts[r.nr])||"–")}</div>
   </div>`;
   }).join("");
