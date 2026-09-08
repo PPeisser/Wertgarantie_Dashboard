@@ -8158,29 +8158,41 @@ function fhFallbackFromAkp(fhNr){
 // oben: Ergebnis wird zwischengespeichert und nur neu gebaut, wenn sich
 // eine der vier Quell-Objektreferenzen tatsächlich geändert hat (neuer
 // Import/Reload) - nicht bei jedem Tastendruck.
-let fhAllKnownListCache=null, fhAllKnownListCacheSrc=[null,null,null,null];
+let fhAllKnownListCache=null, fhAllKnownListCacheSrc=[null,null,null,null,null];
 function fhAllKnownList(){
-  const srcs=[state.latest.fh,fhContactsAllIndex,state.latest.akq,akpContactsIndex];
+  const srcs=[state.latest.fh,fhContactsAllIndex,state.latest.akq,akpContactsIndex,FH_DUP_MAP];
   if(fhAllKnownListCache&&srcs.every((s,i)=>s===fhAllKnownListCacheSrc[i])) return fhAllKnownListCache;
   fhAllKnownListCacheSrc=srcs;
   const out=[], seen=new Set();
+  // Bug-Report 09.09.2026 ("FH-Duplikate: beide werden bei der Suche
+  // angezeigt"): state.latest.fh/state.latest.akq sind eingefrorene
+  // Schnappschüsse vom letzten Einspielzeitpunkt - resolveFhDup() wurde dort
+  // bereits BEIM PARSEN angewendet (siehe parseAuswertung()), aber nur mit
+  // dem zu DIESEM Zeitpunkt bekannten FH_DUP_MAP. Eine NACHTRÄGLICH über das
+  // Admin-Tool angelegte Zusammenführung ändert diese bereits gespeicherten
+  // Schnappschüsse nicht rückwirkend - die Alias-FH-Nr blieb als eigener
+  // State-Eintrag bestehen und tauchte dadurch weiterhin als eigenständiger
+  // Suchtreffer auf. Jede bekannte Alias-Nr (FH_DUP_MAP[nr] gesetzt) wird
+  // deshalb hier explizit übersprungen - nur die kanonische Nr bleibt
+  // sichtbar.
   // filialbetriebe/weitere_zuordnung kommen nur aus fh_contacts (manuell
   // gepflegt, kein Teil der täglichen Auswertung) - deshalb für JEDEN
   // Treffer (auch die mit heutiger Tagesproduktion) separat nachgeladen,
   // damit die Suche unten auch danach filtern kann (z.B. "A1 Hartberg").
   Object.entries(state.latest.fh||{}).forEach(([nr,f])=>{
+    if(FH_DUP_MAP[nr]) return;
     seen.add(nr);
     const rec=fhContactsAllIndex&&fhContactsAllIndex[nr];
     out.push({nr,name:f.name||fhAkpFirmaFallback(nr),ort:f.ort,emp:f.emp,filialbetriebe:(rec&&rec.filialbetriebe)||null,weitereZuordnung:(rec&&rec.weitereZuordnung)||null});
   });
   Object.entries(fhContactsAllIndex||{}).forEach(([nr,r])=>{
-    if(seen.has(nr)) return;
+    if(seen.has(nr)||FH_DUP_MAP[nr]) return;
     seen.add(nr);
     const akq=akqLeadFor(nr);
     out.push({nr,name:r.name||(akq&&akq.name)||fhAkpFirmaFallback(nr)||nr,ort:r.ort||(akq&&akq.ort)||null,emp:matchEmployee(r.gl||"")||(akq&&akq.emp)||null,filialbetriebe:r.filialbetriebe||null,weitereZuordnung:r.weitereZuordnung||null});
   });
   (state.latest.akq||[]).forEach(a=>{
-    if(seen.has(a.nr)) return;
+    if(seen.has(a.nr)||FH_DUP_MAP[a.nr]) return;
     seen.add(a.nr);
     out.push({nr:a.nr,name:a.name||fhAkpFirmaFallback(a.nr)||a.nr,ort:a.ort||null,emp:a.emp||null,filialbetriebe:null,weitereZuordnung:null});
   });
@@ -8433,6 +8445,33 @@ async function loadFhContact(fhNr){
     if(fhModalCurrent!==fhNr) return;
     if(!error&&data) fhContactCurrent=data;
   }catch(e){}
+  if(fhModalCurrent!==fhNr) return;
+  // Bug-Report 09.09.2026 ("FH-Duplikate: nicht alle Daten übernommen"):
+  // fh_contacts hat pro FH-Nr eine EIGENE Zeile - eine Zusammenführung
+  // (resolveFhDup()) ändert nur, welche Nr künftig als "die" gilt, verschiebt
+  // aber nie Datenbankzeilen. Manuell gepflegte Stammdaten (Adresse/Telefon/
+  // Notizen/Monatsproduktion usw.), die nur auf der ALIAS-Zeile eingetragen
+  // wurden, blieben deshalb für das PopUp der kanonischen FH-Nr unsichtbar.
+  // Fehlende Felder werden hier aus allen bekannten Alias-Zeilen nachgeladen
+  // (kanonischer Wert hat immer Vorrang, Alias nur als Lücken-Füller) -
+  // gleiches Vorrang-Prinzip wie bei fhContactsAllIndex (buildFhContactsIndices()).
+  const aliasNrs=FH_DUP_ALIASES[fhNr];
+  if(aliasNrs&&aliasNrs.length){
+    try{
+      const {data:aliasRows}=await sb.from("fh_contacts").select("*").in("fh_nr",aliasNrs);
+      if(fhModalCurrent!==fhNr) return;
+      const FILL_FIELDS=["name","strasse","plz","ort","telefon","email","ansprechpartner","ansprechpartner_email",
+        "homepage","segmentierung","segmentierung_prev","kooperation","hauptzweig","letzter_besuch","sonstige_infos",
+        "club_weiss_mitglied","club_weiss_mitgliedsnummer","filialbetriebe","weitere_zuordnung","ziel"];
+      for(const row of (aliasRows||[])){
+        for(const f of FILL_FIELDS){
+          if((fhContactCurrent[f]==null||fhContactCurrent[f]==="")&&row[f]!=null&&row[f]!=="") fhContactCurrent[f]=row[f];
+        }
+        if(row.prod_monthly&&Object.keys(row.prod_monthly).length) fhContactCurrent.prod_monthly=mergeMonthlyObj(fhContactCurrent.prod_monthly,row.prod_monthly);
+        if(row.miete_monthly&&Object.keys(row.miete_monthly).length) fhContactCurrent.miete_monthly=mergeMonthlyObj(fhContactCurrent.miete_monthly,row.miete_monthly);
+      }
+    }catch(e){ console.error("loadFhContact (Alias-Zusammenführung):",e); }
+  }
   if(fhModalCurrent!==fhNr) return;
   // "Alte Händler" (kein aktueller 9-Wochen-Beginn in der Akquiseliste) gelten
   // automatisch als erledigt - einmalig festschreiben, damit der Status auch
@@ -10796,6 +10835,13 @@ async function saveFhContact(){
   renderFhStammdatenDiff();
   renderFhMieteSection();
   renderFhFilialbetriebeSwitcher();
+  // Bug-Report 09.09.2026 ("9-Wochen-Plan wurde abgehakt, wird aber trotzdem
+  // noch angezeigt"): fhErledigtSet wurde zwar sofort korrekt aktualisiert
+  // (Zeile oben), aber die 9-Wochen-Plan-Liste im Haupt-Dashboard (eigener
+  // DOM-Bereich, nicht Teil des FH-PopUps) wurde nach dem Speichern nie neu
+  // gerendert - erst ein voller Seiten-Reload zeigte den erledigten Händler
+  // dann tatsächlich nicht mehr an.
+  try{ renderNeunWochen(); }catch(e){ console.error("renderNeunWochen (nach FH-Speichern):",e); }
   toggleFhEdit(false);
   toast("Händlerdaten gespeichert ✓");
 }
