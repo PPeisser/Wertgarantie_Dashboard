@@ -128,6 +128,7 @@ const PERF_GOAL_TITLES: Record<number, string> = {
   3: "Mieten statt Kaufen",
   4: "Steigerung der Premium-Option bei Telekommunikation",
   5: "Steigerung der Gebrauchtgeraete-Quote",
+  6: "Vorhaben des Monats",
 };
 
 const PERF_QUESTIONS: [string, string][] = [
@@ -238,7 +239,50 @@ function formatSnapshot(goalId: number, snap: any): string {
   if (goalId === 5) {
     return `GW-Quote aktuell: ${pct(snap.gw_quote_lj)} - Ziel mind. ${(snap.ziel * 100).toFixed(0)} % (Vorjahr: ${pct(snap.gw_quote_vj)})`;
   }
+  // Ziel 6 "Vorhaben des Monats" (Nutzervorgabe 09.09.2026: "kannst du der
+  // KI auch was lernen?") ist reiner Freitext ohne Kennzahlen-Bezug - siehe
+  // formatReportForPrompt(), das fuer diesen Ziel-Typ komplett am
+  // Standard-Kennzahlen-/4-Fragen-Format vorbei geht.
+  if (goalId === 6) return "(kein Kennzahlen-Bezug, reiner Freitext)";
   return "(unbekanntes Ziel)";
+}
+
+// Textform der "Ergaenzung" zu Ziel 1 (FLOP-Haendler) / Ziel 2 (Akquisen
+// ohne Produktion) - Nutzervorgabe 08.09.2026 (Feature), 09.09.2026 (auch
+// der KI-Zusammenfassung zugaenglich machen). Dieselben Feldnamen wie
+// perfErgReadonlyHtml() im Client: snap.erg.review (Entwicklung der
+// Vormonatsauswahl) + answers.erg.reviewTexts (Bewertung dazu),
+// answers.erg.selected/plans (neue Auswahl + geplante Massnahmen). FH-Namen
+// werden NICHT pseudonymisiert (keine Mitarbeiternamen), die Freitexte
+// selbst schon (koennten Kollegen erwaehnen), wie bei den 4 Standardfragen.
+// deno-lint-ignore no-explicit-any
+function formatErgForPrompt(goalId: number, snap: any, answers: any, tokenOf: Map<string, string>): string {
+  const erg = answers?.erg;
+  if (!erg) return "";
+  const lines: string[] = [];
+  const review = snap?.erg?.review || [];
+  if (review.length) {
+    lines.push("  Ergaenzung - Entwicklung der im Vormonat ausgewaehlten Fachhaendler/Akquisen:");
+    for (const r of review) {
+      const stat = goalId === 1
+        ? `${r.monatIst} Stk., ${r.diff >= 0 ? "+" : ""}${r.diff} zum Vormonat` +
+          (r.vjMonatPct != null ? `, ${r.vjMonatPct >= 0 ? "+" : ""}${r.vjMonatPct.toFixed(1)} % ggue. VJ-Monat` : "")
+        : `${r.monatIst} Stk., Ziel ${r.zielErreicht ? "erreicht" : "nicht erreicht"}`;
+      const bewertung = pseudonymizeText((erg.reviewTexts && erg.reviewTexts[r.nr]) || "(keine Bewertung)", tokenOf);
+      lines.push(`    - ${r.name} (${stat}): ${bewertung}`);
+    }
+  }
+  if (erg.locked && erg.selected && erg.selected.length) {
+    const candidates = snap?.erg?.candidates || [];
+    lines.push("  Ergaenzung - neu ausgewaehlt mit geplanten Massnahmen fuer den laufenden Monat:");
+    for (const nr of erg.selected) {
+      // deno-lint-ignore no-explicit-any
+      const c = candidates.find((x: any) => x.nr === nr);
+      const plan = pseudonymizeText((erg.plans && erg.plans[nr]) || "(keine Massnahme)", tokenOf);
+      lines.push(`    - ${c ? c.name : nr}: ${plan}`);
+    }
+  }
+  return lines.join("\n");
 }
 
 // Ersetzt jedes bekannte Mitarbeiter-Namen-Vorkommen in einem Text durch den
@@ -258,9 +302,17 @@ function formatReportForPrompt(rep: any, tokenOf: Map<string, string>): string {
   const goals = rep.goals || [];
   const parts = goals.map((g: any) => {
     const title = PERF_GOAL_TITLES[g.goal_id] || `Ziel ${g.goal_id}`;
+    // Ziel 6 "Vorhaben des Monats": reiner Freitext, komplett am
+    // Kennzahlen-/4-Fragen-Format vorbei (siehe renderPerfGoal6Step() im
+    // Client - andere Antwortstruktur als alle anderen Ziele).
+    if (g.goal_id === 6) {
+      const vorhaben = pseudonymizeText((g.answers && g.answers.vorhaben) || "(keine Antwort)", tokenOf);
+      return `  [${title}]\n  Vorhaben: ${vorhaben}`;
+    }
     const kennzahlen = formatSnapshot(g.goal_id, g.snapshot);
     const antworten = PERF_QUESTIONS.map(([key, label]) => `  - ${label}\n    ${pseudonymizeText((g.answers && g.answers[key]) || "(keine Antwort)", tokenOf)}`).join("\n");
-    return `  [${title}]\n  Kennzahlen: ${kennzahlen}\n${antworten}`;
+    const erg = formatErgForPrompt(g.goal_id, g.snapshot, g.answers, tokenOf);
+    return `  [${title}]\n  Kennzahlen: ${kennzahlen}\n${antworten}${erg ? "\n" + erg : ""}`;
   }).join("\n\n");
   return `### ${token} - ${MONATE[rep.month - 1]} ${rep.year}\n${parts}`;
 }
@@ -414,13 +466,24 @@ Deno.serve(async (req) => {
     `Rohdatenblock gegeben wird (z.B. "Akquisestufen" und "Aktivierungsquote" sind zwei VERSCHIEDENE Kennzahlen mit ` +
     `unterschiedlichen Werten - verwechsle, vertausche oder vermische sie nie, auch nicht unter einer neuen, eigenen ` +
     `Bezeichnung wie "Akquisequote"). Erfinde niemals einen Wert und runde nicht anders, als er dir vorliegt.`;
+  // Nutzervorgabe 09.09.2026 ("kannst du der KI auch was lernen?"): seit
+  // Einfuehrung von Ziel 6 und den "Ergaenzungen" (08.09.2026) weichen zwei
+  // Blocktypen vom Standard-Kennzahlen-/4-Fragen-Format ab - der KI kurz
+  // erklaeren, damit sie nicht faelschlich vier Antworten dafuer erwartet
+  // oder die Ergaenzung ignoriert.
+  const strukturHinweis =
+    `Hinweis zur Datenstruktur: die meisten Ziel-Bloecke haben Kennzahlen plus vier feste Freitext-Antworten. Zwei ` +
+    `Ausnahmen: "Vorhaben des Monats" hat KEINE Kennzahlen und nur EIN Freitextfeld ("Vorhaben") - das ist normal, ` +
+    `keine fehlenden Daten. Bei "Persoenliches Produktionsziel"/"Persoenliches Akquise-Ziel" kann zusaetzlich ein ` +
+    `Abschnitt "Ergaenzung" vorkommen (Auswahl von Fachhaendlern/Akquisen mit geplanten Massnahmen sowie ggf. die ` +
+    `Bewertung der Entwicklung der Vormonatsauswahl) - beziehe diese Inhalte mit ein, wenn vorhanden.`;
   const systemPrompt = month != null
     ? `Du erstellst einen internen Monatsbericht fuer das Wertgarantie Performance Dashboard auf Basis der ` +
       `"Performance Dialog"-Protokolle von Vertriebsmitarbeitern fuer GENAU EINEN Monat. Jedes Protokoll enthaelt ` +
       `System-Kennzahlen zu den persoenlichen Zielen des Monats sowie vier Freitext-Antworten des Mitarbeiters. ` +
       `Analysiere die Daten sachlich und konkret - Kennzahlen-Stand, was aus den Antworten hervorsticht, ggf. ` +
       `Unterstuetzungsbedarf. Da nur ein Monat vorliegt, gibt es KEINEN Trend ueber mehrere Monate - erfinde keinen. ` +
-      `${antiVerwechslungHinweis} ` +
+      `${antiVerwechslungHinweis} ${strukturHinweis} ` +
       `Schreibe auf Deutsch, professionell, praegnant, ohne Floskeln. Gehe NUR auf Mitarbeiter ein, fuer die ` +
       `tatsaechlich ein Protokoll vorliegt. Die echten Mitarbeiternamen werden dir aus Datenschutzgruenden NICHT ` +
       `mitgeteilt - jeder Mitarbeiter ist ausschliesslich ueber einen Platzhalter wie "MITARBEITER_1" referenziert. ` +
@@ -431,7 +494,7 @@ Deno.serve(async (req) => {
       `Kennzahlen zu den persoenlichen Zielen des Monats sowie vier Freitext-Antworten des Mitarbeiters. ` +
       `Analysiere die Daten sachlich und konkret, erkenne Muster/Trends ueber die Monate hinweg (z.B. wiederkehrende ` +
       `Themen, Verbesserung/Verschlechterung der Zielerreichung, wiederholt genannter Unterstuetzungsbedarf). ` +
-      `${antiVerwechslungHinweis} ` +
+      `${antiVerwechslungHinweis} ${strukturHinweis} ` +
       `Schreibe auf Deutsch, professionell, praegnant, ohne Floskeln. Gehe NUR auf Monate/Mitarbeiter ein, fuer die ` +
       `tatsaechlich Protokolle vorliegen - erfinde nichts fuer fehlende Monate. Die echten Mitarbeiternamen werden ` +
       `dir aus Datenschutzgruenden NICHT mitgeteilt - jeder Mitarbeiter ist ausschliesslich ueber einen Platzhalter ` +
