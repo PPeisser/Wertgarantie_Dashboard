@@ -6027,16 +6027,27 @@ function perfErgReadonlyHtml(goalId,snapshot,answers){
   const candidates=(snapshot&&snapshot.erg&&snapshot.erg.candidates)||[];
   let html=`<div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)">
     <div style="font-weight:800;font-size:12px;color:var(--wg-navy);margin-bottom:8px">Ergänzung</div>`;
-  html+=review.map(r=>`<div style="margin-bottom:8px">
-    <span class="ac-lbl">${escapeHtml(r.name)}</span>
-    <div class="ac-val" style="font-weight:600">${goalId===1?`${fmt(r.monatIst)} Stk. · ${fmtSign(r.diff)} zum Vormonat${r.vjMonatPct!=null?` · ${fmtPct(r.vjMonatPct)} ggü. VJ-Monat`:""}`:`${fmt(r.monatIst)} Stk. · Ziel ${r.zielErreicht?"erreicht ✓":"nicht erreicht"}`}</div>
+  // Nutzeranfrage 09.09.2026 "hast du die FH Nummer jetzt überall anbei?" -
+  // FH-Nr (und bei Ziel 1 der konkrete VJ-Wert statt nur der reinen
+  // Prozentzahl, analog zum interaktiven Schritt in renderPerfErgBlock())
+  // war hier im Read-only-Bereich (Overview + beide PDFs) bisher nicht
+  // ergänzt worden.
+  html+=review.map(r=>{
+    const vjPart=goalId===1
+      ?(r.vjIst!=null?` · VJ-Monat ${fmt(r.vjIst)} Stk. (${fmtPct(r.vjMonatPct)})`:` · VJ-Monat unbekannt`)
+      :"";
+    return `<div style="margin-bottom:8px">
+    <span class="ac-lbl">${escapeHtml(r.name)} · FH ${escapeHtml(r.nr)}</span>
+    <div class="ac-val" style="font-weight:600">${goalId===1?`${fmt(r.monatIst)} Stk. · ${fmtSign(r.diff)} zum Vormonat${vjPart}`:`${fmt(r.monatIst)} Stk. · Ziel ${r.zielErreicht?"erreicht ✓":"nicht erreicht"}`}</div>
     <div style="font-size:12px;white-space:pre-wrap">${escapeHtml((erg.reviewTexts&&erg.reviewTexts[r.nr])||"–")}</div>
-  </div>`).join("");
+  </div>`;
+  }).join("");
   if(erg.locked&&erg.selected&&erg.selected.length){
     html+=erg.selected.map(nr=>{
       const c=candidates.find(x=>x.nr===nr);
+      const beginnPart=goalId===2&&c&&c.beginn?` · angelegt ${fmtDate(c.beginn)}`:"";
       return `<div style="margin-bottom:8px">
-        <span class="ac-lbl">${escapeHtml(c?c.name:nr)} · geplante Maßnahmen</span>
+        <span class="ac-lbl">${escapeHtml(c?c.name:nr)} · FH ${escapeHtml(nr)}${beginnPart} · geplante Maßnahmen</span>
         <div style="font-size:12px;white-space:pre-wrap">${escapeHtml((erg.plans&&erg.plans[nr])||"–")}</div>
       </div>`;
     }).join("");
