@@ -1634,6 +1634,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <input type="checkbox" id="akqImportNotifyEnabledChk" style="width:17px;height:17px;flex-shrink:0">
         Mail-Benachrichtigung bei Akquiseliste-Import (an Admin/Außendienst)
       </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+        <input type="checkbox" id="akquisequoteAtEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+        Akquisequote (Österreich gesamt)
+      </label>
     </div>
   </div>
 </div>
@@ -2119,6 +2123,11 @@ let empRankingBasis = "aktuell";
 // "Stornoquoten"-Abschnitt im AKP-PopUp (renderAkpStornoSection). Default
 // false wie bei anderen neuen Features, bis ein Admin es aktiviert.
 let stornoquotenEnabled = false;
+// Akquisequote Österreich gesamt (Nutzervorgabe 09.09.2026) - Admin-
+// Freischalter für die neue Kennzahl-Kachel unter den Akquisestaffeln (nur
+// bei currentEmp===AT_GESAMT sichtbar, siehe renderAktivierungsquoteBar()/
+// akquisequoteAtGesamt()). Default false wie bei anderen neuen Features.
+let akquisequoteAtEnabled = false;
 // Akquiseliste-Import-Benachrichtigung (07.09.2026) - Admin-Freischalter für
 // die automatische Mail an alle Admin-/Außendienst-Nutzer bei jeder
 // Akquiseliste-Einspielung (siehe notifyAkqImport()/Edge Function
@@ -2627,6 +2636,7 @@ function openAdminModal(){
   $("empRankingEnabledChk").checked=empRankingEnabled;
   $("stornoquotenEnabledChk").checked=stornoquotenEnabled;
   $("akqImportNotifyEnabledChk").checked=akqImportNotifyEnabled;
+  $("akquisequoteAtEnabledChk").checked=akquisequoteAtEnabled;
 }
 // ---------- Karteileichen-Review (DSGVO-Prüfprotokoll, Befund N-2) ----------
 // Ereignisbasierter statt zeitbasierter Ansatz (Nutzervorgabe 01.09.2026):
@@ -2914,6 +2924,17 @@ async function toggleAkqImportNotifyEnabled(){
   try{
     await stSet("akq_import_notify_enabled",on?"1":"0");
     toast(on?"Mail-Benachrichtigung bei Akquiseliste-Import aktiviert ✓":"Mail-Benachrichtigung bei Akquiseliste-Import deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
+async function toggleAkquisequoteAtEnabled(){
+  const on=$("akquisequoteAtEnabledChk").checked;
+  akquisequoteAtEnabled=on;
+  try{ renderAktivierungsquoteBar(); }catch(e){ console.error("renderAktivierungsquoteBar (toggle):",e); }
+  try{
+    await stSet("akquisequote_at_enabled",on?"1":"0");
+    toast(on?"Akquisequote (Österreich gesamt) aktiviert ✓":"Akquisequote (Österreich gesamt) deaktiviert");
   }catch(e){
     toast("Speichern fehlgeschlagen: "+(e.message||e));
   }
@@ -6848,7 +6869,7 @@ async function loadAll(){
     "fh_search_enabled","akp_peer_compare_enabled","karteileichen_jahre","karteileichen_review_fh",
     "karteileichen_review_akp","deckungsgrad_enabled","deckungsgrad_visible_metrics",
     "emp_ranking_enabled","stornoquoten_enabled","miete_last_import","akq_import_notify_enabled",
-    "perf_ergaenzungen_enabled"
+    "perf_ergaenzungen_enabled","akquisequote_at_enabled"
   ]);
   try{ const d=kv["wg-state"]; if(d){ const p=JSON.parse(d); if(p&&p.latest) state=p; } }catch(e){}
   try{ const g=kv["wg-goals"]; if(g) goals=JSON.parse(g); }catch(e){}
@@ -6869,6 +6890,7 @@ async function loadAll(){
   stornoquotenEnabled=kv["stornoquoten_enabled"]==="1";
   { const ainv=kv["akq_import_notify_enabled"]; akqImportNotifyEnabled = ainv==null ? true : ainv==="1"; }
   { const pev=kv["perf_ergaenzungen_enabled"]; perfErgaenzungenEnabled = pev==null ? true : pev==="1"; }
+  akquisequoteAtEnabled=kv["akquisequote_at_enabled"]==="1";
   mieteLastImport=kv["miete_last_import"];
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
@@ -7495,9 +7517,46 @@ function aktivierungsquoteLive(emp){
   for(const d in dm) if(best==null||d>best) best=d;
   return best==null?null:{quote:dm[best],date:best};
 }
+// Akquisequote Österreich gesamt (Nutzervorgabe 09.09.2026): von allen FH,
+// die 2024, 2025 oder 2026 angelegt wurden (österreichweit, unabhängig vom
+// Betreuer - state.latest.akq ist bereits pro FH-Nr dedupliziert, siehe
+// parseAuswertung()), wie viele haben in diesen Jahren - egal in welchem
+// genau - mind. 1 Vertrag produziert. Anders als die bestehende (Ziel-2-)
+// Aktivierungsquote (aktivierungsquoteFor()/aktivierungsquoteLive()) NICHT
+// auf einen einzelnen Mitarbeiter oder Stichtag bezogen, sondern immer der
+// aktuelle Live-Stand für ganz Österreich (Summe p2024+p2025+p2026 aus der
+// AKQ-Liste) - eigene, unabhängige Kennzahl.
+function akquisequoteAtGesamt(){
+  const s=state.latest; if(!s||!s.akq) return null;
+  let angelegt=0,aktiv=0;
+  for(const a of s.akq){
+    if(!AKTIVIERUNGSQUOTE_JAHRE.includes(a.beginnJahr)) continue;
+    angelegt++;
+    if(((a.p2024||0)+(a.p2025||0)+(a.p2026||0))>0) aktiv++;
+  }
+  return {angelegt,aktiv,quote:angelegt>0?aktiv/angelegt:null};
+}
 function renderAktivierungsquoteBar(){
   const box=$("aktivierungsquoteBar"); if(!box) return;
-  if(currentEmp===AT_GESAMT){ box.innerHTML=""; return; }
+  if(currentEmp===AT_GESAMT){
+    // Nutzervorgabe 09.09.2026: "Akquisequote Österreich gesamt" - eigene,
+    // per Admin-Schalter zuschaltbare Kennzahl (akquisequoteAtEnabled), NUR
+    // für Österreich gesamt sichtbar, an derselben Stelle/Optik wie die
+    // Aktivierungsquote-Kachel (die dort sonst pro Mitarbeiter erscheint).
+    if(!akquisequoteAtEnabled){ box.innerHTML=""; return; }
+    const r=akquisequoteAtGesamt();
+    if(!r||r.quote==null){ box.innerHTML=""; return; }
+    const pct=r.quote*100, good=pct>=80;
+    box.innerHTML=`<div class="akq-bar">
+      <div class="akq-bar-top">
+        <span style="font-size:12.5px;font-weight:800;color:var(--wg-navy)">🎯 Akquisequote (FH ${AKTIVIERUNGSQUOTE_JAHRE.join("/")})</span>
+        <div class="akq-bar-num"><span class="akq-bar-pct" style="color:${good?"var(--pos)":"var(--neg)"}">${pct.toFixed(1).replace(".",",")} %</span></div>
+      </div>
+      <span class="akq-bar-sub">Österreich gesamt · ${fmt(r.aktiv)} von ${fmt(r.angelegt)} angelegten FH mit Produktion (egal wann, 2024-2026)</span>
+      <div class="akq-bar-track"><div class="akq-bar-fill" style="width:${Math.min(pct,100)}%;background:${good?"var(--pos)":"var(--neg)"}"></div></div>
+    </div>`;
+    return;
+  }
   const live=aktivierungsquoteLive(currentEmp);
   if(!live){ box.innerHTML=""; return; }
   const pct=live.quote*100, good=pct>=80;
@@ -12221,6 +12280,7 @@ $("dgVisSave").onclick=saveDeckungsgradVisibility;
 $("empRankingEnabledChk").onchange=toggleEmpRankingEnabled;
 $("stornoquotenEnabledChk").onchange=toggleStornoquotenEnabled;
 $("akqImportNotifyEnabledChk").onchange=toggleAkqImportNotifyEnabled;
+$("akquisequoteAtEnabledChk").onchange=toggleAkquisequoteAtEnabled;
 $("perfDialogAdminEnabledChk").onchange=togglePerfDialogAdminEnabled;
 $("chefgespraechBtn").onclick=openChefgespraechModal;
 $("chefgespraechClose").onclick=()=>$("chefgespraechModal").classList.add("hidden");
