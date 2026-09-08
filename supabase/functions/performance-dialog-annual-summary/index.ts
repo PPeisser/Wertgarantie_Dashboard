@@ -477,13 +477,28 @@ Deno.serve(async (req) => {
     `keine fehlenden Daten. Bei "Persoenliches Produktionsziel"/"Persoenliches Akquise-Ziel" kann zusaetzlich ein ` +
     `Abschnitt "Ergaenzung" vorkommen (Auswahl von Fachhaendlern/Akquisen mit geplanten Massnahmen sowie ggf. die ` +
     `Bewertung der Entwicklung der Vormonatsauswahl) - beziehe diese Inhalte mit ein, wenn vorhanden.`;
+  // Nutzervorgabe 09.09.2026: Empfehlungen "Mitarbeiter X sollte geschult/
+  // trainiert werden" sind fachlich falsch eingeordnet, wenn Zahlen nicht
+  // passen - die MITARBEITER_n sind unsere eigenen Aussendienstler, die die
+  // Fachhaendler BETREUEN, nicht selbst verkaufen. Ein Schulungsbedarf, wenn
+  // ueberhaupt aus den Daten ableitbar, liegt eher bei den Verkaeufern (AKP)
+  // der betreuten Fachhaendler. Zusaetzlich soll diese Art Empfehlung
+  // insgesamt seltener vorkommen (nur bei wirklich naheliegendem Anlass).
+  const schulungsHinweis =
+    `WICHTIG zu Schulungs-/Trainingsempfehlungen: schreibe das nur, wenn es aus den Daten wirklich naheliegt - ` +
+    `generell SELTEN, nicht routinemaessig in jeder Zusammenfassung. Und falls doch: schlage NIEMALS vor, dass ` +
+    `MITARBEITER_n (unsere eigenen Aussendienstler, die die Fachhaendler betreuen, nicht selbst an Endkunden ` +
+    `verkaufen) selbst geschult/trainiert werden sollten - das ist fachlich falsch eingeordnet. Wenn Zahlen bei ` +
+    `einem Mitarbeiter nicht passen, liegt naheliegender Handlungsbedarf eher bei den Verkaeufern (AKP) der von ` +
+    `ihm betreuten Fachhaendler - schlage in diesem Fall stattdessen ggf. Schulungen/Trainings fuer diese ` +
+    `Verkaeufer (AKP) vor, nie fuer den Mitarbeiter selbst.`;
   const systemPrompt = month != null
     ? `Du erstellst einen internen Monatsbericht fuer das Wertgarantie Performance Dashboard auf Basis der ` +
       `"Performance Dialog"-Protokolle von Vertriebsmitarbeitern fuer GENAU EINEN Monat. Jedes Protokoll enthaelt ` +
       `System-Kennzahlen zu den persoenlichen Zielen des Monats sowie vier Freitext-Antworten des Mitarbeiters. ` +
       `Analysiere die Daten sachlich und konkret - Kennzahlen-Stand, was aus den Antworten hervorsticht, ggf. ` +
       `Unterstuetzungsbedarf. Da nur ein Monat vorliegt, gibt es KEINEN Trend ueber mehrere Monate - erfinde keinen. ` +
-      `${antiVerwechslungHinweis} ${strukturHinweis} ` +
+      `${antiVerwechslungHinweis} ${strukturHinweis} ${schulungsHinweis} ` +
       `Schreibe auf Deutsch, professionell, praegnant, ohne Floskeln. Gehe NUR auf Mitarbeiter ein, fuer die ` +
       `tatsaechlich ein Protokoll vorliegt. Die echten Mitarbeiternamen werden dir aus Datenschutzgruenden NICHT ` +
       `mitgeteilt - jeder Mitarbeiter ist ausschliesslich ueber einen Platzhalter wie "MITARBEITER_1" referenziert. ` +
@@ -494,7 +509,7 @@ Deno.serve(async (req) => {
       `Kennzahlen zu den persoenlichen Zielen des Monats sowie vier Freitext-Antworten des Mitarbeiters. ` +
       `Analysiere die Daten sachlich und konkret, erkenne Muster/Trends ueber die Monate hinweg (z.B. wiederkehrende ` +
       `Themen, Verbesserung/Verschlechterung der Zielerreichung, wiederholt genannter Unterstuetzungsbedarf). ` +
-      `${antiVerwechslungHinweis} ${strukturHinweis} ` +
+      `${antiVerwechslungHinweis} ${strukturHinweis} ${schulungsHinweis} ` +
       `Schreibe auf Deutsch, professionell, praegnant, ohne Floskeln. Gehe NUR auf Monate/Mitarbeiter ein, fuer die ` +
       `tatsaechlich Protokolle vorliegen - erfinde nichts fuer fehlende Monate. Die echten Mitarbeiternamen werden ` +
       `dir aus Datenschutzgruenden NICHT mitgeteilt - jeder Mitarbeiter ist ausschliesslich ueber einen Platzhalter ` +
