@@ -962,6 +962,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <button class="btn btn-ghost" id="setCheckNowBtn">🔔 Jetzt prüfen</button>
       </div>
     </div>
+
+    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">📋 Logbuch · Einspielungen</h4>
+    <div class="hint">Alle Datei-Einspielungen (manuell oder automatisch per Mail) mit Datum und Uhrzeit, für alle Rollen sichtbar.</div>
+    <div id="importLogBody" style="max-height:320px;overflow:auto;margin-top:8px;border:1px solid var(--line);border-radius:10px"></div>
   </div>
 </div>
 
@@ -2910,6 +2914,28 @@ function buildScopeOptions(){
     addOpt("all","Österreich gesamt");
   }
 }
+async function renderImportLog(){
+  const box=$("importLogBody"); if(!box) return;
+  box.innerHTML=`<div class="empty-note">Lädt …</div>`;
+  if(!(sb&&supaUser)) return;
+  const { data, error } = await sb.from("import_log").select("*")
+    .order("imported_at",{ascending:false,nullsFirst:false}).limit(200);
+  if(error){ box.innerHTML=`<div class="empty-note">Logbuch konnte nicht geladen werden.</div>`; return; }
+  if(!data||!data.length){ box.innerHTML=`<div class="empty-note">Noch keine Einspielungen erfasst.</div>`; return; }
+  box.innerHTML=data.map(r=>{
+    const label=IMPORT_TYPE_LABELS[r.type]||r.type;
+    const when=r.imported_at?fmtDateTime(r.imported_at):(r.vortag?`Stand ${fmtDate(r.vortag)} · Uhrzeit nicht erfasst`:"Zeitpunkt nicht erfasst");
+    // Bei Mail-Imports steckt in imported_by "Name <adresse@...>" (source_from
+    // aus pending_imports) - nur der Name ist hier relevant, die Adresse
+    // würde die Zeile unnötig breit machen.
+    const who=r.imported_by?` · ${escapeHtml(r.imported_by.replace(/\s*<[^>]*>\s*$/,""))}`:"";
+    const src=r.source==="mail"?" 📧":"";
+    return `<div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px;padding:8px 12px;border-bottom:1px solid var(--line);font-size:13px">
+      <div style="min-width:0"><b>${escapeHtml(label)}</b>${src}<div style="color:var(--muted);font-size:11.5px;word-break:break-all">${escapeHtml(r.filename||"")}</div></div>
+      <div style="text-align:right;color:var(--muted)">${escapeHtml(when)}${who}</div>
+    </div>`;
+  }).join("");
+}
 function showSettingsModal(){
   $("setName").textContent=myName||"–";
   $("setEmail").textContent=(supaUser&&supaUser.email)||"–";
@@ -2925,6 +2951,7 @@ function showSettingsModal(){
   $("setFhEnabled").checked=!!userSettings.notif_fh_enabled;
   $("setFhDays").value=String(userSettings.notif_fh_days||30);
   $("settingsModal").classList.remove("hidden");
+  renderImportLog();
 }
 function hideSettingsModal(){ $("settingsModal").classList.add("hidden"); }
 async function doSettingsPasswordChange(){
@@ -4043,6 +4070,7 @@ async function handleFhSegmentFile(files){
     await upsertFhSegmentierung(rows);
     if(fhModalCurrent){ await loadFhContact(fhModalCurrent); renderFhContactView(); }
     toast(`Händlersegmentierung eingespielt ✓ ${fmt(rows.length)} Fachhändler aktualisiert`);
+    logImportEvent("segmentierung",files[0].name);
   }catch(e){
     console.error("handleFhSegmentFile failed:",e);
     toast("Händlersegmentierung-Import fehlgeschlagen: "+(e.message||e));
@@ -4124,6 +4152,7 @@ async function handleDeckungsgradFile(files){
     await upsertFhDeckungsgrad(rows);
     if(fhModalCurrent) renderFhDeckungsgradSection();
     toast(`Deckungsgrad-Auswertung eingespielt ✓ ${fmt(rows.length)} Fachhändler aktualisiert`);
+    logImportEvent("deckungsgrad",files[0].name);
   }catch(e){
     console.error("handleDeckungsgradFile failed:",e);
     toast("Deckungsgrad-Import fehlgeschlagen: "+(e.message||e));
@@ -4212,6 +4241,7 @@ async function handleAkpStornoFile(files){
     }
     render();
     toast(`Stornoquoten-Auswertung eingespielt ✓ ${fmt(rows.length)} Aktivpartner aktualisiert`);
+    logImportEvent("stornoquoten",files[0].name);
   }catch(e){
     console.error("handleAkpStornoFile failed:",e);
     toast("Stornoquoten-Import fehlgeschlagen: "+(e.message||e));
@@ -4310,6 +4340,7 @@ async function handleProfiTrainingFile(files){
       if(data){ akpContactCurrent=data; renderAkpContactView(); }
     }
     toast(`Profi-Training-Liste eingespielt ✓ ${fmt(rows.length)} AKP mit erfolgreichem Training gefunden (nur bereits vorhandene AKP aktualisiert, deutsche AKP herausgefiltert)`);
+    logImportEvent("profitraining",files[0].name);
   }catch(e){
     console.error("handleProfiTrainingFile failed:",e);
     toast("Profi-Training-Import fehlgeschlagen: "+(e.message||e));
@@ -4423,6 +4454,7 @@ async function handleMieteFile(files){
     if(fhModalCurrent){ await loadFhContact(fhModalCurrent); renderFhContactView(); renderFhMieteSection(); }
     render();
     toast(`Miete-Daten eingespielt ✓ ${fmt(parsed.totalRows)} Vertragszeilen · ${fmt(Object.keys(parsed.byFh).length)} Fachhändler`);
+    logImportEvent("miete",files[0].name);
   }catch(e){
     console.error("handleMieteFile failed:",e);
     toast("Miete-Import fehlgeschlagen: "+(e.message||e));
@@ -4527,6 +4559,31 @@ function mergeSnapshot(snap){
   }
 }
 
+// Logbuch aller Datei-Einspielungen (Nutzervorgabe 08.09.2026: "ein Logbuch,
+// in dem alle Einspielungen mit Datum und Uhrzeit verzeichnet werden - das
+// sollen alle Rollen sehen"). Ein Eintrag je erfolgreich verarbeitetem
+// Import, egal ob manueller Admin-Panel-Upload (handleFiles(),
+// handleMieteFile() usw.) oder automatischer Mail-Import
+// (processPendingImports()) - siehe public.import_log (supabase/schema.sql).
+// Best-effort wie notifyAkqImport(): ein Fehler hier darf den bereits
+// erfolgreich abgeschlossenen Import nicht nachträglich als fehlgeschlagen
+// erscheinen lassen, deshalb nur geloggt, kein Toast.
+const IMPORT_TYPE_LABELS={
+  auswertung:"Tagesauswertung (Produktion)", segmentierung:"Händlersegmentierung",
+  deckungsgrad:"Deckungsgrad-Auswertung", stornoquoten:"Stornoquoten-Auswertung AKP",
+  profitraining:"Profi-Training-Teilnehmerliste", miete:"Miete-Report",
+  akqstaffel:"Akquisestaffeln", sonstiges:"Sonstige Einspielung",
+};
+async function logImportEvent(type,filename,opts){
+  if(!(sb&&supaUser)) return;
+  opts=opts||{};
+  try{
+    await sb.from("import_log").insert({
+      type, filename:filename||null, vortag:opts.vortag||null,
+      source:opts.source||"upload", imported_by:opts.importedBy||myName||supaUser.email||null,
+    });
+  }catch(e){ console.error("logImportEvent failed:",e); }
+}
 // Akquiseliste-Einspielung: Benachrichtigungsmail an alle Nutzer mit Rolle
 // admin/aussendienst (siehe Edge Function akq-import-notify, Nutzervorgabe
 // 07.09.2026: "jeder Mitarbeiter [...] soll per Mail informiert werden,
@@ -4547,12 +4604,14 @@ async function notifyAkqImport(){
 }
 async function handleFiles(files){
   let okCount=0, akqImported=false;
+  const importedFilenames=[];
   for(const file of files){
     const buf=await file.arrayBuffer();
     const wb=XLSX.read(buf,{type:"array",cellDates:true});
     const snap=parseAuswertung(wb);
     if(snap){
       mergeSnapshot(snap); await syncAkpContacts(snap); await syncFhContacts(snap); okCount++;
+      importedFilenames.push(file.name);
       if(snap.akq&&snap.akq.length) akqImported=true;
     }
   }
@@ -4562,6 +4621,7 @@ async function handleFiles(files){
   toast(`Eingespielt ✓ Stand ${fmtDate(s.vortag)} · ${fmt(Object.keys(s.fh).length)} Händler · ${fmt(s.akp.length)} AKP · ${fmt(s.akq.length)} AKQ`);
   render();
   if(akqImported) notifyAkqImport();
+  logImportEvent("auswertung",importedFilenames.join(", "),{vortag:s.vortag});
 }
 // Automatischer Mail-Import: übernimmt xlsx-Anhänge, die die Edge Function
 // dashboard-mail-poller aus dem Postfach input@wgaustria.at geholt hat
@@ -4582,6 +4642,7 @@ async function processPendingImports(){
       const { data:claimed } = await sb.from("pending_imports")
         .update({status:"processing"}).eq("id",row.id).eq("status","pending").select().maybeSingle();
       if(!claimed) continue;
+      let importType=null,importVortag=null;
       try{
         const { data:blob, error:dlErr } = await sb.storage.from("mail-imports").download(row.storage_path);
         if(dlErr||!blob) throw new Error(dlErr?dlErr.message:"Download fehlgeschlagen");
@@ -4590,7 +4651,7 @@ async function processPendingImports(){
         const snap=parseAuswertung(wb);
         if(snap){
           mergeSnapshot(snap); await syncAkpContacts(snap); await syncFhContacts(snap);
-          snapCount++;
+          snapCount++; importType="auswertung"; importVortag=snap.vortag;
           if(snap.akq&&snap.akq.length) akqImported=true;
         }else{
           // Kein Auswertung_TAG-Format - könnte die "Händlersegmentierung
@@ -4598,7 +4659,7 @@ async function processPendingImports(){
           const segRows=parseFhSegmentierung(wb);
           if(segRows){
             await upsertFhSegmentierung(segRows);
-            segCount++; segFhCount+=segRows.length;
+            segCount++; segFhCount+=segRows.length; importType="segmentierung";
           }else{
             // Auch kein Segmentierungs-Format - könnte der Miete-Report
             // (Club.Weiss) sein, ebenfalls per Mail an input@wgaustria.at
@@ -4606,7 +4667,7 @@ async function processPendingImports(){
             const parsed=parseMieteReport(wb);
             if(parsed){
               await upsertMieteData(parsed.byFh);
-              mieteCount++; mieteFhCount+=Object.keys(parsed.byFh).length;
+              mieteCount++; mieteFhCount+=Object.keys(parsed.byFh).length; importType="miete";
             }else{
               // Auch kein Miete-Format - könnte die (absolut vertrauliche)
               // Deckungsgrad-Auswertung sein, ebenfalls per Mail an
@@ -4614,7 +4675,7 @@ async function processPendingImports(){
               const dgRows=parseDeckungsgrad(wb);
               if(dgRows){
                 await upsertFhDeckungsgrad(dgRows);
-                dgCount++; dgFhCount+=dgRows.length;
+                dgCount++; dgFhCount+=dgRows.length; importType="deckungsgrad";
               }else{
                 // Auch keine Deckungsgrad-Auswertung - könnte die
                 // Stornoquoten-Auswertung AKP sein (siehe
@@ -4622,7 +4683,7 @@ async function processPendingImports(){
                 const stornoRows=parseAkpStornoquoten(wb);
                 if(stornoRows){
                   await upsertAkpStornoquoten(stornoRows);
-                  stornoCount++; stornoAkpCount+=stornoRows.length;
+                  stornoCount++; stornoAkpCount+=stornoRows.length; importType="stornoquoten";
                 }else{
                   // Auch keine Stornoquoten-Auswertung - könnte die
                   // Profi-Training-Teilnehmerliste sein (siehe
@@ -4630,13 +4691,14 @@ async function processPendingImports(){
                   const ptRows=parseProfiTraining(wb);
                   if(!ptRows) throw new Error("Format nicht erkannt");
                   await upsertAkpProfiTraining(ptRows);
-                  ptCount++; ptAkpCount+=ptRows.length;
+                  ptCount++; ptAkpCount+=ptRows.length; importType="profitraining";
                 }
               }
             }
           }
         }
         await sb.from("pending_imports").update({status:"processed",processed_at:new Date().toISOString()}).eq("id",row.id);
+        logImportEvent(importType||"sonstiges",row.filename,{source:"mail",importedBy:row.source_from,vortag:importVortag});
       }catch(e){
         await sb.from("pending_imports").update({status:"failed",error:String((e&&e.message)||e),processed_at:new Date().toISOString()}).eq("id",row.id);
       }
@@ -4703,6 +4765,7 @@ async function handleAkqStaffelFile(files){
     await loadFhAkqIndex();
     render();
     toast(`Akquisestaffeln eingespielt ✓ ${fmt(rows.length)} Fachhändler aktualisiert`);
+    logImportEvent("akqstaffel",files[0].name);
   }catch(e){
     console.error("handleAkqStaffelFile failed:",e);
     toast("Akquisestaffeln-Import fehlgeschlagen: "+(e.message||e));

@@ -1241,3 +1241,40 @@ create trigger fh_duplicate_merges_guard_trg
   for each row execute function public.fh_duplicate_merges_guard();
 
 create index if not exists fh_duplicate_merges_canonical_idx on public.fh_duplicate_merges (canonical_fh_nr);
+
+-- Logbuch aller Datei-Einspielungen (Nutzervorgabe 08.09.2026: "ein Logbuch,
+-- in dem alle Einspielungen mit Datum und Uhrzeit verzeichnet werden - das
+-- sollen alle Rollen sehen"). Append-only, jede Zeile ein erfolgreich
+-- verarbeiteter Import (egal ob manueller Admin-Panel-Upload oder
+-- automatischer Mail-Import über input@wgaustria.at, siehe
+-- processPendingImports()/handleFiles() u.a. in index.html).
+create table if not exists public.import_log (
+  id uuid primary key default gen_random_uuid(),
+  imported_at timestamptz,              -- null = Zeitpunkt nicht bekannt (Backfill vor 14.08.2026)
+  type text not null,                   -- 'auswertung'|'segmentierung'|'deckungsgrad'|'stornoquoten'|'profitraining'|'miete'|'akqstaffel'|'sonstiges'
+  filename text,
+  vortag date,                          -- Geschäftsdatum lt. Report (nur bei type='auswertung' gesetzt)
+  source text not null default 'upload' check (source in ('upload','mail','backfill')),
+  imported_by text,                     -- Name/E-Mail (Admin-Panel) bzw. Absenderadresse (Mail-Import)
+  created_at timestamptz not null default now()
+);
+
+alter table public.import_log enable row level security;
+
+-- Alle eingeloggten Nutzer (jede Rolle) dürfen das Logbuch sehen.
+drop policy if exists "Authenticated read import_log" on public.import_log;
+create policy "Authenticated read import_log"
+  on public.import_log for select
+  to authenticated
+  using (true);
+
+-- Jeder eingeloggte Nutzer kann eine Einspielung protokollieren (Uploads sind
+-- nicht auf eine Rolle beschränkt, siehe handleFiles()/handleMieteFile() etc.
+-- - dieselbe "nur eingeloggt"-Prüfung wie bei den Import-Handlern selbst).
+drop policy if exists "Authenticated insert import_log" on public.import_log;
+create policy "Authenticated insert import_log"
+  on public.import_log for insert
+  to authenticated
+  with check (true);
+
+create index if not exists import_log_imported_at_idx on public.import_log (imported_at desc nulls last);
