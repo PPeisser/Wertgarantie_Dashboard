@@ -896,7 +896,9 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div id="akqOpBody" style="max-height:420px;overflow:auto"></div>
       </div>
       <div class="panel">
-        <h3><span class="dot" style="background:var(--amber)"></span>9-Wochen-Plan <small id="nwWho" style="color:var(--muted);font-weight:600"></small></h3>
+        <h3><span class="dot" style="background:var(--amber)"></span>9-Wochen-Plan <small id="nwWho" style="color:var(--muted);font-weight:600"></small>
+          <button type="button" class="btn btn-ghost hidden" id="nwAllBtn" style="padding:3px 9px;font-size:11px;margin-left:6px;font-weight:700">Alle 9-Wochen-Pläne anzeigen</button>
+        </h3>
         <div id="nwBody" style="max-height:420px;overflow:auto"></div>
       </div>
     </div>
@@ -1293,6 +1295,20 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
   </div>
 </div>
 
+<!-- Alle 9-Wochen-Pläne (Nutzervorgabe 09.09.2026): ungefiltert nach
+     abgelaufen/aktiv, kategorisiert nach Produktion erreicht/Abgeschlossen/
+     Abgelaufen/Aktiv - siehe renderNeunWochenAllModal(). -->
+<div class="modal-bg hidden" id="neunWochenAllModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
+      <h3 style="margin:0">Alle 9-Wochen-Pläne</h3>
+      <button class="btn btn-ghost" id="nwAllClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+    <div id="nwAllSub" style="font-size:12px;color:var(--muted);margin-bottom:10px"></div>
+    <div id="nwAllBody" style="overflow-x:auto"></div>
+  </div>
+</div>
+
 <!-- AKP-Kontakt PopUp -->
 <div class="modal-bg hidden" id="akpContactModal">
   <div class="modal wide">
@@ -1637,6 +1653,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
         <input type="checkbox" id="akquisequoteAtEnabledChk" style="width:17px;height:17px;flex-shrink:0">
         Akquisequote (Österreich gesamt)
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+        <input type="checkbox" id="neunWochenAllEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+        Alle 9-Wochen-Pläne (PopUp)
       </label>
     </div>
   </div>
@@ -2128,6 +2148,11 @@ let stornoquotenEnabled = false;
 // bei currentEmp===AT_GESAMT sichtbar, siehe renderAktivierungsquoteBar()/
 // akquisequoteAtGesamt()). Default false wie bei anderen neuen Features.
 let akquisequoteAtEnabled = false;
+// "Alle 9-Wochen-Pläne"-PopUp (Nutzervorgabe 09.09.2026) - Admin-
+// Freischalter für den Button neben dem 9-Wochen-Plan-Panel (siehe
+// renderNeunWochen()/renderNeunWochenAllModal()). Default false wie bei
+// anderen neuen Features.
+let neunWochenAllEnabled = false;
 // Akquiseliste-Import-Benachrichtigung (07.09.2026) - Admin-Freischalter für
 // die automatische Mail an alle Admin-/Außendienst-Nutzer bei jeder
 // Akquiseliste-Einspielung (siehe notifyAkqImport()/Edge Function
@@ -2637,6 +2662,7 @@ function openAdminModal(){
   $("stornoquotenEnabledChk").checked=stornoquotenEnabled;
   $("akqImportNotifyEnabledChk").checked=akqImportNotifyEnabled;
   $("akquisequoteAtEnabledChk").checked=akquisequoteAtEnabled;
+  $("neunWochenAllEnabledChk").checked=neunWochenAllEnabled;
 }
 // ---------- Karteileichen-Review (DSGVO-Prüfprotokoll, Befund N-2) ----------
 // Ereignisbasierter statt zeitbasierter Ansatz (Nutzervorgabe 01.09.2026):
@@ -2935,6 +2961,17 @@ async function toggleAkquisequoteAtEnabled(){
   try{
     await stSet("akquisequote_at_enabled",on?"1":"0");
     toast(on?"Akquisequote (Österreich gesamt) aktiviert ✓":"Akquisequote (Österreich gesamt) deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
+async function toggleNeunWochenAllEnabled(){
+  const on=$("neunWochenAllEnabledChk").checked;
+  neunWochenAllEnabled=on;
+  try{ renderNeunWochen(); }catch(e){ console.error("renderNeunWochen (toggle):",e); }
+  try{
+    await stSet("neunwochen_all_enabled",on?"1":"0");
+    toast(on?"Alle 9-Wochen-Pläne (PopUp) aktiviert ✓":"Alle 9-Wochen-Pläne (PopUp) deaktiviert");
   }catch(e){
     toast("Speichern fehlgeschlagen: "+(e.message||e));
   }
@@ -6869,7 +6906,7 @@ async function loadAll(){
     "fh_search_enabled","akp_peer_compare_enabled","karteileichen_jahre","karteileichen_review_fh",
     "karteileichen_review_akp","deckungsgrad_enabled","deckungsgrad_visible_metrics",
     "emp_ranking_enabled","stornoquoten_enabled","miete_last_import","akq_import_notify_enabled",
-    "perf_ergaenzungen_enabled","akquisequote_at_enabled"
+    "perf_ergaenzungen_enabled","akquisequote_at_enabled","neunwochen_all_enabled"
   ]);
   try{ const d=kv["wg-state"]; if(d){ const p=JSON.parse(d); if(p&&p.latest) state=p; } }catch(e){}
   try{ const g=kv["wg-goals"]; if(g) goals=JSON.parse(g); }catch(e){}
@@ -6891,6 +6928,7 @@ async function loadAll(){
   { const ainv=kv["akq_import_notify_enabled"]; akqImportNotifyEnabled = ainv==null ? true : ainv==="1"; }
   { const pev=kv["perf_ergaenzungen_enabled"]; perfErgaenzungenEnabled = pev==null ? true : pev==="1"; }
   akquisequoteAtEnabled=kv["akquisequote_at_enabled"]==="1";
+  neunWochenAllEnabled=kv["neunwochen_all_enabled"]==="1";
   mieteLastImport=kv["miete_last_import"];
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
@@ -12063,6 +12101,7 @@ function renderAkqOhneProd(){
 /* 9-Wochen-Plan: neue Zusammenarbeit (≤ 9 Wochen), Termine & Produktion im Blick */
 function renderNeunWochen(){
   const s=state.latest, showGL=currentEmp===AT_GESAMT;
+  $("nwAllBtn").classList.toggle("hidden",!neunWochenAllEnabled);
   const grenze=iso(addDays(parseISO(s.vortag),-63));
   const rows=(s.akq||[]).filter(a=>(currentEmp===AT_GESAMT||a.emp===currentEmp)&&a.beginn&&a.beginn>=grenze&&!fhErledigtSet.has(a.nr))
     .map(a=>{
@@ -12097,6 +12136,64 @@ function renderNeunWochen(){
       <td class="r" style="font-weight:800;${(a.p2026||0)<20?"color:var(--neg)":""}">${fmt(a.p2026)}</td>
     </tr>`).join("")+`</tbody></table>
     <div class="mix-sub" style="margin-top:6px">Resttage = 63 minus Tage seit Beginn · ⚠️ = weniger als 5 Termine (persönlich + telefonisch) UND weniger als 20 Verträge</div>`;
+}
+// Alle 9-Wochen-Pläne (Nutzervorgabe 09.09.2026, Admin-Freischalter
+// neunWochenAllEnabled): anders als renderNeunWochen() OHNE die 63-Tage-
+// Fensterbeschränkung (grenze) und OHNE den fhErledigtSet-Ausschluss - "egal
+// ob abgelaufen oder nicht bzw. auch erledigt, dort sollen alle angezeigt
+// werden". Jeder Datensatz mit Beginn-Datum bekommt genau EINE Kategorie
+// (Priorität lt. Nutzervorgabe: Produktion erreicht > Abgeschlossen >
+// Abgelaufen > Aktiv/offen - NICHT dieselbe wie das ⚠️-Kriterium der
+// Haupt-Liste, das absichtlich andere Schwellenwerte kombiniert).
+function neunWochenAllRows(){
+  const s=state.latest; if(!s||!s.akq) return [];
+  return s.akq.filter(a=>(currentEmp===AT_GESAMT||a.emp===currentEmp)&&a.beginn)
+    .map(a=>{
+      const tageSeitBeginn=Math.round((parseISO(s.vortag)-parseISO(a.beginn))/86400000);
+      const termine=(a.besP||0)+(a.besT||0);
+      const prod=a.p2026||0;
+      let kategorie;
+      if(prod>=20) kategorie="produktion";
+      else if(termine>=6) kategorie="abgeschlossen";
+      else if(tageSeitBeginn>63) kategorie="abgelaufen";
+      else kategorie="aktiv";
+      return {...a,termine,prod,tageSeitBeginn,resttage:Math.max(0,63-tageSeitBeginn),kategorie};
+    })
+    .sort((a,b)=>(a.beginn||"").localeCompare(b.beginn||""));
+}
+const NEUNWOCHEN_KATEGORIEN=[
+  {key:"produktion",label:"Produktion erreicht (≥ 20 Verträge)",dot:"var(--pos)"},
+  {key:"abgeschlossen",label:"Abgeschlossen (≥ 6 Termine)",dot:"var(--wg-blue)"},
+  {key:"abgelaufen",label:"Abgelaufen (9 Wochen überschritten)",dot:"var(--neg)"},
+  {key:"aktiv",label:"Aktiv / offen",dot:"var(--amber)"},
+];
+function neunWochenAllTableHtml(rows,showGL,jahr){
+  if(!rows.length) return `<div class="empty-note">Keine Einträge.</div>`;
+  return `<table><thead><tr><th>Händler${showGL?" / Betreuer":""}</th><th class="r">Resttage</th><th>Beginn</th><th class="r">Termine</th><th class="r">Prod. ${jahr}</th></tr></thead><tbody>`+
+    rows.map(a=>`<tr>
+      <td><b><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(a.nr||"")}">${escapeHtml(a.name)}</button></b><br><span class="betr">${escapeHtml(a.nr)} · ${escapeHtml(a.ort||"")}${showGL?" · "+escapeHtml(a.emp||a.glRaw||"–"):""}</span></td>
+      <td class="r" style="font-weight:800">${a.resttage}</td>
+      <td>${fmtDate(a.beginn)}</td>
+      <td class="r" style="font-weight:800">${fmt(a.termine)} <span class="betr">(${fmt(a.besP)} p. / ${fmt(a.besT)} t. / ${fmt(a.besG)} g.)</span></td>
+      <td class="r" style="font-weight:800">${fmt(a.prod)}</td>
+    </tr>`).join("")+`</tbody></table>`;
+}
+function renderNeunWochenAllModal(){
+  const s=state.latest; if(!s) return;
+  const showGL=currentEmp===AT_GESAMT;
+  const rows=neunWochenAllRows();
+  $("nwAllSub").textContent=`${fmt(rows.length)} Händler insgesamt (Beginn irgendwann) · ${currentEmp}`;
+  $("nwAllBody").innerHTML=NEUNWOCHEN_KATEGORIEN.map(k=>{
+    const krows=rows.filter(r=>r.kategorie===k.key);
+    return `<h4 style="margin:16px 0 8px;display:flex;align-items:center;gap:8px">
+      <span style="background:${k.dot};width:9px;height:9px;border-radius:99px;display:inline-block;flex:none"></span>
+      ${escapeHtml(k.label)} <span style="color:var(--muted);font-weight:600;font-size:12px">(${fmt(krows.length)})</span>
+    </h4>${neunWochenAllTableHtml(krows,showGL,s.jahr)}`;
+  }).join("");
+}
+function openNeunWochenAllModal(){
+  $("neunWochenAllModal").classList.remove("hidden");
+  renderNeunWochenAllModal();
 }
 
 /* ---------- PDF-Export ---------- */
@@ -12327,6 +12424,9 @@ $("empRankingEnabledChk").onchange=toggleEmpRankingEnabled;
 $("stornoquotenEnabledChk").onchange=toggleStornoquotenEnabled;
 $("akqImportNotifyEnabledChk").onchange=toggleAkqImportNotifyEnabled;
 $("akquisequoteAtEnabledChk").onchange=toggleAkquisequoteAtEnabled;
+$("neunWochenAllEnabledChk").onchange=toggleNeunWochenAllEnabled;
+$("nwAllBtn").onclick=openNeunWochenAllModal;
+$("nwAllClose").onclick=()=>$("neunWochenAllModal").classList.add("hidden");
 $("perfDialogAdminEnabledChk").onchange=togglePerfDialogAdminEnabled;
 $("chefgespraechBtn").onclick=openChefgespraechModal;
 $("chefgespraechClose").onclick=()=>$("chefgespraechModal").classList.add("hidden");
