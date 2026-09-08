@@ -955,7 +955,7 @@ comment on column public.employees.admin_only is
 comment on column public.employees.active is
   'Soft-Delete-Flag. Historische Daten (snap.gl/snap.fh/state.dailyGL) haengen am Namen - deshalb bewusst kein Hard-Delete im Standardfall.';
 comment on column public.employees.perf_goal_ids is
-  'Welche der 5 Performance-Dialog-Ziele gelten (siehe PERF_GOALS_BY_EMPLOYEE/PERF_GOAL_TITLES im Client). Ziele 4/5 (PO-Quote Telekom, Gebrauchtgeraete-Quote) sind aktuell Dominik-Szendi-spezifische Sondervertriebs-Snapshot-Berechnungen - ein neuer Mitarbeiter mit diesen Zielen braucht weiterhin Code-Anpassung.';
+  'Welche der 6 Performance-Dialog-Ziele gelten (siehe PERF_GOALS_BY_EMPLOYEE/PERF_GOAL_TITLES im Client). Ziele 4/5 (PO-Quote Telekom, Gebrauchtgeraete-Quote) sind aktuell Dominik-Szendi-spezifische Sondervertriebs-Snapshot-Berechnungen - ein neuer Mitarbeiter mit diesen Zielen braucht weiterhin Code-Anpassung. Ziel 6 (Vorhaben des Monats, Nutzervorgabe 08.09.2026) ist reiner Freitext ohne Sondervertriebs-Logik.';
 
 alter table public.employees enable row level security;
 
@@ -991,6 +991,25 @@ on conflict (name) do nothing;
 insert into public.employees (name, admin_only, match_aliases, sort_order) values
   ('Technischer GL', true, '{"Technischer GL CE DE"}', 100),
   ('ohne Zuordnung', true, '{}', 101)
+on conflict (name) do nothing;
+
+-- Nutzervorgabe 08.09.2026: neues Ziel 6 "Vorhaben des Monats" fuer ALLE
+-- Bestandsmitarbeiter ergaenzen (idempotent - fuegt nur hinzu, falls noch
+-- nicht enthalten).
+update public.employees set perf_goal_ids = perf_goal_ids || '[6]'::jsonb
+  where not (perf_goal_ids @> '[6]'::jsonb)
+    and name in ('Klaus Witting','Florian Hasibeder','Peter Peißer','Helmut Otto','Dominik Szendi','Thomas Eitzinger');
+
+-- Sergej Eigenseer (Rolle "Trainer", profiles.name identisch, siehe
+-- s.eigenseer@wertgarantie.com): admin_only wie "Technischer GL" oben - kein
+-- Eintrag im Tagesproduktions-Dropdown, aber via PERF_GOALS_BY_EMPLOYEE
+-- trotzdem Performance-Dialog-Zugang (siehe loadEmployees() im Client, das
+-- ist der einzige Unterschied zu den beiden admin_only-Zeilen oben, die
+-- KEINEN Dialog-Zugang haben sollen). Ziel 1 verwendet bei ihm bewusst
+-- "Oesterreich gesamt" statt persoenlicher Zahlen (PERF_GOAL1_SCOPE_OVERRIDE
+-- im Client) - pers_jahresziel/akq_staffel_ziel bleiben deshalb 0.
+insert into public.employees (name, admin_only, perf_goal_ids, pers_jahresziel, akq_staffel_ziel, match_aliases, sort_order) values
+  ('Sergej Eigenseer', true, '[1,6]'::jsonb, 0, 0, '{}', 200)
 on conflict (name) do nothing;
 
 -- ==========================================================================

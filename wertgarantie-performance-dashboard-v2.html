@@ -1706,6 +1706,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="empGoalChk" value="3" style="width:16px;height:16px;flex-shrink:0"> 3 Miete</label>
         <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="empGoalChk" value="4" style="width:16px;height:16px;flex-shrink:0"> 4 PO-Quote Telekom <span style="color:var(--muted)">(Sondervertrieb, braucht Code-Anpassung)</span></label>
         <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="empGoalChk" value="5" style="width:16px;height:16px;flex-shrink:0"> 5 Gebrauchtgeräte <span style="color:var(--muted)">(Sondervertrieb, braucht Code-Anpassung)</span></label>
+        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="empGoalChk" value="6" style="width:16px;height:16px;flex-shrink:0"> 6 Vorhaben des Monats</label>
       </div>
     </div>
     <div style="margin-top:10px">
@@ -1818,6 +1819,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;margin-bottom:12px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
       <input type="checkbox" id="perfDialogEnabledChk" style="width:17px;height:17px;flex-shrink:0">
       Performance Dialog aktivieren <span style="font-weight:600;color:var(--muted);font-size:12px">(nur bei Aktivierung wird der Performance Dialog bei Mitarbeitern angefragt)</span>
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;margin-bottom:12px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+      <input type="checkbox" id="perfErgaenzungenEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+      Ergänzungen (Ziel 1 + 2) aktivieren <span style="font-weight:600;color:var(--muted);font-size:12px">(Zusatzfrage FLOP-Händler/Akquise-Auswahl für Witting, Hasibeder, Peißer, Otto)</span>
     </label>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-weight:700;font-size:13.5px;margin-bottom:12px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px">
       <span>Freigeschalteter Berichtsmonat:</span>
@@ -2039,6 +2044,11 @@ let perfDialogEnabled = false;
 // bekommen. Erst wenn dieser Schalter an ist, sieht der Admin den "Performance
 // Dialog – ADMIN"-Button überhaupt und kann darin perfDialogEnabled setzen.
 let perfDialogAdminEnabled = false;
+// "Ergänzungen" zu Ziel 1 (FLOP-Händler) und Ziel 2 (Akquise) - eigener
+// Schalter im Performance Dialog – ADMIN PopUp (dashboard_kv-Key
+// "perf_ergaenzungen_enabled", Nutzervorgabe 08.09.2026). Default an
+// (siehe Laden in loadAll(), ??true-Fallback wie akqImportNotifyEnabled).
+let perfErgaenzungenEnabled = true;
 // Globaler Ein/Aus-Schalter für den "Chefgespräch"-Button (dashboard_kv-Key
 // "chefgespraech_enabled", per Schalter im normalen ADMIN-Panel gesetzt).
 // Standardmäßig aus, bis Wert aus der DB geladen wurde.
@@ -2165,11 +2175,14 @@ async function saveUserSettings(){
 function showRoleBadge(){
   $("adminBtn").classList.toggle("hidden", myRole!=="admin");
   $("settingsBtn").classList.toggle("hidden", !supaUser);
-  // Performance Dialog: für Außendienst & Admin (nicht Trainer - siehe
-  // Nutzerentscheidung 18.08.2026). Die Admin-Übersicht zusätzlich nur für Admin.
-  // Der Mitarbeiter-Button erscheint zudem nur, wenn der Admin das Feature im
-  // Performance Dialog – ADMIN PopUp per Schalter aktiviert hat.
-  $("perfDialogBtn").classList.toggle("hidden", !perfDialogEnabled||(myRole!=="admin"&&myRole!=="aussendienst"));
+  // Performance Dialog: für Außendienst & Admin (Trainer-Rolle war bis
+  // 08.09.2026 bewusst ausgeschlossen - Nutzerentscheidung 18.08.2026 -,
+  // wurde dann aber explizit für Sergej Eigenseer freigeschaltet, siehe
+  // PERF_GOAL1_SCOPE_OVERRIDE/PERF_GOALS_BY_EMPLOYEE). Die Admin-Übersicht
+  // zusätzlich nur für Admin. Der Mitarbeiter-Button erscheint zudem nur,
+  // wenn der Admin das Feature im Performance Dialog – ADMIN PopUp per
+  // Schalter aktiviert hat.
+  $("perfDialogBtn").classList.toggle("hidden", !perfDialogEnabled||(myRole!=="admin"&&myRole!=="aussendienst"&&myRole!=="trainer"));
   // Performance Dialog – ADMIN-Button: zusätzlich zur Admin-Rolle nur, wenn im
   // normalen ADMIN-Panel per Schalter freigeschaltet (Nutzervorgabe 24.08.2026).
   $("perfDialogAdminBtn").classList.toggle("hidden", !perfDialogAdminEnabled||myRole!=="admin");
@@ -2533,15 +2546,30 @@ async function loadEmployeesAdmin(){
   }catch(e){ error=e; }
   if(error||!data){ box.innerHTML="<p style='color:var(--muted)'>Fehler beim Laden.</p>"; return; }
   box.innerHTML = data.map(e=>`
-    <div data-id="${e.id}" style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
-      <input class="em-name" value="${escapeHtml(e.name)}" placeholder="Name" style="flex:1;min-width:130px;font-weight:700;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
-      <input class="em-jz" type="number" value="${e.pers_jahresziel}" title="Jahresziel Produktion" style="width:110px;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
-      <input class="em-mz" type="number" value="${e.miete_jahresziel??""}" title="Miete-Jahresziel" style="width:110px;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
-      <input class="em-az" type="number" value="${e.akq_staffel_ziel}" title="Akquisestufen-Ziel" style="width:110px;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
-      <span style="font-size:11px;color:${e.active?"var(--pos)":"var(--neg)"}">${e.active?"aktiv":"deaktiviert"}${e.admin_only?" · admin-only":""}</span>
-      <button class="btn btn-ghost em-toggle" style="padding:6px 10px;font-size:12px">${e.active?"Deaktivieren":"Aktivieren"}</button>
+    <div data-id="${e.id}" style="display:flex;flex-direction:column;gap:6px;padding:9px 0;border-bottom:1px solid var(--line)">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <input class="em-name" value="${escapeHtml(e.name)}" placeholder="Name" style="flex:1;min-width:130px;font-weight:700;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
+        <input class="em-jz" type="number" value="${e.pers_jahresziel}" title="Jahresziel Produktion" style="width:110px;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
+        <input class="em-mz" type="number" value="${e.miete_jahresziel??""}" title="Miete-Jahresziel" style="width:110px;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
+        <input class="em-az" type="number" value="${e.akq_staffel_ziel}" title="Akquisestufen-Ziel" style="width:110px;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
+        <span style="font-size:11px;color:${e.active?"var(--pos)":"var(--neg)"}">${e.active?"aktiv":"deaktiviert"}${e.admin_only?" · admin-only":""}</span>
+        <button class="btn btn-ghost em-toggle" style="padding:6px 10px;font-size:12px">${e.active?"Deaktivieren":"Aktivieren"}</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted)">
+        <span style="font-weight:700">Ziele:</span>
+        ${[1,2,3,4,5,6].map(n=>`<label style="display:flex;align-items:center;gap:4px"><input type="checkbox" class="em-goal" data-goal="${n}"${(e.perf_goal_ids||[]).includes(n)?" checked":""} style="width:14px;height:14px"> ${n}</label>`).join("")}
+      </div>
     </div>
   `).join("") || "<p style='color:var(--muted)'>Keine Mitarbeiter.</p>";
+  box.querySelectorAll(".em-goal").forEach(chk=>{
+    chk.addEventListener("change",async e=>{
+      const row=e.target.closest("[data-id]"), id=row.dataset.id;
+      const goalIds=[...row.querySelectorAll(".em-goal:checked")].map(c=>+c.dataset.goal);
+      const { error } = await sb.from("employees").update({perf_goal_ids:goalIds}).eq("id",id);
+      if(!error) await loadEmployees();
+      toast(error?("Fehler: "+error.message):"Gespeichert");
+    });
+  });
   box.querySelectorAll(".em-name,.em-jz,.em-mz,.em-az").forEach(inp=>{
     inp.addEventListener("change",async e=>{
       const id=e.target.closest("[data-id]").dataset.id;
@@ -3388,6 +3416,15 @@ async function loadEmployees(){
   }
   PERS_JAHRESZIELE[AT_GESAMT]=Object.values(PERS_JAHRESZIELE).reduce((a,b)=>a+b,0);
   AKQ_STAFFEL_ZIEL[AT_GESAMT]=Object.values(AKQ_STAFFEL_ZIEL).reduce((a,b)=>a+b,0);
+  // Admin-only-Mitarbeiter (z.B. Sergej Eigenseer, Rolle Trainer) bekommen
+  // bewusst KEINEN EMPLOYEES-/PERS_JAHRESZIELE-Eintrag (kein Dropdown/keine
+  // Mitarbeiterseite für Tagesproduktion, Nutzervorgabe 08.09.2026), aber
+  // trotzdem einen PERF_GOALS_BY_EMPLOYEE-Eintrag, falls perf_goal_ids
+  // gesetzt sind - sonst könnte der Performance Dialog sie nie finden
+  // (openPerfModal() prüft ausschließlich PERF_GOALS_BY_EMPLOYEE[myName]).
+  for(const e of data){
+    if(e.admin_only&&e.perf_goal_ids&&e.perf_goal_ids.length) PERF_GOALS_BY_EMPLOYEE[e.name]=e.perf_goal_ids;
+  }
   EMP_NORM={};
   for(const e of data){
     EMP_NORM[normName(e.name)]=e.name;
@@ -5033,8 +5070,17 @@ function glTotalsFromHistory(k,year,month){
 // bisherige Tageshistorie-Berechnung bleibt nur Fallback für Berichtsmonate
 // ohne erfassten dailyGLTotals-Eintrag (z.B. sehr alte Berichte vor
 // Einführung dieser Historie).
+// Sergej Eigenseer (Rolle Trainer, Nutzervorgabe 08.09.2026): keine
+// Mitarbeiterseite/persönliche Zahlen, sein Ziel 1 bezieht sich stattdessen
+// auf "Österreich gesamt" - Ein-Zeilen-Override statt eigener DB-Spalte,
+// analog zu anderen Namens-Sonderfällen in diesem Datei (z.B. Dominik
+// Szendis Ziel 4/5, siehe PERF_GOAL_TITLES-Kommentar). glKey(AT_GESAMT)
+// liefert bereits AT_KEY, PERS_JAHRESZIELE[AT_GESAMT] die Summe aller
+// Mitarbeiter (siehe loadEmployees()) - keine weitere Anpassung nötig.
+const PERF_GOAL1_SCOPE_OVERRIDE={"Sergej Eigenseer":AT_GESAMT};
 function perfGoal1Snapshot(emp,year,month){
-  const k=glKey(emp);
+  const scopeEmp=PERF_GOAL1_SCOPE_OVERRIDE[emp]||emp;
+  const k=glKey(scopeEmp);
   const dm=state.dailyGL[k]||{};
   const official=glTotalsFromHistory(k,year,month);
   let jahrIst, monatIst;
@@ -5051,7 +5097,7 @@ function perfGoal1Snapshot(emp,year,month){
     jahrIst=sumYearThroughMonthFromDaily(dm,year,month);
     monatIst=sumMonthFromDaily(dm,year,month);
   }
-  const jahrZiel=PERS_JAHRESZIELE[emp]||0;
+  const jahrZiel=PERS_JAHRESZIELE[scopeEmp]||0;
   const monatZiel=goals[emp+"|"+year+"-"+String(month).padStart(2,"0")]||0;
   return {year,month,jahr_ist:jahrIst,jahr_ziel:jahrZiel,monat_ist:monatIst,monat_ziel:monatZiel};
 }
@@ -5752,6 +5798,7 @@ async function openPerfAdminModal(){
   perfAdminYear=new Date().getFullYear();
   $("perfAdminModal").classList.remove("hidden");
   $("perfDialogEnabledChk").checked=perfDialogEnabled;
+  $("perfErgaenzungenEnabledChk").checked=perfErgaenzungenEnabled;
   await loadPerfActivePeriod();
   renderPerfActivePeriodUI();
   renderPerfAdminYearTabs();
@@ -5790,6 +5837,16 @@ async function togglePerfDialogEnabled(){
   try{
     await stSet("performance_dialog_enabled",on?"1":"0");
     toast(on?"Performance Dialog aktiviert ✓":"Performance Dialog deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
+async function togglePerfErgaenzungenEnabled(){
+  const on=$("perfErgaenzungenEnabledChk").checked;
+  perfErgaenzungenEnabled=on;
+  try{
+    await stSet("perf_ergaenzungen_enabled",on?"1":"0");
+    toast(on?"Ergänzungen (Ziel 1 + 2) aktiviert ✓":"Ergänzungen (Ziel 1 + 2) deaktiviert");
   }catch(e){
     toast("Speichern fehlgeschlagen: "+(e.message||e));
   }
@@ -6275,7 +6332,8 @@ async function loadAll(){
     "chefgespraech_enabled","kooperationsgespraech_enabled","auswertung_enabled","fh_ziel_enabled",
     "fh_search_enabled","akp_peer_compare_enabled","karteileichen_jahre","karteileichen_review_fh",
     "karteileichen_review_akp","deckungsgrad_enabled","deckungsgrad_visible_metrics",
-    "emp_ranking_enabled","stornoquoten_enabled","miete_last_import","akq_import_notify_enabled"
+    "emp_ranking_enabled","stornoquoten_enabled","miete_last_import","akq_import_notify_enabled",
+    "perf_ergaenzungen_enabled"
   ]);
   try{ const d=kv["wg-state"]; if(d){ const p=JSON.parse(d); if(p&&p.latest) state=p; } }catch(e){}
   try{ const g=kv["wg-goals"]; if(g) goals=JSON.parse(g); }catch(e){}
@@ -6295,6 +6353,7 @@ async function loadAll(){
   { const erv=kv["emp_ranking_enabled"]; empRankingEnabled = erv==null ? true : erv==="1"; }
   stornoquotenEnabled=kv["stornoquoten_enabled"]==="1";
   { const ainv=kv["akq_import_notify_enabled"]; akqImportNotifyEnabled = ainv==null ? true : ainv==="1"; }
+  { const pev=kv["perf_ergaenzungen_enabled"]; perfErgaenzungenEnabled = pev==null ? true : pev==="1"; }
   mieteLastImport=kv["miete_last_import"];
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
@@ -11756,6 +11815,7 @@ $("perfMonthlySummaryBtn").onclick=()=>{
   openPdfTargetChoice(()=>exportPerfMonthlySummaryPdf(perfAdminYear,month));
 };
 $("perfDialogEnabledChk").onchange=togglePerfDialogEnabled;
+$("perfErgaenzungenEnabledChk").onchange=togglePerfErgaenzungenEnabled;
 $("perfActivePeriodSetBtn").onclick=async()=>{
   const year=+$("perfActivePeriodYearSel").value, month=+$("perfActivePeriodMonthSel").value;
   await setPerfActivePeriod(year,month);
