@@ -6025,7 +6025,16 @@ function perfErgReadonlyHtml(goalId,snapshot,answers){
   const erg=answers&&answers.erg; if(!erg) return "";
   const review=(snapshot&&snapshot.erg&&snapshot.erg.review)||[];
   const candidates=(snapshot&&snapshot.erg&&snapshot.erg.candidates)||[];
-  let html=`<div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)">
+  // "pdf-block" (Bug-Report 09.09.2026, siehe renderPdfBlocksToPdf()): die
+  // Ergänzung wird in den PDF-Exporten bewusst als EIGENER, unabhängig
+  // renderbarer Block behandelt statt (wie bisher) im selben Ziel-Block
+  // verschachtelt - ein Mitarbeiter kann hier beliebig langen Freitext
+  // eintragen (Review-/Maßnahmentexte ohne Maximallänge), zusammen mit den 4
+  // Standardfragen konnte das einen einzelnen Canvas so hoch machen, dass
+  // selbst die block-weise Aufteilung an ein Browser-Limit stieß. Die Klasse
+  // ist rein technisch (keine CSS-Regel dafür) und wirkt sich in der
+  // Live-Übersicht (renderPerfDoneOverview) nicht aus.
+  let html=`<div class="pdf-block" style="border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px;font-size:11px">
     <div style="font-weight:800;font-size:12px;color:var(--wg-navy);margin-bottom:8px">Ergänzung</div>`;
   // Nutzeranfrage 09.09.2026 "hast du die FH Nummer jetzt überall anbei?" -
   // FH-Nr (und bei Ziel 1 der konkrete VJ-Wert statt nur der reinen
@@ -6117,17 +6126,36 @@ function renderPerfDoneOverview(goalsPayload,mailFailures){
 // Seite beginnt (Sammel-PDF: .pdf-employee-start, Nutzervorgabe 09.09.2026
 // "immer nach jedem Mitarbeiter einen Seitenumbruch"), auch wenn auf der
 // aktuellen Seite noch Platz wäre.
+// Bug-Report 09.09.2026 (Folgefund): trotz der block-weisen Aufteilung kann
+// EIN einzelner Block (z.B. eine Ergänzung mit sehr langem, unbegrenztem
+// Freitext in mehreren Review-/Maßnahmentextfeldern) weiterhin an ein
+// Browser-Canvas-Limit stoßen. Statt DESHALB die komplette PDF-Erstellung -
+// und damit den ganzen "Fertig"-Ablauf, obwohl der Bericht selbst längst
+// erfolgreich in der Datenbank gespeichert ist (siehe submitPerfReport()) -
+// abzubrechen, wird nur dieser eine Abschnitt durch einen Platzhaltertext
+// ersetzt; der Rest des Dokuments bleibt vollständig. console.error()
+// protokolliert die echte Fehlerursache für die Fehlersuche.
 async function renderPdfBlocksToPdf(pdf,blockEls,imgW,pageContentMm,margin,forceBreakEls){
   let curY=margin, firstPage=true;
   for(const el of blockEls){
-    let canvas=null;
+    const forceBreak=forceBreakEls&&forceBreakEls.has(el);
+    let canvas=null, renderErr=null;
     try{ canvas=await html2canvas(el,{scale:2,backgroundColor:"#ffffff",useCORS:true,logging:false}); }
-    catch(e){ canvas=null; }
-    if(!canvas||!canvas.width||!canvas.height){
-      throw new Error("PDF-Erstellung fehlgeschlagen: ein Abschnitt des Berichts ist zu umfangreich, um dargestellt zu werden. Bitte kürzere Texte verwenden oder den Admin informieren.");
+    catch(e){ renderErr=e; }
+    if(!renderErr&&(!canvas||!canvas.width||!canvas.height)) renderErr=new Error("html2canvas lieferte einen leeren Canvas zurück");
+    if(renderErr){
+      console.error("renderPdfBlocksToPdf: Abschnitt konnte nicht gerendert werden, PDF fährt mit Platzhalter fort.",renderErr,el);
+      if(!firstPage&&forceBreak){ pdf.addPage(); curY=margin; }
+      else if(!firstPage&&curY>margin+16){ pdf.addPage(); curY=margin; }
+      firstPage=false;
+      pdf.setFontSize(10); pdf.setTextColor(190,50,50);
+      const lines=pdf.splitTextToSize("[Dieser Abschnitt konnte nicht dargestellt werden - Inhalt zu umfangreich. Bitte kürzere Texte verwenden oder den Admin informieren.]",imgW);
+      pdf.text(lines,margin,curY+5);
+      pdf.setTextColor(16,32,44);
+      curY+=5+lines.length*4.5+8;
+      continue;
     }
     const blockImgH=canvas.height*imgW/canvas.width;
-    const forceBreak=forceBreakEls&&forceBreakEls.has(el);
     if(!firstPage&&(forceBreak||curY+blockImgH>margin+pageContentMm+0.01)){ pdf.addPage(); curY=margin; }
     firstPage=false;
     if(blockImgH<=pageContentMm+0.01){
@@ -6174,12 +6202,14 @@ async function buildPerfReportPdfDoc(employee,year,month,goalsPayload,submittedA
         <div style="font-weight:800;font-size:10px;color:#5D7284;letter-spacing:.3px">${escapeHtml(label)}</div>
         <div style="font-size:11.5px;color:#10202C;white-space:pre-wrap;margin-top:3px;line-height:1.4">${escapeHtml((g.answers&&g.answers[key])||"")}</div>
       </div>`).join("");
+    // Ergänzung als EIGENER pdf-block (siehe Kommentar in
+    // perfErgReadonlyHtml()) - bewusst als Geschwister-Element NACH dem
+    // Ziel-Block angehängt, nicht mehr darin verschachtelt.
     return `<div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:14px;font-size:11px">
       <div style="font-size:14px;font-weight:900;color:#062A3F;margin-bottom:10px">${escapeHtml(PERF_GOAL_TITLES[g.goal_id]||("Ziel "+g.goal_id))}</div>
       ${perfGoalSystemHtml(g.goal_id,g.snapshot)}
       ${qa}
-      ${perfErgReadonlyHtml(g.goal_id,g.snapshot,g.answers)}
-    </div>`;
+    </div>${perfErgReadonlyHtml(g.goal_id,g.snapshot,g.answers)}`;
   }).join("");
   box.innerHTML=`
     <div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:18px">
@@ -6401,12 +6431,13 @@ async function buildCombinedPerfReportsPdfDoc(reports,year,month){
           <div style="font-weight:800;font-size:10px;color:#5D7284;letter-spacing:.3px">${escapeHtml(label)}</div>
           <div style="font-size:11.5px;color:#10202C;white-space:pre-wrap;margin-top:3px;line-height:1.4">${escapeHtml((g.answers&&g.answers[key])||"")}</div>
         </div>`).join("");
+      // Ergänzung als EIGENER pdf-block (siehe Kommentar in
+      // perfErgReadonlyHtml()), nicht mehr im Ziel-Block verschachtelt.
       return `<div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:14px;font-size:11px">
         <div style="font-size:14px;font-weight:900;color:#062A3F;margin-bottom:10px">${escapeHtml(PERF_GOAL_TITLES[g.goal_id]||("Ziel "+g.goal_id))}</div>
         ${perfGoalSystemHtml(g.goal_id,g.snapshot)}
         ${qa}
-        ${perfErgReadonlyHtml(g.goal_id,g.snapshot,g.answers)}
-      </div>`;
+      </div>${perfErgReadonlyHtml(g.goal_id,g.snapshot,g.answers)}`;
     }).join("");
     // "pdf-employee-start" markiert zusätzlich den Beginn eines neuen
     // Mitarbeiters (Nutzervorgabe 09.09.2026: "immer nach jedem Mitarbeiter
