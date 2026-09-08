@@ -5239,6 +5239,19 @@ function aktivierungsquoteFor(emp,year,month){
   }
   return {angelegt,aktiv,quote:angelegt>0?aktiv/angelegt:null};
 }
+// "Ergänzung" zu Ziel 2 (Nutzerentscheidung 08.09.2026: "nur 2026 begonnene
+// Akquisen"): a["p"+year] statt hartem a.p2026, damit das unverändert
+// funktioniert, sobald der Berichtsmonat in ein neues Jahr fällt - der
+// Parser (parseAuswertung) benennt die Produktionsspalten bereits
+// Jahr-generisch (p2024/p2025/p2026, siehe snap.akq). Vorbild:
+// renderAkqOhneProd() (identisches "ohne Produktion"-Kriterium, dort ohne
+// den zusätzlichen beginnJahr-Filter).
+function perfAkqOhneProdCandidates(emp,year){
+  const s=state.latest; if(!s||!s.akq) return [];
+  return s.akq.filter(a=>a.emp===emp&&a.beginnJahr===year&&(a["p"+year]||0)===0)
+    .map(a=>({nr:a.nr,name:a.name||a.nr,ort:a.ort||"",monatIst:0,vjMonatPct:null,beginn:a.beginn}))
+    .sort((a,b)=>(a.beginn||"").localeCompare(b.beginn||""));
+}
 function perfGoal2Snapshot(emp,year,month){
   const staffeln=akqStaffelnInJahrFor(emp,year);
   const akt=aktivierungsquoteFor(emp,year,month);
@@ -5246,9 +5259,11 @@ function perfGoal2Snapshot(emp,year,month){
   // in perfGoalSystemHtml(), siehe perfHochrechnungCls()) - bei älteren,
   // bereits abgeschickten Berichten fehlt das Feld im gespeicherten
   // Snapshot; perfHochrechnungCls() faengt das mit einem Fallback ab.
-  return {year,month,staffeln_ist:staffeln.alle,staffeln_ziel:AKQ_STAFFEL_ZIEL[emp]||0,
+  const result={year,month,staffeln_ist:staffeln.alle,staffeln_ziel:AKQ_STAFFEL_ZIEL[emp]||0,
     aktivierung_angelegt:akt.angelegt,aktivierung_aktiv:akt.aktiv,aktivierung_quote:akt.quote,
     aktivierung_official:!!akt.official};
+  if(perfErgEligible(2,emp)) result.erg={candidates:perfAkqOhneProdCandidates(emp,year),review:perfErgReviewRows(2,emp,year,month)};
+  return result;
 }
 // Ziel 3: Miete. "Neu gewonnene Miet-FH" = FH dieses Mitarbeiters, deren
 // ERSTER Miete-Vertragsmonat (kleinster Schlüssel in miete_monthly) in das
