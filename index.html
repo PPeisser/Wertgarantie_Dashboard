@@ -5122,35 +5122,53 @@ function perfErgEligible(goalId,emp){
 // echte Monatssummen für 2024/2025/2026 je FH, siehe fhContactsBulkIndex/
 // renderFhMonthly()/fhMonthlyMerged() - dieselbe Datenquelle, hier nur für
 // EINEN FH und EINEN Monat statt der ganzen Mehrjahres-Tabelle gebraucht.
-// Merge-Priorität identisch zu fhMonthlyMerged(): prod_monthly ("echte
-// Monatssummen", z.B. aus einem Bulk-Import) geht vor der aus
-// state.dailyFH aufsummierten laufenden Tageshistorie - state.dailyFH
-// reicht ohnehin nicht bis ins Vorjahr zurück, prod_monthly schon.
-function fhMonatVJPct(nr,year,month){
-  const daily=state.dailyFH[nr]||{};
-  const fromDaily={};
-  for(const [d,v] of Object.entries(daily)){ const ym=d.slice(0,7); fromDaily[ym]=(fromDaily[ym]||0)+v; }
+// Bewusst NUR fhContactsBulkIndex (nicht zusätzlich state.dailyFH gemergt
+// wie ursprünglich) - state.dailyFH ist für den AKTUELLEN Berichtsmonat
+// bereits die authoritative, laufend geführte Quelle (siehe monatIst in
+// perfFlop10Candidates/perfErgReviewRows); ein Bulk-Import könnte für genau
+// diesen Monat älter/unvollständiger sein. Für das VORJAHR (year-1) ist
+// state.dailyFH ohnehin nie vorhanden - dafür ist prod_monthly die einzige
+// Quelle.
+function fhBulkMonthlyValue(nr,year,month){
   const bulk=(fhContactsBulkIndex&&fhContactsBulkIndex[nr])||{};
-  const merged={...fromDaily,...bulk};
-  const curKey=year+"-"+String(month).padStart(2,"0");
-  const vjKey=(year-1)+"-"+String(month).padStart(2,"0");
-  const cur=merged[curKey], vj=merged[vjKey];
-  if(cur==null||!vj) return null;
-  return (cur/vj-1)*100;
+  const key=year+"-"+String(month).padStart(2,"0");
+  return bulk[key]!=null?bulk[key]:null;
+}
+function fhMonatVJValue(nr,year,month){ return fhBulkMonthlyValue(nr,year-1,month); }
+// Prozentuale Veränderung ggü. Vorjahresmonat - getrennt von der reinen
+// Wertermittlung (fhMonatVJValue), damit der rohe VJ-Wert auch dort nutzbar
+// bleibt, wo (Nutzervorgabe 09.09.2026) zwischen "VJ unbekannt" und
+// "VJ war 0" unterschieden werden muss (0/0-Ausschluss, siehe
+// perfFlop10Candidates) - eine reine %-Zahl kann das nicht (Division durch
+// 0 liefert in beiden Fällen null).
+function fhMonatVJPct(curIst,vjIst){
+  if(vjIst==null||!vjIst) return null;
+  return (curIst/vjIst-1)*100;
 }
 function perfFhNameLookup(nr){
   return (state.latest.fh[nr]&&state.latest.fh[nr].name)||(fhContactsAllIndex&&fhContactsAllIndex[nr]&&fhContactsAllIndex[nr].name)||nr;
 }
 // FLOP 10 = die 10 Fachhändler dieses Mitarbeiters mit der geringsten
-// Produktion im Berichtsmonat (inkl. 0 Stück), Nutzerentscheidung
-// 08.09.2026. sumMonthFromDaily() ist generisch (siehe Kommentar dort) und
-// funktioniert unverändert auf state.dailyFH[nr], nicht nur state.dailyGL.
+// Produktion im Berichtsmonat (Nutzerentscheidung 08.09.2026), IMMER der
+// abgeschlossene Berichtsmonat (year/month = perfReportYear/perfReportMonth,
+// z.B. August 2026 wenn im September ausgefüllt wird - Nutzervorgabe
+// 09.09.2026 "immer des Vormonates"), VJ-Vergleich entsprechend derselbe
+// Monat im Vorjahr (August 2025). sumMonthFromDaily() ist generisch (siehe
+// Kommentar dort) und funktioniert unverändert auf state.dailyFH[nr], nicht
+// nur state.dailyGL.
+// Nutzerkorrektur 09.09.2026: FH, die sowohl heuer als auch im
+// Vorjahresmonat 0 Stück produziert haben, sind kein "FLOP"-Fall (nie
+// aktiv, kein Rückgang feststellbar) und werden ausgeschlossen - NUR bei
+// bekanntem VJ-Wert=0 (nicht bei unbekanntem VJ, siehe fhMonatVJValue).
 function perfFlop10Candidates(emp,year,month){
   const out=[];
   for(const nr of Object.keys(state.latest.fh||{})){
     if(fhEmpFor(nr)!==emp) continue;
+    const monatIst=sumMonthFromDaily(state.dailyFH[nr]||{},year,month);
+    const vjIst=fhMonatVJValue(nr,year,month);
+    if(monatIst===0&&vjIst===0) continue;
     out.push({nr,name:perfFhNameLookup(nr),ort:(state.latest.fh[nr]&&state.latest.fh[nr].ort)||"",
-      monatIst:sumMonthFromDaily(state.dailyFH[nr]||{},year,month),vjMonatPct:fhMonatVJPct(nr,year,month)});
+      monatIst,vjIst,vjMonatPct:fhMonatVJPct(monatIst,vjIst)});
   }
   return out.sort((a,b)=>a.monatIst-b.monatIst).slice(0,10);
 }
@@ -5168,7 +5186,8 @@ function perfErgReviewRows(goalId,emp,year,month){
     const row={nr,name:perfFhNameLookup(nr),monatIst};
     if(goalId===1){
       const vormonatIst=sumMonthFromDaily(state.dailyFH[nr]||{},prevP.year,prevP.month);
-      row.vormonatIst=vormonatIst; row.diff=monatIst-vormonatIst; row.vjMonatPct=fhMonatVJPct(nr,year,month);
+      const vjIst=fhMonatVJValue(nr,year,month);
+      row.vormonatIst=vormonatIst; row.diff=monatIst-vormonatIst; row.vjIst=vjIst; row.vjMonatPct=fhMonatVJPct(monatIst,vjIst);
     }else{
       row.zielErreicht=monatIst>=1;
     }
@@ -5798,27 +5817,43 @@ function renderPerfErgBlock(goalId){
     const prevP=prevMonthOf(perfReportYear,perfReportMonth);
     html+=`<div style="margin-bottom:18px">
       <div style="font-weight:700;font-size:13px;margin-bottom:8px">Entwicklung der im ${MONATE[prevP.month-1]} ausgewählten ${itemLabel}</div>
-      ${review.map(r=>`
+      ${review.map(r=>{
+        // Nutzervorgabe 09.09.2026: FH-Nr immer mit anzeigen, VJ-Vergleich
+        // mit dem konkreten Vorjahreswert (nicht nur der %-Zahl) - "unbekannt"
+        // statt einer erfundenen Zahl, falls kein VJ-Wert vorliegt.
+        const vjPart=goalId===1
+          ?(r.vjIst!=null?`VJ-Monat ${fmt(r.vjIst)} Stk. (${fmtPct(r.vjMonatPct)})`:`VJ-Monat unbekannt`)
+          :"";
+        return `
         <div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px">
-          <div style="font-weight:700;margin-bottom:4px">${escapeHtml(r.name)}</div>
+          <div style="font-weight:700;margin-bottom:4px">${escapeHtml(r.name)} <span style="color:var(--muted);font-weight:600">· FH ${escapeHtml(r.nr)}</span></div>
           <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${goalId===1
-            ?`Produktion ${fmt(r.monatIst)} Stk. · ${fmtSign(r.diff)} zum Vormonat · Vergleich VJ-Monat: ${fmtPct(r.vjMonatPct)}`
+            ?`Produktion ${fmt(r.monatIst)} Stk. · ${fmtSign(r.diff)} zum Vormonat · ${vjPart}`
             :`Produktion ${fmt(r.monatIst)} Stk. · Ziel ${r.zielErreicht?"erreicht ✓":"nicht erreicht"}`}</div>
           <textarea class="erg-review-ta" data-nr="${r.nr}" rows="2" placeholder="Konnten die geplanten Maßnahmen umgesetzt werden, wie war die Wirkung?" style="width:100%;font:inherit;border:2px solid var(--line);border-radius:8px;padding:6px 8px">${escapeHtml(erg.reviewTexts[r.nr]||"")}</textarea>
           <div style="font-size:10.5px;color:var(--muted)" id="perfErgReviewCount_${r.nr}"></div>
-        </div>`).join("")}
+        </div>`;
+      }).join("")}
     </div>`;
   }
   if(!erg.locked){
     const need=Math.min(minCount,candidates.length);
     html+=`<div>
       <div style="font-weight:700;font-size:13px;margin-bottom:8px">Diese ${need} ${itemLabel} werde ich gezielt im ${MONATE[curMonth-1]} ${verb}:</div>
-      ${candidates.map(c=>`
+      ${candidates.map(c=>{
+        const vjPart=goalId===1
+          ?(c.vjIst!=null?` · VJ ${fmt(c.vjIst)} Stk. (${fmtPct(c.vjMonatPct)})`:` · VJ unbekannt`)
+          :"";
+        // Nutzervorgabe 09.09.2026: bei der Akquise-Auswahl (Ziel 2) das
+        // Anlagedatum mit anzeigen (aus perfAkqOhneProdCandidates()).
+        const beginnPart=goalId===2?` · angelegt ${fmtDate(c.beginn)}`:"";
+        return `
         <label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)">
           <input type="checkbox" class="erg-cand-chk" value="${c.nr}" style="width:16px;height:16px;flex-shrink:0">
-          <span style="flex:1">${escapeHtml(c.name)}${c.ort?" · "+escapeHtml(c.ort):""}</span>
-          <span style="color:var(--muted);font-size:12px">${fmt(c.monatIst)} Stk.${c.vjMonatPct!=null?" · "+fmtPct(c.vjMonatPct)+" VJ":""}</span>
-        </label>`).join("")}
+          <span style="flex:1"><b>${escapeHtml(c.name)}</b> <span style="color:var(--muted)">· FH ${escapeHtml(c.nr)}${c.ort?" · "+escapeHtml(c.ort):""}${beginnPart}</span></span>
+          <span style="color:var(--muted);font-size:12px;text-align:right;white-space:nowrap">${fmt(c.monatIst)} Stk.${vjPart}</span>
+        </label>`;
+      }).join("")}
       <button class="btn btn-blue" id="perfErgConfirmBtn" style="margin-top:10px" disabled>Bestätigen</button>
     </div>`;
   }else{
