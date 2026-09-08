@@ -6095,6 +6095,65 @@ function renderPerfDoneOverview(goalsPayload,mailFailures){
   `;
   $("perfDoneCloseBtn").onclick=()=>$("perfModal").classList.add("hidden");
 }
+// Rendert eine Liste von .pdf-block-Elementen NACHEINANDER in ein
+// bestehendes jsPDF-Dokument - je EIN eigener, bewusst kleiner
+// html2canvas()-Aufruf PRO BLOCK statt (wie bisher) EINEM Screenshot des
+// gesamten, ggf. sehr hohen Dokuments.
+// Bug-Report 08./09.09.2026 ("The index is not in the allowed range" beim
+// Absenden bzw. im finalen PopUp): mit den neuen Ergänzungen (FLOP-10-Liste
+// je Ziel 1, Akquise-Auswahl je Ziel 2) und Ziel 6 wird ein einzelner
+// Bericht (bzw. im Sammel-PDF gleich mehrere hintereinander) deutlich höher
+// als zuvor - ein einziger Riesen-Canvas für das GESAMTE Dokument stößt
+// dabei an vom Browser gedeckelte Canvas-Höhen-/Flächenlimits (v.a. Safari).
+// Der bereits vorhandene Guard (Canvas mit Breite/Höhe 0) griff nur, wenn
+// html2canvas() erfolgreich, aber leer zurückkam - der eigentliche Fehler
+// trat aber schon INNERHALB des html2canvas()-Aufrufs selbst auf und wurde
+// dadurch nie abgefangen. Da jeder EINZELNE .pdf-block (ein Zielblock bzw.
+// der Kopfbereich) für sich genommen immer klein genug bleibt, um sicher
+// innerhalb jedes Browser-Limits gerendert zu werden, verschwindet das
+// Problem strukturell - unabhängig davon, wie lang ein zukünftiger Bericht
+// noch werden kann.
+// forceBreakEls: optionales Set von Elementen, VOR denen immer eine neue
+// Seite beginnt (Sammel-PDF: .pdf-employee-start, Nutzervorgabe 09.09.2026
+// "immer nach jedem Mitarbeiter einen Seitenumbruch"), auch wenn auf der
+// aktuellen Seite noch Platz wäre.
+async function renderPdfBlocksToPdf(pdf,blockEls,imgW,pageContentMm,margin,forceBreakEls){
+  let curY=margin, firstPage=true;
+  for(const el of blockEls){
+    let canvas=null;
+    try{ canvas=await html2canvas(el,{scale:2,backgroundColor:"#ffffff",useCORS:true,logging:false}); }
+    catch(e){ canvas=null; }
+    if(!canvas||!canvas.width||!canvas.height){
+      throw new Error("PDF-Erstellung fehlgeschlagen: ein Abschnitt des Berichts ist zu umfangreich, um dargestellt zu werden. Bitte kürzere Texte verwenden oder den Admin informieren.");
+    }
+    const blockImgH=canvas.height*imgW/canvas.width;
+    const forceBreak=forceBreakEls&&forceBreakEls.has(el);
+    if(!firstPage&&(forceBreak||curY+blockImgH>margin+pageContentMm+0.01)){ pdf.addPage(); curY=margin; }
+    firstPage=false;
+    if(blockImgH<=pageContentMm+0.01){
+      pdf.addImage(canvas.toDataURL("image/jpeg",0.95),"JPEG",margin,curY,imgW,blockImgH);
+      curY+=blockImgH;
+    }else{
+      // Einzelner Block ist höher als eine volle Seite (seltener Ausreißer,
+      // z.B. sehr lange FLOP-10-Liste) - in sich weiter aufteilen, bleibt
+      // aber ein kleiner, unproblematischer Canvas.
+      if(curY>margin+0.01){ pdf.addPage(); curY=margin; }
+      let renderedPx=0;
+      const pageContentPxCanvas=Math.max(1,Math.floor(pageContentMm*canvas.width/imgW));
+      while(renderedPx<canvas.height-1){
+        const sliceH=Math.min(canvas.height-renderedPx,pageContentPxCanvas);
+        const sliceCanvas=document.createElement("canvas");
+        sliceCanvas.width=canvas.width; sliceCanvas.height=sliceH;
+        sliceCanvas.getContext("2d").drawImage(canvas,0,renderedPx,canvas.width,sliceH,0,0,canvas.width,sliceH);
+        const sliceImgH=sliceH*imgW/canvas.width;
+        if(renderedPx>0) pdf.addPage();
+        pdf.addImage(sliceCanvas.toDataURL("image/jpeg",0.95),"JPEG",margin,margin,imgW,sliceImgH);
+        renderedPx+=sliceH;
+        curY=margin+sliceImgH;
+      }
+    }
+  }
+}
 // Baut den PDF-Report für EINEN Mitarbeiter/Monat (aus dem gespeicherten
 // goals-Array, egal ob gerade frisch abgeschlossen oder nachträglich vom
 // Admin heruntergeladen) - mehrseitig mit Seitenumbruch an Zielblock-Grenzen,
@@ -6136,45 +6195,11 @@ async function buildPerfReportPdfDoc(employee,year,month,goalsPayload,submittedA
   await new Promise(r=>setTimeout(r,30));
   try{
     const blocks=[...box.querySelectorAll(".pdf-block")];
-    const blockEndsBoxPx=blocks.map(b=>b.offsetTop+b.offsetHeight);
-    const canvas=await html2canvas(box,{scale:2,backgroundColor:"#ffffff",useCORS:true,logging:false});
-    // Bug-Report 08.09.2026 ("The index is not in the allowed range" beim
-    // Absenden): mit den neuen Ergänzungen/Ziel 6 kann der Bericht deutlich
-    // länger werden als zuvor - liefert html2canvas dabei (z.B. wegen einer
-    // von manchen Browsern gedeckelten maximalen Canvas-Höhe) einen leeren/
-    // zu kleinen Canvas zurück, führte das untenstehende drawImage() mit
-    // einer Quellbreite/-höhe von 0 zu genau dieser (in Firefox so
-    // benannten) DOMException. Klare, verständliche Fehlermeldung statt der
-    // kryptischen Browser-Exception.
-    if(!canvas||!canvas.width||!canvas.height) throw new Error("PDF-Erstellung fehlgeschlagen: der Bericht ist zu umfangreich, um dargestellt zu werden. Bitte kürzere Texte verwenden oder den Admin informieren.");
     const {jsPDF}=window.jspdf;
     const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
     const pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), margin=10;
-    const imgW=pw-2*margin;
-    const canvasPxPerBoxPx=canvas.width/box.offsetWidth;
-    const blockEndsCanvasPx=blockEndsBoxPx.map(px=>px*canvasPxPerBoxPx);
-    const pageContentPxCanvas=(ph-2*margin)*canvas.width/imgW;
-    let renderedPx=0,pageIdx=0;
-    while(renderedPx<canvas.height-1&&pageIdx<60){
-      let cutoff=Math.min(renderedPx+pageContentPxCanvas,canvas.height);
-      if(cutoff<canvas.height){
-        let best=null;
-        for(const b of blockEndsCanvasPx){ if(b>renderedPx&&b<=cutoff) best=b; }
-        if(best!=null) cutoff=best;
-      }
-      // Defensive Klammerung (siehe Bug-Report oben): sliceH darf die noch
-      // verbleibende Canvas-Höhe nie überschreiten, sonst liest drawImage()
-      // aus einem Quellrechteck außerhalb des Canvas.
-      const sliceH=Math.min(canvas.height-renderedPx,Math.max(1,Math.round(cutoff-renderedPx)));
-      if(sliceH<=0) break;
-      const sliceCanvas=document.createElement("canvas");
-      sliceCanvas.width=canvas.width; sliceCanvas.height=sliceH;
-      sliceCanvas.getContext("2d").drawImage(canvas,0,renderedPx,canvas.width,sliceH,0,0,canvas.width,sliceH);
-      const sliceImgH=sliceH*imgW/canvas.width;
-      if(pageIdx>0) pdf.addPage();
-      pdf.addImage(sliceCanvas.toDataURL("image/jpeg",0.95),"JPEG",margin,margin,imgW,sliceImgH);
-      renderedPx+=sliceH; pageIdx++;
-    }
+    const imgW=pw-2*margin, pageContentMm=ph-2*margin;
+    await renderPdfBlocksToPdf(pdf,blocks,imgW,pageContentMm,margin);
     const filename="PerformanceDialog_"+asciiFilenamePart(employee)+"_"+year+"-"+String(month).padStart(2,"0")+".pdf";
     return {pdf,filename};
   }finally{
@@ -6402,64 +6427,21 @@ async function buildCombinedPerfReportsPdfDoc(reports,year,month){
   await new Promise(r=>setTimeout(r,30));
   try{
     const blocks=[...box.querySelectorAll(".pdf-block")];
-    const blockEndsBoxPx=blocks.map(b=>b.offsetTop+b.offsetHeight);
-    const employeeStartsBoxPx=[...box.querySelectorAll(".pdf-employee-start")].map(b=>b.offsetTop);
-    const canvas=await html2canvas(box,{scale:2,backgroundColor:"#ffffff",useCORS:true,logging:false});
-    // Bug-Report 08.09.2026 (siehe gleicher Kommentar in buildPerfReportPdfDoc()):
-    // beim Sammel-PDF landen ALLE Mitarbeiter-Berichte in einem einzigen
-    // Canvas - mit den neuen Ergänzungen/Ziel 6 ist das Risiko einer vom
-    // Browser gedeckelten Canvas-Höhe hier noch größer.
-    if(!canvas||!canvas.width||!canvas.height) throw new Error("PDF-Erstellung fehlgeschlagen: das Sammel-PDF ist zu umfangreich, um dargestellt zu werden.");
+    // Nutzervorgabe 09.09.2026: "immer nach jedem Mitarbeiter einen
+    // Seitenumbruch" - .pdf-employee-start-Blöcke erzwingen in
+    // renderPdfBlocksToPdf() immer eine neue Seite, auch wenn auf der
+    // vorherigen noch Platz wäre. Der einleitende "Gesamtübersicht"-
+    // Kopfblock (kein .pdf-employee-start) bleibt davon unberührt, kein
+    // erzwungener Umbruch VOR dem allerersten Mitarbeiter.
+    // Der ALLERERSTE Mitarbeiter bekommt bewusst KEINEN erzwungenen Umbruch
+    // (er teilt sich Seite 1 mit dem "Gesamtübersicht"-Kopfblock) - nur vor
+    // JEDEM WEITEREN Mitarbeiter danach (Nutzervorgabe 09.09.2026).
+    const employeeStartEls=new Set([...box.querySelectorAll(".pdf-employee-start")].slice(1));
     const {jsPDF}=window.jspdf;
     const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
     const pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), margin=10;
-    const imgW=pw-2*margin;
-    const canvasPxPerBoxPx=canvas.width/box.offsetWidth;
-    const blockEndsCanvasPx=blockEndsBoxPx.map(px=>px*canvasPxPerBoxPx);
-    const pageContentPxCanvas=(ph-2*margin)*canvas.width/imgW;
-    // Nutzervorgabe 09.09.2026: "immer nach jedem Mitarbeiter einen
-    // Seitenumbruch" - statt EINER durchgehenden Schleife über den ganzen
-    // Canvas (die mehrere kurze Mitarbeiter-Berichte auf dieselbe Seite
-    // packen würde) läuft die Seitenaufteilung jetzt je Mitarbeiter separat,
-    // mit demselben gemeinsamen pageIdx-Zähler: die erste Seite jedes
-    // Mitarbeiters (außer dem allerersten) bekommt dadurch automatisch ein
-    // pdf.addPage(), auch wenn auf der vorherigen Seite noch Platz wäre.
-    // Innerhalb eines (ggf. mehrseitigen) Mitarbeiter-Berichts bleibt die
-    // bisherige Logik (Seiten packen, an Ziel-Blockgrenzen umbrechen)
-    // unverändert erhalten.
-    const employeeStartsCanvasPx=employeeStartsBoxPx.map(px=>px*canvasPxPerBoxPx);
-    // Der erste Bereich beginnt bei 0 (nicht erst beim ersten Mitarbeiter),
-    // damit der einleitende "Gesamtübersicht"-Kopfblock (vor dem ersten
-    // Mitarbeiter) weiterhin mitgerendert wird - kein erzwungener Umbruch
-    // VOR dem ersten Mitarbeiter, nur NACH jedem. Ohne Mitarbeiter (leere
-    // Liste) bleibt der gesamte Canvas ein einziger Bereich wie bisher.
-    const employeeRanges=employeeStartsCanvasPx.length
-      ? employeeStartsCanvasPx.map((start,i)=>({
-          start:i===0?0:start,
-          end:i+1<employeeStartsCanvasPx.length?employeeStartsCanvasPx[i+1]:canvas.height
-        }))
-      : [{start:0,end:canvas.height}];
-    let pageIdx=0;
-    for(const {start,end} of employeeRanges){
-      let renderedPx=start;
-      while(renderedPx<end-1&&pageIdx<200){
-        let cutoff=Math.min(renderedPx+pageContentPxCanvas,end);
-        if(cutoff<end){
-          let best=null;
-          for(const b of blockEndsCanvasPx){ if(b>renderedPx&&b<=cutoff) best=b; }
-          if(best!=null) cutoff=best;
-        }
-        const sliceH=Math.min(end-renderedPx,Math.max(1,Math.round(cutoff-renderedPx)));
-        if(sliceH<=0) break;
-        const sliceCanvas=document.createElement("canvas");
-        sliceCanvas.width=canvas.width; sliceCanvas.height=sliceH;
-        sliceCanvas.getContext("2d").drawImage(canvas,0,renderedPx,canvas.width,sliceH,0,0,canvas.width,sliceH);
-        const sliceImgH=sliceH*imgW/canvas.width;
-        if(pageIdx>0) pdf.addPage();
-        pdf.addImage(sliceCanvas.toDataURL("image/jpeg",0.95),"JPEG",margin,margin,imgW,sliceImgH);
-        renderedPx+=sliceH; pageIdx++;
-      }
-    }
+    const imgW=pw-2*margin, pageContentMm=ph-2*margin;
+    await renderPdfBlocksToPdf(pdf,blocks,imgW,pageContentMm,margin,employeeStartEls);
     const filename="PerformanceDialog_Gesamt_"+year+"-"+String(month).padStart(2,"0")+".pdf";
     return {pdf,filename};
   }finally{
