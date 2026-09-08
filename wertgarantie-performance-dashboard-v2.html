@@ -1306,6 +1306,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     </div>
     <div id="nwAllSub" style="font-size:12px;color:var(--muted);margin-bottom:10px"></div>
     <div id="nwAllSortBar"></div>
+    <div id="nwAllFilterBar"></div>
     <div id="nwAllBody" style="overflow-x:auto"></div>
   </div>
 </div>
@@ -12206,6 +12207,30 @@ function renderNeunWochenAllSortBar(){
     };
   });
 }
+// Filter "Erreicht"/"Nicht erreicht" (Nutzervorgabe 09.09.2026: "dann bitte
+// noch die erreichten und nicht erreichten als Schaltfläche darunter") -
+// eigene Zeile UNTER der Sortier-Leiste, blendet ganze Kategorie-Tabellen
+// aus/ein statt die Kategorisierung selbst zu ändern. "Erreicht" = Produktion
+// erreicht ODER Abgeschlossen, "Nicht erreicht" = Abgelaufen ODER Aktiv/offen.
+let neunWochenAllFilter="alle";
+const NEUNWOCHEN_FILTER_OPTS=[{key:"alle",label:"Alle"},{key:"erreicht",label:"Erreicht"},{key:"nicht_erreicht",label:"Nicht erreicht"}];
+const NEUNWOCHEN_ERREICHT_KATS=new Set(["produktion","abgeschlossen"]);
+function renderNeunWochenAllFilterBar(){
+  const box=$("nwAllFilterBar"); if(!box) return;
+  box.innerHTML=`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+    <span style="font-size:11.5px;color:var(--muted);font-weight:700">Status:</span>
+    ${NEUNWOCHEN_FILTER_OPTS.map(o=>{
+      const active=neunWochenAllFilter===o.key;
+      return `<button type="button" class="btn ${active?"btn-blue":"btn-ghost"} nw-all-filter-btn" data-key="${o.key}" style="padding:5px 11px;font-size:11.5px">${escapeHtml(o.label)}</button>`;
+    }).join("")}
+  </div>`;
+  box.querySelectorAll(".nw-all-filter-btn").forEach(btn=>{
+    btn.onclick=()=>{
+      neunWochenAllFilter=btn.dataset.key;
+      renderNeunWochenAllModal();
+    };
+  });
+}
 function neunWochenAllTableHtml(rows,showGL,jahr){
   if(!rows.length) return `<div class="empty-note">Keine Einträge.</div>`;
   return `<table><thead><tr><th>Händler${showGL?" / Betreuer":""}</th><th class="r">Resttage</th><th>Beginn</th><th class="r">Termine</th><th class="r">Prod. ${jahr}</th></tr></thead><tbody>`+
@@ -12221,15 +12246,22 @@ function renderNeunWochenAllModal(){
   const s=state.latest; if(!s) return;
   const showGL=currentEmp===AT_GESAMT;
   const rows=neunWochenAllSortRows(neunWochenAllRows());
-  $("nwAllSub").textContent=`${fmt(rows.length)} Händler insgesamt (Beginn irgendwann) · ${currentEmp}`;
+  const visibleKats=NEUNWOCHEN_KATEGORIEN.filter(k=>{
+    if(neunWochenAllFilter==="alle") return true;
+    const erreicht=NEUNWOCHEN_ERREICHT_KATS.has(k.key);
+    return neunWochenAllFilter==="erreicht"?erreicht:!erreicht;
+  });
+  const shownCount=rows.filter(r=>visibleKats.some(k=>k.key===r.kategorie)).length;
+  $("nwAllSub").textContent=`${fmt(shownCount)} von ${fmt(rows.length)} Händlern (Beginn irgendwann) · ${currentEmp}`;
   renderNeunWochenAllSortBar();
-  $("nwAllBody").innerHTML=NEUNWOCHEN_KATEGORIEN.map(k=>{
+  renderNeunWochenAllFilterBar();
+  $("nwAllBody").innerHTML=visibleKats.map(k=>{
     const krows=rows.filter(r=>r.kategorie===k.key);
     return `<h4 style="margin:16px 0 8px;display:flex;align-items:center;gap:8px">
       <span style="background:${k.dot};width:9px;height:9px;border-radius:99px;display:inline-block;flex:none"></span>
       ${escapeHtml(k.label)} <span style="color:var(--muted);font-weight:600;font-size:12px">(${fmt(krows.length)})</span>
     </h4>${neunWochenAllTableHtml(krows,showGL,s.jahr)}`;
-  }).join("");
+  }).join("")||`<div class="empty-note">Keine Einträge in dieser Auswahl.</div>`;
 }
 function openNeunWochenAllModal(){
   $("neunWochenAllModal").classList.remove("hidden");
