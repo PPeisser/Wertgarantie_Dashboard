@@ -5100,7 +5100,65 @@ function perfGoal1Snapshot(emp,year,month){
   }
   const jahrZiel=PERS_JAHRESZIELE[scopeEmp]||0;
   const monatZiel=goals[emp+"|"+year+"-"+String(month).padStart(2,"0")]||0;
-  return {year,month,jahr_ist:jahrIst,jahr_ziel:jahrZiel,monat_ist:monatIst,monat_ziel:monatZiel};
+  const result={year,month,jahr_ist:jahrIst,jahr_ziel:jahrZiel,monat_ist:monatIst,monat_ziel:monatZiel};
+  // "Ergänzungen" (Nutzervorgabe 08.09.2026): Kandidaten IMMER live neu
+  // berechnen (auch beim erneuten Öffnen eines Entwurfs, damit die Liste
+  // aktuell bleibt, bis sie durch answers.erg.locked eingefroren wird).
+  if(perfErgEligible(1,emp)) result.erg={candidates:perfFlop10Candidates(emp,year,month),review:perfErgReviewRows(1,emp,year,month)};
+  return result;
+}
+// "Ergänzungen" zu Ziel 1 (FLOP-Händler) und Ziel 2 (Akquise ohne
+// Produktion) - monatlich wiederkehrender Auswahl-/Review-Zyklus, NUR für
+// die 4 klassischen Außendienstler und nur bei aktiviertem Admin-Schalter
+// (Nutzervorgabe 08.09.2026). Ein einzelner globaler Schalter deckt BEIDE
+// Ziele ab (siehe perfErgaenzungenEnabled/togglePerfErgaenzungenEnabled).
+const PERF_ERG_EMPLOYEES=["Klaus Witting","Florian Hasibeder","Peter Peißer","Helmut Otto"];
+const PERF_ERG_MIN_LEN=20;
+function perfErgEligible(goalId,emp){
+  return perfErgaenzungenEnabled && (goalId===1||goalId===2) && PERF_ERG_EMPLOYEES.includes(emp);
+}
+// VJ-Monatsvergleich pro FH existiert im Datenmodell noch nicht (nur
+// GL-aggregiert, siehe glTotalsFromHistory) - Rückgabewert bewusst schon
+// jetzt vorgesehen (immer null), damit eine künftige Datenquelle hier nur
+// noch eingesetzt werden muss, ohne die Aufrufer (Kandidatenliste + Review)
+// anzupassen.
+function fhMonatVJPct(nr,year,month){ return null; }
+function perfFhNameLookup(nr){
+  return (state.latest.fh[nr]&&state.latest.fh[nr].name)||(fhContactsAllIndex&&fhContactsAllIndex[nr]&&fhContactsAllIndex[nr].name)||nr;
+}
+// FLOP 10 = die 10 Fachhändler dieses Mitarbeiters mit der geringsten
+// Produktion im Berichtsmonat (inkl. 0 Stück), Nutzerentscheidung
+// 08.09.2026. sumMonthFromDaily() ist generisch (siehe Kommentar dort) und
+// funktioniert unverändert auf state.dailyFH[nr], nicht nur state.dailyGL.
+function perfFlop10Candidates(emp,year,month){
+  const out=[];
+  for(const nr of Object.keys(state.latest.fh||{})){
+    if(fhEmpFor(nr)!==emp) continue;
+    out.push({nr,name:perfFhNameLookup(nr),ort:(state.latest.fh[nr]&&state.latest.fh[nr].ort)||"",
+      monatIst:sumMonthFromDaily(state.dailyFH[nr]||{},year,month),vjMonatPct:fhMonatVJPct(nr,year,month)});
+  }
+  return out.sort((a,b)=>a.monatIst-b.monatIst).slice(0,10);
+}
+// Entwicklung der im VORHERIGEN Bericht ausgewählten FH (Review-Teil der
+// Ergänzung) - gemeinsam für Ziel 1 (Produktion: +/- zum Vormonat + VJ-
+// Vergleich) und Ziel 2 (Akquise: "Ziel erreicht" = mind. 1 Vertrag),
+// Unterschied nur in den goalId-spezifischen Zusatzfeldern je Zeile.
+function perfErgReviewRows(goalId,emp,year,month){
+  const prevG=perfPrevReport&&(perfPrevReport.goals||[]).find(g=>g.goal_id===goalId);
+  const prevSelected=(prevG&&prevG.answers&&prevG.answers.erg&&prevG.answers.erg.selected)||[];
+  if(!prevSelected.length) return [];
+  const prevP=prevMonthOf(year,month);
+  return prevSelected.map(nr=>{
+    const monatIst=sumMonthFromDaily(state.dailyFH[nr]||{},year,month);
+    const row={nr,name:perfFhNameLookup(nr),monatIst};
+    if(goalId===1){
+      const vormonatIst=sumMonthFromDaily(state.dailyFH[nr]||{},prevP.year,prevP.month);
+      row.vormonatIst=vormonatIst; row.diff=monatIst-vormonatIst; row.vjMonatPct=fhMonatVJPct(nr,year,month);
+    }else{
+      row.zielErreicht=monatIst>=1;
+    }
+    return row;
+  });
 }
 // Ziel 2: Akquisestufen (analog akqStaffelnInJahr, aber für einen
 // bestimmten Mitarbeiter unabhängig vom global gewählten currentEmp) +
@@ -5467,7 +5525,13 @@ async function openPerfModal(){
   perfGoalIds=PERF_GOALS_BY_EMPLOYEE[myName];
   // Ziel 6 "Vorhaben des Monats" hat eine eigene, abweichende Antwortstruktur
   // (nur ein Freitextfeld statt der 4 Standardfragen) - siehe renderPerfGoal6Step().
-  perfAnswers={}; perfGoalIds.forEach(g=>perfAnswers[g]= g===6?{vorhaben:""}:{massnahmen:"",gut:"",nicht_mehr:"",unterstuetzung:""});
+  perfAnswers={};
+  perfGoalIds.forEach(g=>{
+    perfAnswers[g]= g===6?{vorhaben:""}:{massnahmen:"",gut:"",nicht_mehr:"",unterstuetzung:""};
+    // "Ergänzungen" zu Ziel 1/2 (Nutzervorgabe 08.09.2026): eigene
+    // Unterstruktur für Auswahl+Pläne+Review, siehe renderPerfGoalStep().
+    if(perfErgEligible(g,perfEmployee)) perfAnswers[g].erg={reviewTexts:{},locked:false,selected:[],plans:{}};
+  });
   // Bericht des Vormonats laden (für Ziel 6 UND die "Ergänzungen" zu Ziel
   // 1/2, siehe perfPrevReport-Kommentar oben) - VOR perfGoalSnapshot(), da
   // perfGoal1Snapshot()/perfGoal2Snapshot() bei aktivierten Ergänzungen
@@ -5587,7 +5651,23 @@ function renderPerfZielStep(){
 }
 function perfGoalValid(goalId){
   if(goalId===6) return perfGoal6Valid();
-  return PERF_QUESTIONS.every(([key])=>(perfAnswers[goalId][key]||"").trim().length>=PERF_MIN_LEN);
+  const qOk=PERF_QUESTIONS.every(([key])=>(perfAnswers[goalId][key]||"").trim().length>=PERF_MIN_LEN);
+  if(!qOk) return false;
+  if(perfErgEligible(goalId,perfEmployee)) return perfErgValid(goalId);
+  return true;
+}
+// "Ergänzungen"-Validierung (Nutzervorgabe 08.09.2026): alle Bewertungstexte
+// zur Vormonatsauswahl (falls vorhanden) UND die neue Auswahl müssen
+// abgeschlossen sein (bestätigt + je ausgewähltem FH eine Maßnahme), bevor
+// "Weiter" freigegeben wird - "muss mind. N FH auswählen" ist damit
+// verpflichtend, kein optionaler Schritt.
+function perfErgValid(goalId){
+  const erg=perfAnswers[goalId]&&perfAnswers[goalId].erg; if(!erg) return true;
+  const snap=perfSnapshots[goalId];
+  const review=(snap&&snap.erg&&snap.erg.review)||[];
+  if(!review.every(r=>(erg.reviewTexts[r.nr]||"").trim().length>=PERF_ERG_MIN_LEN)) return false;
+  if(!erg.locked) return false;
+  return erg.selected.every(nr=>(erg.plans[nr]||"").trim().length>=PERF_ERG_MIN_LEN);
 }
 // Ziel 6 "Vorhaben des Monats" (Nutzervorgabe 08.09.2026): reiner Freitext,
 // komplett getrennt vom generischen PERF_QUESTIONS-Pfad - siehe
@@ -5647,6 +5727,7 @@ function renderPerfGoalStep(goalId,goalIdx){
         <textarea id="perfQ_${key}" rows="3" style="width:100%;font:inherit;border:2px solid var(--line);border-radius:10px;padding:8px 10px" data-key="${key}">${escapeHtml(perfAnswers[goalId][key]||"")}</textarea>
         <div style="font-size:11px;color:var(--muted)" id="perfCount_${key}"></div>
       </div>`).join("")}
+    <div id="perfErgBlock"></div>
     <div class="actions" style="margin-top:6px">
       <button class="btn btn-ghost" id="perfBackBtn">← Zurück</button>
       <button class="btn btn-blue" id="perfNextBtn">Weiter →</button>
@@ -5664,8 +5745,106 @@ function renderPerfGoalStep(goalId,goalIdx){
   };
   PERF_QUESTIONS.forEach(([key])=>{ $("perfQ_"+key).oninput=updateValidity; });
   updateValidity();
+  if(perfErgEligible(goalId,perfEmployee)) renderPerfErgBlock(goalId);
   $("perfBackBtn").onclick=()=>{ savePerfDraft(); perfStepIdx--; renderPerfStep(); };
   $("perfNextBtn").onclick=()=>{ if(!perfGoalValid(goalId)) return; savePerfDraft(); perfStepIdx++; renderPerfStep(); };
+}
+// "Ergänzung" zu Ziel 1 (FLOP-Händler)/Ziel 2 (Akquise ohne Produktion),
+// Nutzervorgabe 08.09.2026 - eigener, lokal neu renderbarer Block innerhalb
+// des Ziel-Schritts (siehe renderPerfGoalStep()), da "Bestätigen" die
+// Ansicht von "Auswahl" auf "Maßnahmen planen" umschaltet, ohne den ganzen
+// Schritt (inkl. der 4 Standardfragen) neu aufzubauen.
+function renderPerfErgBlock(goalId){
+  const box=$("perfErgBlock"); if(!box) return;
+  const snap=perfSnapshots[goalId], erg=perfAnswers[goalId].erg;
+  const minCount=goalId===1?4:3, itemLabel=goalId===1?"FLOP-Händler":"Akquisen",
+    verb=goalId===1?"wieder aufbauen":"in die Produktion führen";
+  const now=new Date(), curMonth=now.getMonth()+1;
+  const review=(snap.erg&&snap.erg.review)||[];
+  const candidates=(snap.erg&&snap.erg.candidates)||[];
+  let html=`<div style="margin-top:20px;padding-top:16px;border-top:2px dashed var(--line)">
+    <div style="font-weight:900;color:var(--wg-navy);margin-bottom:12px">Ergänzung</div>`;
+  if(review.length){
+    const prevP=prevMonthOf(perfReportYear,perfReportMonth);
+    html+=`<div style="margin-bottom:18px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px">Entwicklung der im ${MONATE[prevP.month-1]} ausgewählten ${itemLabel}</div>
+      ${review.map(r=>`
+        <div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+          <div style="font-weight:700;margin-bottom:4px">${escapeHtml(r.name)}</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${goalId===1
+            ?`Produktion ${fmt(r.monatIst)} Stk. · ${fmtSign(r.diff)} zum Vormonat · Vergleich VJ-Monat: ${r.vjMonatPct==null?"–":r.vjMonatPct.toFixed(1)+" %"}`
+            :`Produktion ${fmt(r.monatIst)} Stk. · Ziel ${r.zielErreicht?"erreicht ✓":"nicht erreicht"}`}</div>
+          <textarea class="erg-review-ta" data-nr="${r.nr}" rows="2" placeholder="Konnten die geplanten Maßnahmen umgesetzt werden, wie war die Wirkung?" style="width:100%;font:inherit;border:2px solid var(--line);border-radius:8px;padding:6px 8px">${escapeHtml(erg.reviewTexts[r.nr]||"")}</textarea>
+          <div style="font-size:10.5px;color:var(--muted)" id="perfErgReviewCount_${r.nr}"></div>
+        </div>`).join("")}
+    </div>`;
+  }
+  if(!erg.locked){
+    const need=Math.min(minCount,candidates.length);
+    html+=`<div>
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px">Diese ${need} ${itemLabel} werde ich gezielt im ${MONATE[curMonth-1]} ${verb}:</div>
+      ${candidates.map(c=>`
+        <label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)">
+          <input type="checkbox" class="erg-cand-chk" value="${c.nr}" style="width:16px;height:16px;flex-shrink:0">
+          <span style="flex:1">${escapeHtml(c.name)}${c.ort?" · "+escapeHtml(c.ort):""}</span>
+          <span style="color:var(--muted);font-size:12px">${fmt(c.monatIst)} Stk.${c.vjMonatPct!=null?" · "+c.vjMonatPct.toFixed(1)+" % VJ":""}</span>
+        </label>`).join("")}
+      <button class="btn btn-blue" id="perfErgConfirmBtn" style="margin-top:10px" disabled>Bestätigen</button>
+    </div>`;
+  }else{
+    html+=`<div>
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px">Geplante Maßnahmen bis Monatsende</div>
+      ${erg.selected.map(nr=>{
+        const c=candidates.find(x=>x.nr===nr);
+        return `<div style="margin-bottom:12px">
+          <div style="font-weight:700;margin-bottom:4px">${escapeHtml(c?c.name:perfFhNameLookup(nr))}</div>
+          <textarea class="erg-plan-ta" data-nr="${nr}" rows="2" style="width:100%;font:inherit;border:2px solid var(--line);border-radius:8px;padding:6px 8px">${escapeHtml(erg.plans[nr]||"")}</textarea>
+          <div style="font-size:10.5px;color:var(--muted)" id="perfErgPlanCount_${nr}"></div>
+        </div>`;
+      }).join("")}
+    </div>`;
+  }
+  box.innerHTML=html+`</div>`;
+  bindPerfErgEvents(goalId);
+}
+function bindPerfErgEvents(goalId){
+  const erg=perfAnswers[goalId].erg, minCount=goalId===1?4:3;
+  document.querySelectorAll(".erg-review-ta").forEach(ta=>{
+    ta.oninput=()=>{
+      erg.reviewTexts[ta.dataset.nr]=ta.value;
+      const len=ta.value.trim().length, cnt=$("perfErgReviewCount_"+ta.dataset.nr);
+      if(cnt){ cnt.textContent=len+" / mind. "+PERF_ERG_MIN_LEN+" Zeichen"+(len>=PERF_ERG_MIN_LEN?" ✓":""); cnt.style.color=len>=PERF_ERG_MIN_LEN?"var(--pos)":"var(--muted)"; }
+      $("perfNextBtn").disabled=!perfGoalValid(goalId);
+      schedulePerfDraftSave();
+    };
+    ta.oninput();
+  });
+  const chks=document.querySelectorAll(".erg-cand-chk");
+  chks.forEach(chk=>{
+    chk.onchange=()=>{
+      const checked=document.querySelectorAll(".erg-cand-chk:checked").length;
+      const need=Math.min(minCount,chks.length);
+      $("perfErgConfirmBtn").disabled=checked<need;
+    };
+  });
+  const confirmBtn=$("perfErgConfirmBtn");
+  if(confirmBtn) confirmBtn.onclick=()=>{
+    erg.selected=[...document.querySelectorAll(".erg-cand-chk:checked")].map(c=>c.value);
+    erg.locked=true;
+    renderPerfErgBlock(goalId);
+    $("perfNextBtn").disabled=!perfGoalValid(goalId);
+    schedulePerfDraftSave();
+  };
+  document.querySelectorAll(".erg-plan-ta").forEach(ta=>{
+    ta.oninput=()=>{
+      erg.plans[ta.dataset.nr]=ta.value;
+      const len=ta.value.trim().length, cnt=$("perfErgPlanCount_"+ta.dataset.nr);
+      if(cnt){ cnt.textContent=len+" / mind. "+PERF_ERG_MIN_LEN+" Zeichen"+(len>=PERF_ERG_MIN_LEN?" ✓":""); cnt.style.color=len>=PERF_ERG_MIN_LEN?"var(--pos)":"var(--muted)"; }
+      $("perfNextBtn").disabled=!perfGoalValid(goalId);
+      schedulePerfDraftSave();
+    };
+    ta.oninput();
+  });
 }
 function renderPerfFinalStep(){
   $("perfBody").innerHTML=`<div style="text-align:center;padding:24px 10px">
@@ -5725,6 +5904,35 @@ async function submitPerfReport(){
     $("perfSubmitBtn").disabled=false;
   }
 }
+// Read-only-Darstellung der "Ergänzung" zu Ziel 1/2 (Nutzervorgabe
+// 08.09.2026) - gemeinsam für Overview + beide PDFs, da alle drei dieselben
+// ac-lbl/ac-val-CSS-Klassen der Live-Ansicht nutzen können (die PDF-Boxen
+// hängen im selben Dokument, siehe Kommentar bei buildPerfReportPdfDoc()).
+// g.answers.erg existiert nur bei Ziel 1/2 UND aktivierten Ergänzungen zum
+// Absendezeitpunkt - sonst liefert die Funktion "" (kein Bruch bei älteren
+// Berichten oder nicht-berechtigten Mitarbeitern).
+function perfErgReadonlyHtml(goalId,snapshot,answers){
+  const erg=answers&&answers.erg; if(!erg) return "";
+  const review=(snapshot&&snapshot.erg&&snapshot.erg.review)||[];
+  const candidates=(snapshot&&snapshot.erg&&snapshot.erg.candidates)||[];
+  let html=`<div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)">
+    <div style="font-weight:800;font-size:12px;color:var(--wg-navy);margin-bottom:8px">Ergänzung</div>`;
+  html+=review.map(r=>`<div style="margin-bottom:8px">
+    <span class="ac-lbl">${escapeHtml(r.name)}</span>
+    <div class="ac-val" style="font-weight:600">${goalId===1?`${fmt(r.monatIst)} Stk. · ${fmtSign(r.diff)} zum Vormonat`:`${fmt(r.monatIst)} Stk. · Ziel ${r.zielErreicht?"erreicht ✓":"nicht erreicht"}`}</div>
+    <div style="font-size:12px;white-space:pre-wrap">${escapeHtml((erg.reviewTexts&&erg.reviewTexts[r.nr])||"–")}</div>
+  </div>`).join("");
+  if(erg.locked&&erg.selected&&erg.selected.length){
+    html+=erg.selected.map(nr=>{
+      const c=candidates.find(x=>x.nr===nr);
+      return `<div style="margin-bottom:8px">
+        <span class="ac-lbl">${escapeHtml(c?c.name:nr)} · geplante Maßnahmen</span>
+        <div style="font-size:12px;white-space:pre-wrap">${escapeHtml((erg.plans&&erg.plans[nr])||"–")}</div>
+      </div>`;
+    }).join("");
+  }
+  return html+`</div>`;
+}
 // Nach dem Absenden bleibt das PopUp offen und zeigt eine lesbare Übersicht
 // des gerade abgegebenen Berichts (Nutzervorgabe 24.08.2026: "bei Fertig
 // öffnet er keinen Text/keine Datei") - bisher schloss sich das PopUp direkt
@@ -5748,6 +5956,7 @@ function renderPerfDoneOverview(goalsPayload,mailFailures){
       <div style="font-size:14px;font-weight:900;color:var(--wg-navy);margin-bottom:10px">${escapeHtml(PERF_GOAL_TITLES[g.goal_id]||("Ziel "+g.goal_id))}</div>
       ${perfGoalSystemHtml(g.goal_id,g.snapshot)}
       ${qa}
+      ${perfErgReadonlyHtml(g.goal_id,g.snapshot,g.answers)}
     </div>`;
   }).join("");
   const failureNote=(mailFailures&&mailFailures.length)?`<div class="error" style="margin-bottom:14px">⚠️ Mailversand an ${escapeHtml(mailFailures.join(", "))} ist fehlgeschlagen. Bitte Admin informieren.</div>`:"";
@@ -5789,6 +5998,7 @@ async function buildPerfReportPdfDoc(employee,year,month,goalsPayload,submittedA
       <div style="font-size:14px;font-weight:900;color:#062A3F;margin-bottom:10px">${escapeHtml(PERF_GOAL_TITLES[g.goal_id]||("Ziel "+g.goal_id))}</div>
       ${perfGoalSystemHtml(g.goal_id,g.snapshot)}
       ${qa}
+      ${perfErgReadonlyHtml(g.goal_id,g.snapshot,g.answers)}
     </div>`;
   }).join("");
   box.innerHTML=`
@@ -6036,6 +6246,7 @@ async function buildCombinedPerfReportsPdfDoc(reports,year,month){
         <div style="font-size:14px;font-weight:900;color:#062A3F;margin-bottom:10px">${escapeHtml(PERF_GOAL_TITLES[g.goal_id]||("Ziel "+g.goal_id))}</div>
         ${perfGoalSystemHtml(g.goal_id,g.snapshot)}
         ${qa}
+        ${perfErgReadonlyHtml(g.goal_id,g.snapshot,g.answers)}
       </div>`;
     }).join("");
     return `<div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:10px;margin:26px 0 16px">
