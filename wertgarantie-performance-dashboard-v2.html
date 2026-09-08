@@ -5180,42 +5180,33 @@ function fhMonatIst(nr,year,month){
   const official=fhTotalsFromHistory(nr,year,month);
   return official!=null?official:sumMonthFromDaily(state.dailyFH[nr]||{},year,month);
 }
-// FLOP-Liste: die 10 Fachhändler dieses Mitarbeiters mit der stärksten
-// Verschlechterung ggü. dem Vorjahresmonat (Nutzervorgabe 09.09.2026: "ich
-// will diese haben die sich zum VJ am schlechtesten entwickelt haben, also
-// am meisten ins negative"), IMMER der abgeschlossene Berichtsmonat
-// (year/month = perfReportYear/perfReportMonth, z.B. August 2026 wenn im
-// September ausgefüllt wird), VJ-Vergleich entsprechend derselbe Monat im
-// Vorjahr (August 2025).
-// fh_contacts.prod_monthly (einzige verfügbare Quelle für einen echten
-// Vorjahresmonats-Wert je FH, siehe fhMonatVJValue) deckt nur einen Teil der
-// Fachhändler ab (per SQL geprüft: rund 15-25% je Mitarbeiter haben einen
-// "YYYY-MM"-Eintrag für den Vorjahresmonat) - FH ohne bekannten VJ-Wert
-// können nicht nach VJ-Entwicklung eingeordnet werden und fallen ans Ende
-// der Liste (dort weiterhin nach absoluter Produktion sortiert, bisheriges
-// Kriterium), damit die Liste trotz lückenhafter VJ-Daten nie leerer wird
-// als vorher.
-// Nutzerkorrektur 09.09.2026: FH, die sowohl heuer als auch im
-// Vorjahresmonat 0 Stück produziert haben, sind kein "FLOP"-Fall (nie
-// aktiv, kein Rückgang feststellbar) und werden ausgeschlossen - NUR bei
-// bekanntem VJ-Wert=0 (nicht bei unbekanntem VJ, siehe fhMonatVJValue).
+// FLOP-Liste (Nutzervorgabe 09.09.2026, ersetzt die bisherige Monats-/
+// Prozent-basierte Logik): "nicht mehr nur Monat sondern immer das Jahr ab
+// Januar bis zum jeweiligen Monat" - Jahres-Kumulierung Januar bis
+// einschließlich Berichtsmonat, z.B. Bericht August 2026 -> Jan-Aug 2026
+// (LJ) vs. Jan-Aug 2025 (VJ). Sortiert nach dem größten ABSOLUTEN Verlust
+// in Stück (nicht mehr nach Prozent) - "die, die [dieses Jahr] verloren
+// haben" (VJ > LJ). LJ kommt aus fhProdThroughMonth() (bereits vorhandene,
+// authoritative Quelle - state.latest.fh[nr].lj korrigiert um die Tage NACH
+// dem Berichtsmonat). VJ kommt aus fhVjYtdThroughMonth() (Summe der
+// verfügbaren Monate aus fh_contacts.prod_monthly - einzige verfügbare
+// Quelle für Vorjahresdaten). FH ohne jeglichen VJ-Datenpunkt in diesem
+// Zeitraum können nicht als "verloren" eingestuft werden und fallen raus;
+// ebenso FH ohne echten Verlust (VJ<=LJ, also gleich geblieben oder
+// gewachsen).
 function perfFlop10Candidates(emp,year,month){
   const out=[];
   for(const nr of Object.keys(state.latest.fh||{})){
     if(fhEmpFor(nr)!==emp) continue;
-    const monatIst=fhMonatIst(nr,year,month);
-    const vjIst=fhMonatVJValue(nr,year,month);
-    if(monatIst===0&&vjIst===0) continue;
+    const ljYtd=fhProdThroughMonth(nr,year,month);
+    const vjYtd=fhVjYtdThroughMonth(nr,year,month);
+    if(vjYtd==null) continue;
+    const verlust=vjYtd-ljYtd;
+    if(verlust<=0) continue;
     out.push({nr,name:perfFhNameLookup(nr),ort:(state.latest.fh[nr]&&state.latest.fh[nr].ort)||"",
-      monatIst,vjIst,vjMonatPct:fhMonatVJPct(monatIst,vjIst)});
+      ljYtd,vjYtd,verlust,verlustPct:fhMonatVJPct(ljYtd,vjYtd)});
   }
-  out.sort((a,b)=>{
-    const aKnown=a.vjMonatPct!=null, bKnown=b.vjMonatPct!=null;
-    if(aKnown&&bKnown) return a.vjMonatPct-b.vjMonatPct;
-    if(aKnown!==bKnown) return aKnown?-1:1;
-    return a.monatIst-b.monatIst;
-  });
-  return out.slice(0,10);
+  return out.sort((a,b)=>b.verlust-a.verlust).slice(0,10);
 }
 // Entwicklung der im VORHERIGEN Bericht ausgewählten FH (Review-Teil der
 // Ergänzung) - gemeinsam für Ziel 1 (Produktion: +/- zum Vormonat + VJ-
@@ -5276,6 +5267,25 @@ function fhProdThroughMonth(nr,year,month){
   return Object.entries(pm).filter(([k])=>k.startsWith(String(year))&&k<=cutoff).reduce((s,[,v])=>s+(v||0),0);
 }
 function fhActiveThroughMonth(nr,year,month){ return fhProdThroughMonth(nr,year,month)>0; }
+// Wie fhProdThroughMonth(), aber für das VORJAHR (Jan.-Berichtsmonat) -
+// gebraucht für die FLOP-Liste (perfFlop10Candidates(), Nutzervorgabe
+// 09.09.2026: "immer das Jahr ab Januar bis zum jeweiligen Monat ... als
+// VJ"). Einzige verfügbare Quelle ist fh_contacts.prod_monthly (state.
+// dailyFH reicht nie ins Vorjahr zurück) - fehlende Einzelmonate werden als
+// 0 gewertet (best effort, wie bei fhProdThroughMonth's Bulk-Fallback);
+// null nur, wenn im gesamten Zeitraum KEIN einziger Monat bekannt ist (FH
+// im Vorjahr komplett unerfasst).
+function fhVjYtdThroughMonth(nr,year,month){
+  const pm=fhContactsBulkIndex&&fhContactsBulkIndex[nr];
+  if(!pm) return null;
+  const vjYear=year-1;
+  let sum=0,any=false;
+  for(let m=1;m<=month;m++){
+    const k=vjYear+"-"+String(m).padStart(2,"0");
+    if(pm[k]!=null){ sum+=pm[k]; any=true; }
+  }
+  return any?sum:null;
+}
 const AKTIVIERUNGSQUOTE_JAHRE=[2024,2025,2026]; // fix lt. Zieldefinition, nicht automatisch rollierend
 // Findet in state.dailyAktivierungsquote[emp] (Tageshistorie der offiziellen
 // Quote aus dem Blatt "PO + AKQ", siehe parseAuswertung()/mergeSnapshot())
@@ -5322,12 +5332,16 @@ function aktivierungsquoteFor(emp,year,month){
 // Akquisen"): a["p"+year] statt hartem a.p2026, damit das unverändert
 // funktioniert, sobald der Berichtsmonat in ein neues Jahr fällt - der
 // Parser (parseAuswertung) benennt die Produktionsspalten bereits
-// Jahr-generisch (p2024/p2025/p2026, siehe snap.akq). Vorbild:
-// renderAkqOhneProd() (identisches "ohne Produktion"-Kriterium, dort ohne
-// den zusätzlichen beginnJahr-Filter).
+// Jahr-generisch (p2024/p2025/p2026, siehe snap.akq). Nutzervorgabe
+// 09.09.2026: "bei den Akquisen bitte auch 2024 & 2025 Akquirierte
+// dazunehmen (gleiche Anzahl wie bei der Anzeige AKQ ohne Prod.)" - der
+// ursprüngliche beginnJahr===year-Filter (nur im Berichtsjahr begonnene
+// Akquisen) entfällt, identisches "ohne Produktion"-Kriterium wie
+// renderAkqOhneProd() (dort ebenfalls ohne Beginn-Jahr-Einschränkung).
+// Auswahl-/Anzeigelogik (renderPerfErgBlock()) bleibt unverändert.
 function perfAkqOhneProdCandidates(emp,year){
   const s=state.latest; if(!s||!s.akq) return [];
-  return s.akq.filter(a=>a.emp===emp&&a.beginnJahr===year&&(a["p"+year]||0)===0)
+  return s.akq.filter(a=>a.emp===emp&&(a["p"+year]||0)===0)
     .map(a=>({nr:a.nr,name:a.name||a.nr,ort:a.ort||"",monatIst:0,vjMonatPct:null,beginn:a.beginn}))
     .sort((a,b)=>(a.beginn||"").localeCompare(b.beginn||""));
 }
@@ -5886,9 +5900,12 @@ function renderPerfErgBlock(goalId){
     html+=`<div>
       <div style="font-weight:700;font-size:13px;margin-bottom:8px">Diese ${need} ${itemLabel} werde ich gezielt im ${MONATE[curMonth-1]} ${verb}:</div>
       ${candidates.map(c=>{
-        const vjPart=goalId===1
-          ?(c.vjIst!=null?` · VJ ${fmt(c.vjIst)} Stk. (${fmtPct(c.vjMonatPct)})`:` · VJ unbekannt`)
-          :"";
+        // Nutzervorgabe 09.09.2026: bei Ziel 1 (FLOP) LJ/VJ/-Stück/Prozent
+        // statt der bisherigen reinen Monatszahl anzeigen (Jahres-
+        // Kumulierung Jan.-Berichtsmonat, siehe perfFlop10Candidates()).
+        const rightPart=goalId===1
+          ?`LJ ${fmt(c.ljYtd)} · VJ ${fmt(c.vjYtd)} · -${fmt(c.verlust)} Stk. (${fmtPct(c.verlustPct)})`
+          :`${fmt(c.monatIst)} Stk.`;
         // Nutzervorgabe 09.09.2026: bei der Akquise-Auswahl (Ziel 2) das
         // Anlagedatum mit anzeigen (aus perfAkqOhneProdCandidates()).
         const beginnPart=goalId===2?` · angelegt ${fmtDate(c.beginn)}`:"";
@@ -5896,7 +5913,7 @@ function renderPerfErgBlock(goalId){
         <label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)">
           <input type="checkbox" class="erg-cand-chk" value="${c.nr}" style="width:16px;height:16px;flex-shrink:0">
           <span style="flex:1"><b>${escapeHtml(c.name)}</b> <span style="color:var(--muted)">· FH ${escapeHtml(c.nr)}${c.ort?" · "+escapeHtml(c.ort):""}${beginnPart}</span></span>
-          <span style="color:var(--muted);font-size:12px;text-align:right;white-space:nowrap">${fmt(c.monatIst)} Stk.${vjPart}</span>
+          <span style="color:var(--muted);font-size:12px;text-align:right;white-space:nowrap">${rightPart}</span>
         </label>`;
       }).join("")}
       <button class="btn btn-blue" id="perfErgConfirmBtn" style="margin-top:10px" disabled>Bestätigen</button>
