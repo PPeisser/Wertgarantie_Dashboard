@@ -6821,8 +6821,14 @@ function renderEmpRanking(){
     // und die Balken die eigentliche Größenordnung nicht mehr unterschieden.
     // Rückläufige Werte (growth<0) zeigen bewusst keinen Balken (0 %) - der
     // Wert steht ohnehin daneben in Rot.
-    const maxGrowth=Math.max(0,...base.map(r=>r.growth??0));
-    const rows=base.map(r=>({...r, barPct:(maxGrowth>0&&r.growth>0)?Math.min(100,r.growth/maxGrowth*100):0}));
+    // Balken als "Divergent Bar" um eine Mittellinie bei 100 % (= Vorjahr,
+    // Nutzervorgabe 08.09.2026) - links vom Strich rot bei Rückgang, rechts
+    // grün bei Steigerung, jeweils bis zum stärksten Ausschlag der Liste
+    // (maxAbs) skaliert, damit beide Richtungen auf derselben Skala liegen.
+    const maxAbs=Math.max(1,...base.map(r=>Math.abs(r.growth??0)));
+    const rows=base.map(r=>({...r,
+      posPct:(r.growth>0)?Math.min(100,r.growth/maxAbs*100):0,
+      negPct:(r.growth<0)?Math.min(100,Math.abs(r.growth)/maxAbs*100):0}));
     box.innerHTML=`<div class="panel" style="margin:14px 0">
       <h3 style="justify-content:space-between;flex-wrap:wrap;row-gap:8px"><span style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--wg-blue)"></span>Mitarbeiter-Ranking · Steigerung ggü. Vorjahr ${s.jahr}</span>${tabs}</h3>
       ${rows.map((r,i)=>`
@@ -6832,7 +6838,11 @@ function renderEmpRanking(){
             <div style="font-weight:700">${escapeHtml(r.emp)}</div>
             <div style="font-size:11px;color:var(--muted);margin-top:1px">Vorjahr ${fmt(r.vj)} · Stand ${fmt(r.ist)} · Hochr. ${fmt(r.hr)}</div>
           </div>
-          <div class="bar" style="flex:2;height:10px"><div class="fill" style="width:${r.barPct}%;background:${r.growth==null||r.growth>=0?"var(--pos)":"var(--neg)"}"></div></div>
+          <div style="flex:2;display:flex;align-items:center;height:10px" title="Mitte = Vorjahr (100 %)">
+            <div style="flex:1;height:100%;display:flex;justify-content:flex-end;border-radius:5px 0 0 5px;overflow:hidden;background:var(--panel-2,#F3F7FA)"><div style="height:100%;width:${r.negPct}%;background:var(--neg)"></div></div>
+            <div style="width:2px;height:16px;background:var(--wg-navy);opacity:.35;flex:none"></div>
+            <div style="flex:1;height:100%;display:flex;justify-content:flex-start;border-radius:0 5px 5px 0;overflow:hidden;background:var(--panel-2,#F3F7FA)"><div style="height:100%;width:${r.posPct}%;background:var(--pos)"></div></div>
+          </div>
           <div style="width:92px;text-align:right;flex:none;white-space:nowrap">
             <b style="color:${r.growth==null?"var(--muted)":r.growth>=0?"var(--pos)":"var(--neg)"}">${fmtPct(r.growth)}</b>
             <div style="font-size:10.5px;font-weight:700;color:${r.delta==null?"var(--muted)":r.delta>=0?"var(--pos)":"var(--neg)"}">(${fmtSign(r.delta)})</div>
