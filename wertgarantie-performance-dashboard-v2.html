@@ -1305,6 +1305,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <button class="btn btn-ghost" id="nwAllClose" style="padding:7px 12px">✕ Schließen</button>
     </div>
     <div id="nwAllSub" style="font-size:12px;color:var(--muted);margin-bottom:10px"></div>
+    <div id="nwAllSortBar"></div>
     <div id="nwAllBody" style="overflow-x:auto"></div>
   </div>
 </div>
@@ -12167,6 +12168,44 @@ const NEUNWOCHEN_KATEGORIEN=[
   {key:"abgelaufen",label:"Abgelaufen (9 Wochen überschritten)",dot:"var(--neg)"},
   {key:"aktiv",label:"Aktiv / offen",dot:"var(--amber)"},
 ];
+// Sortierung im "Alle 9-Wochen-Pläne"-PopUp (Nutzervorgabe 09.09.2026: "die
+// Schaltflächen für die Sortierung ... damit man hin und her schalten
+// kann") - EIN gemeinsamer Sortierzustand für alle vier Kategorie-Tabellen,
+// per Klick umschaltbar (gleiche Spalte nochmal = Richtung umdrehen,
+// andere Spalte = Wechsel, Start aufsteigend).
+let neunWochenAllSort={key:"beginn",dir:"asc"};
+const NEUNWOCHEN_SORT_OPTS=[
+  {key:"beginn",label:"Beginn"},
+  {key:"resttage",label:"Resttage"},
+  {key:"termine",label:"Termine"},
+  {key:"prod",label:"Produktion"},
+];
+function neunWochenAllSortRows(rows){
+  const {key,dir}=neunWochenAllSort, mul=dir==="asc"?1:-1;
+  return [...rows].sort((a,b)=>{
+    if(key==="beginn") return mul*((a.beginn||"")<(b.beginn||"")?-1:(a.beginn||"")>(b.beginn||"")?1:0);
+    return mul*((a[key]||0)-(b[key]||0));
+  });
+}
+function renderNeunWochenAllSortBar(){
+  const box=$("nwAllSortBar"); if(!box) return;
+  box.innerHTML=`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+    <span style="font-size:11.5px;color:var(--muted);font-weight:700">Sortieren nach:</span>
+    ${NEUNWOCHEN_SORT_OPTS.map(o=>{
+      const active=neunWochenAllSort.key===o.key;
+      const arrow=active?(neunWochenAllSort.dir==="asc"?" ▲":" ▼"):"";
+      return `<button type="button" class="btn ${active?"btn-blue":"btn-ghost"} nw-all-sort-btn" data-key="${o.key}" style="padding:5px 11px;font-size:11.5px">${escapeHtml(o.label)}${arrow}</button>`;
+    }).join("")}
+  </div>`;
+  box.querySelectorAll(".nw-all-sort-btn").forEach(btn=>{
+    btn.onclick=()=>{
+      const key=btn.dataset.key;
+      if(neunWochenAllSort.key===key) neunWochenAllSort.dir=neunWochenAllSort.dir==="asc"?"desc":"asc";
+      else neunWochenAllSort={key,dir:"asc"};
+      renderNeunWochenAllModal();
+    };
+  });
+}
 function neunWochenAllTableHtml(rows,showGL,jahr){
   if(!rows.length) return `<div class="empty-note">Keine Einträge.</div>`;
   return `<table><thead><tr><th>Händler${showGL?" / Betreuer":""}</th><th class="r">Resttage</th><th>Beginn</th><th class="r">Termine</th><th class="r">Prod. ${jahr}</th></tr></thead><tbody>`+
@@ -12181,8 +12220,9 @@ function neunWochenAllTableHtml(rows,showGL,jahr){
 function renderNeunWochenAllModal(){
   const s=state.latest; if(!s) return;
   const showGL=currentEmp===AT_GESAMT;
-  const rows=neunWochenAllRows();
+  const rows=neunWochenAllSortRows(neunWochenAllRows());
   $("nwAllSub").textContent=`${fmt(rows.length)} Händler insgesamt (Beginn irgendwann) · ${currentEmp}`;
+  renderNeunWochenAllSortBar();
   $("nwAllBody").innerHTML=NEUNWOCHEN_KATEGORIEN.map(k=>{
     const krows=rows.filter(r=>r.kategorie===k.key);
     return `<h4 style="margin:16px 0 8px;display:flex;align-items:center;gap:8px">
