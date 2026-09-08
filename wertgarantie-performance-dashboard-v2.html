@@ -3554,7 +3554,7 @@ state = {
   dailyFH: { fhNr: {vortagDatum: vt} }
 }
 ------------------------------------ */
-let state = { latest:null, dailyGL:{}, dailyFH:{}, dailyAKP:{}, dailyAktivierungsquote:{}, dailyGLTotals:{} };
+let state = { latest:null, dailyGL:{}, dailyFH:{}, dailyAKP:{}, dailyAktivierungsquote:{}, dailyGLTotals:{}, dailyFHTotals:{} };
 let akpPeriod="monat";
 // Vollständige AKP-Kontaktdatenbank (10.000+, siehe akp_contacts), einmal pro
 // Sitzung geladen. Ergänzt die Tages-Einspielliste (state.latest.akp) um AKP,
@@ -4515,8 +4515,17 @@ function mergeSnapshot(snap){
     if(!state.dailyGLTotals[k]) state.dailyGLTotals[k]={};
     state.dailyGLTotals[k][snap.vortag]={monat:g.monat,jahr:g.jahr};
   }
+  if(!state.dailyFHTotals) state.dailyFHTotals={};
   for(const [nr,f] of Object.entries(snap.fh)){
     if(f.vt>0){ if(!state.dailyFH[nr]) state.dailyFH[nr]={}; state.dailyFH[nr][snap.vortag]=f.vt; }
+    // Wie bei state.dailyGLTotals (s.o.): FH_Liste liefert je Tag bereits den
+    // vom Report SELBST kumulierten Monatswert (Spalte "Monat") - robuster als
+    // die Summe der täglichen Vortags-Deltas (state.dailyFH), die bei
+    // fehlenden Einspieltagen Lücken hat (derselbe Architekturfehler wie beim
+    // bereits behobenen GL-Monatswert, Bug-Report 04.09.2026, hier aber auf
+    // FH-Ebene - siehe fhTotalsFromHistory()/perfFlop10Candidates()).
+    if(!state.dailyFHTotals[nr]) state.dailyFHTotals[nr]={};
+    state.dailyFHTotals[nr][snap.vortag]=f.monat;
   }
   snap.akp.forEach(a=>{
     const k=a.nr||a.name+"@"+a.firma;
@@ -5148,14 +5157,44 @@ function fhMonatVJPct(curIst,vjIst){
 function perfFhNameLookup(nr){
   return (state.latest.fh[nr]&&state.latest.fh[nr].name)||(fhContactsAllIndex&&fhContactsAllIndex[nr]&&fhContactsAllIndex[nr].name)||nr;
 }
-// FLOP 10 = die 10 Fachhändler dieses Mitarbeiters mit der geringsten
-// Produktion im Berichtsmonat (Nutzerentscheidung 08.09.2026), IMMER der
-// abgeschlossene Berichtsmonat (year/month = perfReportYear/perfReportMonth,
-// z.B. August 2026 wenn im September ausgefüllt wird - Nutzervorgabe
-// 09.09.2026 "immer des Vormonates"), VJ-Vergleich entsprechend derselbe
-// Monat im Vorjahr (August 2025). sumMonthFromDaily() ist generisch (siehe
-// Kommentar dort) und funktioniert unverändert auf state.dailyFH[nr], nicht
-// nur state.dailyGL.
+// Analog glTotalsFromHistory(): findet in state.dailyFHTotals[nr] (Tages-
+// historie des vom Report SELBST kumulierten "Monat"-Werts je FH, siehe
+// mergeSnapshot()) den letzten Eintrag INNERHALB des angefragten
+// Berichtsmonats. Fallback (fhMonatIst()) auf die Summe der täglichen
+// Vortags-Deltas (state.dailyFH) für Berichtsmonate ohne erfassten
+// dailyFHTotals-Eintrag (z.B. sehr alte Berichte vor Einführung dieser
+// Historie) - genau derselbe Architekturfehler wie beim bereits behobenen
+// GL-Monatswert (Bug-Report 04.09.2026, Peter Peißer 665 statt 780), hier
+// aber auf FH-Ebene: sumMonthFromDaily(state.dailyFH[nr]) hat bei fehlenden
+// Einspieltagen Lücken, der Report kennt den korrekten kumulierten
+// Monatswert aber trotzdem.
+function fhTotalsFromHistory(nr,year,month){
+  const dm=state.dailyFHTotals&&state.dailyFHTotals[nr];
+  if(!dm) return null;
+  const prefix=year+"-"+String(month).padStart(2,"0");
+  let best=null;
+  for(const d in dm) if(d.startsWith(prefix)&&(best==null||d>best)) best=d;
+  return best==null?null:dm[best];
+}
+function fhMonatIst(nr,year,month){
+  const official=fhTotalsFromHistory(nr,year,month);
+  return official!=null?official:sumMonthFromDaily(state.dailyFH[nr]||{},year,month);
+}
+// FLOP-Liste: die 10 Fachhändler dieses Mitarbeiters mit der stärksten
+// Verschlechterung ggü. dem Vorjahresmonat (Nutzervorgabe 09.09.2026: "ich
+// will diese haben die sich zum VJ am schlechtesten entwickelt haben, also
+// am meisten ins negative"), IMMER der abgeschlossene Berichtsmonat
+// (year/month = perfReportYear/perfReportMonth, z.B. August 2026 wenn im
+// September ausgefüllt wird), VJ-Vergleich entsprechend derselbe Monat im
+// Vorjahr (August 2025).
+// fh_contacts.prod_monthly (einzige verfügbare Quelle für einen echten
+// Vorjahresmonats-Wert je FH, siehe fhMonatVJValue) deckt nur einen Teil der
+// Fachhändler ab (per SQL geprüft: rund 15-25% je Mitarbeiter haben einen
+// "YYYY-MM"-Eintrag für den Vorjahresmonat) - FH ohne bekannten VJ-Wert
+// können nicht nach VJ-Entwicklung eingeordnet werden und fallen ans Ende
+// der Liste (dort weiterhin nach absoluter Produktion sortiert, bisheriges
+// Kriterium), damit die Liste trotz lückenhafter VJ-Daten nie leerer wird
+// als vorher.
 // Nutzerkorrektur 09.09.2026: FH, die sowohl heuer als auch im
 // Vorjahresmonat 0 Stück produziert haben, sind kein "FLOP"-Fall (nie
 // aktiv, kein Rückgang feststellbar) und werden ausgeschlossen - NUR bei
@@ -5164,13 +5203,19 @@ function perfFlop10Candidates(emp,year,month){
   const out=[];
   for(const nr of Object.keys(state.latest.fh||{})){
     if(fhEmpFor(nr)!==emp) continue;
-    const monatIst=sumMonthFromDaily(state.dailyFH[nr]||{},year,month);
+    const monatIst=fhMonatIst(nr,year,month);
     const vjIst=fhMonatVJValue(nr,year,month);
     if(monatIst===0&&vjIst===0) continue;
     out.push({nr,name:perfFhNameLookup(nr),ort:(state.latest.fh[nr]&&state.latest.fh[nr].ort)||"",
       monatIst,vjIst,vjMonatPct:fhMonatVJPct(monatIst,vjIst)});
   }
-  return out.sort((a,b)=>a.monatIst-b.monatIst).slice(0,10);
+  out.sort((a,b)=>{
+    const aKnown=a.vjMonatPct!=null, bKnown=b.vjMonatPct!=null;
+    if(aKnown&&bKnown) return a.vjMonatPct-b.vjMonatPct;
+    if(aKnown!==bKnown) return aKnown?-1:1;
+    return a.monatIst-b.monatIst;
+  });
+  return out.slice(0,10);
 }
 // Entwicklung der im VORHERIGEN Bericht ausgewählten FH (Review-Teil der
 // Ergänzung) - gemeinsam für Ziel 1 (Produktion: +/- zum Vormonat + VJ-
@@ -5182,10 +5227,10 @@ function perfErgReviewRows(goalId,emp,year,month){
   if(!prevSelected.length) return [];
   const prevP=prevMonthOf(year,month);
   return prevSelected.map(nr=>{
-    const monatIst=sumMonthFromDaily(state.dailyFH[nr]||{},year,month);
+    const monatIst=fhMonatIst(nr,year,month);
     const row={nr,name:perfFhNameLookup(nr),monatIst};
     if(goalId===1){
-      const vormonatIst=sumMonthFromDaily(state.dailyFH[nr]||{},prevP.year,prevP.month);
+      const vormonatIst=fhMonatIst(nr,prevP.year,prevP.month);
       const vjIst=fhMonatVJValue(nr,year,month);
       row.vormonatIst=vormonatIst; row.diff=monatIst-vormonatIst; row.vjIst=vjIst; row.vjMonatPct=fhMonatVJPct(monatIst,vjIst);
     }else{
@@ -6800,6 +6845,7 @@ function migrateState(){
   // abstürzen (Cannot set properties of undefined).
   if(!state.dailyGLTotals){ state.dailyGLTotals={}; changed=true; }
   if(!state.dailyAktivierungsquote){ state.dailyAktivierungsquote={}; changed=true; }
+  if(!state.dailyFHTotals){ state.dailyFHTotals={}; changed=true; }
   if(L.glPlan==null){
     L.glPlan={}; L.glPlan[AT_KEY]=0;
     for(const f of Object.values(L.fh||{})){
