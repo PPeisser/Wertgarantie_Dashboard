@@ -5117,12 +5117,27 @@ const PERF_ERG_MIN_LEN=20;
 function perfErgEligible(goalId,emp){
   return perfErgaenzungenEnabled && (goalId===1||goalId===2) && PERF_ERG_EMPLOYEES.includes(emp);
 }
-// VJ-Monatsvergleich pro FH existiert im Datenmodell noch nicht (nur
-// GL-aggregiert, siehe glTotalsFromHistory) - Rückgabewert bewusst schon
-// jetzt vorgesehen (immer null), damit eine künftige Datenquelle hier nur
-// noch eingesetzt werden muss, ohne die Aufrufer (Kandidatenliste + Review)
-// anzupassen.
-function fhMonatVJPct(nr,year,month){ return null; }
+// VJ-Monatsvergleich pro FH (Nutzerkorrektur 08.09.2026: "die Monatszahlen
+// vom VJ sind ja im Dashboard" - fh_contacts.prod_monthly enthält bereits
+// echte Monatssummen für 2024/2025/2026 je FH, siehe fhContactsBulkIndex/
+// renderFhMonthly()/fhMonthlyMerged() - dieselbe Datenquelle, hier nur für
+// EINEN FH und EINEN Monat statt der ganzen Mehrjahres-Tabelle gebraucht.
+// Merge-Priorität identisch zu fhMonthlyMerged(): prod_monthly ("echte
+// Monatssummen", z.B. aus einem Bulk-Import) geht vor der aus
+// state.dailyFH aufsummierten laufenden Tageshistorie - state.dailyFH
+// reicht ohnehin nicht bis ins Vorjahr zurück, prod_monthly schon.
+function fhMonatVJPct(nr,year,month){
+  const daily=state.dailyFH[nr]||{};
+  const fromDaily={};
+  for(const [d,v] of Object.entries(daily)){ const ym=d.slice(0,7); fromDaily[ym]=(fromDaily[ym]||0)+v; }
+  const bulk=(fhContactsBulkIndex&&fhContactsBulkIndex[nr])||{};
+  const merged={...fromDaily,...bulk};
+  const curKey=year+"-"+String(month).padStart(2,"0");
+  const vjKey=(year-1)+"-"+String(month).padStart(2,"0");
+  const cur=merged[curKey], vj=merged[vjKey];
+  if(cur==null||!vj) return null;
+  return (cur/vj-1)*100;
+}
 function perfFhNameLookup(nr){
   return (state.latest.fh[nr]&&state.latest.fh[nr].name)||(fhContactsAllIndex&&fhContactsAllIndex[nr]&&fhContactsAllIndex[nr].name)||nr;
 }
@@ -5787,7 +5802,7 @@ function renderPerfErgBlock(goalId){
         <div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px">
           <div style="font-weight:700;margin-bottom:4px">${escapeHtml(r.name)}</div>
           <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${goalId===1
-            ?`Produktion ${fmt(r.monatIst)} Stk. · ${fmtSign(r.diff)} zum Vormonat · Vergleich VJ-Monat: ${r.vjMonatPct==null?"–":r.vjMonatPct.toFixed(1)+" %"}`
+            ?`Produktion ${fmt(r.monatIst)} Stk. · ${fmtSign(r.diff)} zum Vormonat · Vergleich VJ-Monat: ${fmtPct(r.vjMonatPct)}`
             :`Produktion ${fmt(r.monatIst)} Stk. · Ziel ${r.zielErreicht?"erreicht ✓":"nicht erreicht"}`}</div>
           <textarea class="erg-review-ta" data-nr="${r.nr}" rows="2" placeholder="Konnten die geplanten Maßnahmen umgesetzt werden, wie war die Wirkung?" style="width:100%;font:inherit;border:2px solid var(--line);border-radius:8px;padding:6px 8px">${escapeHtml(erg.reviewTexts[r.nr]||"")}</textarea>
           <div style="font-size:10.5px;color:var(--muted)" id="perfErgReviewCount_${r.nr}"></div>
@@ -5802,7 +5817,7 @@ function renderPerfErgBlock(goalId){
         <label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)">
           <input type="checkbox" class="erg-cand-chk" value="${c.nr}" style="width:16px;height:16px;flex-shrink:0">
           <span style="flex:1">${escapeHtml(c.name)}${c.ort?" · "+escapeHtml(c.ort):""}</span>
-          <span style="color:var(--muted);font-size:12px">${fmt(c.monatIst)} Stk.${c.vjMonatPct!=null?" · "+c.vjMonatPct.toFixed(1)+" % VJ":""}</span>
+          <span style="color:var(--muted);font-size:12px">${fmt(c.monatIst)} Stk.${c.vjMonatPct!=null?" · "+fmtPct(c.vjMonatPct)+" VJ":""}</span>
         </label>`).join("")}
       <button class="btn btn-blue" id="perfErgConfirmBtn" style="margin-top:10px" disabled>Bestätigen</button>
     </div>`;
@@ -5934,7 +5949,7 @@ function perfErgReadonlyHtml(goalId,snapshot,answers){
     <div style="font-weight:800;font-size:12px;color:var(--wg-navy);margin-bottom:8px">Ergänzung</div>`;
   html+=review.map(r=>`<div style="margin-bottom:8px">
     <span class="ac-lbl">${escapeHtml(r.name)}</span>
-    <div class="ac-val" style="font-weight:600">${goalId===1?`${fmt(r.monatIst)} Stk. · ${fmtSign(r.diff)} zum Vormonat`:`${fmt(r.monatIst)} Stk. · Ziel ${r.zielErreicht?"erreicht ✓":"nicht erreicht"}`}</div>
+    <div class="ac-val" style="font-weight:600">${goalId===1?`${fmt(r.monatIst)} Stk. · ${fmtSign(r.diff)} zum Vormonat${r.vjMonatPct!=null?` · ${fmtPct(r.vjMonatPct)} ggü. VJ-Monat`:""}`:`${fmt(r.monatIst)} Stk. · Ziel ${r.zielErreicht?"erreicht ✓":"nicht erreicht"}`}</div>
     <div style="font-size:12px;white-space:pre-wrap">${escapeHtml((erg.reviewTexts&&erg.reviewTexts[r.nr])||"–")}</div>
   </div>`).join("");
   if(erg.locked&&erg.selected&&erg.selected.length){
