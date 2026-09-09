@@ -6219,33 +6219,64 @@ function renderPerfDoneOverview(goalsPayload,mailFailures){
 // Seite beginnt (Sammel-PDF: .pdf-employee-start, Nutzervorgabe 09.09.2026
 // "immer nach jedem Mitarbeiter einen Seitenumbruch"), auch wenn auf der
 // aktuellen Seite noch Platz wäre.
-// Bug-Report 09.09.2026 (Folgefund): trotz der block-weisen Aufteilung kann
-// EIN einzelner Block (z.B. eine Ergänzung mit sehr langem, unbegrenztem
-// Freitext in mehreren Review-/Maßnahmentextfeldern) weiterhin an ein
-// Browser-Canvas-Limit stoßen. Statt DESHALB die komplette PDF-Erstellung -
-// und damit den ganzen "Fertig"-Ablauf, obwohl der Bericht selbst längst
-// erfolgreich in der Datenbank gespeichert ist (siehe submitPerfReport()) -
-// abzubrechen, wird nur dieser eine Abschnitt durch einen Platzhaltertext
-// ersetzt; der Rest des Dokuments bleibt vollständig. console.error()
-// protokolliert die echte Fehlerursache für die Fehlersuche.
-async function renderPdfBlocksToPdf(pdf,blockEls,imgW,pageContentMm,margin,forceBreakEls){
+// wrapperCss: Basis-Formatierung (Schriftart/Farbe), die der jeweilige
+// Aufrufer sonst nur EINMAL auf seiner äußeren Box gesetzt hat und von der
+// die .pdf-block-Kinder per CSS-Vererbung profitierten - siehe Bug-Report
+// 09.09.2026 (zweiter Folgefund) unten.
+// Bug-Report 09.09.2026 (zweiter Folgefund): trotz eigener Blöcke pro
+// Ergänzung-Eintrag scheiterte html2canvas() weiterhin zuverlässig genau an
+// diesen Blöcken (nicht an Größe/Textlänge - im gemeldeten Fall war der
+// Text kurz). Ursache: html2canvas() wurde auf ein tief in der riesigen,
+// um -99999px negativ positionierten Offscreen-Box verschachteltes
+// Kind-Element aufgerufen - einige html2canvas-Implementierungen berechnen
+// die Ziel-Canvas-Größe dabei (fehlerhaft) relativ zur BOUNDING BOX der
+// gesamten Seite inkl. dieses absurden negativen Versatzes, nicht relativ
+// zur tatsächlichen Element-eigenen Größe. Jeder Block wird deshalb jetzt
+// in einen EIGENEN, frisch an document.body angehängten Offscreen-
+// Container geklont (mit der Basis-Formatierung des Aufrufers) und ALS
+// TOP-LEVEL-ELEMENT gerendert - exakt das bereits bekannte, ursprünglich
+// funktionierende Muster (html2canvas() auf einer direkt fixierten Box,
+// nicht auf einem tief verschachtelten Nachfahren).
+// Ein einzelner Block kann weiterhin (extrem selten) an ein echtes
+// Browser-Canvas-Limit stoßen (z.B. bei ungewöhnlich langem Freitext) -
+// statt DESHALB die komplette PDF-Erstellung abzubrechen, wird nur dieser
+// eine Abschnitt durch einen Platzhaltertext ersetzt (mit der echten
+// Fehlermeldung als Hinweis); der Rest des Dokuments bleibt vollständig.
+// Ein Fehlschlag erzwingt dabei KEINEN Seitenumbruch mehr - der Platzhalter
+// wird wie ein normaler (kleiner) Block behandelt und packt sich wie jeder
+// andere Block auf die aktuelle Seite, sofern Platz ist (Nutzervorgabe
+// 09.09.2026: Seitenumbrüche außerhalb des Sammel-PDFs nur zwischen
+// Mitarbeitern, nicht bei jedem einzelnen Abschnitt).
+// Basis-Formatierung, die alle PDF-Boxen dieser Datei auf ihrer äußeren Box
+// setzen (siehe box.style.cssText an den jeweiligen Aufrufstellen) - wird
+// renderPdfBlocksToPdf() mitgegeben, damit die geklonten Einzel-Blöcke
+// (siehe Kommentar dort) dieselbe Vererbung wie zuvor bekommen.
+const PDF_BOX_BASE_CSS="font-family:'Segoe UI',Arial,sans-serif;color:#10202C;background:#fff";
+async function renderPdfBlocksToPdf(pdf,blockEls,imgW,pageContentMm,margin,forceBreakEls,wrapperCss){
   let curY=margin, firstPage=true;
   for(const el of blockEls){
     const forceBreak=forceBreakEls&&forceBreakEls.has(el);
+    const wrapper=document.createElement("div");
+    wrapper.style.cssText="position:fixed;left:-99999px;top:0;width:780px;"+(wrapperCss||"");
+    wrapper.appendChild(el.cloneNode(true));
+    document.body.appendChild(wrapper);
     let canvas=null, renderErr=null;
-    try{ canvas=await html2canvas(el,{scale:2,backgroundColor:"#ffffff",useCORS:true,logging:false}); }
+    try{ canvas=await html2canvas(wrapper,{scale:2,backgroundColor:"#ffffff",useCORS:true,logging:false}); }
     catch(e){ renderErr=e; }
+    wrapper.remove();
     if(!renderErr&&(!canvas||!canvas.width||!canvas.height)) renderErr=new Error("html2canvas lieferte einen leeren Canvas zurück");
     if(renderErr){
       console.error("renderPdfBlocksToPdf: Abschnitt konnte nicht gerendert werden, PDF fährt mit Platzhalter fort.",renderErr,el);
       if(!firstPage&&forceBreak){ pdf.addPage(); curY=margin; }
-      else if(!firstPage&&curY>margin+16){ pdf.addPage(); curY=margin; }
       firstPage=false;
-      pdf.setFontSize(10); pdf.setTextColor(190,50,50);
-      const lines=pdf.splitTextToSize("[Dieser Abschnitt konnte nicht dargestellt werden - Inhalt zu umfangreich. Bitte kürzere Texte verwenden oder den Admin informieren.]",imgW);
+      pdf.setFontSize(9); pdf.setTextColor(190,50,50);
+      const errMsg=(renderErr&&renderErr.message)||String(renderErr);
+      const lines=pdf.splitTextToSize("[Dieser Abschnitt konnte nicht dargestellt werden ("+errMsg+"). Bitte den Admin informieren.]",imgW);
+      const placeholderH=5+lines.length*4+8;
+      if(!firstPage&&curY+placeholderH>margin+pageContentMm+0.01){ pdf.addPage(); curY=margin; }
       pdf.text(lines,margin,curY+5);
-      pdf.setTextColor(16,32,44);
-      curY+=5+lines.length*4.5+8;
+      pdf.setTextColor(16,32,44); pdf.setFontSize(10);
+      curY+=placeholderH;
       continue;
     }
     const blockImgH=canvas.height*imgW/canvas.width;
@@ -6322,7 +6353,7 @@ async function buildPerfReportPdfDoc(employee,year,month,goalsPayload,submittedA
     const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
     const pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), margin=10;
     const imgW=pw-2*margin, pageContentMm=ph-2*margin;
-    await renderPdfBlocksToPdf(pdf,blocks,imgW,pageContentMm,margin);
+    await renderPdfBlocksToPdf(pdf,blocks,imgW,pageContentMm,margin,null,PDF_BOX_BASE_CSS);
     const filename="PerformanceDialog_"+asciiFilenamePart(employee)+"_"+year+"-"+String(month).padStart(2,"0")+".pdf";
     return {pdf,filename};
   }finally{
@@ -6565,7 +6596,7 @@ async function buildCombinedPerfReportsPdfDoc(reports,year,month){
     const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
     const pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), margin=10;
     const imgW=pw-2*margin, pageContentMm=ph-2*margin;
-    await renderPdfBlocksToPdf(pdf,blocks,imgW,pageContentMm,margin,employeeStartEls);
+    await renderPdfBlocksToPdf(pdf,blocks,imgW,pageContentMm,margin,employeeStartEls,PDF_BOX_BASE_CSS);
     const filename="PerformanceDialog_Gesamt_"+year+"-"+String(month).padStart(2,"0")+".pdf";
     return {pdf,filename};
   }finally{
@@ -6685,7 +6716,7 @@ function buildAnnualSummaryPdfDoc(year, report){
       const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
       const pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), margin=10;
       const imgW=pw-2*margin, pageContentMm=ph-2*margin;
-      await renderPdfBlocksToPdf(pdf,blocks,imgW,pageContentMm,margin);
+      await renderPdfBlocksToPdf(pdf,blocks,imgW,pageContentMm,margin,null,PDF_BOX_BASE_CSS);
       const filename="PerformanceDialog_Jahresbericht_KI_"+year+".pdf";
       return {pdf,filename};
     }finally{
@@ -6754,7 +6785,7 @@ function buildMonthlySummaryPdfDoc(year,month,report){
       const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
       const pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), margin=10;
       const imgW=pw-2*margin, pageContentMm=ph-2*margin;
-      await renderPdfBlocksToPdf(pdf,blocks,imgW,pageContentMm,margin);
+      await renderPdfBlocksToPdf(pdf,blocks,imgW,pageContentMm,margin,null,PDF_BOX_BASE_CSS);
       const filename="PerformanceDialog_Monatsbericht_KI_"+year+"-"+String(month).padStart(2,"0")+".pdf";
       return {pdf,filename};
     }finally{
