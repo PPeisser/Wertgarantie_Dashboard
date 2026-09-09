@@ -6121,6 +6121,21 @@ function perfErgReadonlyHtml(goalId,snapshot,answers){
   // ungebrochenen String (z.B. eine eingefügte URL), der die Box sonst über
   // ihre 780px-Breite hinaus aufreißen könnte.
   const boxStyle="border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px;font-size:11px;overflow-wrap:break-word;word-break:break-word";
+  // Bug-Report 09.09.2026 (dritter Folgefund, per tatsächlich fehlgeschlagenem
+  // PDF nachvollzogen): der echte html2canvas-Fehler ("The index is not in
+  // the allowed range.") trat konsequent NUR bei Labels mit der CSS-Klasse
+  // "ac-lbl" (text-transform:uppercase) auf, deren Text ein "ß" enthält -
+  // hier IMMER der Fall, da "geplante Maßnahmen" fix im Label steht. Die
+  // browserseitige Groß-/Kleinschreibungs-Umwandlung von "ß" zu "SS" (2
+  // Zeichen statt 1) bringt html2canvas' eigene Text-Layout-Berechnung für
+  // per CSS transformierten Text durcheinander. Alle anderen, bereits
+  // funktionierenden ac-lbl-Labels in diesem PDF (System-Kennzahlen wie
+  // "JAHR 2026") enthalten kein "ß" und sind davon nicht betroffen - die
+  // CSS-Klasse selbst bleibt für die Live-Ansicht (renderPerfDoneOverview)
+  // deshalb unverändert. Hier im PDF-Kontext wird "ac-lbl" NICHT mehr
+  // verwendet - stattdessen dieselbe optische Formatierung direkt inline,
+  // aber OHNE text-transform:uppercase.
+  const ergLblStyle="display:block;font-size:10.5px;font-weight:800;letter-spacing:.4px;color:var(--muted);margin-bottom:3px";
   let html=`<div class="pdf-block" style="${boxStyle}">
     <div style="font-weight:800;font-size:12px;color:var(--wg-navy)">Ergänzung</div>
   </div>`;
@@ -6138,7 +6153,7 @@ function perfErgReadonlyHtml(goalId,snapshot,answers){
       :"";
     const prevPlanPart=r.prevPlan?`<div style="font-size:11px;font-style:italic;color:var(--muted);background:var(--card);border-left:3px solid var(--line);border-radius:4px;padding:5px 9px;margin:4px 0;white-space:pre-wrap">Vorgenommen${prevP?" im "+MONATE[prevP.month-1]:""}: „${escapeHtml(r.prevPlan)}“</div>`:"";
     return `<div class="pdf-block" style="${boxStyle}">
-    <span class="ac-lbl">${escapeHtml(r.name)} · FH ${escapeHtml(r.nr)}</span>
+    <span style="${ergLblStyle}">${escapeHtml(r.name)} · FH ${escapeHtml(r.nr)}</span>
     <div class="ac-val" style="font-weight:600">${goalId===1?`${fmt(r.monatIst)} Stk. · ${fmtSign(r.diff)} zum Vormonat${vjPart}`:`${fmt(r.monatIst)} Stk. · Ziel ${r.zielErreicht?"erreicht ✓":"nicht erreicht"}`}</div>
     ${prevPlanPart}
     <div style="font-size:12px;white-space:pre-wrap">${escapeHtml((erg.reviewTexts&&erg.reviewTexts[r.nr])||"–")}</div>
@@ -6149,7 +6164,7 @@ function perfErgReadonlyHtml(goalId,snapshot,answers){
       const c=candidates.find(x=>x.nr===nr);
       const beginnPart=goalId===2&&c&&c.beginn?` · angelegt ${fmtDate(c.beginn)}`:"";
       return `<div class="pdf-block" style="${boxStyle}">
-        <span class="ac-lbl">${escapeHtml(c?c.name:nr)} · FH ${escapeHtml(nr)}${beginnPart} · geplante Maßnahmen</span>
+        <span style="${ergLblStyle}">${escapeHtml(c?c.name:nr)} · FH ${escapeHtml(nr)}${beginnPart} · geplante Maßnahmen</span>
         <div style="font-size:12px;white-space:pre-wrap">${escapeHtml((erg.plans&&erg.plans[nr])||"–")}</div>
       </div>`;
     }).join("");
