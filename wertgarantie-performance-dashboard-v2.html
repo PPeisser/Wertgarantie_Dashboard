@@ -2217,6 +2217,18 @@ let akqImportNotifyEnabled = true;
 // dynamisch an, statt eines händisch zu pflegenden Fixdatums.
 let mieteLastImport = null;
 const ROLE_LABEL = { admin:"Admin", aussendienst:"Außendienst", trainer:"Trainer" };
+// Thomas Eitzinger wurde 10.09.2026 auf Rolle "trainer" umgestellt (siehe
+// Trainerbetreuung), soll dabei aber ausdrücklich ALLE Funktionen/
+// Einstellungen behalten, die er zuvor als "aussendienst" hatte ("da soll
+// und darf sich nichts ändern") - u.a. Chefgespräch, Kooperationsgespräch
+// und die 5 ursprünglichen "Auswertung erfassen"-Kategorien, die sonst rein
+// über myRole==="aussendienst" gegatet sind. Namensbasierte Ausnahme
+// (gleiches Muster wie PERF_ERG_EMPLOYEES/ADMIN_ONLY_EMPLOYEES an anderer
+// Stelle dieser Datei) statt die Rolle "trainer" pauschal wie "aussendienst"
+// zu behandeln - Sergej Eigenseer (reiner Trainer) soll diese Bereiche
+// weiterhin NICHT sehen.
+const AUSSENDIENST_ACCESS_KEEP_NAMES=["Thomas Eitzinger"];
+function hasAussendienstAccess(){ return myRole==="aussendienst"||(myRole==="trainer"&&AUSSENDIENST_ACCESS_KEEP_NAMES.includes(myName)); }
 // Reagiert auf den Klick im "Passwort vergessen"-Mail-Link: Supabase parst
 // den Recovery-Token aus der URL beim Laden der Seite und feuert dieses
 // Event, sobald die temporäre Recovery-Session steht - unabhängig davon,
@@ -2272,9 +2284,9 @@ function showRoleBadge(){
   $("perfDialogAdminBtn").classList.toggle("hidden", !perfDialogAdminEnabled||myRole!=="admin");
   // Chefgespräch: gleiche Sichtbarkeitsregel wie Performance Dialog (Außendienst
   // & Admin), nur wenn im normalen ADMIN-Panel per Schalter aktiviert.
-  $("chefgespraechBtn").classList.toggle("hidden", !chefgespraechEnabled||(myRole!=="admin"&&myRole!=="aussendienst"));
+  $("chefgespraechBtn").classList.toggle("hidden", !chefgespraechEnabled||(myRole!=="admin"&&!hasAussendienstAccess()));
   // Kooperationsgespräch: gleiche Sichtbarkeitsregel wie Chefgespräch.
-  $("kooperationsgespraechBtn").classList.toggle("hidden", !kooperationsgespraechEnabled||(myRole!=="admin"&&myRole!=="aussendienst"));
+  $("kooperationsgespraechBtn").classList.toggle("hidden", !kooperationsgespraechEnabled||(myRole!=="admin"&&!hasAussendienstAccess()));
   // Auswertung erfassen: gleiche Sichtbarkeitsregel wie Chefgespräch/Kooperationsgespräch.
   // Trainingsauswertungen (Nutzervorgabe 10.09.2026) leben in derselben
   // "Auswertung erfassen"-Oberfläche, aber für Rolle "trainer" unabhängig
@@ -2282,7 +2294,7 @@ function showRoleBadge(){
   // sonst hätten Trainer trotz "für alle Rollen sichtbar"-Vorgabe keinen
   // Zugriff, sobald ein Admin die restlichen 5 Kategorien deaktiviert.
   $("auswertungBtn").classList.toggle("hidden",
-    !((auswertungEnabled&&(myRole==="admin"||myRole==="aussendienst"))||(trainerbetreuungEnabled&&myRole==="trainer")));
+    !((auswertungEnabled&&(myRole==="admin"||hasAussendienstAccess()))||(trainerbetreuungEnabled&&myRole==="trainer")));
   // Fachhändlersuche im Header: für ALLE Rollen (keine Rolleneinschränkung),
   // nur ob überhaupt eingeloggt UND im ADMIN-Panel freigeschaltet.
   $("fhSearchBox").classList.toggle("hidden", !fhSearchEnabled||!supaUser);
@@ -10107,7 +10119,7 @@ function openAuswertungModal(){
   // bestehenden Kacheln bleiben unverändert nur für admin/aussendienst
   // sichtbar (auswertungBtn selbst wurde für "trainer" geöffnet, damit
   // Trainer das Modal überhaupt erreichen, siehe showRoleBadge()).
-  const canFullAuswertung=myRole==="admin"||myRole==="aussendienst";
+  const canFullAuswertung=myRole==="admin"||hasAussendienstAccess();
   document.querySelectorAll(".auswertung-type-btn[data-typ]:not([data-typ='training'])")
     .forEach(btn=>btn.classList.toggle("hidden",!canFullAuswertung));
   $("auswertungTrainingBtn").classList.toggle("hidden",!trainerbetreuungEnabled);
