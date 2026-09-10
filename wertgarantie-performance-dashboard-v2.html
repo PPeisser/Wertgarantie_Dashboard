@@ -1979,6 +1979,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <button class="btn btn-ghost auswertung-type-btn" data-typ="filialbetriebe" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>🏪 Filialbetriebe</span><small style="font-weight:600;opacity:.75">eine Filialkette</small></span></button>
         <button class="btn btn-ghost auswertung-type-btn" data-typ="fachhaendler" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>🏬 Fachhändler</span><small style="font-weight:600;opacity:.75">ein oder mehrere FH</small></span></button>
         <button class="btn btn-ghost auswertung-type-btn" data-typ="akp" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>🧑‍💼 AKP (Aktivpartner)</span><small style="font-weight:600;opacity:.75">ein oder mehrere AKP</small></span></button>
+        <button class="btn btn-ghost auswertung-type-btn hidden" id="auswertungTrainingBtn" data-typ="training" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>🎓 Trainingsauswertungen</span><small style="font-weight:600;opacity:.75">aktive &amp; abgeschlossene Trainereinsätze</small></span></button>
       </div>
     </div>
     <div id="auswertungSelectStep" class="hidden">
@@ -2019,6 +2020,13 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       </label>
       <button class="btn btn-blue" id="auswertungBuildBtn" style="margin-top:18px;width:100%;padding:14px;font-size:14px">📊 Auswertung erstellen</button>
       <div class="error" id="auswertungHint"></div>
+    </div>
+    <div id="auswertungTrainingStep" class="hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+        <button class="btn btn-ghost" id="auswertungTrainingBack" style="padding:6px 12px">← Anderer Typ</button>
+        <button class="btn btn-blue no-print" id="auswertungTrainingPdfBtn" style="padding:7px 14px">⬇ Als PDF exportieren</button>
+      </div>
+      <div id="auswertungTrainingBody"></div>
     </div>
   </div>
 </div>
@@ -2268,7 +2276,13 @@ function showRoleBadge(){
   // Kooperationsgespräch: gleiche Sichtbarkeitsregel wie Chefgespräch.
   $("kooperationsgespraechBtn").classList.toggle("hidden", !kooperationsgespraechEnabled||(myRole!=="admin"&&myRole!=="aussendienst"));
   // Auswertung erfassen: gleiche Sichtbarkeitsregel wie Chefgespräch/Kooperationsgespräch.
-  $("auswertungBtn").classList.toggle("hidden", !auswertungEnabled||(myRole!=="admin"&&myRole!=="aussendienst"));
+  // Trainingsauswertungen (Nutzervorgabe 10.09.2026) leben in derselben
+  // "Auswertung erfassen"-Oberfläche, aber für Rolle "trainer" unabhängig
+  // vom auswertungEnabled-Schalter über trainerbetreuungEnabled sichtbar -
+  // sonst hätten Trainer trotz "für alle Rollen sichtbar"-Vorgabe keinen
+  // Zugriff, sobald ein Admin die restlichen 5 Kategorien deaktiviert.
+  $("auswertungBtn").classList.toggle("hidden",
+    !((auswertungEnabled&&(myRole==="admin"||myRole==="aussendienst"))||(trainerbetreuungEnabled&&myRole==="trainer")));
   // Fachhändlersuche im Header: für ALLE Rollen (keine Rolleneinschränkung),
   // nur ob überhaupt eingeloggt UND im ADMIN-Panel freigeschaltet.
   $("fhSearchBox").classList.toggle("hidden", !fhSearchEnabled||!supaUser);
@@ -10079,13 +10093,24 @@ let auswertungTyp=null; // 'kooperation'|'weitere_zuordnung'|'filialbetriebe'|'f
 let auswertungSingleValue=null; // Kooperation/Weitere-Zuordnung-Wert
 let auswertungMultiKeys=[]; // FH-Nrn bzw. AKP-Nrn
 function openAuswertungModal(){
-  if(!auswertungEnabled){ toast("Auswertung erfassen ist aktuell nicht aktiviert."); return; }
+  const trainerAccess=myRole==="trainer"&&trainerbetreuungEnabled;
+  if(!auswertungEnabled&&!trainerAccess){ toast("Auswertung erfassen ist aktuell nicht aktiviert."); return; }
   auswertungTyp=null; auswertungSingleValue=null; auswertungMultiKeys=[];
   $("auswertungModal").classList.remove("hidden");
   $("auswertungTypeStep").classList.remove("hidden");
   $("auswertungSelectStep").classList.add("hidden");
   $("auswertungPeriodStep").classList.add("hidden");
+  $("auswertungTrainingStep").classList.add("hidden");
   $("auswertungHint").textContent="";
+  // Trainingsauswertungen (Nutzervorgabe 10.09.2026): eigene Kachel, für
+  // ALLE Rollen sichtbar (nur an den Funktions-Schalter gekoppelt) - die 5
+  // bestehenden Kacheln bleiben unverändert nur für admin/aussendienst
+  // sichtbar (auswertungBtn selbst wurde für "trainer" geöffnet, damit
+  // Trainer das Modal überhaupt erreichen, siehe showRoleBadge()).
+  const canFullAuswertung=myRole==="admin"||myRole==="aussendienst";
+  document.querySelectorAll(".auswertung-type-btn[data-typ]:not([data-typ='training'])")
+    .forEach(btn=>btn.classList.toggle("hidden",!canFullAuswertung));
+  $("auswertungTrainingBtn").classList.toggle("hidden",!trainerbetreuungEnabled);
 }
 function auswertungEntityLabel(key){
   if(auswertungTyp==="fachhaendler"){
@@ -10099,9 +10124,117 @@ function auswertungEntityLabel(key){
   }
   return key;
 }
+// Trainingsauswertungen (Nutzervorgabe 10.09.2026): lädt alle Trainerbesuche
+// (Rolle "trainer" sieht nur die eigenen, alle anderen Rollen alle), reichert
+// sie um Fortschritt/Vorher-Nachher an - gemeinsam genutzt von der Live-
+// Ansicht (renderTrainingsauswertungView) und dem PDF-Export
+// (buildTrainingsauswertungPdfDoc), damit die Zahlen garantiert identisch
+// sind.
+async function trainingsauswertungData(){
+  let q=sb.from("trainerbesuche").select("*").order("besuch_datum",{ascending:false});
+  if(myRole==="trainer") q=q.eq("trainer_name",myName);
+  const { data, error } = await q;
+  if(error) throw error;
+  const todayISO=iso(new Date());
+  const enriched=(data||[]).map(r=>{
+    const abgeschlossen=trainerbesuchAbgeschlossen(r.besuch_datum,todayISO);
+    const prodMonthly=(fhContactsBulkIndex&&fhContactsBulkIndex[r.fh_nr])||{};
+    const nachherRange=trainerbesuchNachherRange(r.besuch_datum);
+    const aktuell=abgeschlossen
+      ? (r.nachher_avg!=null?r.nachher_avg:fhAvgDailyProdInRange(prodMonthly,nachherRange.fromISO,nachherRange.toISO))
+      : fhAvgDailyProdInRange(prodMonthly,r.besuch_datum,todayISO);
+    const f=fhResolveNameOrt(r.fh_nr);
+    return {...r,abgeschlossen,aktuell,fhName:f.name,fhOrt:f.ort};
+  });
+  return { aktiv:enriched.filter(r=>!r.abgeschlossen), fertig:enriched.filter(r=>r.abgeschlossen) };
+}
+function trainingsauswertungAktivRowHtml(r){
+  return `<div class="pdf-block" style="border:1px solid #ECF2F6;border-radius:8px;padding:10px 12px;margin-bottom:8px">
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px">
+      <span style="font-weight:800;color:var(--wg-navy)">${escapeHtml(r.fhName)} · FH ${escapeHtml(r.fh_nr)}${r.fhOrt?" · "+escapeHtml(r.fhOrt):""}</span>
+      <span style="font-size:12px;color:var(--muted)">${escapeHtml(r.trainer_name)} · ${fmtDate(r.besuch_datum)}</span>
+    </div>
+    <div style="font-size:12px;margin-top:6px">Tagesschnitt vorher: <b>${fmtAvg1(r.baseline_avg)}</b> · bisher: <b>${fmtAvg1(r.aktuell)}</b> Stk./Tag</div>
+  </div>`;
+}
+function trainingsauswertungFertigRowHtml(r){
+  const diff=(r.aktuell!=null&&r.baseline_avg!=null)?r.aktuell-r.baseline_avg:null;
+  return `<div class="pdf-block" style="font-size:12.5px;padding:6px 0;border-bottom:1px solid #ECF2F6">
+    ${escapeHtml(r.trainer_name)} · FH ${escapeHtml(r.fh_nr)} (${escapeHtml(r.fhName)}) · ${fmtDate(r.besuch_datum)}${r.fhOrt?" · "+escapeHtml(r.fhOrt):""} · vorher ${fmtAvg1(r.baseline_avg)} → nachher ${fmtAvg1(r.aktuell)}${diff!=null?` (${diff>=0?"+":""}${fmtAvg1(diff)})`:""}
+  </div>`;
+}
+async function renderTrainingsauswertungView(){
+  const box=$("auswertungTrainingBody");
+  box.innerHTML=`<div class="empty-note">Lädt …</div>`;
+  if(!(sb&&supaUser)) return;
+  try{
+    const { aktiv, fertig } = await trainingsauswertungData();
+    if(!aktiv.length&&!fertig.length){ box.innerHTML=`<div class="empty-note">Noch keine Trainerbesuche erfasst.</div>`; return; }
+    box.innerHTML=`<h4 class="pdf-block" style="margin:0 0 8px;color:var(--wg-navy);font-size:14px">Aktive Trainereinsätze</h4>
+      ${aktiv.map(trainingsauswertungAktivRowHtml).join("")||`<div class="empty-note">Keine aktiven Trainereinsätze.</div>`}
+      <h4 class="pdf-block" style="margin:18px 0 8px;color:var(--wg-navy);font-size:14px">Abgeschlossene Trainereinsätze</h4>
+      ${fertig.map(trainingsauswertungFertigRowHtml).join("")||`<div class="empty-note">Noch keine abgeschlossenen Trainereinsätze.</div>`}`;
+  }catch(e){
+    console.error("renderTrainingsauswertungView failed:",e);
+    box.innerHTML=`<div class="empty-note">Fehler beim Laden.</div>`;
+  }
+}
+function buildTrainingsauswertungPdfDoc(aktiv,fertig){
+  if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)) throw new Error("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals versuchen.");
+  return (async()=>{
+    const nowStr=fmtNowDateTime();
+    const box=document.createElement("div");
+    box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
+    box.innerHTML=`
+      <div class="pdf-block" style="border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:8px">
+        <div style="font-size:21px;font-weight:900;color:#062A3F">Trainingsauswertungen</div>
+        <div style="font-size:12px;color:#5D7284;margin-top:3px">${aktiv.length} aktiv · ${fertig.length} abgeschlossen · Erstellt am: ${nowStr}</div>
+      </div>
+      <h4 class="pdf-block" style="margin:0 0 8px;color:#062A3F;font-size:14px">Aktive Trainereinsätze</h4>
+      ${aktiv.map(trainingsauswertungAktivRowHtml).join("")||`<div class="pdf-block" style="font-size:12px;color:#5D7284">Keine aktiven Trainereinsätze.</div>`}
+      <h4 class="pdf-block" style="margin:18px 0 8px;color:#062A3F;font-size:14px">Abgeschlossene Trainereinsätze</h4>
+      ${fertig.map(trainingsauswertungFertigRowHtml).join("")||`<div class="pdf-block" style="font-size:12px;color:#5D7284">Noch keine abgeschlossenen Trainereinsätze.</div>`}
+    `;
+    document.body.appendChild(box);
+    await new Promise(r=>setTimeout(r,30));
+    try{
+      const blocks=[...box.querySelectorAll(".pdf-block")];
+      const {jsPDF}=window.jspdf;
+      const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+      const pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), margin=10;
+      const imgW=pw-2*margin, pageContentMm=ph-2*margin;
+      await renderPdfBlocksToPdf(pdf,blocks,imgW,pageContentMm,margin,null,PDF_BOX_BASE_CSS);
+      const filename="Trainingsauswertungen_"+iso(new Date())+".pdf";
+      return {pdf,filename};
+    }finally{
+      if(box.parentNode) box.parentNode.removeChild(box);
+    }
+  })();
+}
+async function exportTrainingsauswertungPdf(){
+  if(!(sb&&supaUser)) return;
+  toast("PDF wird erstellt …");
+  try{
+    const { aktiv, fertig } = await trainingsauswertungData();
+    const {pdf,filename}=await buildTrainingsauswertungPdfDoc(aktiv,fertig);
+    pdf.save(filename);
+  }catch(e){
+    console.error("exportTrainingsauswertungPdf failed:",e);
+    toast("PDF-Erstellung fehlgeschlagen: "+(e.message||e));
+  }
+}
 function selectAuswertungTyp(typ){
   auswertungTyp=typ;
   auswertungSingleValue=null; auswertungMultiKeys=[];
+  if(typ==="training"){
+    // Passt nicht zum generischen Entity-Auswahl-Flow der übrigen 5 Typen
+    // (kein Kooperation/FH/AKP zu wählen, kein Zeitraum) - direkt der
+    // fertige Bericht, analog den Monats-/Jahresbericht-Popups.
+    $("auswertungTypeStep").classList.add("hidden");
+    $("auswertungTrainingStep").classList.remove("hidden");
+    renderTrainingsauswertungView();
+    return;
+  }
   $("auswertungTypeStep").classList.add("hidden");
   $("auswertungSelectStep").classList.remove("hidden");
   const isMulti=typ==="fachhaendler"||typ==="akp";
@@ -12827,6 +12960,11 @@ $("auswertungSelectBack").onclick=()=>{
   $("auswertungSelectStep").classList.add("hidden");
   $("auswertungTypeStep").classList.remove("hidden");
 };
+$("auswertungTrainingBack").onclick=()=>{
+  $("auswertungTrainingStep").classList.add("hidden");
+  $("auswertungTypeStep").classList.remove("hidden");
+};
+$("auswertungTrainingPdfBtn").onclick=exportTrainingsauswertungPdf;
 $("auswertungSingleSearchInput").addEventListener("input",renderAuswertungSingleSearch);
 $("auswertungMultiSearchInput").addEventListener("input",renderAuswertungMultiSearch);
 $("auswertungMultiGoBtn").onclick=()=>proceedToAuswertungPeriod();
