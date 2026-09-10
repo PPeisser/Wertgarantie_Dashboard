@@ -467,6 +467,11 @@ td .betr{font-size:11px;color:var(--muted)}
    Dialoge (70), damit ein von HIER aus gestarteter PDF-Export wiederum
    darüber liegt. */
 #filialGruppeModal{z-index:65}
+/* trainerbesuchModal wird AUS #fhModal heraus geöffnet ("+ Trainerbesuch")
+   und muss - wie #akpModal/#filialGruppeModal oben - über #fhModal (60)
+   liegen, sonst öffnet es sich sichtbar dahinter (Bug-Report 10.09.2026,
+   derselbe wiederkehrende Fehlerfall wie bei den anderen FH-Unter-PopUps). */
+#trainerbesuchModal{z-index:65}
 .modal{
   background:#fff;border-radius:20px;max-width:430px;width:100%;
   padding:26px 26px 22px;box-shadow:0 20px 60px rgba(0,0,0,.25);
@@ -525,7 +530,8 @@ td .betr{font-size:11px;color:var(--muted)}
 #akpContactModal input,#akpContactModal select{font:inherit;font-size:14px;font-weight:600;text-align:left;text-transform:none;width:100%;border:2px solid var(--line);border-radius:10px;padding:8px 10px;outline:none}
 #akpContactModal input:focus,#akpContactModal select:focus{border-color:var(--wg-blue)}
 #akpContactModal .error{color:var(--neg);font-size:12.5px;margin-top:8px;min-height:16px}
-#fhModal input:not([type=checkbox]),#fhModal select,#fhModal textarea{font:inherit;font-size:14px;font-weight:600;text-align:left;text-transform:none;width:100%;border:2px solid var(--line);border-radius:10px;padding:8px 10px;outline:none;resize:vertical}
+#fhModal input:not([type=checkbox]),#fhModal select,#fhModal textarea,
+#trainerbesuchModal input:not([type=checkbox]),#trainerbesuchModal select,#trainerbesuchModal textarea{font:inherit;font-size:14px;font-weight:600;text-align:left;text-transform:none;width:100%;border:2px solid var(--line);border-radius:10px;padding:8px 10px;outline:none;resize:vertical}
 #fhModal .nw-check{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;padding:8px 0}
 #fhModal .nw-check input[type=checkbox]{width:18px;height:18px;accent-color:var(--wg-blue);cursor:pointer}
 #fhModal input:focus,#fhModal select:focus,#fhModal textarea:focus{border-color:var(--wg-blue)}
@@ -1174,17 +1180,17 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 
 <!-- Trainerbetreuung: neuer Trainerbesuch anlegen (Nutzervorgabe 10.09.2026) -->
 <div class="modal-bg hidden" id="trainerbesuchModal">
-  <div class="modal">
+  <div class="modal wide">
     <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
       <h3 style="margin:0">Trainerbesuch anlegen</h3>
       <button class="btn btn-ghost" id="trainerbesuchClose" style="padding:7px 12px">✕ Schließen</button>
     </div>
-    <div class="ac-grid">
+    <div class="ac-grid" style="grid-template-columns:220px">
       <div><label class="ac-lbl" for="trainerbesuchDatum">Datum</label><input id="trainerbesuchDatum" type="date"></div>
     </div>
     <div style="margin-top:14px">
       <label class="ac-lbl" for="trainerbesuchTaetigkeiten">Durchgeführte Tätigkeiten</label>
-      <textarea id="trainerbesuchTaetigkeiten" rows="5" placeholder="Was wurde beim Trainerbesuch gemacht?"></textarea>
+      <textarea id="trainerbesuchTaetigkeiten" rows="10" style="font-size:14.5px" placeholder="Was wurde beim Trainerbesuch gemacht?"></textarea>
     </div>
     <div style="margin-top:14px">
       <div style="display:flex;align-items:center;justify-content:space-between">
@@ -11105,7 +11111,10 @@ async function renderFhTrainerbesucheSection(){
       return `<div style="border:1px solid #ECF2F6;border-radius:8px;padding:10px 12px;margin-bottom:8px">
         <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px">
           <span style="font-weight:800;color:var(--wg-navy)">${fmtDate(r.besuch_datum)} · ${escapeHtml(r.trainer_name)}</span>
-          <span style="font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;background:${abgeschlossen?"#E8F6EE":"#FFF4DC"};color:${abgeschlossen?"#1B7A43":"#8A6100"}">${abgeschlossen?"Abgeschlossen":"Aktiv"}</span>
+          <span style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;background:${abgeschlossen?"#E8F6EE":"#FFF4DC"};color:${abgeschlossen?"#1B7A43":"#8A6100"}">${abgeschlossen?"Abgeschlossen":"Aktiv"}</span>
+            ${myRole==="admin"?`<button type="button" class="tb-delete-btn" data-id="${escapeHtml(r.id)}" title="Trainerbesuch löschen" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:15px;font-weight:800;padding:0 2px;line-height:1">✕</button>`:""}
+          </span>
         </div>
         <div style="font-size:12px;color:var(--muted);margin-top:4px">Teilnehmer: ${escapeHtml(akpNames)}</div>
         ${r.taetigkeiten?`<div style="font-size:12.5px;margin-top:6px;white-space:pre-wrap">${escapeHtml(r.taetigkeiten)}</div>`:""}
@@ -11118,6 +11127,9 @@ async function renderFhTrainerbesucheSection(){
     if(canEdit) $("trainerbesuchAddBtn").onclick=openTrainerbesuchModal;
     box.querySelectorAll(".tb-download-btn").forEach(btn=>{
       btn.onclick=()=>downloadTrainerbericht(btn.dataset.id);
+    });
+    box.querySelectorAll(".tb-delete-btn").forEach(btn=>{
+      btn.onclick=()=>deleteTrainerbesuch(btn.dataset.id);
     });
   }catch(e){
     if(fhModalCurrent!==fhNr) return;
@@ -11172,6 +11184,21 @@ async function saveTrainerbesuch(){
     $("trainerbesuchSaveHint").textContent="Fehler: "+(e.message||e);
   }finally{
     $("trainerbesuchSaveBtn").disabled=false;
+  }
+}
+// Löschfunktion (Nutzervorgabe 10.09.2026, "einfach nur ein x oder so") -
+// nur für Rolle "admin" sichtbar (siehe myRole-Check in
+// renderFhTrainerbesucheSection()), entfernt den Trainerbesuch endgültig.
+async function deleteTrainerbesuch(id){
+  if(myRole!=="admin") return;
+  if(!confirm("Diesen Trainerbesuch wirklich unwiderruflich löschen?")) return;
+  try{
+    const { error } = await sb.from("trainerbesuche").delete().eq("id",id);
+    if(error) throw error;
+    toast("Trainerbesuch gelöscht ✓");
+    renderFhTrainerbesucheSection();
+  }catch(e){
+    toast("Löschen fehlgeschlagen: "+(e.message||e));
   }
 }
 // Einzelner Trainerbericht (Endbericht 4 Wochen nach Trainerbesuch) - wird
