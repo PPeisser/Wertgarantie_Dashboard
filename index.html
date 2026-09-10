@@ -3006,13 +3006,21 @@ async function renderImportLog(){
   const box=$("importLogBody"); if(!box) return;
   box.innerHTML=`<div class="empty-note">Lädt …</div>`;
   if(!(sb&&supaUser)) return;
+  // Bug-Report 10.09.2026: die Spalte "imported_at" wird von
+  // logImportEvent() nie befüllt (nur das automatisch per DB-Default
+  // gesetzte "created_at") - jede Zeile hatte hier also imported_at=NULL.
+  // Die vorherige Sortierung "order by imported_at" war dadurch für ALLE
+  // Zeilen bedeutungslos (Postgres liefert bei durchgehend NULL keine
+  // verlässliche Reihenfolge) - bei über 200 Zeilen Gesamthistorie konnte
+  // ein gerade eben eingespielter Import durch das .limit(200) unbemerkt
+  // unter den Tisch fallen, statt oben zu erscheinen.
   const { data, error } = await sb.from("import_log").select("*")
-    .order("imported_at",{ascending:false,nullsFirst:false}).limit(200);
+    .order("created_at",{ascending:false}).limit(200);
   if(error){ box.innerHTML=`<div class="empty-note">Logbuch konnte nicht geladen werden.</div>`; return; }
   if(!data||!data.length){ box.innerHTML=`<div class="empty-note">Noch keine Einspielungen erfasst.</div>`; return; }
   box.innerHTML=data.map(r=>{
     const label=IMPORT_TYPE_LABELS[r.type]||r.type;
-    const when=r.imported_at?fmtDateTime(r.imported_at):(r.vortag?`Stand ${fmtDate(r.vortag)} · Uhrzeit nicht erfasst`:"Zeitpunkt nicht erfasst");
+    const when=r.created_at?fmtDateTime(r.created_at):(r.vortag?`Stand ${fmtDate(r.vortag)} · Uhrzeit nicht erfasst`:"Zeitpunkt nicht erfasst");
     // Bei Mail-Imports steckt in imported_by "Name <adresse@...>" (source_from
     // aus pending_imports) - nur der Name ist hier relevant, die Adresse
     // würde die Zeile unnötig breit machen.
