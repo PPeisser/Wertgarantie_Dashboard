@@ -10115,11 +10115,13 @@ function openAuswertungModal(){
   $("auswertungTrainingStep").classList.add("hidden");
   $("auswertungHint").textContent="";
   // Trainingsauswertungen (Nutzervorgabe 10.09.2026): eigene Kachel, für
-  // ALLE Rollen sichtbar (nur an den Funktions-Schalter gekoppelt) - die 5
-  // bestehenden Kacheln bleiben unverändert nur für admin/aussendienst
-  // sichtbar (auswertungBtn selbst wurde für "trainer" geöffnet, damit
-  // Trainer das Modal überhaupt erreichen, siehe showRoleBadge()).
-  const canFullAuswertung=myRole==="admin"||hasAussendienstAccess();
+  // ALLE Rollen sichtbar (nur an den Funktions-Schalter gekoppelt).
+  // Nutzervorgabe 10.09.2026 (Ergänzung): die 5 ursprünglichen Kacheln
+  // (Kooperation/Weitere Zuordnung/Filialbetriebe/Fachhändler/AKP) sollen
+  // für ALLE Trainer aktiviert sein, nicht nur für Thomas Eitzinger per
+  // Namens-Ausnahme (hasAussendienstAccess()) - deshalb hier zusätzlich
+  // pauschal myRole==="trainer".
+  const canFullAuswertung=myRole==="admin"||hasAussendienstAccess()||myRole==="trainer";
   document.querySelectorAll(".auswertung-type-btn[data-typ]:not([data-typ='training'])")
     .forEach(btn=>btn.classList.toggle("hidden",!canFullAuswertung));
   $("auswertungTrainingBtn").classList.toggle("hidden",!trainerbetreuungEnabled);
