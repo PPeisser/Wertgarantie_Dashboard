@@ -3697,7 +3697,7 @@ state = {
     date,            // Berichtsdatum (aus ZE_Region)
     vortag,          // Datum, auf das sich "Prod. Vortag" bezieht
     jahr, monat, tageIst, tageSoll,
-    gl:  { key(__AT__|Mitarbeitername): {vt, monat, monatVJ, jahr, jahrVJ} },
+    gl:  { key(__AT__|Mitarbeitername): {vt, monat, monatVJ, monatVJVoll, jahr, jahrVJ} },
     fh:  { fhNr: {name, ort, plz, gl, emp, vt, monat, lj, vj, plan} },
     akp: [ {nr, name, firma, ort, emp, glRaw, vt, monat, lj, vj} ],
     akq: [ {nr, name, ort, plz, emp, glRaw, p2024, p2025, p2026, kw, produzent, besP, besT} ]
@@ -3842,7 +3842,7 @@ function parseAuswertung(wb){
     for(let i=hi+1;i<rg.length;i++){
       const r=rg[i]; if(!r||!r[0]) break;
       const name=String(r[0]).trim();
-      const rec={vt:num(r[1]),monat:num(r[2]),monatVJ:num(r[3]),jahr:num(r[6]),jahrVJ:num(r[7])};
+      const rec={vt:num(r[1]),monat:num(r[2]),monatVJ:num(r[3]),monatVJVoll:0,jahr:num(r[6]),jahrVJ:num(r[7])};
       if(name==="Auswertung"){ snap.gl[AT_KEY]=rec; break; }
       const emp=matchEmployee(name);
       snap.gl[emp||("x_"+name)]=rec;
@@ -4107,16 +4107,38 @@ function parseAuswertung(wb){
      Summenzeile - dort stattdessen der bereits weiter oben aus ZE_Region
      K12 ermittelte Wert (snap.zeAtMonatVJ, "Ist VJ Summe" der Zeile
      "Auswertung") verwendet, falls vorhanden. */
+  // Nachbesserung 10.09.2026 (Bug-Report Dominik Szendi: "Hochrechnung
+  // Monatsende ggü. Vorjahr" zeigte 387 %, tatsächlich bei ALLEN 8
+  // Mitarbeitern absurd hohe Werte, nicht nur bei ihm): per Debug-Auszug
+  // der echten Tagesreport-Datei verifiziert, dass das Hilfsblatt ZWEI
+  // unterschiedliche VJ-Kennzahlen führt - "Vertriebsproduktion_ VJ Vortag"
+  // (rec.monatVJ, wie bisher) ist KEIN statischer Vorjahresmonats-
+  // Gesamtwert, sondern läuft TAGESAKTUELL mit (kumuliert bis zum selben
+  // Kalendertag des Vorjahres, exakt wie "Vertriebsproduktion_LJ"/monat
+  // selbst) - für den fairen "Stand heute vs. Stand am selben Tag letztes
+  // Jahr"-Vergleich (Ist-Stand-Prozentzahl) ist das genau richtig. Die
+  // separate Spalte "Vertriebsproduktion_ VJ" (OHNE "Vortag") ist dagegen
+  // der ECHTE volle Vorjahresmonats-Gesamtwert - wird jetzt zusätzlich als
+  // rec.monatVJVoll geparst und für die "Hochrechnung Monatsende"-
+  // Prozentzahl verwendet (siehe card3 unten), die eine Monatsend-
+  // PROJEKTION braucht, keinen tagesaktuellen Teil-Vorjahreswert. Bisher
+  // wurde für die Hochrechnung fälschlich derselbe tagesaktuelle
+  // monatVJ-Wert als Bezugsgröße verwendet (Kommentar "Nachbesserung
+  // 04.09.2026" unten historisch, damals an einem Monatsende validiert, wo
+  // "VJ Vortag" zufällig == voller Vorjahresmonat war - mitten im Monat
+  // divergieren beide stark).
   (function(){
-    let hi=-1,vjCol=-1,foundRows=null;
+    let hi=-1,vjCol=-1,vjVollCol=-1,foundRows=null;
     for(const n of wb.SheetNames){
       if(!n.toLowerCase().startsWith("data_")) continue;
       const rows=toRowsIgnoringRef(wb.Sheets[n]);
-      hi=-1; vjCol=-1;
+      hi=-1; vjCol=-1; vjVollCol=-1;
       for(let i=0;i<rows.length;i++){
         const r=rows[i]; if(!r) continue;
         for(let j=0;j<r.length;j++){
-          if(String(r[j]||"").trim().toLowerCase().replace(/\s+/g,"")==="vertriebsproduktion_vjvortag"){ hi=i; vjCol=j; }
+          const norm=String(r[j]||"").trim().toLowerCase().replace(/\s+/g,"");
+          if(norm==="vertriebsproduktion_vjvortag"){ hi=i; vjCol=j; }
+          else if(norm==="vertriebsproduktion_vj"){ hi=i; vjVollCol=j; }
         }
         if(hi>-1) break;
       }
@@ -4128,7 +4150,10 @@ function parseAuswertung(wb){
         const name=String(r[0]).trim();
         if(/^(auswertung|gesamt|summe|total)$/i.test(name)) continue;
         const key=matchEmployee(name)||("x_"+name);
-        if(snap.gl[key]) snap.gl[key].monatVJ=num(r[vjCol]);
+        if(snap.gl[key]){
+          if(vjCol>-1) snap.gl[key].monatVJ=num(r[vjCol]);
+          if(vjVollCol>-1) snap.gl[key].monatVJVoll=num(r[vjVollCol]);
+        }
       }
     }
     if(snap.gl[AT_KEY]&&snap.zeAtMonatVJ!=null) snap.gl[AT_KEY].monatVJ=snap.zeAtMonatVJ;
@@ -7172,7 +7197,7 @@ function migrateState(){
 
 /* ---------- Zugriff je Ansicht ---------- */
 function glKey(emp){ return emp===AT_GESAMT?AT_KEY:emp; }
-function glRow(emp){ return (state.latest.gl[glKey(emp)])||{vt:0,monat:0,monatVJ:0,jahr:0,jahrVJ:0}; }
+function glRow(emp){ return (state.latest.gl[glKey(emp)])||{vt:0,monat:0,monatVJ:0,monatVJVoll:0,jahr:0,jahrVJ:0}; }
 function fhFor(emp){
   const out=[];
   for(const [nr,f] of Object.entries(state.latest.fh)){
@@ -7447,10 +7472,20 @@ function renderGoals(){
     // Kacheln unnötig aufblähte (siehe Kommentar bei .goal .name in der
     // CSS). "Vorjahr" ist im Kontext (Ziel-Spalte zeigt "Vorjahr: X",
     // Pill-Text "▲/▼ ü./u. Vorjahr") eindeutig genug.
+    // Bug-Report 10.09.2026 (Dominik Szendi, "387 % Hochrechnung ggü.
+    // Vorjahr" - tatsächlich bei ALLEN Mitarbeitern absurd hoch): me.monatVJ
+    // ("Vertriebsproduktion_ VJ Vortag") ist KEIN statischer Vorjahresmonats-
+    // wert, sondern läuft tagesaktuell mit (kumuliert bis zum selben
+    // Kalendertag des Vorjahres) - passt für die Ist-Stand-Prozentzahl unten
+    // (target-Parameter, unverändert), aber NICHT als Bezugsgröße für die
+    // Monatsend-HOCHRECHNUNG (hrMe, eine Vollmonats-Projektion). Dafür jetzt
+    // explizit me.monatVJVoll ("Vertriebsproduktion_ VJ", der echte volle
+    // Vorjahresmonat) als hr.target gesetzt, statt implizit auf den
+    // tagesaktuellen target-Wert zurückzufallen.
     : goalCard("📊 Vorjahr · "+MONATE[s.monat-1],
         me.monatVJ, me.monat, me.monatVJ*mfrac,
         "", false,
-        me.monatVJ>0&&s.tageIst>0?{val:hrMe,lbl:"Monatsende",stand:standM}:null,
+        me.monatVJ>0&&s.tageIst>0?{val:hrMe,lbl:"Monatsende",stand:standM,target:me.monatVJVoll>0?me.monatVJVoll:undefined}:null,
         {ahead:"▲ ü. Vorjahr",behind:"▼ u. Vorjahr",target:"Vorjahr"});
   const persJZ=PERS_JAHRESZIELE[currentEmp]||0;
   // "(saisonal)"-Zusatz beim Hochrechnungs-Label entfernt (Nutzervorgabe
