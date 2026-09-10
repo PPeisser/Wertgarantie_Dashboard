@@ -11096,11 +11096,15 @@ async function renderFhTrainerbesucheSection(){
         <div style="font-size:12px;color:var(--muted);margin-top:4px">Teilnehmer: ${escapeHtml(akpNames)}</div>
         ${r.taetigkeiten?`<div style="font-size:12.5px;margin-top:6px;white-space:pre-wrap">${escapeHtml(r.taetigkeiten)}</div>`:""}
         <div style="font-size:12px;margin-top:6px">Tagesschnitt vorher: <b>${fmtAvg1(r.baseline_avg)}</b> Stk./Tag · ${abgeschlossen?"nachher":"bisher"}: <b>${fmtAvg1(aktuell)}</b> Stk./Tag${diff!=null?` · <b style="color:${diff>=0?"var(--pos)":"var(--neg)"}">${diff>=0?"+":""}${fmtAvg1(diff)}</b>`:""}</div>
+        ${r.endbericht_sent_at?`<button type="button" class="btn btn-ghost tb-download-btn" data-id="${escapeHtml(r.id)}" style="margin-top:8px;padding:5px 10px;font-size:12px">⬇ Trainerbericht (PDF)</button>`:""}
       </div>`;
     }).join("");
     const addBtn=canEdit?`<button class="btn btn-blue" id="trainerbesuchAddBtn" style="margin-top:6px">+ Trainerbesuch</button>`:"";
     box.innerHTML=`<h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:13px">Trainerbetreuung</h4>${rowsHtml}${addBtn}`;
     if(canEdit) $("trainerbesuchAddBtn").onclick=openTrainerbesuchModal;
+    box.querySelectorAll(".tb-download-btn").forEach(btn=>{
+      btn.onclick=()=>downloadTrainerbericht(btn.dataset.id);
+    });
   }catch(e){
     if(fhModalCurrent!==fhNr) return;
     console.error("renderFhTrainerbesucheSection failed:",e);
@@ -11155,6 +11159,117 @@ async function saveTrainerbesuch(){
   }finally{
     $("trainerbesuchSaveBtn").disabled=false;
   }
+}
+// Einzelner Trainerbericht (Endbericht 4 Wochen nach Trainerbesuch) - wird
+// sowohl vom automatischen Hintergrund-Versand (processDueTrainerberichte)
+// als auch vom "Trainerbericht (PDF)"-Download-Button im FH-PopUp genutzt
+// (dort einfach erneut aus den gespeicherten Feldern gerendert, kein
+// Storage-Bucket nötig - wie alle anderen PDFs dieser App).
+function buildTrainerberichtPdfDoc(besuch){
+  if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)) throw new Error("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals versuchen.");
+  return (async()=>{
+    const nowStr=fmtNowDateTime();
+    const f=fhResolveNameOrt(besuch.fh_nr);
+    const akpNames=(besuch.akp_teilnehmer||[]).map(nr=>{
+      const a=akpContactsIndex&&akpContactsIndex[nr];
+      return a?[a.vorname,a.nachname].filter(Boolean).join(" ")||nr:nr;
+    }).join(", ")||"–";
+    const diff=(besuch.nachher_avg!=null&&besuch.baseline_avg!=null)?besuch.nachher_avg-besuch.baseline_avg:null;
+    const box=document.createElement("div");
+    box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
+    box.innerHTML=`
+      <div class="pdf-block" style="border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:16px">
+        <div style="font-size:21px;font-weight:900;color:#062A3F">Trainerbericht</div>
+        <div style="font-size:12px;color:#5D7284;margin-top:3px">${escapeHtml(f.name)} · FH ${escapeHtml(besuch.fh_nr)}${f.ort?" · "+escapeHtml(f.ort):""} · Erstellt am: ${nowStr}</div>
+      </div>
+      <div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:14px">
+        <div class="ac-grid">
+          <div><span class="ac-lbl">Trainer</span><div class="ac-val">${escapeHtml(besuch.trainer_name)}</div></div>
+          <div><span class="ac-lbl">Datum</span><div class="ac-val">${fmtDate(besuch.besuch_datum)}</div></div>
+          <div><span class="ac-lbl">Teilnehmer</span><div class="ac-val">${escapeHtml(akpNames)}</div></div>
+        </div>
+      </div>
+      <div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:14px">
+        <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:6px">Durchgeführte Tätigkeiten</div>
+        <div style="font-size:12.5px;white-space:pre-wrap">${escapeHtml(besuch.taetigkeiten||"–")}</div>
+      </div>
+      <div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px">
+        <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:6px">Produktionsentwicklung (Tagesschnitt)</div>
+        <div style="font-size:13px">Vorher (3 Monate vor Besuch): <b>${fmtAvg1(besuch.baseline_avg)}</b> Stk./Tag<br>
+        Nachher (4 Wochen nach Besuch): <b>${fmtAvg1(besuch.nachher_avg)}</b> Stk./Tag${diff!=null?`<br>Veränderung: <b style="color:${diff>=0?"#1B7A43":"#B3324A"}">${diff>=0?"+":""}${fmtAvg1(diff)}</b> Stk./Tag`:""}</div>
+      </div>
+    `;
+    document.body.appendChild(box);
+    await new Promise(r=>setTimeout(r,30));
+    try{
+      const blocks=[...box.querySelectorAll(".pdf-block")];
+      const {jsPDF}=window.jspdf;
+      const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+      const pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), margin=10;
+      const imgW=pw-2*margin, pageContentMm=ph-2*margin;
+      await renderPdfBlocksToPdf(pdf,blocks,imgW,pageContentMm,margin,null,PDF_BOX_BASE_CSS);
+      const filename="Trainerbericht_FH"+besuch.fh_nr+"_"+besuch.besuch_datum+".pdf";
+      return {pdf,filename};
+    }finally{
+      if(box.parentNode) box.parentNode.removeChild(box);
+    }
+  })();
+}
+async function downloadTrainerbericht(besuchId){
+  const box=$("fhTrainerbesucheSection");
+  try{
+    const { data:row, error } = await sb.from("trainerbesuche").select("*").eq("id",besuchId).maybeSingle();
+    if(error||!row) throw error||new Error("Trainerbesuch nicht gefunden");
+    const {pdf,filename}=await buildTrainerberichtPdfDoc(row);
+    pdf.save(filename);
+  }catch(e){
+    console.error("downloadTrainerbericht failed:",e);
+    toast("PDF-Erstellung fehlgeschlagen: "+(e.message||e));
+  }
+}
+// Endbericht 4 Wochen nach einem Trainerbesuch: Hintergrund-Check beim
+// Laden des Dashboards (Muster processPendingImports()) - erkennt fällige
+// Trainerbesuche, friert nachher_avg ein, baut das PDF und verschickt es
+// einmalig an Trainer + Admin (k.scheiermann@wertgarantie.com). Best-effort
+// wie notifyAkqImport() - ein Fehler hier darf nichts anderes blockieren,
+// deshalb nur console.error, kein Toast. Das "Claimen" (bedingtes Update
+// auf endbericht_sent_at) setzt bewusst SOFORT den echten Sende-Zeitpunkt
+// (nicht erst nach erfolgreichem Mailversand) - verhindert doppelten Versand
+// bei zwei gleichzeitig offenen Tabs; ein einzelner fehlgeschlagener
+// Mailversand wird dafür nicht automatisch retried (seltener Einzelfall,
+// vertretbar für einen 1x-pro-Trainerbesuch-Vorgang).
+async function processDueTrainerberichte(){
+  if(!(sb&&supaUser)) return;
+  try{
+    const todayISO=iso(new Date());
+    const cutoff=iso(addDays(parseISO(todayISO),-28));
+    const { data:rows, error } = await sb.from("trainerbesuche").select("*")
+      .lte("besuch_datum",cutoff).is("endbericht_sent_at",null);
+    if(error||!rows||!rows.length) return;
+    for(const row of rows){
+      try{
+        const prodMonthly=(fhContactsBulkIndex&&fhContactsBulkIndex[row.fh_nr])||{};
+        const nachherRange=trainerbesuchNachherRange(row.besuch_datum);
+        const nachherAvg=row.nachher_avg!=null?row.nachher_avg:fhAvgDailyProdInRange(prodMonthly,nachherRange.fromISO,nachherRange.toISO);
+        const { data:claimed } = await sb.from("trainerbesuche")
+          .update({nachher_avg:nachherAvg,endbericht_sent_at:new Date().toISOString(),updated_by:(supaUser&&supaUser.id)||null})
+          .eq("id",row.id).is("endbericht_sent_at",null).select().maybeSingle();
+        if(!claimed) continue;
+        const besuch={...row,nachher_avg:nachherAvg};
+        const {pdf,filename}=await buildTrainerberichtPdfDoc(besuch);
+        const dataUri=pdf.output("datauristring");
+        const f=fhResolveNameOrt(row.fh_nr);
+        const { data:profRow } = await sb.from("profiles").select("email").eq("name",row.trainer_name).maybeSingle();
+        const recipients=[(profRow&&profRow.email)||null,"k.scheiermann@wertgarantie.com"].filter(Boolean);
+        const subject="Trainerbericht "+f.name+" (FH "+row.fh_nr+")";
+        const html=`<div style="font-family:'Segoe UI',Arial,sans-serif;color:#10202C"><p>Der Endbericht zum Trainerbesuch bei ${escapeHtml(f.name)} (FH ${escapeHtml(row.fh_nr)}) vom ${fmtDate(row.besuch_datum)} ist fertig - siehe Anhang.</p></div>`;
+        for(const to of recipients){
+          try{ await sendPdfByMail({to,subject,html,pdfDataUri:dataUri,filename}); }
+          catch(e){ console.error("processDueTrainerberichte (Mailversand an "+to+"):",e); }
+        }
+      }catch(e){ console.error("processDueTrainerberichte (Zeile "+row.id+"):",e); }
+    }
+  }catch(e){ console.error("processDueTrainerberichte failed:",e); }
 }
 async function toggleFhEdit(on){
   $("fhViewMode").classList.toggle("hidden",on);
@@ -13065,6 +13180,7 @@ async function refreshData(silent){
     await loadFhDuplicateMerges();
     await Promise.all([loadAll(), loadAkpContactsIndex(), loadFhContactsIndicesAll()]);
     await processPendingImports();
+    processDueTrainerberichte();
     render();
     if(!silent) toast("Aktualisiert ✓");
     if(!silent) maybeAutoShowNotifications();
@@ -13227,6 +13343,7 @@ function buildMitarbeiterDropdown(){
     await loadAll(); showRoleBadge(); render();
     await Promise.all([loadAkpContactsIndex(), loadFhContactsIndicesAll()]);
     await processPendingImports();
+    processDueTrainerberichte();
     render();
     maybeAutoShowNotifications();
   }
