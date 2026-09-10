@@ -1151,6 +1151,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div id="fhAkqStaffelBlock"></div>
     <div id="fhMieteSection"></div>
     <div id="fhDeckungsgradSection"></div>
+    <div id="fhTrainerbesucheSection"></div>
 
     <div class="actions" style="justify-content:flex-start;margin-top:18px;margin-bottom:10px">
       <button class="btn btn-blue" id="fhTopFlopBtn">Top &amp; Flop AKP dieses Händlers ⤢</button>
@@ -1168,6 +1169,35 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     </div>
     <h4 style="margin:0 0 8px;color:var(--wg-navy);font-size:13px">Ansprechpartner (AKP)</h4>
     <div id="fhBody" style="overflow-x:auto"></div>
+  </div>
+</div>
+
+<!-- Trainerbetreuung: neuer Trainerbesuch anlegen (Nutzervorgabe 10.09.2026) -->
+<div class="modal-bg hidden" id="trainerbesuchModal">
+  <div class="modal">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
+      <h3 style="margin:0">Trainerbesuch anlegen</h3>
+      <button class="btn btn-ghost" id="trainerbesuchClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+    <div class="ac-grid">
+      <div><label class="ac-lbl" for="trainerbesuchDatum">Datum</label><input id="trainerbesuchDatum" type="date"></div>
+    </div>
+    <div style="margin-top:14px">
+      <label class="ac-lbl" for="trainerbesuchTaetigkeiten">Durchgeführte Tätigkeiten</label>
+      <textarea id="trainerbesuchTaetigkeiten" rows="5" placeholder="Was wurde beim Trainerbesuch gemacht?"></textarea>
+    </div>
+    <div style="margin-top:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span class="ac-lbl" style="margin-bottom:0">Teilgenommene Ansprechpartner (AKP)</span>
+        <span id="trainerbesuchAkpCount" style="font-size:11.5px;color:var(--muted);font-weight:700"></span>
+      </div>
+      <div id="trainerbesuchAkpList" style="max-height:220px;overflow-y:auto;border:1px solid #ECF2F6;border-radius:8px;padding:8px 12px;margin-top:6px"></div>
+    </div>
+    <div class="actions" style="margin-top:14px;justify-content:flex-end">
+      <button class="btn btn-ghost" id="trainerbesuchCancelBtn">Abbrechen</button>
+      <button class="btn btn-blue" id="trainerbesuchSaveBtn">Speichern</button>
+    </div>
+    <div class="error" id="trainerbesuchSaveHint"></div>
   </div>
 </div>
 
@@ -1659,6 +1689,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
         <input type="checkbox" id="neunWochenAllEnabledChk" style="width:17px;height:17px;flex-shrink:0">
         Alle 9-Wochen-Pläne (PopUp)
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+        <input type="checkbox" id="trainerbetreuungEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+        Trainerbetreuung
       </label>
     </div>
   </div>
@@ -2155,6 +2189,12 @@ let akquisequoteAtEnabled = false;
 // renderNeunWochen()/renderNeunWochenAllModal()). Default false wie bei
 // anderen neuen Features.
 let neunWochenAllEnabled = false;
+// Trainerbetreuung (Nutzervorgabe 10.09.2026) - Admin-Freischalter für die
+// Trainerbesuch-Dokumentation im FH-PopUp (renderFhTrainerbesucheSection())
+// und die "Trainingsauswertungen"-Kachel in "Auswertung erfassen". Bearbeiten
+// nur für myRole "admin"/"trainer", Anzeige (wenn befüllt) für alle Rollen.
+// Default false wie bei anderen neuen Features.
+let trainerbetreuungEnabled = false;
 // Akquiseliste-Import-Benachrichtigung (07.09.2026) - Admin-Freischalter für
 // die automatische Mail an alle Admin-/Außendienst-Nutzer bei jeder
 // Akquiseliste-Einspielung (siehe notifyAkqImport()/Edge Function
@@ -2665,6 +2705,7 @@ function openAdminModal(){
   $("akqImportNotifyEnabledChk").checked=akqImportNotifyEnabled;
   $("akquisequoteAtEnabledChk").checked=akquisequoteAtEnabled;
   $("neunWochenAllEnabledChk").checked=neunWochenAllEnabled;
+  $("trainerbetreuungEnabledChk").checked=trainerbetreuungEnabled;
 }
 // ---------- Karteileichen-Review (DSGVO-Prüfprotokoll, Befund N-2) ----------
 // Ereignisbasierter statt zeitbasierter Ansatz (Nutzervorgabe 01.09.2026):
@@ -2974,6 +3015,17 @@ async function toggleNeunWochenAllEnabled(){
   try{
     await stSet("neunwochen_all_enabled",on?"1":"0");
     toast(on?"Alle 9-Wochen-Pläne (PopUp) aktiviert ✓":"Alle 9-Wochen-Pläne (PopUp) deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
+async function toggleTrainerbetreuungEnabled(){
+  const on=$("trainerbetreuungEnabledChk").checked;
+  trainerbetreuungEnabled=on;
+  try{ if(fhModalCurrent) renderFhTrainerbesucheSection(); }catch(e){ console.error("renderFhTrainerbesucheSection (toggle):",e); }
+  try{
+    await stSet("trainerbetreuung_enabled",on?"1":"0");
+    toast(on?"Trainerbetreuung aktiviert ✓":"Trainerbetreuung deaktiviert");
   }catch(e){
     toast("Speichern fehlgeschlagen: "+(e.message||e));
   }
@@ -5366,6 +5418,58 @@ function fhProdThroughMonth(nr,year,month){
   return Object.entries(pm).filter(([k])=>k.startsWith(String(year))&&k<=cutoff).reduce((s,[,v])=>s+(v||0),0);
 }
 function fhActiveThroughMonth(nr,year,month){ return fhProdThroughMonth(nr,year,month)>0; }
+// Trainerbetreuung (Nutzervorgabe 10.09.2026): Tagesschnitt-Produktion über
+// einen Datumsbereich [fromISO, toISO) - Werte werden anteilig aus den
+// überlappenden Kalendermonaten von prod_monthly ("YYYY-MM"->Stück) verteilt,
+// bewusst NICHT aus state.dailyFH-Tagesdeltas berechnet (die haben Lücken an
+// Tagen ohne Einspielung, siehe der in dieser Session behobene
+// dailyGLTotals-Bug bei Ziel 1 des Performance Dialogs - dieselbe
+// Fehlerquelle würde hier die Vorher/Nachher-Vergleichswerte verfälschen).
+// Serverseitig (Edge Function) identisch nachrechenbar, da beide Seiten nur
+// prod_monthly brauchen. Rückgabe null nur, wenn für KEINEN der betroffenen
+// Monate ein Wert bekannt ist (fehlende Einzelmonate sonst als 0 gewertet,
+// analog fhVjYtdThroughMonth).
+function fhAvgDailyProdInRange(prodMonthly,fromISO,toISO){
+  const from=parseISO(fromISO), to=parseISO(toISO);
+  const totalDays=Math.round((to-from)/86400000);
+  if(totalDays<=0) return null;
+  let sum=0, any=false;
+  let cur=new Date(Date.UTC(from.getUTCFullYear(),from.getUTCMonth(),1));
+  while(cur<to){
+    const monthStart=cur;
+    const monthEnd=new Date(Date.UTC(cur.getUTCFullYear(),cur.getUTCMonth()+1,1));
+    const overlapStart=monthStart>from?monthStart:from;
+    const overlapEnd=monthEnd<to?monthEnd:to;
+    const overlapDays=Math.max(0,Math.round((overlapEnd-overlapStart)/86400000));
+    if(overlapDays>0){
+      const daysInMonth=Math.round((monthEnd-monthStart)/86400000);
+      const key=monthStart.getUTCFullYear()+"-"+String(monthStart.getUTCMonth()+1).padStart(2,"0");
+      const val=prodMonthly&&prodMonthly[key];
+      if(val!=null){ sum+=val*overlapDays/daysInMonth; any=true; }
+    }
+    cur=monthEnd;
+  }
+  if(!any) return null;
+  return sum/totalDays;
+}
+// Vorher-Fenster für einen Trainerbesuch: 3 Kalendermonate vor besuch_datum.
+function trainerbesuchBaselineRange(besuchDatumISO){
+  const to=parseISO(besuchDatumISO);
+  const from=new Date(Date.UTC(to.getUTCFullYear(),to.getUTCMonth()-3,to.getUTCDate()));
+  return { fromISO:iso(from), toISO:besuchDatumISO };
+}
+// Nachher-Fenster: 28 Tage (4 Wochen) nach besuch_datum.
+function trainerbesuchNachherRange(besuchDatumISO){
+  const from=parseISO(besuchDatumISO);
+  const to=addDays(from,28);
+  return { fromISO:besuchDatumISO, toISO:iso(to) };
+}
+// Ein Trainerbesuch gilt als "abgeschlossen", sobald sein 4-Wochen-
+// Beobachtungsfenster vorbei ist - kein eigenes Status-Feld nötig.
+function trainerbesuchAbgeschlossen(besuchDatumISO,heuteISO){
+  const heute=heuteISO?parseISO(heuteISO):new Date();
+  return addDays(parseISO(besuchDatumISO),28)<=heute;
+}
 // Wie fhProdThroughMonth(), aber für das VORJAHR (Jan.-Berichtsmonat) -
 // gebraucht für die FLOP-Liste (perfFlop10Candidates(), Nutzervorgabe
 // 09.09.2026: "immer das Jahr ab Januar bis zum jeweiligen Monat ... als
@@ -6958,7 +7062,7 @@ async function loadAll(){
     "fh_search_enabled","akp_peer_compare_enabled","karteileichen_jahre","karteileichen_review_fh",
     "karteileichen_review_akp","deckungsgrad_enabled","deckungsgrad_visible_metrics",
     "emp_ranking_enabled","stornoquoten_enabled","miete_last_import","akq_import_notify_enabled",
-    "perf_ergaenzungen_enabled","akquisequote_at_enabled","neunwochen_all_enabled"
+    "perf_ergaenzungen_enabled","akquisequote_at_enabled","neunwochen_all_enabled","trainerbetreuung_enabled"
   ]);
   try{ const d=kv["wg-state"]; if(d){ const p=JSON.parse(d); if(p&&p.latest) state=p; } }catch(e){}
   try{ const g=kv["wg-goals"]; if(g) goals=JSON.parse(g); }catch(e){}
@@ -6981,6 +7085,7 @@ async function loadAll(){
   { const pev=kv["perf_ergaenzungen_enabled"]; perfErgaenzungenEnabled = pev==null ? true : pev==="1"; }
   akquisequoteAtEnabled=kv["akquisequote_at_enabled"]==="1";
   neunWochenAllEnabled=kv["neunwochen_all_enabled"]==="1";
+  trainerbetreuungEnabled=kv["trainerbetreuung_enabled"]==="1";
   mieteLastImport=kv["miete_last_import"];
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
@@ -8358,8 +8463,9 @@ async function openFhModal(fhNr){
   $("fhModal").classList.remove("hidden");
   $("fhDeckungsgradSection").innerHTML="";
   renderFhDeckungsgradSection();
+  $("fhTrainerbesucheSection").innerHTML="";
   await loadFhContact(fhNr);
-  if(fhModalCurrent===fhNr){ renderFhContactView(); renderFhMonthly(); renderFhYearlyTrend(); renderFhStammdatenDiff(); renderFhMieteSection(); renderFhFilialbetriebeSwitcher(); }
+  if(fhModalCurrent===fhNr){ renderFhContactView(); renderFhMonthly(); renderFhYearlyTrend(); renderFhStammdatenDiff(); renderFhMieteSection(); renderFhFilialbetriebeSwitcher(); renderFhTrainerbesucheSection(); }
 }
 
 /* ---------- Fachhändler-Stammdaten (Adresse, Kontakt, Ansprechpartner, Segmentierung, Besuch, Notizen) ---------- */
@@ -10821,6 +10927,102 @@ async function renderFhDeckungsgradSection(){
     box.innerHTML="";
   }
 }
+/* ---------- Trainerbetreuung: Trainerbesuche im FH-PopUp (Nutzervorgabe 10.09.2026) ---------- */
+let trainerbesuchSelectedAkp=new Set();
+function fmtAvg1(n){ return n==null?"–":n.toFixed(1).replace(".",","); }
+async function renderFhTrainerbesucheSection(){
+  const box=$("fhTrainerbesucheSection"); if(!box) return;
+  const fhNr=fhModalCurrent;
+  if(!trainerbetreuungEnabled){ box.innerHTML=""; return; }
+  if(!(sb&&supaUser)||!fhNr) return;
+  const canEdit=myRole==="admin"||myRole==="trainer";
+  try{
+    const { data, error } = await sb.from("trainerbesuche").select("*").eq("fh_nr",fhNr).order("besuch_datum",{ascending:false});
+    if(fhModalCurrent!==fhNr) return; // Nutzer hat inzwischen einen anderen Händler geöffnet
+    if(error){ console.error("renderFhTrainerbesucheSection:",error.message||error); box.innerHTML=""; return; }
+    const rows=data||[];
+    if(!rows.length&&!canEdit){ box.innerHTML=""; return; }
+    const prodMonthly=(fhContactCurrent&&fhContactCurrent.prod_monthly)||{};
+    const todayISO=iso(new Date());
+    const rowsHtml=rows.map(r=>{
+      const abgeschlossen=trainerbesuchAbgeschlossen(r.besuch_datum,todayISO);
+      const nachherRange=trainerbesuchNachherRange(r.besuch_datum);
+      let aktuell;
+      if(abgeschlossen) aktuell=r.nachher_avg!=null?r.nachher_avg:fhAvgDailyProdInRange(prodMonthly,nachherRange.fromISO,nachherRange.toISO);
+      else aktuell=fhAvgDailyProdInRange(prodMonthly,r.besuch_datum,todayISO);
+      const diff=(aktuell!=null&&r.baseline_avg!=null)?aktuell-r.baseline_avg:null;
+      const akpNames=(r.akp_teilnehmer||[]).map(nr=>{
+        const a=akpContactsIndex&&akpContactsIndex[nr];
+        return a?[a.vorname,a.nachname].filter(Boolean).join(" ")||nr:nr;
+      }).join(", ")||"–";
+      return `<div style="border:1px solid #ECF2F6;border-radius:8px;padding:10px 12px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px">
+          <span style="font-weight:800;color:var(--wg-navy)">${fmtDate(r.besuch_datum)} · ${escapeHtml(r.trainer_name)}</span>
+          <span style="font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;background:${abgeschlossen?"#E8F6EE":"#FFF4DC"};color:${abgeschlossen?"#1B7A43":"#8A6100"}">${abgeschlossen?"Abgeschlossen":"Aktiv"}</span>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">Teilnehmer: ${escapeHtml(akpNames)}</div>
+        ${r.taetigkeiten?`<div style="font-size:12.5px;margin-top:6px;white-space:pre-wrap">${escapeHtml(r.taetigkeiten)}</div>`:""}
+        <div style="font-size:12px;margin-top:6px">Tagesschnitt vorher: <b>${fmtAvg1(r.baseline_avg)}</b> Stk./Tag · ${abgeschlossen?"nachher":"bisher"}: <b>${fmtAvg1(aktuell)}</b> Stk./Tag${diff!=null?` · <b style="color:${diff>=0?"var(--pos)":"var(--neg)"}">${diff>=0?"+":""}${fmtAvg1(diff)}</b>`:""}</div>
+      </div>`;
+    }).join("");
+    const addBtn=canEdit?`<button class="btn btn-blue" id="trainerbesuchAddBtn" style="margin-top:6px">+ Trainerbesuch</button>`:"";
+    box.innerHTML=`<h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:13px">Trainerbetreuung</h4>${rowsHtml}${addBtn}`;
+    if(canEdit) $("trainerbesuchAddBtn").onclick=openTrainerbesuchModal;
+  }catch(e){
+    if(fhModalCurrent!==fhNr) return;
+    console.error("renderFhTrainerbesucheSection failed:",e);
+    box.innerHTML="";
+  }
+}
+function openTrainerbesuchModal(){
+  if(!fhModalCurrent) return;
+  $("trainerbesuchDatum").value=iso(new Date());
+  $("trainerbesuchTaetigkeiten").value="";
+  $("trainerbesuchSaveHint").textContent="";
+  trainerbesuchSelectedAkp=new Set();
+  renderTrainerbesuchAkpList();
+  $("trainerbesuchModal").classList.remove("hidden");
+}
+function renderTrainerbesuchAkpList(){
+  const box=$("trainerbesuchAkpList");
+  const rows=akpFullList(state.latest).filter(a=>a.fhNr===fhModalCurrent)
+    .sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+  box.innerHTML=rows.length?rows.map(a=>`<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px">
+      <input type="checkbox" class="tb-akp-chk" value="${escapeHtml(a.nr)}" style="width:16px;height:16px;flex-shrink:0">
+      ${escapeHtml(a.name||a.nr)}${a.firma?" · "+escapeHtml(a.firma):""}
+    </label>`).join(""):`<div class="empty-note">Keine Ansprechpartner für diesen Fachhändler gefunden.</div>`;
+  box.querySelectorAll(".tb-akp-chk").forEach(chk=>{
+    chk.onchange=()=>{
+      if(chk.checked) trainerbesuchSelectedAkp.add(chk.value); else trainerbesuchSelectedAkp.delete(chk.value);
+      $("trainerbesuchAkpCount").textContent=trainerbesuchSelectedAkp.size?trainerbesuchSelectedAkp.size+" ausgewählt":"";
+    };
+  });
+}
+async function saveTrainerbesuch(){
+  const fhNr=fhModalCurrent; if(!fhNr) return;
+  const besuchDatum=$("trainerbesuchDatum").value;
+  if(!besuchDatum){ $("trainerbesuchSaveHint").textContent="Bitte ein Datum wählen."; return; }
+  $("trainerbesuchSaveBtn").disabled=true;
+  try{
+    const baselineRange=trainerbesuchBaselineRange(besuchDatum);
+    const prodMonthly=(fhContactCurrent&&fhContactCurrent.prod_monthly)||{};
+    const baselineAvg=fhAvgDailyProdInRange(prodMonthly,baselineRange.fromISO,baselineRange.toISO);
+    const { error } = await sb.from("trainerbesuche").insert({
+      fh_nr:fhNr, trainer_name:myName, besuch_datum:besuchDatum,
+      taetigkeiten:$("trainerbesuchTaetigkeiten").value.trim()||null,
+      akp_teilnehmer:[...trainerbesuchSelectedAkp], baseline_avg:baselineAvg,
+      created_by:(supaUser&&supaUser.id)||null, updated_by:(supaUser&&supaUser.id)||null,
+    });
+    if(error) throw error;
+    $("trainerbesuchModal").classList.add("hidden");
+    toast("Trainerbesuch gespeichert ✓");
+    renderFhTrainerbesucheSection();
+  }catch(e){
+    $("trainerbesuchSaveHint").textContent="Fehler: "+(e.message||e);
+  }finally{
+    $("trainerbesuchSaveBtn").disabled=false;
+  }
+}
 async function toggleFhEdit(on){
   $("fhViewMode").classList.toggle("hidden",on);
   $("fhEditMode").classList.toggle("hidden",!on);
@@ -12547,6 +12749,7 @@ $("stornoquotenEnabledChk").onchange=toggleStornoquotenEnabled;
 $("akqImportNotifyEnabledChk").onchange=toggleAkqImportNotifyEnabled;
 $("akquisequoteAtEnabledChk").onchange=toggleAkquisequoteAtEnabled;
 $("neunWochenAllEnabledChk").onchange=toggleNeunWochenAllEnabled;
+$("trainerbetreuungEnabledChk").onchange=toggleTrainerbetreuungEnabled;
 $("nwAllBtn").onclick=openNeunWochenAllModal;
 $("nwAllClose").onclick=()=>$("neunWochenAllModal").classList.add("hidden");
 $("perfDialogAdminEnabledChk").onchange=togglePerfDialogAdminEnabled;
@@ -12780,6 +12983,9 @@ $("acStornoInfoBtn").onclick=()=>$("stornoInfoModal").classList.remove("hidden")
 $("stornoInfoClose").onclick=()=>$("stornoInfoModal").classList.add("hidden");
 $("dgAmpelInfoClose").onclick=()=>$("dgAmpelInfoModal").classList.add("hidden");
 $("fhClose").onclick=()=>$("fhModal").classList.add("hidden");
+$("trainerbesuchClose").onclick=()=>$("trainerbesuchModal").classList.add("hidden");
+$("trainerbesuchCancelBtn").onclick=()=>$("trainerbesuchModal").classList.add("hidden");
+$("trainerbesuchSaveBtn").onclick=saveTrainerbesuch;
 // fhModal bleibt bewusst offen (nicht ausblenden!) - akpModal legt sich als
 // Unter-PopUp darüber (DOM-Reihenfolge sorgt für die richtige Stapelung), so
 // führt "✕ Schließen" im Unter-PopUp automatisch zurück zum Fachhändler-PopUp

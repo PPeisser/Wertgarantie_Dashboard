@@ -1297,3 +1297,58 @@ create policy "Authenticated insert import_log"
   with check (true);
 
 create index if not exists import_log_imported_at_idx on public.import_log (imported_at desc nulls last);
+
+-- Trainerbetreuung: Trainerbesuche bei Fachhändlern dokumentieren
+-- (Nutzervorgabe 10.09.2026). Ein FH kann über die Zeit mehrere
+-- Trainerbesuche bekommen - jeder Besuch ist ein eigener, historisierter
+-- Datensatz. "aktiv" vs. "abgeschlossen" wird immer aus besuch_datum
+-- abgeleitet (heute - besuch_datum >= 28 Tage), kein eigenes Status-Feld
+-- nötig (vermeidet Sync-Bugs). Kein Storage-Bucket für den Endbericht -
+-- der wird clientseitig aus den gespeicherten Feldern jederzeit neu
+-- gerendert (wie alle anderen PDFs dieser App).
+create table if not exists public.trainerbesuche (
+  id uuid primary key default gen_random_uuid(),
+  fh_nr text not null,
+  trainer_name text not null,           -- employees.name, wie akq_gl/emp an anderen Stellen
+  besuch_datum date not null,
+  taetigkeiten text,                    -- Freifeld "durchgeführte Tätigkeiten", keine Längenbeschränkung
+  akp_teilnehmer jsonb not null default '[]'::jsonb,  -- Array von AKP-Nr (Strings)
+  baseline_avg numeric,                 -- Tagesschnitt Produktion, 3 Monate vor besuch_datum (aus prod_monthly)
+  nachher_avg numeric,                  -- Tagesschnitt Produktion, 4 Wochen NACH besuch_datum - erst befüllt sobald besuch_datum+28 Tage vorbei ist
+  endbericht_sent_at timestamptz,       -- Guard: Endbericht-Mail nur 1x
+  created_by uuid references auth.users(id),
+  updated_by uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.trainerbesuche enable row level security;
+
+drop policy if exists "Authenticated all trainerbesuche" on public.trainerbesuche;
+create policy "Authenticated all trainerbesuche"
+  on public.trainerbesuche for all
+  to authenticated
+  using (true)
+  with check (true);
+
+create index if not exists trainerbesuche_fh_nr_idx on public.trainerbesuche (fh_nr, besuch_datum desc);
+create index if not exists trainerbesuche_trainer_idx on public.trainerbesuche (trainer_name, besuch_datum desc);
+create index if not exists trainerbesuche_endbericht_pending_idx on public.trainerbesuche (besuch_datum) where endbericht_sent_at is null;
+
+-- pg_cron-Job: ruft die Edge Function trainerbetreuung-weekly-mail stündlich
+-- auf; die Function selbst prüft per Wiener Ortszeit (analog
+-- performance-dialog-reminder), ob gerade Montag 08:00 ist, und verschickt
+-- nur dann. <CRON_SECRET> durch denselben Wert ersetzen, der auch als
+-- Edge-Function-Secret CRON_SECRET hinterlegt ist.
+select cron.schedule(
+  'trainerbetreuung-weekly-mail-hourly',
+  '0 * * * *',
+  $$
+  select net.http_post(
+    url := '<SUPABASE_PROJECT_URL>/functions/v1/trainerbetreuung-weekly-mail',
+    headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'),
+    body := jsonb_build_object('trigger','cron'),
+    timeout_milliseconds := 55000
+  );
+  $$
+);
