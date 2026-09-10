@@ -4741,7 +4741,7 @@ async function processPendingImports(){
     const { data:rows, error } = await sb.from("pending_imports")
       .select("*").eq("status","pending").order("received_at",{ascending:true});
     if(error||!rows||!rows.length) return;
-    let snapCount=0,segCount=0,segFhCount=0,mieteCount=0,mieteFhCount=0,dgCount=0,dgFhCount=0,stornoCount=0,stornoAkpCount=0,ptCount=0,ptAkpCount=0,akqImported=false;
+    let snapCount=0,segCount=0,segFhCount=0,mieteCount=0,mieteFhCount=0,dgCount=0,dgFhCount=0,stornoCount=0,stornoAkpCount=0,ptCount=0,ptAkpCount=0,akqStaffelCount=0,akqStaffelFhCount=0,akqImported=false;
     for(const row of rows){
       // Optimistisches "Claimen" (bedingtes Update) - verhindert, dass zwei
       // gleichzeitig geöffnete Tabs dieselbe Mail doppelt verarbeiten.
@@ -4795,9 +4795,23 @@ async function processPendingImports(){
                   // Profi-Training-Teilnehmerliste sein (siehe
                   // parseProfiTraining), ebenfalls per Mail zulässig.
                   const ptRows=parseProfiTraining(wb);
-                  if(!ptRows) throw new Error("Format nicht erkannt");
-                  await upsertAkpProfiTraining(ptRows);
-                  ptCount++; ptAkpCount+=ptRows.length; importType="profitraining";
+                  if(ptRows){
+                    await upsertAkpProfiTraining(ptRows);
+                    ptCount++; ptAkpCount+=ptRows.length; importType="profitraining";
+                  }else{
+                    // Auch keine Profi-Training-Liste - könnte die
+                    // Akquisestaffeln-Datei sein (Blatt "Akquisen …", siehe
+                    // parseAkquiseStaffeln). Bug-Report 10.09.2026: dieser
+                    // Dateityp fehlte hier komplett - war bislang nur über
+                    // den manuellen Admin-Button ("🎯 Akquisestaffeln",
+                    // handleAkqStaffelFile) einspielbar, jede per Mail
+                    // eingegangene Akquisestaffeln-Datei endete deshalb
+                    // zwangsläufig in "Format nicht erkannt".
+                    const akqRows=parseAkquiseStaffeln(wb);
+                    if(!akqRows) throw new Error("Format nicht erkannt");
+                    await upsertAkqStaffeln(akqRows);
+                    akqStaffelCount++; akqStaffelFhCount+=akqRows.length; importType="akqstaffel";
+                  }
                 }
               }
             }
@@ -4844,12 +4858,32 @@ async function processPendingImports(){
       }
       toast(`📧 Profi-Training-Liste automatisch eingespielt ✓ ${fmt(ptAkpCount)} AKP mit erfolgreichem Training gefunden`);
     }
+    if(akqStaffelCount){
+      await loadFhAkqIndex();
+      render();
+      toast(`📧 Akquisestaffeln automatisch eingespielt ✓ ${fmt(akqStaffelFhCount)} Fachhändler aktualisiert`);
+    }
     if(akqImported) notifyAkqImport();
   }catch(e){ console.error("processPendingImports failed:",e); }
 }
-// Akquisestaffeln-Import (nur Admin-Panel): ersetzt Punkte + erreichte
-// Stufen je Fachhändler komplett mit dem Inhalt der eingespielten Datei
-// (aktueller Gesamtstand, keine Jahres-Historie, siehe parseAkquiseStaffeln).
+// Ersetzt Punkte + erreichte Stufen je Fachhändler komplett mit dem Inhalt
+// der eingespielten Akquisestaffeln-Datei (aktueller Gesamtstand, keine
+// Jahres-Historie, siehe parseAkquiseStaffeln) - gemeinsam genutzt vom
+// Admin-Panel-Upload (handleAkqStaffelFile) UND vom automatischen Mail-
+// Import (processPendingImports), analog zu upsertFhSegmentierung/
+// upsertMieteData/etc.
+async function upsertAkqStaffeln(rows){
+  const CHUNK=500;
+  for(let i=0;i<rows.length;i+=CHUNK){
+    const chunk=rows.slice(i,i+CHUNK).map(r=>({
+      fh_nr:r.fh_nr, akq_punkte:r.punkte, akq_staffeln:r.staffeln, akq_gl:r.gl, akq_name:r.name,
+      updated_by:supaUser.id, updated_at:new Date().toISOString()
+    }));
+    const { error }=await sb.from("fh_contacts").upsert(chunk,{onConflict:"fh_nr"});
+    if(error) throw error;
+  }
+}
+// Akquisestaffeln-Import (Admin-Panel): siehe upsertAkqStaffeln.
 async function handleAkqStaffelFile(files){
   if(!files||!files.length) return;
   if(!(sb&&supaUser)){ toast("Nicht angemeldet."); return; }
@@ -4859,15 +4893,7 @@ async function handleAkqStaffelFile(files){
     const wb=XLSX.read(buf,{type:"array",cellDates:true});
     const rows=parseAkquiseStaffeln(wb);
     if(!rows){ toast('Format nicht erkannt – bitte die Akquisestaffeln-Datei mit dem Blatt "Akquisen …" einspielen.'); return; }
-    const CHUNK=500;
-    for(let i=0;i<rows.length;i+=CHUNK){
-      const chunk=rows.slice(i,i+CHUNK).map(r=>({
-        fh_nr:r.fh_nr, akq_punkte:r.punkte, akq_staffeln:r.staffeln, akq_gl:r.gl, akq_name:r.name,
-        updated_by:supaUser.id, updated_at:new Date().toISOString()
-      }));
-      const { error }=await sb.from("fh_contacts").upsert(chunk,{onConflict:"fh_nr"});
-      if(error) throw error;
-    }
+    await upsertAkqStaffeln(rows);
     await loadFhAkqIndex();
     render();
     toast(`Akquisestaffeln eingespielt ✓ ${fmt(rows.length)} Fachhändler aktualisiert`);
