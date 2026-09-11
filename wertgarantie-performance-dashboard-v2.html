@@ -971,6 +971,17 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       </div>
     </div>
 
+    <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">🎓 Trainerbetreuung</h4>
+    <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;flex-wrap:wrap">
+      Wochenbericht per Mail:
+      <select id="setTbFreq" style="border:2px solid var(--line);border-radius:8px;padding:6px 10px;font:inherit;font-weight:600">
+        <option value="never">Nie</option>
+        <option value="weekly">Wöchentlich</option>
+        <option value="monthly">Monatlich</option>
+      </select>
+    </label>
+    <div class="hint">Gilt nur für den periodischen Fortschrittsbericht zu deinen eigenen Trainerbesuchen. Der einmalige Endbericht 4 Wochen nach einem Trainerbesuch ist davon nicht betroffen und geht immer an dich sowie an k.scheiermann@wertgarantie.com.</div>
+
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">📋 Logbuch · Einspielungen</h4>
     <div class="hint">Alle Datei-Einspielungen (manuell oder automatisch per Mail) mit Datum und Uhrzeit, für alle Rollen sichtbar.</div>
     <div id="importLogBody" style="max-height:320px;overflow:auto;margin-top:8px;border:1px solid var(--line);border-radius:10px"></div>
@@ -2203,11 +2214,11 @@ let akquisequoteAtEnabled = false;
 // renderNeunWochen()/renderNeunWochenAllModal()). Default false wie bei
 // anderen neuen Features.
 let neunWochenAllEnabled = false;
-// Trainerbetreuung (Nutzervorgabe 10.09.2026) - Admin-Freischalter für die
-// Trainerbesuch-Dokumentation im FH-PopUp (renderFhTrainerbesucheSection())
-// und die "Trainingsauswertungen"-Kachel in "Auswertung erfassen". Bearbeiten
-// nur für myRole "admin"/"trainer", Anzeige (wenn befüllt) für alle Rollen.
-// Default false wie bei anderen neuen Features.
+// Trainerbetreuung (Nutzervorgabe 10.09.2026, Rollenfreigabe erweitert
+// 11.09.2026) - Admin-Freischalter für die Trainerbesuch-Dokumentation im
+// FH-PopUp (renderFhTrainerbesucheSection()) und die "Trainingsauswertungen"-
+// Kachel in "Auswertung erfassen". Anlegen/Ansicht für ALLE Rollen, Löschen
+// bleibt admin-only. Default false wie bei anderen neuen Features.
 let trainerbetreuungEnabled = false;
 // Akquiseliste-Import-Benachrichtigung (07.09.2026) - Admin-Freischalter für
 // die automatische Mail an alle Admin-/Außendienst-Nutzer bei jeder
@@ -2250,9 +2261,9 @@ async function fetchProfile(){
   return null;
 }
 /* ---------- Einstellungen (pro Nutzer: Passwort, Benachrichtigungen) ---------- */
-let userSettings = { notif_akp_enabled:false, notif_akp_days:30, notif_fh_enabled:false, notif_fh_days:30, notif_scope:"own" };
+let userSettings = { notif_akp_enabled:false, notif_akp_days:30, notif_fh_enabled:false, notif_fh_days:30, notif_scope:"own", notif_trainerbetreuung_frequency:"weekly" };
 async function loadUserSettings(){
-  userSettings = { notif_akp_enabled:false, notif_akp_days:30, notif_fh_enabled:false, notif_fh_days:30, notif_scope:"own" };
+  userSettings = { notif_akp_enabled:false, notif_akp_days:30, notif_fh_enabled:false, notif_fh_days:30, notif_scope:"own", notif_trainerbetreuung_frequency:"weekly" };
   try{
     if(sb && supaUser){
       const { data, error } = await sb.from("user_settings").select("*").eq("user_id",supaUser.id).maybeSingle();
@@ -2269,6 +2280,7 @@ async function saveUserSettings(){
     notif_fh_enabled:userSettings.notif_fh_enabled,
     notif_fh_days:userSettings.notif_fh_days,
     notif_scope:userSettings.notif_scope,
+    notif_trainerbetreuung_frequency:userSettings.notif_trainerbetreuung_frequency,
     updated_at:new Date().toISOString()
   };
   const { error } = await sb.from("user_settings").upsert(row,{onConflict:"user_id"});
@@ -3130,6 +3142,7 @@ function showSettingsModal(){
   $("setAkpDays").value=String(userSettings.notif_akp_days||30);
   $("setFhEnabled").checked=!!userSettings.notif_fh_enabled;
   $("setFhDays").value=String(userSettings.notif_fh_days||30);
+  $("setTbFreq").value=userSettings.notif_trainerbetreuung_frequency||"weekly";
   $("settingsModal").classList.remove("hidden");
   renderImportLog();
 }
@@ -3154,6 +3167,7 @@ function syncSettingsFormToState(){
   userSettings.notif_akp_days=+$("setAkpDays").value;
   userSettings.notif_fh_enabled=$("setFhEnabled").checked;
   userSettings.notif_fh_days=+$("setFhDays").value;
+  userSettings.notif_trainerbetreuung_frequency=$("setTbFreq").value;
 }
 async function doSaveSettings(){
   syncSettingsFormToState();
@@ -10179,15 +10193,19 @@ function auswertungEntityLabel(key){
   }
   return key;
 }
-// Trainingsauswertungen (Nutzervorgabe 10.09.2026): lädt alle Trainerbesuche
-// (Rolle "trainer" sieht nur die eigenen, alle anderen Rollen alle), reichert
-// sie um Fortschritt/Vorher-Nachher an - gemeinsam genutzt von der Live-
+// Trainingsauswertungen (Nutzervorgabe 10.09.2026, Rollenfreigabe erweitert
+// 11.09.2026): lädt alle Trainerbesuche (nur admin sieht alle, jede andere
+// Rolle nur die eigenen), reichert sie um Fortschritt/Vorher-Nachher an -
+// gemeinsam genutzt von der Live-
 // Ansicht (renderTrainingsauswertungView) und dem PDF-Export
 // (buildTrainingsauswertungPdfDoc), damit die Zahlen garantiert identisch
 // sind.
 async function trainingsauswertungData(){
   let q=sb.from("trainerbesuche").select("*").order("besuch_datum",{ascending:false});
-  if(myRole==="trainer") q=q.eq("trainer_name",myName);
+  // Nutzervorgabe 11.09.2026: Trainerbesuche sind jetzt für alle Rollen
+  // freigegeben - nur admin sieht alle, jede andere Rolle nur die eigenen
+  // (vorher: nur Rolle "trainer" wurde gefiltert, alle anderen sahen alles).
+  if(myRole!=="admin") q=q.eq("trainer_name",myName);
   const { data, error } = await q;
   if(error) throw error;
   const todayISO=iso(new Date());
@@ -11123,7 +11141,10 @@ async function renderFhTrainerbesucheSection(){
   const fhNr=fhModalCurrent;
   if(!trainerbetreuungEnabled){ box.innerHTML=""; return; }
   if(!(sb&&supaUser)||!fhNr) return;
-  const canEdit=myRole==="admin"||myRole==="trainer";
+  // Nutzervorgabe 11.09.2026: Trainerbesuche anlegen ist jetzt für ALLE
+  // Rollen freigegeben (nicht mehr nur admin/trainer) - Löschen (weiter
+  // unten) bleibt bewusst admin-only.
+  const canEdit=true;
   try{
     const { data, error } = await sb.from("trainerbesuche").select("*").eq("fh_nr",fhNr).order("besuch_datum",{ascending:false});
     if(fhModalCurrent!==fhNr) return; // Nutzer hat inzwischen einen anderen Händler geöffnet
@@ -11161,7 +11182,11 @@ async function renderFhTrainerbesucheSection(){
     box.innerHTML=`<h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:13px">Trainerbetreuung</h4>${rowsHtml}${addBtn}`;
     if(canEdit) $("trainerbesuchAddBtn").onclick=openTrainerbesuchModal;
     box.querySelectorAll(".tb-download-btn").forEach(btn=>{
-      btn.onclick=()=>downloadTrainerbericht(btn.dataset.id);
+      // Nutzervorgabe 11.09.2026: dieselbe Drucken/Versenden-Logik wie bei
+      // allen anderen PDF-Exporten dieser App (Ziel-Auswahl inkl. FH-
+      // Geschäft/Ansprechpartner, vorbefülltes Freitext-Mail), statt eines
+      // reinen Direkt-Downloads.
+      btn.onclick=()=>openPdfTargetChoice(()=>exportTrainerbericht(btn.dataset.id),fhPdfSendExtra());
     });
     box.querySelectorAll(".tb-delete-btn").forEach(btn=>{
       btn.onclick=()=>deleteTrainerbesuch(btn.dataset.id);
@@ -11291,16 +11316,32 @@ function buildTrainerberichtPdfDoc(besuch){
     }
   })();
 }
-async function downloadTrainerbericht(besuchId){
-  const box=$("fhTrainerbesucheSection");
+// Wie exportFilialGruppePdf()/exportFhPdf() u.a.: baut das PDF und übergibt
+// es an finalizePdf() - druckt/lädt direkt herunter ODER verschickt per Mail
+// an die im "Drucken oder Versenden"-Dialog gewählte Zieladresse (Nutzervorgabe
+// 11.09.2026, siehe openPdfTargetChoice()-Aufruf in
+// renderFhTrainerbesucheSection()).
+let trainerberichtPdfBusy=false;
+async function exportTrainerbericht(besuchId){
+  if(trainerberichtPdfBusy) return;
+  if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)){
+    toast("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals klicken.");
+    pdfSendTarget=null;
+    return;
+  }
+  trainerberichtPdfBusy=true;
+  toast("PDF wird erstellt …");
   try{
     const { data:row, error } = await sb.from("trainerbesuche").select("*").eq("id",besuchId).maybeSingle();
     if(error||!row) throw error||new Error("Trainerbesuch nicht gefunden");
     const {pdf,filename}=await buildTrainerberichtPdfDoc(row);
-    pdf.save(filename);
+    await finalizePdf(pdf,filename);
   }catch(e){
-    console.error("downloadTrainerbericht failed:",e);
+    console.error("exportTrainerbericht failed:",e);
     toast("PDF-Erstellung fehlgeschlagen: "+(e.message||e));
+    pdfSendTarget=null;
+  }finally{
+    trainerberichtPdfBusy=false;
   }
 }
 // Endbericht 4 Wochen nach einem Trainerbesuch: Hintergrund-Check beim

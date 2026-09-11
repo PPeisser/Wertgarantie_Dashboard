@@ -760,6 +760,18 @@ create policy "Users update own settings"
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
+-- Trainerbetreuung: pro Mitarbeiter einstellbare Häufigkeit der
+-- automatischen Wochenmail (Nutzervorgabe 11.09.2026: "nie, wöchentlich,
+-- monatlich", Standard "wöchentlich"). Betrifft NUR die periodische
+-- Fortschritts-Mail (trainerbetreuung-weekly-mail) - der einmalige
+-- Endbericht 4 Wochen nach einem Trainerbesuch bleibt davon unberührt und
+-- geht weiterhin immer an Mitarbeiter + Admin.
+alter table public.user_settings add column if not exists notif_trainerbetreuung_frequency text not null default 'weekly';
+
+alter table public.user_settings drop constraint if exists user_settings_tb_freq_check;
+alter table public.user_settings add constraint user_settings_tb_freq_check
+  check (notif_trainerbetreuung_frequency in ('never','weekly','monthly'));
+
 -- Automatischer Excel-Mail-Import (input@wgaustria.at, siehe README) - die
 -- Edge Function dashboard-mail-poller legt hier pro gefundenem Excel-Anhang
 -- eine Zeile an; das Parsen selbst passiert weiterhin clientseitig
