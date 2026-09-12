@@ -736,6 +736,38 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
   .controls{margin-left:0;width:100%;align-items:stretch}
   .controls-row{justify-content:flex-start}
 }
+/* Tabellen in den Listen-PopUps (Akquisestaffeln, Top & Flop Händler, Top &
+   Flop AKP, Monatsproduktion in FH-/AKP-PopUp) sind auf dem Handy breiter
+   als der Bildschirm und mussten bisher ohne jeden Hinweis horizontal
+   gescrollt werden - Nutzer-Feedback 12.09.2026 ("kann man in den PopUPs
+   noch was machen dass man die Besser lesen kann am Handy?"). Rang und
+   Name/Jahr bleiben deshalb beim Scrollen fix stehen ("sticky first
+   column(s)"-Muster), ein Schatten am rechten Rand der fixierten Spalte(n)
+   zeigt an, dass noch mehr folgt, und -webkit-overflow-scrolling:touch
+   sorgt für sanftes, physikalisches Scrollen auf iOS statt Ruckeln. */
+@media (max-width:640px){
+  #aqmBody,#ftfTopTable,#ftfFlopTable,#amBody,#fhMonthly,#acMonthly{-webkit-overflow-scrolling:touch}
+  #aqmBody table,#ftfTopTable table,#ftfFlopTable table,#amBody table{font-size:12.5px}
+  /* Erste Spalte (Rang-Badge) + zweite Spalte (Name/Firma) fixiert - die
+     zweite Spalte braucht einen festen left-Offset in exakter Breite der
+     ersten (gemessen: 32px, siehe .rank-Maße oben). */
+  #aqmBody td:first-child,#aqmBody th:first-child,
+  #ftfTopTable td:first-child,#ftfTopTable th:first-child,
+  #ftfFlopTable td:first-child,#ftfFlopTable th:first-child,
+  #amBody td:first-child,#amBody th:first-child{position:sticky;left:0;background:#fff;z-index:1}
+  #aqmBody td:nth-child(2),#aqmBody th:nth-child(2),
+  #ftfTopTable td:nth-child(2),#ftfTopTable th:nth-child(2),
+  #ftfFlopTable td:nth-child(2),#ftfFlopTable th:nth-child(2),
+  #amBody td:nth-child(2),#amBody th:nth-child(2){position:sticky;left:32px;background:#fff;z-index:1;box-shadow:6px 0 8px -6px rgba(6,42,63,.35)}
+  /* Firmenname/Titel in diesen Tabellen etwas schmäler kappen als am
+     Desktop (210px), damit neben der fixierten Namensspalte noch sichtbarer
+     Platz für die scrollenden Zahlenspalten bleibt. */
+  .hname{max-width:150px}
+  /* Monatsproduktions-Tabelle (Jahr + 12 Monate + Summe, FH-/AKP-PopUp):
+     nur die Jahr-Spalte fixieren, es gibt hier keine separate Namensspalte. */
+  #fhMonthly td:first-child,#fhMonthly th:first-child,
+  #acMonthly td:first-child,#acMonthly th:first-child{position:sticky;left:0;background:#fff;z-index:1;box-shadow:6px 0 8px -6px rgba(6,42,63,.35)}
+}
 @media (max-width:480px){
   .ac-grid{grid-template-columns:1fr}
   /* Der Info-Badge (<small>, z.B. "38 Händler, davon ...") drängt die
@@ -8340,7 +8372,7 @@ function openAkpModal(){
     const mkTbl=(list,neg)=>`<table><thead><tr><th></th><th>AKP / Firma${showGL?" / Betreuer":""}</th><th class="r">${unit}</th><th class="r">VT</th><th class="r">vs. VJ</th></tr></thead><tbody>`+
       list.slice(0,akpN).map((r,i)=>`<tr>
         <td><span class="rank" style="${neg?"background:var(--neg-bg);color:var(--neg)":""}">${i+1}</span></td>
-        <td><b><button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button></b><br><span class="betr"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.fhNr||"")}">${escapeHtml(r.firma||"")}</button> · ${escapeHtml(r.ort||"")}${showGL&&r.emp?" · "+escapeHtml(r.emp):""}</span></td>
+        <td><button type="button" class="hname akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button><br><span class="betr"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.fhNr||"")}">${escapeHtml(r.firma||"")}</button> · ${escapeHtml(r.ort||"")}${showGL&&r.emp?" · "+escapeHtml(r.emp):""}</span></td>
         <td class="r" style="font-weight:900">${fmt(r.val)}</td>
         <td class="r" style="color:var(--muted)">${fmt(r.vt)}</td>
         <td class="r">${r.vjDiff==null?"–":`<span class="pill ${r.vjDiff>=0?"pos":"neg"}">${fmtSign(r.vjDiff)}</span>`}</td>
