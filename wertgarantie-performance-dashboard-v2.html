@@ -399,6 +399,18 @@ td .betr{font-size:11px;color:var(--muted)}
 .akp-row .val-num,.akp-search-row .val-num{white-space:nowrap}
 .akp-row .val small,.akp-search-row .val small{font-weight:700;font-size:10px;color:var(--muted)}
 .akp-row .val .pill,.akp-search-row .val .pill{white-space:nowrap}
+/* Mitarbeiter-Ranking (renderEmpRanking): Name/Substat-Zeile wie bei
+   .akp-search-row einzeilig mit Ellipsis statt frei umbrechend - auf
+   schmalen Handy-Bildschirmen wuchsen die Zeilen vorher (langer Name + lange
+   Substat-Zeile ohne Kappung) auf mehrere Zeilen, Bug-Report 12.09.2026. */
+.emp-rank-row{display:flex;align-items:center;gap:10px;padding:8px 0}
+.emp-rank-row+.emp-rank-row{border-top:1px solid var(--line)}
+.emp-rank-num{width:20px;flex:none;font-weight:800;color:var(--muted)}
+.emp-rank-info{flex:1;min-width:0}
+.emp-rank-name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.emp-rank-sub{font-size:11px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.emp-rank-bar{flex:2}
+.emp-rank-pct{flex:none;text-align:right;white-space:nowrap}
 /* Akquise ohne Produktion: schmalere, fixe Zeilenhöhe – Adresse fest auf
    2 Zeilen gekappt (mit Ellipsis), damit mehr Platz für den Namen bleibt. */
 .akqop-table td{padding:5px 8px}
@@ -735,6 +747,17 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
      Zeile bleibt (Bug-Report 25.08.2026). Nur auf schmalen Bildschirmen, ab
      Tablet-Breite bleibt genug Platz für eine Zeile.  */
   .panel h3 small{flex:1 1 100%}
+  /* "Top/Flop 10-30"-Badge (h2.sec, Bug-Report 12.09.2026: kollidierte auf
+     schmalen Handy-Bildschirmen mit dem Titel "Händler Top & Flop 10", da
+     beide im selben verschachtelten Flex-Element standen) - eigene Zeile,
+     analog .panel h3 small oben. */
+  .sec-badge-btn{flex:1 1 100%}
+  /* Mitarbeiter-Ranking: Balken auf eine eigene, volle Zeile - Rang/Name/
+     Prozentwert bleiben auf der ersten Zeile zusammen (Bug-Report
+     12.09.2026: der Balken nahm vorher auf schmalen Bildschirmen zu viel
+     Platz weg, sodass Name/Prozentwert stark gequetscht wurden). */
+  .emp-rank-row{flex-wrap:wrap}
+  .emp-rank-bar{flex-basis:100%;order:3;margin-top:4px}
 }
 </style>
 </head>
@@ -824,9 +847,8 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <div class="kpis" id="kpiCards"></div>
 
     <h2 class="sec" style="justify-content:space-between;flex-wrap:wrap;row-gap:8px">
-      <span style="display:flex;align-items:center;gap:10px"><svg class="arr" viewBox="0 0 60 30"><path d="M4 22 C 20 10, 35 8, 48 12" fill="none" stroke="#009FE3" stroke-width="6" stroke-linecap="round"/><path d="M39 4 L 56 13 L 37 20 Z" fill="#009FE3"/></svg> Händler Top &amp; Flop 10
-        <button type="button" class="btn btn-ghost no-print" id="fhTopFlopMoreBtn" style="padding:5px 10px;font-size:11px;border-radius:9px" title="Top/Flop 10, 20 oder 30 Händler anzeigen">Top/Flop 10–30 ⤢</button>
-      </span>
+      <span style="display:flex;align-items:center;gap:10px"><svg class="arr" viewBox="0 0 60 30"><path d="M4 22 C 20 10, 35 8, 48 12" fill="none" stroke="#009FE3" stroke-width="6" stroke-linecap="round"/><path d="M39 4 L 56 13 L 37 20 Z" fill="#009FE3"/></svg> Händler Top &amp; Flop 10</span>
+      <button type="button" class="btn btn-ghost no-print sec-badge-btn" id="fhTopFlopMoreBtn" style="padding:5px 10px;font-size:11px;border-radius:9px" title="Top/Flop 10, 20 oder 30 Händler anzeigen">Top/Flop 10–30 ⤢</button>
       <span class="tabs no-print" id="periodTabs">
         <button data-p="tag" class="on">Tag</button>
         <button data-p="woche">Woche</button>
@@ -7705,18 +7727,18 @@ function renderEmpRanking(){
     box.innerHTML=`<div class="panel" style="margin:14px 0">
       <h3 style="justify-content:space-between;flex-wrap:wrap;row-gap:8px"><span style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--wg-blue)"></span>Mitarbeiter-Ranking · Steigerung ggü. Vorjahr ${s.jahr}</span>${tabs}</h3>
       ${rows.map((r,i)=>`
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 0${i<rows.length-1?';border-bottom:1px solid var(--line)':""}">
-          <span style="width:20px;flex:none;font-weight:800;color:var(--muted)">${i+1}.</span>
-          <div style="flex:1;min-width:0">
-            <div style="font-weight:700">${escapeHtml(r.emp)}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:1px">Vorjahr ${fmt(r.vj)} · Stand ${fmt(r.ist)} · Hochr. ${fmt(r.hr)}</div>
+        <div class="emp-rank-row">
+          <span class="emp-rank-num">${i+1}.</span>
+          <div class="emp-rank-info">
+            <div class="emp-rank-name">${escapeHtml(r.emp)}</div>
+            <div class="emp-rank-sub">Vorjahr ${fmt(r.vj)} · Stand ${fmt(r.ist)} · Hochr. ${fmt(r.hr)}</div>
           </div>
-          <div style="flex:2;display:flex;align-items:center;height:10px" title="Mitte = Vorjahr (100 %)">
+          <div class="emp-rank-bar" style="display:flex;align-items:center;height:10px" title="Mitte = Vorjahr (100 %)">
             <div style="flex:1;height:100%;display:flex;justify-content:flex-end;border-radius:5px 0 0 5px;overflow:hidden;background:var(--panel-2,#F3F7FA)"><div style="height:100%;width:${r.negPct}%;background:var(--neg)"></div></div>
             <div style="width:2px;height:16px;background:var(--wg-navy);opacity:.35;flex:none"></div>
             <div style="flex:1;height:100%;display:flex;justify-content:flex-start;border-radius:0 5px 5px 0;overflow:hidden;background:var(--panel-2,#F3F7FA)"><div style="height:100%;width:${r.posPct}%;background:var(--pos)"></div></div>
           </div>
-          <div style="width:92px;text-align:right;flex:none;white-space:nowrap">
+          <div class="emp-rank-pct" style="width:92px">
             <b style="color:${r.growth==null?"var(--muted)":r.growth>=0?"var(--pos)":"var(--neg)"}">${fmtPct(r.growth)}</b>
             <div style="font-size:10.5px;font-weight:700;color:${r.delta==null?"var(--muted)":r.delta>=0?"var(--pos)":"var(--neg)"}">(${fmtSign(r.delta)})</div>
           </div>
@@ -7735,14 +7757,14 @@ function renderEmpRanking(){
   box.innerHTML=`<div class="panel" style="margin:14px 0">
     <h3 style="justify-content:space-between;flex-wrap:wrap;row-gap:8px"><span style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--wg-blue)"></span>Mitarbeiter-Ranking · pers. Jahreszielerreichung ${s.jahr}</span>${tabs}</h3>
     ${rows.map((r,i)=>`
-      <div style="display:flex;align-items:center;gap:10px;padding:8px 0${i<rows.length-1?';border-bottom:1px solid var(--line)':""}">
-        <span style="width:20px;flex:none;font-weight:800;color:var(--muted)">${i+1}.</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:700">${escapeHtml(r.emp)}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:1px">Ziel ${fmt(r.ziel)} · Stand ${fmt(r.ist)} · Hochr. ${fmt(r.hr)} <span style="color:${r.hrDelta==null?"var(--muted)":r.hrDelta>=0?"var(--pos)":"var(--neg)"};font-weight:700">(${fmtPct(r.hrDelta)})</span></div>
+      <div class="emp-rank-row">
+        <span class="emp-rank-num">${i+1}.</span>
+        <div class="emp-rank-info">
+          <div class="emp-rank-name">${escapeHtml(r.emp)}</div>
+          <div class="emp-rank-sub">Ziel ${fmt(r.ziel)} · Stand ${fmt(r.ist)} · Hochr. ${fmt(r.hr)} <span style="color:${r.hrDelta==null?"var(--muted)":r.hrDelta>=0?"var(--pos)":"var(--neg)"};font-weight:700">(${fmtPct(r.hrDelta)})</span></div>
         </div>
-        <div class="bar" style="flex:2;height:10px"><div class="fill" style="width:${Math.min(r.pct,100)}%;background:${r.pct>=100?"var(--pos)":"var(--wg-blue)"}"></div></div>
-        <b style="width:76px;text-align:right;flex:none;white-space:nowrap">${r.pct.toFixed(1).replace(".",",")+" %"}</b>
+        <div class="emp-rank-bar bar" style="height:10px"><div class="fill" style="width:${Math.min(r.pct,100)}%;background:${r.pct>=100?"var(--pos)":"var(--wg-blue)"}"></div></div>
+        <b class="emp-rank-pct" style="width:76px">${r.pct.toFixed(1).replace(".",",")+" %"}</b>
       </div>`).join("")}
   </div>`;
 }
