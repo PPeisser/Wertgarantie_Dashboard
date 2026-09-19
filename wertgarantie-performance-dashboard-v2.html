@@ -3292,25 +3292,41 @@ function buildFhContactsIndices(rows){
   }
   return {bulkIdx,mieteIdx,erledigt,akqIdx,manualNameIdx,mieteNameIdx,allIdx};
 }
+// Lädt alle Zeilen einer Tabelle seitenweise, aber PARALLEL statt
+// nacheinander - Performance-Fix 19.09.2026 (Nutzer-Bug-Report "Dashboard
+// extrem langsam beim Datenladen"): loadAkpContactsIndex()/
+// loadFhContactsIndicesAll() holten die komplette Kontaktdatenbank bisher in
+// einer for(;;)-Schleife, in der jede 1000er-Seite auf die Antwort der
+// VORHERIGEN wartete (bei akp_contacts z.B. 11 Seiten nacheinander) - bei
+// akp_contacts allein macht das ca. 10.000 Zeilen mit vier JSONB-
+// Monatshistorie-Spalten, deren Netzwerk-Latenz sich so einfach aufsummierte,
+// statt sich zu überlappen. Erst die Gesamtzahl per COUNT abfragen, dann
+// alle übrigen Seiten auf einmal parallel anfordern.
+async function fetchAllRowsParallel(table,selectCols,buildQuery){
+  const PAGE=1000;
+  const mk=(from,to,withCount)=>{
+    let q=sb.from(table).select(selectCols,withCount?{count:"exact"}:undefined).range(from,to);
+    if(buildQuery) q=buildQuery(q);
+    return q;
+  };
+  const {data:first,error,count}=await mk(0,PAGE-1,true);
+  if(error) throw error;
+  const rows=first||[];
+  if(count==null||count<=rows.length) return rows;
+  const pageStarts=[];
+  for(let from=rows.length;from<count;from+=PAGE) pageStarts.push(from);
+  const rest=await Promise.all(pageStarts.map(from=>mk(from,from+PAGE-1,false)));
+  for(const r of rest){ if(r.error) throw r.error; rows.push(...(r.data||[])); }
+  return rows;
+}
 let fhContactsIndicesLoading=null;
 async function loadFhContactsIndicesAll(){
   if(!(sb&&supaUser)) return;
   if(fhContactsIndicesLoading){ await fhContactsIndicesLoading; return; }
   fhContactsIndicesLoading=(async()=>{
     try{
-      const allRows=[];
-      let from=0, guard=0;
-      for(;;){
-        guard++;
-        const {data,error}=await sb.from("fh_contacts")
-          .select("fh_nr,ort,prod_monthly,miete_monthly,neunwochen_erledigt,akq_punkte,akq_staffeln,akq_gl,akq_name,name,miete_name,filialbetriebe,weitere_zuordnung,gesperrt_am")
-          .range(from,from+999);
-        if(error){ console.error("loadFhContactsIndicesAll:",error.message||error); break; }
-        if(!data||!data.length) break;
-        allRows.push(...data);
-        from+=data.length;
-        if(guard>50) break;
-      }
+      const allRows=await fetchAllRowsParallel("fh_contacts",
+        "fh_nr,ort,prod_monthly,miete_monthly,neunwochen_erledigt,akq_punkte,akq_staffeln,akq_gl,akq_name,name,miete_name,filialbetriebe,weitere_zuordnung,gesperrt_am");
       const {bulkIdx,mieteIdx,erledigt,akqIdx,manualNameIdx,mieteNameIdx,allIdx}=buildFhContactsIndices(allRows);
       fhContactsBulkIndex=bulkIdx;
       fhMieteIndex=mieteIdx;
@@ -4920,9 +4936,30 @@ async function handleFiles(files){
 // Nutzt bewusst denselben, bereits ausführlich getesteten Parser wie der
 // manuelle "Excel einspielen"-Button (parseAuswertung) - keine doppelte
 // Parserlogik, kein serverseitiges Nachbauen der Merge-Regeln.
+// Als "hängengeblieben" gilt eine "processing"-Zeile, deren Claim länger
+// als das her ist - siehe STALE_PROCESSING_MINUTES-Kommentar unten.
+const STALE_PROCESSING_MINUTES=15;
 async function processPendingImports(){
   if(!(sb&&supaUser)) return;
   try{
+    // Reclaim-Fix (Bug-Report 19.09.2026: "musste 2x mailen, damit es
+    // übernommen wurde"): eine Zeile wird VOR der eigentlichen Verarbeitung
+    // auf "processing" gesetzt (Claim, siehe unten). Wurde der Tab/Browser
+    // genau in diesem Fenster geschlossen oder die Verbindung brach ab
+    // (bestätigter Fall: Zeile vom 18.09. 05:15 blieb dauerhaft auf
+    // "processing" stehen, obwohl weder "processed" noch "failed" je
+    // gesetzt wurde), blieb die Zeile bisher FÜR IMMER hängen - der
+    // Auswahl-Query unten holt nur status="pending", eine bereits
+    // "processing" Zeile wird nie wieder angefasst, auch nicht an einem
+    // späteren Tag. Nutzer mussten die Mail deshalb ein zweites Mal
+    // schicken, damit eine frische pending_imports-Zeile entsteht. Fix:
+    // eine "processing"-Zeile, deren Claim älter als
+    // STALE_PROCESSING_MINUTES ist, gilt als abgebrochen und wird zurück
+    // auf "pending" gesetzt, damit sie unten normal erneut geclaimt wird.
+    const staleCutoff=new Date(Date.now()-STALE_PROCESSING_MINUTES*60*1000).toISOString();
+    await sb.from("pending_imports").update({status:"pending"})
+      .eq("status","processing").or(`claimed_at.is.null,claimed_at.lt.${staleCutoff}`);
+
     const { data:rows, error } = await sb.from("pending_imports")
       .select("*").eq("status","pending").order("received_at",{ascending:true});
     if(error||!rows||!rows.length) return;
@@ -4930,8 +4967,12 @@ async function processPendingImports(){
     for(const row of rows){
       // Optimistisches "Claimen" (bedingtes Update) - verhindert, dass zwei
       // gleichzeitig geöffnete Tabs dieselbe Mail doppelt verarbeiten.
+      // claimed_at wird hier gesetzt, damit ein abgebrochener Claim (siehe
+      // Reclaim-Fix oben) anhand SEINES Zeitpunkts erkannt wird, statt
+      // anhand von received_at (das wäre bei einer erst Stunden nach
+      // Eintreffen geöffneten Sitzung fälschlich schon "alt").
       const { data:claimed } = await sb.from("pending_imports")
-        .update({status:"processing"}).eq("id",row.id).eq("status","pending").select().maybeSingle();
+        .update({status:"processing",claimed_at:new Date().toISOString()}).eq("id",row.id).eq("status","pending").select().maybeSingle();
       if(!claimed) continue;
       let importType=null,importVortag=null;
       try{
@@ -5123,26 +5164,14 @@ async function syncFhContacts(snap){
 async function loadAkpContactsIndex(){
   if(!(sb&&supaUser)) return;
   try{
-    const idx={}; let from=0, guard=0;
-    for(;;){
-      guard++;
-      const {data,error}=await sb.from("akp_contacts")
-        .select("nr,vorname,nachname,firma,ort,fh_nr,prod_monthly,prod_monthly_other,poquote_monthly,q3fuer2_monthly,gesperrt_am,storno_widerruf_quote,storno_erstpraemie_quote,storno_wegfall_quote")
-        .order("nr")
-        .range(from,from+999);
-      if(error){ console.error("loadAkpContactsIndex:",error.message||error); break; }
-      if(!data||!data.length) break;
-      // FH-Nr auf kanonische Nummer auflösen (FH-Duplikate zusammenführen,
-      // siehe resolveFhDup()) - Index bleibt nach r.nr geschlüsselt, nur das
-      // fh_nr-Feld jeder Zeile wird angepasst.
-      for(const r of data) if(r.nr){ r.fh_nr=resolveFhDup(r.fh_nr); idx[r.nr]=r; }
-      // Nicht anhand der Antwortgröße auf "letzte Seite" schließen (der
-      // Server kann ein eigenes, kleineres Zeilenlimit pro Anfrage haben) –
-      // stattdessen immer um genau so viele Zeilen weiterrücken, wie
-      // tatsächlich zurückkamen, und erst bei einer leeren Antwort stoppen.
-      from+=data.length;
-      if(guard>50) break; // Sicherheitsnetz gegen Endlosschleifen
-    }
+    const rows=await fetchAllRowsParallel("akp_contacts",
+      "nr,vorname,nachname,firma,ort,fh_nr,prod_monthly,prod_monthly_other,poquote_monthly,q3fuer2_monthly,gesperrt_am,storno_widerruf_quote,storno_erstpraemie_quote,storno_wegfall_quote",
+      q=>q.order("nr"));
+    const idx={};
+    // FH-Nr auf kanonische Nummer auflösen (FH-Duplikate zusammenführen,
+    // siehe resolveFhDup()) - Index bleibt nach r.nr geschlüsselt, nur das
+    // fh_nr-Feld jeder Zeile wird angepasst.
+    for(const r of rows) if(r.nr){ r.fh_nr=resolveFhDup(r.fh_nr); idx[r.nr]=r; }
     akpContactsIndex=idx;
     akpIndexGen++;
     console.log("AKP-Kontaktdatenbank geladen:",Object.keys(idx).length,"Einträge");

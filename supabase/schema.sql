@@ -1364,3 +1364,16 @@ select cron.schedule(
   );
   $$
 );
+
+-- Bug-Report 19.09.2026 ("manchmal hat der automatische Mailimport nicht
+-- funktioniert, musste es 2x mailen"): processPendingImports() (index.html)
+-- setzte eine Zeile beim "Claimen" bisher direkt auf status="processing",
+-- ohne Zeitstempel - wurde der verarbeitende Tab/Browser genau in diesem
+-- Fenster geschlossen (bestätigt: Zeile vom 18.09.2026 05:15 blieb ohne
+-- Fehler und ohne processed_at dauerhaft auf "processing" stehen), gab es
+-- keine Möglichkeit mehr, diese Zeile jemals wiederzuerkennen und erneut zu
+-- versuchen - der Auswahl-Query holt nur status="pending". claimed_at hält
+-- fest, WANN der Claim gesetzt wurde, damit processPendingImports() einen
+-- "processing"-Claim, der länger als STALE_PROCESSING_MINUTES zurückliegt,
+-- als abgebrochen erkennen und die Zeile zurück auf "pending" setzen kann.
+alter table public.pending_imports add column if not exists claimed_at timestamptz;
