@@ -1377,3 +1377,60 @@ select cron.schedule(
 -- "processing"-Claim, der länger als STALE_PROCESSING_MINUTES zurückliegt,
 -- als abgebrochen erkennen und die Zeile zurück auf "pending" setzen kann.
 alter table public.pending_imports add column if not exists claimed_at timestamptz;
+
+-- Performance-Fix (Supabase-Advisor "auth_rls_initplan", Nutzeranfrage
+-- 19.09.2026 "die RLS auch gleich aufräumen"): auth.uid() wurde in mehreren
+-- RLS-Policies bisher pro ZEILE neu ausgewertet statt einmal pro Query -
+-- Supabase-Empfehlung: auth.<fn>() durch (select auth.<fn>()) ersetzen,
+-- damit der Planner das Ergebnis einmal pro Statement cachen kann, statt es
+-- für jede Zeile neu aufzurufen. is_admin() zusätzlich als STABLE markiert
+-- (war bisher implizit VOLATILE, wurde dadurch selbst innerhalb EINER Query
+-- wiederholt neu ausgewertet, obwohl sich das Ergebnis nie ändert - betrifft
+-- alle Tabellen, deren Policies is_admin() nutzen).
+create or replace function public.is_admin()
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (select 1 from public.profiles where id = auth.uid() and role = 'admin');
+$$;
+
+drop policy if exists "Users read own settings" on public.user_settings;
+create policy "Users read own settings"
+  on public.user_settings for select
+  to authenticated
+  using ((select auth.uid()) = user_id);
+
+drop policy if exists "Users insert own settings" on public.user_settings;
+create policy "Users insert own settings"
+  on public.user_settings for insert
+  to authenticated
+  with check ((select auth.uid()) = user_id);
+
+drop policy if exists "Users update own settings" on public.user_settings;
+create policy "Users update own settings"
+  on public.user_settings for update
+  to authenticated
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+
+drop policy if exists "Own or admin read performance_dialog_reports" on public.performance_dialog_reports;
+create policy "Own or admin read performance_dialog_reports"
+  on public.performance_dialog_reports for select
+  to authenticated
+  using (is_admin() or employee = (select profiles.name from public.profiles where profiles.id = (select auth.uid())));
+
+drop policy if exists "Own or admin insert performance_dialog_reports" on public.performance_dialog_reports;
+create policy "Own or admin insert performance_dialog_reports"
+  on public.performance_dialog_reports for insert
+  to authenticated
+  with check (is_admin() or employee = (select profiles.name from public.profiles where profiles.id = (select auth.uid())));
+
+drop policy if exists "Own or admin update performance_dialog_reports" on public.performance_dialog_reports;
+create policy "Own or admin update performance_dialog_reports"
+  on public.performance_dialog_reports for update
+  to authenticated
+  using (is_admin() or employee = (select profiles.name from public.profiles where profiles.id = (select auth.uid())))
+  with check (is_admin() or employee = (select profiles.name from public.profiles where profiles.id = (select auth.uid())));
