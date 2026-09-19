@@ -3302,6 +3302,17 @@ function buildFhContactsIndices(rows){
 // Monatshistorie-Spalten, deren Netzwerk-Latenz sich so einfach aufsummierte,
 // statt sich zu überlappen. Erst die Gesamtzahl per COUNT abfragen, dann
 // alle übrigen Seiten auf einmal parallel anfordern.
+// Höchstens so viele Seiten gleichzeitig anfordern (Nutzer-Bug-Report
+// 19.09.2026 "Zeit-Differenzen": bei akp_contacts feuerten anfangs alle ~11
+// Seiten auf einmal los - in den echten Zugriffslogs (Supabase edge_logs)
+// zeigte sich dadurch eine breite Streuung der Einzel-Antwortzeiten
+// (94-904ms statt gleichmäßiger 30-110ms wie vorher sequenziell), vermutlich
+// kurzzeitige Konkurrenz um Verbindungen/Worker bei so vielen gleichzeitig
+// neu aufgebauten Requests. Gesamtladezeit ist trotzdem klar besser als
+// sequenziell (max. der langsamsten Seite statt Summe aller Seiten) - mit
+// einer Obergrenze von 6 gleichzeitigen Anfragen bleibt der Großteil des
+// Parallel-Gewinns erhalten, ohne die Ausreißer-Spitzen zu erzeugen.
+const FETCH_ALL_ROWS_MAX_CONCURRENCY=6;
 async function fetchAllRowsParallel(table,selectCols,buildQuery){
   const PAGE=1000;
   const mk=(from,to,withCount)=>{
@@ -3315,8 +3326,11 @@ async function fetchAllRowsParallel(table,selectCols,buildQuery){
   if(count==null||count<=rows.length) return rows;
   const pageStarts=[];
   for(let from=rows.length;from<count;from+=PAGE) pageStarts.push(from);
-  const rest=await Promise.all(pageStarts.map(from=>mk(from,from+PAGE-1,false)));
-  for(const r of rest){ if(r.error) throw r.error; rows.push(...(r.data||[])); }
+  for(let i=0;i<pageStarts.length;i+=FETCH_ALL_ROWS_MAX_CONCURRENCY){
+    const batch=pageStarts.slice(i,i+FETCH_ALL_ROWS_MAX_CONCURRENCY);
+    const results=await Promise.all(batch.map(from=>mk(from,from+PAGE-1,false)));
+    for(const r of results){ if(r.error) throw r.error; rows.push(...(r.data||[])); }
+  }
   return rows;
 }
 let fhContactsIndicesLoading=null;
