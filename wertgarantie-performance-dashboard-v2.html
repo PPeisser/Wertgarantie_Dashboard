@@ -8592,9 +8592,18 @@ function fhMatchesSearch(f,q){
 // ("Name, Ort" als String); eine gleichnamige zweite Funktionsdeklaration
 // hätte diesen sonst überschrieben (in genau dieser Datei entdeckt, siehe
 // Playwright-Test zu Bug-Report 27.08.2026).
+// Bug-Report 19.09.2026 ("nach dem Bearbeiten/manchmal auch nach dem
+// Neuladen steht oben nur mehr die FH-Nummer statt dem Namen"): fb wurde
+// bisher nur berechnet, wenn f (state.latest.fh[fhNr]) KOMPLETT fehlte -
+// state.latest.fh[fhNr] existiert aber für praktisch jeden Händler (mit
+// Ort/Betreuer aus der täglichen Produktion), hat dabei aber so gut wie nie
+// selbst ein .name-Feld (das liefert nur der Akquise-/Miete-Import über
+// fhFallbackFromAkp). Der AKP/Akquise-Namens-Fallback griff dadurch praktisch
+// nie, sobald f existierte - fb muss immer dann berechnet werden, wenn f
+// KEINEN Namen liefert, nicht nur wenn f selbst fehlt.
 function fhResolveNameOrt(fhNr){
   const f=state.latest.fh&&state.latest.fh[fhNr];
-  const fb=f?null:fhFallbackFromAkp(fhNr);
+  const fb=(f&&f.name)?null:fhFallbackFromAkp(fhNr);
   return {name:(f&&f.name)||(fb&&fb.name)||fhNr, ort:(f&&f.ort)||(fb&&fb.ort)||null};
 }
 let fhModalCurrent=null;
@@ -8605,8 +8614,10 @@ async function openFhModal(fhNr){
   // kanonische Nummer umleiten - siehe resolveFhDup().
   fhNr=resolveFhDup(fhNr);
   fhModalCurrent=fhNr;
+  // Gleicher Fallback-Fix wie in fhResolveNameOrt() oben (dieselbe Logik war
+  // hier dupliziert).
   const f=state.latest.fh[fhNr];
-  const fb=f?null:fhFallbackFromAkp(fhNr);
+  const fb=(f&&f.name)?null:fhFallbackFromAkp(fhNr);
   const fName=(f&&f.name)||(fb&&fb.name)||fhNr;
   const fOrt=(f&&f.ort)||(fb&&fb.ort)||null;
   $("fhName").textContent=fName;
@@ -11583,7 +11594,18 @@ async function saveFhContact(){
   fhContactsAllIndex[fhNr].ort=ort;
   fhContactsAllIndex[fhNr].filialbetriebe=filialbetriebe;
   fhContactsAllIndex[fhNr].weitereZuordnung=weitere_zuordnung;
-  if(!(state.latest.fh[fhNr]&&state.latest.fh[fhNr].name)) $("fhName").textContent=name||fhNr;
+  // Bug-Report 19.09.2026 ("nach dem Bearbeiten steht oben nur mehr die
+  // Nummer statt dem Namen, bei Neuladen manchmal wieder richtig"): hier
+  // stand bisher schlicht der rohe Wert des "Firmenname (manuell)"-Feldes
+  // (name||fhNr) - ist dieses Feld leer, weil der eigentliche Name aus der
+  // Akquiseliste/Miete-Import kommt (akq_name/miete_name, siehe
+  // fhFallbackFromAkp), fiel der Titel auf die bloße FH-Nummer zurück.
+  // openFhModal() beim (Neu-)Öffnen nutzt dagegen fhResolveNameOrt() mit der
+  // vollen Priorität (state.latest.fh.name > akq_name/miete_name/manueller
+  // Name > AKP-Firma) - exakt dieselbe Auflösung jetzt auch hier, damit der
+  // Titel nach dem Speichern nicht mehr hinter dem Stand nach einem Reload
+  // zurückfällt.
+  $("fhName").textContent=fhResolveNameOrt(fhNr).name;
   if(neunwochen_erledigt) fhErledigtSet.add(fhNr); else fhErledigtSet.delete(fhNr);
   renderFhContactView();
   renderFhStammdatenDiff();
