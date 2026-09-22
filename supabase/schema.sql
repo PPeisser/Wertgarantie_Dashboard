@@ -1434,3 +1434,43 @@ create policy "Own or admin update performance_dialog_reports"
   to authenticated
   using (is_admin() or employee = (select profiles.name from public.profiles where profiles.id = (select auth.uid())))
   with check (is_admin() or employee = (select profiles.name from public.profiles where profiles.id = (select auth.uid())));
+
+-- Nutzervorgabe 22.09.2026: der periodische Trainerbetreuung-Fortschritts-
+-- bericht (bisher HTML-Text direkt in der Mail) soll als PDF-Anhang
+-- verschickt werden, UND im Admin-Tool als nach Datum sortierte, herunter-
+-- ladbare Liste aller je versendeten Berichte verfügbar sein (nicht nur der
+-- zuletzt versendete - "genau der Bericht, der am 21.09. verschickt wurde").
+-- Das erfordert eine echte Ablage des tatsächlich versendeten PDFs (nicht
+-- bloß Neuberechnung aus dem aktuellen Live-Stand, der sich seither ändern
+-- kann) - Storage-Bucket + Log-Tabelle, analog dem bereits vorhandenen
+-- Mail-Import-Muster (mail-imports-Bucket + pending_imports-Tabelle).
+create table if not exists public.trainerbetreuung_weekly_reports (
+  id uuid primary key default gen_random_uuid(),
+  trainer_name text not null,
+  sent_at timestamptz not null default now(),
+  period_reference date not null,        -- Bezugsdatum der Berechnung (i.d.R. Versand-Tag) - für die rückwirkende Korrektur eines konkreten Berichts wichtig.
+  storage_path text not null,
+  filename text not null,
+  visit_count int not null default 0,
+  trainer_email_sent boolean not null default false,
+  admin_email_sent boolean not null default false,
+  created_at timestamptz not null default now()
+);
+alter table public.trainerbetreuung_weekly_reports enable row level security;
+drop policy if exists "Authenticated all trainerbetreuung_weekly_reports" on public.trainerbetreuung_weekly_reports;
+create policy "Authenticated all trainerbetreuung_weekly_reports"
+  on public.trainerbetreuung_weekly_reports for all
+  to authenticated
+  using (true)
+  with check (true);
+create index if not exists trainerbetreuung_weekly_reports_sent_at_idx on public.trainerbetreuung_weekly_reports (sent_at desc);
+
+insert into storage.buckets (id, name, public)
+values ('trainerberichte', 'trainerberichte', false)
+on conflict (id) do nothing;
+
+drop policy if exists "Authenticated read trainerberichte" on storage.objects;
+create policy "Authenticated read trainerberichte"
+  on storage.objects for select
+  to authenticated
+  using (bucket_id = 'trainerberichte');

@@ -1665,6 +1665,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <button class="btn btn-blue" id="adminImportBtn">📤 Datei einspielen</button>
       <button class="btn btn-blue" id="adminEmployeesBtn">👥 Mitarbeiterverwaltung</button>
       <button class="btn btn-blue" id="adminFunctionsBtn">⚙ Funktionen</button>
+      <button class="btn btn-blue hidden" id="adminTrainerberichteBtn">🎓 Trainerbetreuung</button>
     </div>
     <input type="file" id="akqFileInput" accept=".xlsx,.xls" class="hidden">
     <input type="file" id="fhSegmentFileInput" accept=".xlsx,.xls" class="hidden">
@@ -1695,6 +1696,23 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Nutzerübersicht</h4>
     <div id="adUserList" style="max-height:340px;overflow:auto"></div>
+  </div>
+</div>
+
+<!-- Admin: PopUp "Trainerbetreuung" - Nutzervorgabe 22.09.2026: alle je
+     versendeten periodischen Fortschrittsberichte (PDF, siehe
+     trainerbetreuung-weekly-mail Edge Function), nach Datum sortiert, zum
+     Download für Admins. Zeigt das TATSÄCHLICH versendete PDF (Storage-
+     Bucket "trainerberichte"), nicht eine Neuberechnung aus dem aktuellen,
+     sich laufend ändernden Live-Stand. -->
+<div class="modal-bg hidden" id="adminTrainerberichteModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
+      <h3 style="margin:0">Trainerbetreuung – versendete Berichte</h3>
+      <button class="btn btn-ghost" id="adminTrainerberichteClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+    <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px">Alle periodischen Fortschrittsberichte (PDF), die per Mail an Trainer und Admin verschickt wurden - nach Versanddatum sortiert.</p>
+    <div id="adminTrainerberichteList" style="max-height:520px;overflow:auto"></div>
   </div>
 </div>
 
@@ -2790,6 +2808,7 @@ async function createEmployee(){
 }
 function openAdminModal(){
   $("adminModal").classList.remove("hidden"); loadAdminUsers();
+  $("adminTrainerberichteBtn").classList.toggle("hidden",!trainerbetreuungEnabled);
   $("chefgespraechEnabledChk").checked=chefgespraechEnabled;
   $("kooperationsgespraechEnabledChk").checked=kooperationsgespraechEnabled;
   $("auswertungEnabledChk").checked=auswertungEnabled;
@@ -2804,6 +2823,50 @@ function openAdminModal(){
   $("akquisequoteAtEnabledChk").checked=akquisequoteAtEnabled;
   $("neunWochenAllEnabledChk").checked=neunWochenAllEnabled;
   $("trainerbetreuungEnabledChk").checked=trainerbetreuungEnabled;
+}
+// Lädt einen im Storage-Bucket abgelegten Blob per sb.storage.download() und
+// stößt den Browser-Download an - Muster wie pdf.save() bei jsPDF-Exporten,
+// aber hier für bereits fertige (nicht selbst gebaute) Dateien.
+function downloadBlob(blob,filename){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url; a.download=filename; document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+// Admin-Übersicht "Trainerbetreuung" (Nutzervorgabe 22.09.2026): alle je
+// versendeten periodischen Fortschrittsberichte (trainerbetreuung_weekly_
+// reports, von der Edge Function trainerbetreuung-weekly-mail geschrieben),
+// nach Versanddatum sortiert, mit Download des TATSÄCHLICH verschickten
+// PDFs aus dem Storage-Bucket "trainerberichte".
+async function renderAdminTrainerberichteList(){
+  const box=$("adminTrainerberichteList");
+  box.innerHTML=`<div class="empty-note">Lädt …</div>`;
+  const { data:rows, error } = await sb.from("trainerbetreuung_weekly_reports").select("*").order("sent_at",{ascending:false});
+  if(error){ box.innerHTML=`<div class="empty-note">Fehler beim Laden: ${escapeHtml(error.message)}</div>`; return; }
+  if(!rows||!rows.length){ box.innerHTML=`<div class="empty-note">Noch keine versendeten Berichte.</div>`; return; }
+  box.innerHTML=rows.map(r=>`
+    <div class="akp-search-row" data-id="${escapeHtml(r.id)}">
+      <span><b>${escapeHtml(r.trainer_name)}</b>
+      <span class="betr">Stand ${fmtDate(r.period_reference)} · versendet ${fmtDateTime(r.sent_at)} · ${fmt(r.visit_count)} Einsätze${r.trainer_email_sent?" · an Trainer ✓":" · an Trainer ✕"}${r.admin_email_sent?" · an Admin ✓":" · an Admin ✕"}</span></span>
+      <span class="val" style="flex-direction:row;align-items:center;gap:8px">
+        <button type="button" class="btn btn-ghost admtb-download-btn" style="padding:6px 10px;font-size:11.5px" data-path="${escapeHtml(r.storage_path)}" data-filename="${escapeHtml(r.filename)}">⬇ PDF</button>
+      </span>
+    </div>`).join("");
+  box.querySelectorAll(".admtb-download-btn").forEach(btn=>{
+    btn.onclick=async()=>{
+      btn.disabled=true;
+      try{
+        const { data:blob, error:dlErr } = await sb.storage.from("trainerberichte").download(btn.dataset.path);
+        if(dlErr||!blob) throw dlErr||new Error("Download fehlgeschlagen");
+        downloadBlob(blob,btn.dataset.filename);
+      }catch(e){
+        toast("Download fehlgeschlagen: "+(e.message||e));
+      }finally{
+        btn.disabled=false;
+      }
+    };
+  });
 }
 // ---------- Karteileichen-Review (DSGVO-Prüfprotokoll, Befund N-2) ----------
 // Ereignisbasierter statt zeitbasierter Ansatz (Nutzervorgabe 01.09.2026):
@@ -13380,6 +13443,8 @@ $("adminImportChooseProfiTraining").onclick=()=>{ $("adminImportChoiceModal").cl
 $("adminEmployeesBtn").onclick=()=>{ $("adminEmployeesModal").classList.remove("hidden"); loadEmployeesAdmin(); };
 $("adminFunctionsBtn").onclick=()=>$("adminFunctionsModal").classList.remove("hidden");
 $("adminFunctionsClose").onclick=()=>$("adminFunctionsModal").classList.add("hidden");
+$("adminTrainerberichteBtn").onclick=()=>{ $("adminTrainerberichteModal").classList.remove("hidden"); renderAdminTrainerberichteList(); };
+$("adminTrainerberichteClose").onclick=()=>$("adminTrainerberichteModal").classList.add("hidden");
 $("adminEmployeesClose").onclick=()=>$("adminEmployeesModal").classList.add("hidden");
 $("adCreateBtn").onclick=createAdminUser;
 $("empCreateBtn").onclick=createEmployee;
