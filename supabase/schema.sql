@@ -1347,6 +1347,12 @@ create index if not exists trainerbesuche_fh_nr_idx on public.trainerbesuche (fh
 create index if not exists trainerbesuche_trainer_idx on public.trainerbesuche (trainer_name, besuch_datum desc);
 create index if not exists trainerbesuche_endbericht_pending_idx on public.trainerbesuche (besuch_datum) where endbericht_sent_at is null;
 
+-- Nutzervorgabe 23.09.2026: 3 ankreuzbare Trainingsarten je Trainerbesuch
+-- ("Flächentraining mit Unterstützung im Verkauf", "Coaching ohne
+-- Unterstützung im Verkauf", "Profi-Training") - Array von Strings, analog
+-- akp_teilnehmer.
+alter table public.trainerbesuche add column if not exists trainingsart jsonb not null default '[]'::jsonb;
+
 -- pg_cron-Job: ruft die Edge Function trainerbetreuung-weekly-mail stündlich
 -- auf; die Function selbst prüft per Wiener Ortszeit (analog
 -- performance-dialog-reminder), ob gerade Montag 08:00 ist, und verschickt
