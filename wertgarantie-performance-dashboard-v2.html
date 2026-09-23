@@ -5701,6 +5701,18 @@ function trainerbesuchAbgeschlossen(besuchDatumISO,heuteISO){
   const heute=heuteISO?parseISO(heuteISO):new Date();
   return addDays(parseISO(besuchDatumISO),28)<=heute;
 }
+// Produktion GENAU am Einsatztag (Nutzervorgabe 23.09.2026, zusätzlich zum
+// Vorher-/Nachher-Tagesschnitt) - bewusst aus state.dailyFH (Tages-Deltas,
+// nicht prod_monthly), da genau EIN Tag abgefragt wird, keine Summe über
+// einen Zeitraum. Anders als bei baseline_avg/nachher_avg (Summe über
+// Monate, wo fehlende Tage das Ergebnis verfälschen würden) ist ein
+// fehlender Eintrag hier eindeutig: mergeSnapshot() schreibt nur bei
+// Produktion > 0 in state.dailyFH, ein fehlender Tag bedeutet also
+// tatsächlich 0 (dieselbe Konvention wie überall sonst in der App, wo
+// state.dailyFH gelesen wird, z.B. sumWeek()/sumMonthFromDaily()).
+function trainerbesuchTagesproduktion(fhNr,besuchDatumISO){
+  return (state.dailyFH[fhNr]||{})[besuchDatumISO]||0;
+}
 // Wie fhProdThroughMonth(), aber für das VORJAHR (Jan.-Berichtsmonat) -
 // gebraucht für die FLOP-Liste (perfFlop10Candidates(), Nutzervorgabe
 // 09.09.2026: "immer das Jahr ab Januar bis zum jeweiligen Monat ... als
@@ -10388,7 +10400,8 @@ async function trainingsauswertungData(){
       ? (r.nachher_avg!=null?r.nachher_avg:fhAvgDailyProdInRange(prodMonthly,nachherRange.fromISO,nachherRange.toISO))
       : fhAvgDailyProdInRange(prodMonthly,r.besuch_datum,todayISO);
     const f=fhResolveNameOrt(r.fh_nr);
-    return {...r,abgeschlossen,aktuell,fhName:f.name,fhOrt:f.ort};
+    const tagesproduktion=trainerbesuchTagesproduktion(r.fh_nr,r.besuch_datum);
+    return {...r,abgeschlossen,aktuell,fhName:f.name,fhOrt:f.ort,tagesproduktion};
   });
   return { aktiv:enriched.filter(r=>!r.abgeschlossen), fertig:enriched.filter(r=>r.abgeschlossen) };
 }
@@ -10398,13 +10411,13 @@ function trainingsauswertungAktivRowHtml(r){
       <span style="font-weight:800;color:var(--wg-navy)">${escapeHtml(r.fhName)} · FH ${escapeHtml(r.fh_nr)}${r.fhOrt?" · "+escapeHtml(r.fhOrt):""}</span>
       <span style="font-size:12px;color:var(--muted)">${escapeHtml(r.trainer_name)} · ${fmtDate(r.besuch_datum)}</span>
     </div>
-    <div style="font-size:12px;margin-top:6px">Tagesschnitt vorher: <b>${fmtAvg1(r.baseline_avg)}</b> · bisher: <b>${fmtAvg1(r.aktuell)}</b> Stk./Tag</div>
+    <div style="font-size:12px;margin-top:6px">Produktion am Einsatztag: <b>${fmt(r.tagesproduktion)}</b> Stk. · Tagesschnitt vorher: <b>${fmtAvg1(r.baseline_avg)}</b> · bisher: <b>${fmtAvg1(r.aktuell)}</b> Stk./Tag</div>
   </div>`;
 }
 function trainingsauswertungFertigRowHtml(r){
   const diff=(r.aktuell!=null&&r.baseline_avg!=null)?r.aktuell-r.baseline_avg:null;
   return `<div class="pdf-block" style="font-size:12.5px;padding:6px 0;border-bottom:1px solid #ECF2F6">
-    ${escapeHtml(r.trainer_name)} · FH ${escapeHtml(r.fh_nr)} (${escapeHtml(r.fhName)}) · ${fmtDate(r.besuch_datum)}${r.fhOrt?" · "+escapeHtml(r.fhOrt):""} · vorher ${fmtAvg1(r.baseline_avg)} → nachher ${fmtAvg1(r.aktuell)}${diff!=null?` (${diff>=0?"+":""}${fmtAvg1(diff)})`:""}
+    ${escapeHtml(r.trainer_name)} · FH ${escapeHtml(r.fh_nr)} (${escapeHtml(r.fhName)}) · ${fmtDate(r.besuch_datum)}${r.fhOrt?" · "+escapeHtml(r.fhOrt):""} · Produktion am Einsatztag: ${fmt(r.tagesproduktion)} Stk. · vorher ${fmtAvg1(r.baseline_avg)} → nachher ${fmtAvg1(r.aktuell)}${diff!=null?` (${diff>=0?"+":""}${fmtAvg1(diff)})`:""}
   </div>`;
 }
 async function renderTrainingsauswertungView(){
@@ -11345,7 +11358,8 @@ async function renderFhTrainerbesucheSection(){
         </div>
         <div style="font-size:12px;color:var(--muted);margin-top:4px">Teilnehmer: ${escapeHtml(akpNames)}</div>
         ${r.taetigkeiten?`<div style="font-size:12.5px;margin-top:6px;white-space:pre-wrap">${escapeHtml(r.taetigkeiten)}</div>`:""}
-        <div style="font-size:12px;margin-top:6px">Tagesschnitt vorher: <b>${fmtAvg1(r.baseline_avg)}</b> Stk./Tag · ${abgeschlossen?"nachher":"bisher"}: <b>${fmtAvg1(aktuell)}</b> Stk./Tag${diff!=null?` · <b style="color:${diff>=0?"var(--pos)":"var(--neg)"}">${diff>=0?"+":""}${fmtAvg1(diff)}</b>`:""}</div>
+        <div style="font-size:12px;margin-top:6px">Produktion am Einsatztag (${fmtDate(r.besuch_datum)}): <b>${fmt(trainerbesuchTagesproduktion(r.fh_nr,r.besuch_datum))}</b> Stk.</div>
+        <div style="font-size:12px;margin-top:2px">Tagesschnitt vorher: <b>${fmtAvg1(r.baseline_avg)}</b> Stk./Tag · ${abgeschlossen?"nachher":"bisher"}: <b>${fmtAvg1(aktuell)}</b> Stk./Tag${diff!=null?` · <b style="color:${diff>=0?"var(--pos)":"var(--neg)"}">${diff>=0?"+":""}${fmtAvg1(diff)}</b>`:""}</div>
         ${r.endbericht_sent_at?`<button type="button" class="btn btn-ghost tb-download-btn" data-id="${escapeHtml(r.id)}" style="margin-top:8px;padding:5px 10px;font-size:12px">⬇ Trainerbericht (PDF)</button>`:""}
       </div>`;
     }).join("");
@@ -11466,9 +11480,10 @@ function buildTrainerberichtPdfDoc(besuch){
         <div style="font-size:12.5px;white-space:pre-wrap">${escapeHtml(besuch.taetigkeiten||"–")}</div>
       </div>
       <div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px">
-        <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:6px">Produktionsentwicklung (Tagesschnitt)</div>
-        <div style="font-size:13px">Vorher (3 Monate vor Besuch): <b>${fmtAvg1(besuch.baseline_avg)}</b> Stk./Tag<br>
-        Nachher (4 Wochen nach Besuch): <b>${fmtAvg1(besuch.nachher_avg)}</b> Stk./Tag${diff!=null?`<br>Veränderung: <b style="color:${diff>=0?"#1B7A43":"#B3324A"}">${diff>=0?"+":""}${fmtAvg1(diff)}</b> Stk./Tag`:""}</div>
+        <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:6px">Produktionsentwicklung</div>
+        <div style="font-size:13px">Produktion am Einsatztag (${fmtDate(besuch.besuch_datum)}): <b>${fmt(trainerbesuchTagesproduktion(besuch.fh_nr,besuch.besuch_datum))}</b> Stk.<br>
+        Tagesschnitt vorher (3 Monate vor Besuch): <b>${fmtAvg1(besuch.baseline_avg)}</b> Stk./Tag<br>
+        Tagesschnitt nachher (4 Wochen nach Besuch): <b>${fmtAvg1(besuch.nachher_avg)}</b> Stk./Tag${diff!=null?`<br>Veränderung: <b style="color:${diff>=0?"#1B7A43":"#B3324A"}">${diff>=0?"+":""}${fmtAvg1(diff)}</b> Stk./Tag`:""}</div>
       </div>
     `;
     document.body.appendChild(box);
