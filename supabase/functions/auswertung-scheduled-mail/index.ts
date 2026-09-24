@@ -353,6 +353,24 @@ function buildEmployeeMailHtml(createdByName: string, recipientEmail: string, en
     <p>Liebe Grüße<br>Wertgarantie Performance Dashboard</p>
   </div>`;
 }
+// Nutzervorgabe 24.09.2026 (Ergänzung 2/3): wenn kein externer Versand
+// stattfindet (send_to_external=false), geht die eigentliche Auswertung
+// (nicht nur eine "zur Info"-Kopie wie buildEmployeeMailHtml) direkt an den
+// erstellenden Mitarbeiter selbst.
+function buildInternalMailHtml(createdByName: string, entityLabel: string, fromISO: string, toISO: string, isEndstand: boolean): string {
+  if (isEndstand) {
+    return `<div style="font-family:'Segoe UI',Arial,sans-serif;color:#10202C">
+      <p>Hallo ${createdByName || ""},</p>
+      <p>anbei der Abschlussbericht deiner automatischen Auswertung "${entityLabel}" für den gesamten Zeitraum ${fmtDateAT(fromISO)} – ${fmtDateAT(toISO)}. Dies ist die letzte automatische Auswertung in dieser Serie.</p>
+      <p>Liebe Grüße<br>Wertgarantie Performance Dashboard</p>
+    </div>`;
+  }
+  return `<div style="font-family:'Segoe UI',Arial,sans-serif;color:#10202C">
+    <p>Hallo ${createdByName || ""},</p>
+    <p>anbei deine automatische Auswertung "${entityLabel}" für den Zeitraum ${fmtDateAT(fromISO)} – ${fmtDateAT(toISO)}.</p>
+    <p>Liebe Grüße<br>Wertgarantie Performance Dashboard</p>
+  </div>`;
+}
 
 // ---------- Hauptlogik ----------
 
@@ -448,12 +466,25 @@ Deno.serve(async (req) => {
       // Mail pro Empfänger, wie schon zwischen Kunde/Mitarbeiter-Kopie
       // üblich. customer_email_sent bleibt ein einzelnes Flag (true nur
       // wenn ALLE Empfänger erfolgreich zugestellt wurden).
-      const recipients: string[] = Array.isArray(sub.recipient_emails) ? sub.recipient_emails : [];
+      // Nutzervorgabe 24.09.2026 (Ergänzung 3): Versand an Mitarbeiter UND
+      // Versand an Externe sind zwei UNABHÄNGIGE Schalter (send_to_employee/
+      // send_to_external, im Admin-Tool auch nachträglich umschaltbar) -
+      // beide, eines oder keines kann aktiv sein. Wenn Externe deaktiviert
+      // ist, geht an den Mitarbeiter (falls dessen Versand aktiv ist) die
+      // eigentliche Auswertung (buildInternalMailHtml), sonst weiterhin nur
+      // die "zur Info"-Kopie (buildEmployeeMailHtml).
+      const recipients: string[] = sub.send_to_external ? (Array.isArray(sub.recipient_emails) ? sub.recipient_emails : []) : [];
       let customerSent = false, employeeSent = false;
       if (!skipRealSend) {
-        const results2 = await Promise.all(recipients.map((to) => sendMail(mailerUrl, secret, to, subject, buildCustomerMailHtml(entityLabel, fromISO, toISO, isEndstand), pdfBase64, filename)));
-        customerSent = recipients.length > 0 && results2.every(Boolean);
-        if (sub.created_by_email) employeeSent = await sendMail(mailerUrl, secret, sub.created_by_email, subject, buildEmployeeMailHtml(sub.created_by_name, recipients.join(", "), entityLabel, fromISO, toISO, isEndstand), pdfBase64, filename);
+        if (sub.send_to_external && recipients.length) {
+          const results2 = await Promise.all(recipients.map((to) => sendMail(mailerUrl, secret, to, subject, buildCustomerMailHtml(entityLabel, fromISO, toISO, isEndstand), pdfBase64, filename)));
+          customerSent = results2.every(Boolean);
+        }
+        if (sub.send_to_employee && sub.created_by_email) {
+          employeeSent = sub.send_to_external
+            ? await sendMail(mailerUrl, secret, sub.created_by_email, subject, buildEmployeeMailHtml(sub.created_by_name, recipients.join(", "), entityLabel, fromISO, toISO, isEndstand), pdfBase64, filename)
+            : await sendMail(mailerUrl, secret, sub.created_by_email, subject, buildInternalMailHtml(sub.created_by_name, entityLabel, fromISO, toISO, isEndstand), pdfBase64, filename);
+        }
       }
 
       const { error: logErr } = await admin.from("auswertung_subscription_sends").insert({

@@ -1531,6 +1531,31 @@ update public.auswertung_subscriptions set recipient_emails=array[recipient_emai
 alter table public.auswertung_subscriptions drop column if exists recipient_email;
 alter table public.auswertung_subscriptions add constraint auswertung_subscriptions_recipients_chk check (array_length(recipient_emails,1) > 0);
 
+-- Nutzervorgabe 24.09.2026 (Ergänzung 2): automatische Auswertung soll auch
+-- OHNE externen Empfänger einrichtbar sein - nur als interner Bericht an
+-- den erstellenden Mitarbeiter selbst (kein Versand an Kunde/Ansprechpartner/
+-- Zentralmailadresse). employee_only=true erlaubt daher recipient_emails='{}'.
+-- (Direkt im selben Sitzungsschritt wieder abgelöst, siehe Block darunter -
+-- 0 Bestandsdatensätze zum Zeitpunkt der Ablösung, daher hier nur der
+-- Vollständigkeit halber dokumentiert.)
+alter table public.auswertung_subscriptions add column if not exists employee_only boolean not null default false;
+alter table public.auswertung_subscriptions drop constraint if exists auswertung_subscriptions_recipients_chk;
+alter table public.auswertung_subscriptions add constraint auswertung_subscriptions_recipients_chk check (employee_only or array_length(recipient_emails,1) > 0);
+
+-- Nutzervorgabe 24.09.2026 (Ergänzung 3): "employee_only" (nur EIN
+-- Entweder-Oder-Schalter, nur bei Einrichtung setzbar) ersetzt durch ZWEI
+-- unabhängige, auch nachträglich im Admin-Tool umschaltbare Flags - Versand
+-- an Mitarbeiter UND Versand an Externe je für sich aktivier-/deaktivierbar
+-- (z.B. weiterhin an den Kunden senden, aber die eigene Kopie abschalten,
+-- oder umgekehrt). send_to_external=false erlaubt weiterhin leere
+-- recipient_emails (Einrichtung als reiner interner Bericht).
+alter table public.auswertung_subscriptions add column if not exists send_to_employee boolean not null default true;
+alter table public.auswertung_subscriptions add column if not exists send_to_external boolean not null default true;
+update public.auswertung_subscriptions set send_to_external=false, send_to_employee=true where employee_only=true;
+alter table public.auswertung_subscriptions drop constraint if exists auswertung_subscriptions_recipients_chk;
+alter table public.auswertung_subscriptions drop column if exists employee_only;
+alter table public.auswertung_subscriptions add constraint auswertung_subscriptions_recipients_chk check (not send_to_external or array_length(recipient_emails,1) > 0);
+
 -- Log jedes tatsächlich versendeten automatischen Berichts - Quelle der
 -- Wahrheit für Idempotenz (Unique-Index verhindert Doppel-Versand derselben
 -- Periode selbst bei überlappenden Cron-Läufen) UND Admin-Downloadliste,

@@ -2167,7 +2167,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
             <div><label class="ac-lbl" for="auswertungAutoRangeStart">Start</label><input type="date" id="auswertungAutoRangeStart"></div>
             <div><label class="ac-lbl" for="auswertungAutoRangeEnd">Ende</label><input type="date" id="auswertungAutoRangeEnd"></div>
           </div>
-          <div>
+          <label id="auswertungAutoEmployeeOnlyRow" for="auswertungAutoEmployeeOnlyChk" style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:13.5px;cursor:pointer">
+            <input type="checkbox" id="auswertungAutoEmployeeOnlyChk" style="width:17px;height:17px;accent-color:var(--wg-blue);cursor:pointer;flex-shrink:0"> Nur an mich selbst senden (interner Bericht, kein externer Kunden-/Ansprechpartner-Versand)
+          </label>
+          <div id="auswertungAutoRecipientSection">
             <span class="ac-lbl">Empfänger (Kunde)</span>
             <div id="auswertungAutoRecipientOptions" style="display:flex;flex-direction:column;gap:4px;margin:4px 0 8px"></div>
             <label class="ac-lbl" for="auswertungAutoRecipientExtra">Weitere E-Mail-Adresse(n) (mit Komma, Semikolon oder Zeilenumbruch getrennt)</label>
@@ -2966,16 +2969,23 @@ async function renderAdminAuswertungAutoList(){
       :`<span style="font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;background:#E8F6EE;color:#1B7A43">Aktiv</span>`;
     const historyHtml=subSends.length?`<div class="ausw-auto-history hidden" data-sub="${escapeHtml(sub.id)}" style="margin-top:6px;padding-left:12px;border-left:2px solid #ECF2F6">
         ${subSends.map(s=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:4px 0;font-size:11.5px">
-          <span>${fmtDate(s.period_start)} – ${fmtDate(s.period_end)}${s.is_endstand?" · Endstand":""} · versendet ${fmtDateTime(s.sent_at)}${s.customer_email_sent?" · Kunde ✓":" · Kunde ✕"}${s.employee_email_sent?" · Mitarbeiter ✓":" · Mitarbeiter ✕"}</span>
+          <span>${fmtDate(s.period_start)} – ${fmtDate(s.period_end)}${s.is_endstand?" · Endstand":""} · versendet ${fmtDateTime(s.sent_at)}${sub.send_to_external?(s.customer_email_sent?" · Kunde ✓":" · Kunde ✕"):""}${sub.send_to_employee?(s.employee_email_sent?" · Mitarbeiter ✓":" · Mitarbeiter ✕"):""}</span>
           <button type="button" class="btn btn-ghost ausw-auto-download-btn" style="padding:4px 8px;font-size:11px;flex-shrink:0" data-path="${escapeHtml(s.storage_path)}" data-filename="${escapeHtml(s.filename)}">⬇ PDF</button>
         </div>`).join("")}
       </div>`:"";
+    const recipientTxt=sub.send_to_external?escapeHtml((sub.recipient_emails||[]).join(", "))||"<i>keine Empfänger hinterlegt</i>":"<i>Versand an Externe deaktiviert</i>";
+    // Nutzervorgabe 24.09.2026 (Ergänzung 3): Versand an Mitarbeiter/Extern
+    // unabhängig voneinander direkt im Admin-Tool umschaltbar (nicht nur bei
+    // der Einrichtung), Muster wie der bestehende Pausieren-Button.
+    const sendToggles=`<button type="button" class="btn btn-ghost ausw-auto-toggle-employee-btn" style="padding:6px 10px;font-size:11.5px;${sub.send_to_employee?"":"opacity:.55"}" data-id="${escapeHtml(sub.id)}" data-active="${sub.send_to_employee}" title="Versand an Mitarbeiter">${sub.send_to_employee?"✓":"✕"} Mitarbeiter</button>
+      <button type="button" class="btn btn-ghost ausw-auto-toggle-external-btn" style="padding:6px 10px;font-size:11.5px;${sub.send_to_external?"":"opacity:.55"}" data-id="${escapeHtml(sub.id)}" data-active="${sub.send_to_external}" title="Versand an Externe">${sub.send_to_external?"✓":"✕"} Externe</button>`;
     return `<div class="akp-search-row" data-id="${escapeHtml(sub.id)}" style="flex-direction:column;align-items:stretch">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
         <span><b>${escapeHtml(AUSWERTUNG_TYP_LABEL[sub.auswertung_typ]||sub.auswertung_typ)}: ${escapeHtml(sub.entity_key)}</b>
-        <span class="betr">→ ${escapeHtml((sub.recipient_emails||[]).join(", "))} · ${escapeHtml(AUSWERTUNG_INTERVAL_LABEL[sub.interval]||sub.interval)}${rangeTxt} · von ${escapeHtml(sub.created_by_name||"–")}${lastSend?" · zuletzt versendet "+fmtDateTime(lastSend.sent_at):" · noch nie versendet"}</span></span>
-        <span class="val" style="flex-direction:row;align-items:center;gap:8px">
+        <span class="betr">→ ${recipientTxt} · ${escapeHtml(AUSWERTUNG_INTERVAL_LABEL[sub.interval]||sub.interval)}${rangeTxt} · von ${escapeHtml(sub.created_by_name||"–")}${lastSend?" · zuletzt versendet "+fmtDateTime(lastSend.sent_at):" · noch nie versendet"}</span></span>
+        <span class="val" style="flex-direction:row;align-items:center;gap:8px;flex-wrap:wrap">
           ${statusBadge}
+          ${sendToggles}
           ${subSends.length?`<button type="button" class="btn btn-ghost ausw-auto-toggle-history" style="padding:6px 10px;font-size:11.5px" data-sub="${escapeHtml(sub.id)}">Historie (${subSends.length})</button>`:""}
           <button type="button" class="btn btn-ghost ausw-auto-pause-btn" style="padding:6px 10px;font-size:11.5px" data-id="${escapeHtml(sub.id)}" data-active="${sub.active}">${sub.active?"Pausieren":"Reaktivieren"}</button>
           ${!subSends.length?`<button type="button" class="btn btn-ghost ausw-auto-delete-btn" style="padding:6px 10px;font-size:11.5px;color:var(--neg)" data-id="${escapeHtml(sub.id)}">Löschen</button>`:""}
@@ -3011,6 +3021,41 @@ async function renderAdminAuswertungAutoList(){
       try{
         const { error } = await sb.from("auswertung_subscriptions").update({active:!nowActive,updated_at:new Date().toISOString()}).eq("id",btn.dataset.id);
         if(error) throw error;
+        renderAdminAuswertungAutoList();
+      }catch(e){
+        toast("Fehler: "+(e.message||e));
+        btn.disabled=false;
+      }
+    };
+  });
+  // Nutzervorgabe 24.09.2026 (Ergänzung 3): Versand an Mitarbeiter/Externe
+  // je für sich umschaltbar, analog Pausieren-Button. Das Aktivieren von
+  // "Externe" bei einer Auswertung ohne hinterlegte Empfänger schlägt an der
+  // DB-Check-Constraint gezielt fehl - Fehlermeldung zeigt das klar an.
+  box.querySelectorAll(".ausw-auto-toggle-employee-btn").forEach(btn=>{
+    btn.onclick=async()=>{
+      const nowActive=btn.dataset.active==="true";
+      btn.disabled=true;
+      try{
+        const { error } = await sb.from("auswertung_subscriptions").update({send_to_employee:!nowActive,updated_at:new Date().toISOString()}).eq("id",btn.dataset.id);
+        if(error) throw error;
+        renderAdminAuswertungAutoList();
+      }catch(e){
+        toast("Fehler: "+(e.message||e));
+        btn.disabled=false;
+      }
+    };
+  });
+  box.querySelectorAll(".ausw-auto-toggle-external-btn").forEach(btn=>{
+    btn.onclick=async()=>{
+      const nowActive=btn.dataset.active==="true";
+      btn.disabled=true;
+      try{
+        const { error } = await sb.from("auswertung_subscriptions").update({send_to_external:!nowActive,updated_at:new Date().toISOString()}).eq("id",btn.dataset.id);
+        if(error){
+          if(!nowActive&&/recipients_chk/.test(error.message||"")) throw new Error("Kein Versand an Externe möglich - für diese Auswertung sind keine Empfänger-Mailadressen hinterlegt.");
+          throw error;
+        }
         renderAdminAuswertungAutoList();
       }catch(e){
         toast("Fehler: "+(e.message||e));
@@ -11069,17 +11114,23 @@ async function auswertungAutoSectionReset(){
   $("auswertungAutoInterval").value="weekly";
   $("auswertungAutoHint").textContent="";
   $("auswertungAutoRecipientExtra").value="";
+  $("auswertungAutoEmployeeOnlyChk").checked=false;
+  $("auswertungAutoRecipientSection").classList.remove("hidden");
   renderAuswertungAutoRecipientOptions(single?await auswertungAutoRecipientOptions():[]);
 }
 async function saveAuswertungAutoSubscription(){
-  const checked=[...document.querySelectorAll("#auswertungAutoRecipientOptions .auswertung-auto-recipient-chk:checked")].map(el=>el.value);
-  const extraRaw=$("auswertungAutoRecipientExtra").value.trim();
-  const extra=extraRaw?extraRaw.split(/[,;\n]+/).map(s=>s.trim()).filter(Boolean):[];
-  const recipients=[...new Set([...checked,...extra])];
-  const emailRe=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  const invalid=recipients.filter(e=>!emailRe.test(e));
-  if(!recipients.length){ $("auswertungAutoHint").textContent="Bitte mindestens eine Empfänger-Mailadresse auswählen oder eingeben."; return; }
-  if(invalid.length){ $("auswertungAutoHint").textContent="Ungültige Mailadresse(n): "+invalid.join(", "); return; }
+  const employeeOnly=$("auswertungAutoEmployeeOnlyChk").checked;
+  let recipients=[];
+  if(!employeeOnly){
+    const checked=[...document.querySelectorAll("#auswertungAutoRecipientOptions .auswertung-auto-recipient-chk:checked")].map(el=>el.value);
+    const extraRaw=$("auswertungAutoRecipientExtra").value.trim();
+    const extra=extraRaw?extraRaw.split(/[,;\n]+/).map(s=>s.trim()).filter(Boolean):[];
+    recipients=[...new Set([...checked,...extra])];
+    const emailRe=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const invalid=recipients.filter(e=>!emailRe.test(e));
+    if(!recipients.length){ $("auswertungAutoHint").textContent="Bitte mindestens eine Empfänger-Mailadresse auswählen oder eingeben (oder \"Nur an mich selbst senden\" ankreuzen)."; return; }
+    if(invalid.length){ $("auswertungAutoHint").textContent="Ungültige Mailadresse(n): "+invalid.join(", "); return; }
+  }
   const fixedEnabled=$("auswertungAutoFixedChk").checked;
   const rangeStart=$("auswertungAutoRangeStart").value, rangeEnd=$("auswertungAutoRangeEnd").value;
   if(fixedEnabled&&(!rangeStart||!rangeEnd)){ $("auswertungAutoHint").textContent="Bitte bei fixem Zeitraum Start und Ende angeben."; return; }
@@ -11089,7 +11140,7 @@ async function saveAuswertungAutoSubscription(){
   try{
     const { error } = await sb.from("auswertung_subscriptions").insert({
       auswertung_typ:auswertungTyp, entity_key:auswertungAutoEntityKey(),
-      recipient_emails:recipients, interval:$("auswertungAutoInterval").value,
+      recipient_emails:recipients, send_to_external:!employeeOnly, send_to_employee:true, interval:$("auswertungAutoInterval").value,
       fixed_range_enabled:fixedEnabled, range_start:fixedEnabled?rangeStart:null, range_end:fixedEnabled?rangeEnd:null,
       include_vj:$("auswertungVjChk").checked, include_vvj:$("auswertungVvjChk").checked,
       show_akp:auswertungTyp==="akp"?false:$("auswertungAkpChk").checked,
@@ -13980,6 +14031,9 @@ $("auswertungBuildBtn").onclick=()=>{
 $("auswertungVvjChk").onchange=()=>{ if($("auswertungVvjChk").checked) $("auswertungVjChk").checked=true; };
 $("auswertungAutoEnableChk").onchange=()=>{ $("auswertungAutoBox").classList.toggle("hidden",!$("auswertungAutoEnableChk").checked); };
 $("auswertungAutoFixedChk").onchange=()=>{ $("auswertungAutoFixedBox").classList.toggle("hidden",!$("auswertungAutoFixedChk").checked); };
+// Nutzervorgabe 24.09.2026 (Ergänzung 2): "Nur an mich selbst senden" -
+// blendet die Empfänger-Auswahl aus (kein externer Versand nötig/möglich).
+$("auswertungAutoEmployeeOnlyChk").onchange=()=>{ $("auswertungAutoRecipientSection").classList.toggle("hidden",$("auswertungAutoEmployeeOnlyChk").checked); };
 $("auswertungAutoSaveBtn").onclick=saveAuswertungAutoSubscription;
 $("perfDialogBtn").onclick=openPerfModal;
 $("perfClose").onclick=()=>{ savePerfDraft(); $("perfModal").classList.add("hidden"); };
