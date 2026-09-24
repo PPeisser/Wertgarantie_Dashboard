@@ -9223,7 +9223,7 @@ async function openFilialGruppeModal(){
   $("filialGruppeModal").classList.remove("hidden");
   let members=[];
   try{
-    const {data,error}=await sb.from("fh_contacts").select("fh_nr,prod_monthly").eq("filialbetriebe",value);
+    const {data,error}=await sb.from("fh_contacts").select("fh_nr,prod_monthly,ansprechpartner,ansprechpartner_email,email,telefon").eq("filialbetriebe",value);
     if(!error&&data) members=data;
   }catch(e){}
   // Falls der User inzwischen eine andere Filialgruppe geöffnet hat, ist
@@ -9249,7 +9249,8 @@ function filialGruppeCompute(members){
     // Übersicht (Bildschirm + PDF) für Filialen ohne heutige Produktion nur
     // die bloße FH-Nr.
     const r=fhResolveNameOrt(m.fh_nr);
-    return { fhNr:m.fh_nr, name:r.name, ort:r.ort||"", merged, total };
+    return { fhNr:m.fh_nr, name:r.name, ort:r.ort||"", merged, total,
+      ansprechpartner:m.ansprechpartner||"", ansprechpartnerEmail:m.ansprechpartner_email||"", email:m.email||"", telefon:m.telefon||"" };
   }).sort((a,b)=>b.total-a.total);
   const gesamt=perFiliale.reduce((a,f)=>a+f.total,0);
   const mergedAll={};
@@ -9298,6 +9299,20 @@ function fhYearlyTrendTableHtml(merged){
   }).join("");
   return `<div style="overflow:auto"><table class="ac-yearly-table"><thead><tr><th>Jahr</th><th>Erfasst</th><th>Summe</th><th>vs. Vorjahr</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
+// Nutzervorgabe 24.09.2026: in "Alle Filialen"-Übersichten sollen je
+// Filiale dieselben Kontaktfelder wie im FH-PopUp sichtbar sein
+// (Ansprechpartner, Telefon, E-Mail Geschäft/Ansprechpartner) - Bearbeitung
+// bleibt bewusst nur im FH-PopUp selbst (kein Duplikat-Formular hier),
+// diese Zeile ist reine Anzeige. Leere Felder werden ausgeblendet.
+function fhContactInfoLineHtml(f){
+  const parts=[];
+  if(f.ansprechpartner) parts.push("Ansprechpartner: "+escapeHtml(f.ansprechpartner));
+  if(f.telefon) parts.push("Tel: "+escapeHtml(f.telefon));
+  if(f.email) parts.push("E-Mail Geschäft: "+escapeHtml(f.email));
+  if(f.ansprechpartnerEmail) parts.push("E-Mail Ansprechpartner: "+escapeHtml(f.ansprechpartnerEmail));
+  if(!parts.length) return "";
+  return `<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">${parts.join(" · ")}</div>`;
+}
 // AKP über die übergebenen Filialen der Gruppe, absteigend nach
 // Monatsproduktion - wiederverwendbar für Bildschirm UND PDF.
 function filialGruppeAkpHtml(fhNrs){
@@ -9329,7 +9344,8 @@ function renderFilialGruppe(value,members){
   const perFilialeBlocks=perFiliale.map(f=>{
     const fYearly=fhYearlyTrendTableHtml(f.merged);
     return `<div style="border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px">
-      <div style="font-size:14px;font-weight:900;color:var(--wg-navy);margin-bottom:10px">${escapeHtml(fhNameOrt(f.name,f.ort))}</div>
+      <div style="font-size:14px;font-weight:900;color:var(--wg-navy);margin-bottom:4px">${escapeHtml(fhNameOrt(f.name,f.ort))}</div>
+      ${fhContactInfoLineHtml(f)}
       ${fhMonthlyTableHtml(f.merged)}
       ${fYearly?`<div style="margin-top:10px">${fYearly}</div>`:""}
     </div>`;
@@ -9378,7 +9394,8 @@ async function exportFilialGruppePdf(){
     const perFilialeBlocks=perFiliale.map(f=>{
       const fYearly=fhYearlyTrendTableHtml(f.merged);
       return `<div class="pdf-block" style="border:1px solid #E4EDF3;border-radius:8px;padding:14px 16px;margin-bottom:14px">
-        <div style="font-size:14px;font-weight:900;color:#062A3F;margin-bottom:10px">${escapeHtml(fhNameOrt(f.name,f.ort))}</div>
+        <div style="font-size:14px;font-weight:900;color:#062A3F;margin-bottom:4px">${escapeHtml(fhNameOrt(f.name,f.ort))}</div>
+        ${fhContactInfoLineHtml(f)}
         ${fhMonthlyTableHtml(f.merged)}
         ${fYearly?`<div style="margin-top:10px">${fYearly}</div>`:""}
       </div>`;
@@ -11004,7 +11021,7 @@ async function auswertungLoadUnits(typ,singleVal,multiKeys){
       };
     });
   }
-  let query=sb.from("fh_contacts").select("fh_nr,prod_monthly,miete_monthly,beitragsfrei_yearly,akq_punkte,club_weiss_mitglied,club_weiss_mitgliedsnummer");
+  let query=sb.from("fh_contacts").select("fh_nr,prod_monthly,miete_monthly,beitragsfrei_yearly,akq_punkte,club_weiss_mitglied,club_weiss_mitgliedsnummer,ansprechpartner,ansprechpartner_email,email,telefon");
   if(typ==="kooperation") query=query.eq("kooperation",singleVal);
   else if(typ==="weitere_zuordnung") query=query.eq("weitere_zuordnung",singleVal);
   else if(typ==="filialbetriebe") query=query.eq("filialbetriebe",singleVal);
@@ -11021,6 +11038,7 @@ async function auswertungLoadUnits(typ,singleVal,multiKeys){
       dailyWg:state.dailyFH[r.fh_nr]||{}, dailyMiete:{},
       poQuote:f.poQuote!=null?f.poQuote:null, q3fuer2:f.q3fuer2!=null?f.q3fuer2:null,
       akqPunkte:r.akq_punkte, clubWeiss:!!r.club_weiss_mitglied, clubWeissNr:r.club_weiss_mitgliedsnummer||null,
+      ansprechpartner:r.ansprechpartner||"", ansprechpartnerEmail:r.ansprechpartner_email||"", email:r.email||"", telefon:r.telefon||"",
     };
   });
   if(typ==="fachhaendler") units.sort((a,b)=>multiKeys.indexOf(a.key)-multiKeys.indexOf(b.key));
@@ -11159,8 +11177,11 @@ function auswertungAggregateSectionHtml(units,vonISO,bisISO,showAkp,showVj,showV
   const yoy=series.totalWgPrev>0?((series.totalWg-series.totalWgPrev)/series.totalWgPrev*100):null;
   const monthsInRange=monthKeysInRange(vonISO,bisISO);
   const prodOf=u=>series.weekly?sumDailyRangeExclSunday(u.dailyWg,vonISO,bisISO):monthsInRange.reduce((s,mk)=>s+(u.monthlyWg[mk]||0),0);
+  // Nutzervorgabe 24.09.2026: Ansprechpartner + E-Mail (wie im FH-PopUp)
+  // auch hier je Mitglieds-Fachhändler sichtbar, damit die Kontaktdaten
+  // (u.a. Mailadressen) in der Übersicht direkt verfügbar sind.
   const memberRows=[...units].sort((a,b)=>prodOf(b)-prodOf(a)).map(u=>
-    `<tr><td>${escapeHtml(u.name)}</td><td>${escapeHtml(u.ort||"–")}</td><td>${escapeHtml(u.fhNr)}</td><td class="r">${fmt(prodOf(u))}</td><td style="text-align:center">${u.clubWeiss?"✓":"–"}</td></tr>`
+    `<tr><td>${escapeHtml(u.name)}</td><td>${escapeHtml(u.ort||"–")}</td><td>${escapeHtml(u.fhNr)}</td><td class="r">${fmt(prodOf(u))}</td><td style="text-align:center">${u.clubWeiss?"✓":"–"}</td><td>${escapeHtml(u.ansprechpartner||"–")}</td><td>${escapeHtml(u.ansprechpartnerEmail||u.email||"–")}</td></tr>`
   ).join("");
   let akpBlock="";
   if(showAkp){
@@ -11201,7 +11222,7 @@ function auswertungAggregateSectionHtml(units,vonISO,bisISO,showAkp,showVj,showV
     <div class="pdf-block" style="margin-bottom:18px">
       <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:10px">Mitglieds-Fachhändler (sortiert nach Produktion im Zeitraum)</div>
       <table style="width:100%;border-collapse:collapse;font-size:9.5px">
-        <thead><tr style="color:#5D7284;text-align:left"><th>Name</th><th>Ort</th><th>FH-Nr.</th><th class="r">Produktion im Zeitraum</th><th style="text-align:center">Club Weiss</th></tr></thead>
+        <thead><tr style="color:#5D7284;text-align:left"><th>Name</th><th>Ort</th><th>FH-Nr.</th><th class="r">Produktion im Zeitraum</th><th style="text-align:center">Club Weiss</th><th>Ansprechpartner</th><th>E-Mail</th></tr></thead>
         <tbody>${memberRows}</tbody>
       </table>
     </div>
