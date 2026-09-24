@@ -1670,6 +1670,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <button class="btn btn-blue" id="adminEmployeesBtn">👥 Mitarbeiterverwaltung</button>
       <button class="btn btn-blue" id="adminFunctionsBtn">⚙ Funktionen</button>
       <button class="btn btn-blue hidden" id="adminTrainerberichteBtn">🎓 Trainerbetreuung</button>
+      <button class="btn btn-blue hidden" id="adminAuswertungAutoBtn">🔁 Automatische Auswertungen</button>
     </div>
     <input type="file" id="akqFileInput" accept=".xlsx,.xls" class="hidden">
     <input type="file" id="fhSegmentFileInput" accept=".xlsx,.xls" class="hidden">
@@ -1717,6 +1718,21 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     </div>
     <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px">Alle periodischen Fortschrittsberichte (PDF), die per Mail an Trainer und Admin verschickt wurden - nach Versanddatum sortiert.</p>
     <div id="adminTrainerberichteList" style="max-height:520px;overflow:auto"></div>
+  </div>
+</div>
+
+<!-- Admin: PopUp "Automatische Auswertungen" (Nutzervorgabe 24.09.2026):
+     Verwaltung aller aktiven/beendeten auswertung_subscriptions inkl.
+     aufklappbarer Sende-Historie mit PDF-Download (Muster
+     adminTrainerberichteModal). -->
+<div class="modal-bg hidden" id="adminAuswertungAutoModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
+      <h3 style="margin:0">Automatische Auswertungen</h3>
+      <button class="btn btn-ghost" id="adminAuswertungAutoClose" style="padding:7px 12px">✕ Schließen</button>
+    </div>
+    <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px">Alle eingerichteten wiederkehrenden Auswertungs-Abonnements - pausieren, löschen (nur ohne Sende-Historie) oder die bisher versendeten PDFs herunterladen.</p>
+    <div id="adminAuswertungAutoList" style="max-height:520px;overflow:auto"></div>
   </div>
 </div>
 
@@ -2860,6 +2876,7 @@ async function createEmployee(){
 function openAdminModal(){
   $("adminModal").classList.remove("hidden"); loadAdminUsers();
   $("adminTrainerberichteBtn").classList.toggle("hidden",!trainerbetreuungEnabled);
+  $("adminAuswertungAutoBtn").classList.toggle("hidden",!auswertungEnabled);
   $("chefgespraechEnabledChk").checked=chefgespraechEnabled;
   $("kooperationsgespraechEnabledChk").checked=kooperationsgespraechEnabled;
   $("auswertungEnabledChk").checked=auswertungEnabled;
@@ -2914,6 +2931,101 @@ async function renderAdminTrainerberichteList(){
       }catch(e){
         toast("Download fehlgeschlagen: "+(e.message||e));
       }finally{
+        btn.disabled=false;
+      }
+    };
+  });
+}
+// Admin-Übersicht "Automatische Auswertungen" (Nutzervorgabe 24.09.2026):
+// alle eingerichteten auswertung_subscriptions, aktive zuerst, je Zeile
+// Typ/Entität, Empfänger, Intervall/Fixzeitraum, Ersteller, letzter Versand
+// (aus auswertung_subscription_sends) und Status-Badge. Aktionen:
+// Pausieren/Reaktivieren, Löschen (nur ohne Sende-Historie, sonst nur
+// Deaktivieren - Historie bleibt erhalten), aufklappbare Sende-Historie mit
+// PDF-Download (Muster renderAdminTrainerberichteList()).
+const AUSWERTUNG_TYP_LABEL={kooperation:"Kooperation",weitere_zuordnung:"Weitere Zuordnung",filialbetriebe:"Filialbetriebe",fachhaendler:"Fachhändler",akp:"AKP"};
+const AUSWERTUNG_INTERVAL_LABEL={daily:"Täglich",weekly:"Wöchentlich",monthly:"Monatlich",quarterly:"Quartal",yearly:"Jährlich"};
+async function renderAdminAuswertungAutoList(){
+  const box=$("adminAuswertungAutoList");
+  box.innerHTML=`<div class="empty-note">Lädt …</div>`;
+  const [{ data:subs, error:subErr },{ data:sends, error:sendErr }]=await Promise.all([
+    sb.from("auswertung_subscriptions").select("*").order("created_at",{ascending:false}),
+    sb.from("auswertung_subscription_sends").select("*").order("sent_at",{ascending:false}),
+  ]);
+  if(subErr){ box.innerHTML=`<div class="empty-note">Fehler beim Laden: ${escapeHtml(subErr.message)}</div>`; return; }
+  if(!subs||!subs.length){ box.innerHTML=`<div class="empty-note">Noch keine automatischen Auswertungen eingerichtet.</div>`; return; }
+  const sendsBySub={};
+  for(const s of (sends||[])){ (sendsBySub[s.subscription_id]||(sendsBySub[s.subscription_id]=[])).push(s); }
+  box.innerHTML=subs.map(sub=>{
+    const subSends=sendsBySub[sub.id]||[];
+    const lastSend=subSends[0];
+    const rangeTxt=sub.fixed_range_enabled?` · Zeitraum ${fmtDate(sub.range_start)} – ${fmtDate(sub.range_end)}${sub.endstand_sent_at?" (Endstand versendet)":""}`:" · dauerhaft";
+    const statusBadge=!sub.active?`<span style="font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;background:#FFF4DC;color:#8A6100">Beendet</span>`
+      :`<span style="font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;background:#E8F6EE;color:#1B7A43">Aktiv</span>`;
+    const historyHtml=subSends.length?`<div class="ausw-auto-history hidden" data-sub="${escapeHtml(sub.id)}" style="margin-top:6px;padding-left:12px;border-left:2px solid #ECF2F6">
+        ${subSends.map(s=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:4px 0;font-size:11.5px">
+          <span>${fmtDate(s.period_start)} – ${fmtDate(s.period_end)}${s.is_endstand?" · Endstand":""} · versendet ${fmtDateTime(s.sent_at)}${s.customer_email_sent?" · Kunde ✓":" · Kunde ✕"}${s.employee_email_sent?" · Mitarbeiter ✓":" · Mitarbeiter ✕"}</span>
+          <button type="button" class="btn btn-ghost ausw-auto-download-btn" style="padding:4px 8px;font-size:11px;flex-shrink:0" data-path="${escapeHtml(s.storage_path)}" data-filename="${escapeHtml(s.filename)}">⬇ PDF</button>
+        </div>`).join("")}
+      </div>`:"";
+    return `<div class="akp-search-row" data-id="${escapeHtml(sub.id)}" style="flex-direction:column;align-items:stretch">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <span><b>${escapeHtml(AUSWERTUNG_TYP_LABEL[sub.auswertung_typ]||sub.auswertung_typ)}: ${escapeHtml(sub.entity_key)}</b>
+        <span class="betr">→ ${escapeHtml(sub.recipient_email)} · ${escapeHtml(AUSWERTUNG_INTERVAL_LABEL[sub.interval]||sub.interval)}${rangeTxt} · von ${escapeHtml(sub.created_by_name||"–")}${lastSend?" · zuletzt versendet "+fmtDateTime(lastSend.sent_at):" · noch nie versendet"}</span></span>
+        <span class="val" style="flex-direction:row;align-items:center;gap:8px">
+          ${statusBadge}
+          ${subSends.length?`<button type="button" class="btn btn-ghost ausw-auto-toggle-history" style="padding:6px 10px;font-size:11.5px" data-sub="${escapeHtml(sub.id)}">Historie (${subSends.length})</button>`:""}
+          <button type="button" class="btn btn-ghost ausw-auto-pause-btn" style="padding:6px 10px;font-size:11.5px" data-id="${escapeHtml(sub.id)}" data-active="${sub.active}">${sub.active?"Pausieren":"Reaktivieren"}</button>
+          ${!subSends.length?`<button type="button" class="btn btn-ghost ausw-auto-delete-btn" style="padding:6px 10px;font-size:11.5px;color:var(--neg)" data-id="${escapeHtml(sub.id)}">Löschen</button>`:""}
+        </span>
+      </div>
+      ${historyHtml}
+    </div>`;
+  }).join("");
+  box.querySelectorAll(".ausw-auto-toggle-history").forEach(btn=>{
+    btn.onclick=()=>{
+      const hist=box.querySelector(`.ausw-auto-history[data-sub="${btn.dataset.sub}"]`);
+      if(hist) hist.classList.toggle("hidden");
+    };
+  });
+  box.querySelectorAll(".ausw-auto-download-btn").forEach(btn=>{
+    btn.onclick=async()=>{
+      btn.disabled=true;
+      try{
+        const { data:blob, error:dlErr } = await sb.storage.from("auswertung-berichte").download(btn.dataset.path);
+        if(dlErr||!blob) throw dlErr||new Error("Download fehlgeschlagen");
+        downloadBlob(blob,btn.dataset.filename);
+      }catch(e){
+        toast("Download fehlgeschlagen: "+(e.message||e));
+      }finally{
+        btn.disabled=false;
+      }
+    };
+  });
+  box.querySelectorAll(".ausw-auto-pause-btn").forEach(btn=>{
+    btn.onclick=async()=>{
+      const nowActive=btn.dataset.active==="true";
+      btn.disabled=true;
+      try{
+        const { error } = await sb.from("auswertung_subscriptions").update({active:!nowActive,updated_at:new Date().toISOString()}).eq("id",btn.dataset.id);
+        if(error) throw error;
+        renderAdminAuswertungAutoList();
+      }catch(e){
+        toast("Fehler: "+(e.message||e));
+        btn.disabled=false;
+      }
+    };
+  });
+  box.querySelectorAll(".ausw-auto-delete-btn").forEach(btn=>{
+    btn.onclick=async()=>{
+      if(!confirm("Diese automatische Auswertung wirklich unwiderruflich löschen?")) return;
+      btn.disabled=true;
+      try{
+        const { error } = await sb.from("auswertung_subscriptions").delete().eq("id",btn.dataset.id);
+        if(error) throw error;
+        renderAdminAuswertungAutoList();
+      }catch(e){
+        toast("Löschen fehlgeschlagen: "+(e.message||e));
         btn.disabled=false;
       }
     };
@@ -13657,6 +13769,8 @@ $("adminFunctionsBtn").onclick=()=>$("adminFunctionsModal").classList.remove("hi
 $("adminFunctionsClose").onclick=()=>$("adminFunctionsModal").classList.add("hidden");
 $("adminTrainerberichteBtn").onclick=()=>{ $("adminTrainerberichteModal").classList.remove("hidden"); renderAdminTrainerberichteList(); };
 $("adminTrainerberichteClose").onclick=()=>$("adminTrainerberichteModal").classList.add("hidden");
+$("adminAuswertungAutoBtn").onclick=()=>{ $("adminAuswertungAutoModal").classList.remove("hidden"); renderAdminAuswertungAutoList(); };
+$("adminAuswertungAutoClose").onclick=()=>$("adminAuswertungAutoModal").classList.add("hidden");
 $("adminEmployeesClose").onclick=()=>$("adminEmployeesModal").classList.add("hidden");
 $("adCreateBtn").onclick=createAdminUser;
 $("empCreateBtn").onclick=createEmployee;
