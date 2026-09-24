@@ -2111,6 +2111,16 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <label id="auswertungAkpChkRow" for="auswertungAkpChk" style="margin-top:16px;display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;padding:8px 0;cursor:pointer">
         <input type="checkbox" id="auswertungAkpChk" style="width:18px;height:18px;accent-color:var(--wg-blue);cursor:pointer;flex-shrink:0"> AKP (Aktivpartner) mit anzeigen
       </label>
+      <!-- Nutzervorgabe 24.09.2026: Vorjahres-/Vorvorjahresvergleich beim
+           Einrichten einer Auswertung per Haken einzeln wählbar - Standard
+           aus (nur aktuelle Zahlen), gilt sowohl für den Sofort-Export als
+           auch für die automatische Auswertung weiter unten. -->
+      <label id="auswertungVjChkRow" for="auswertungVjChk" style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;padding:4px 0;cursor:pointer">
+        <input type="checkbox" id="auswertungVjChk" style="width:18px;height:18px;accent-color:var(--wg-blue);cursor:pointer;flex-shrink:0"> Vorjahr im Vergleich anzeigen
+      </label>
+      <label id="auswertungVvjChkRow" for="auswertungVvjChk" style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;padding:4px 0;cursor:pointer">
+        <input type="checkbox" id="auswertungVvjChk" style="width:18px;height:18px;accent-color:var(--wg-blue);cursor:pointer;flex-shrink:0"> Vorvorjahr im Vergleich anzeigen
+      </label>
       <button class="btn btn-blue" id="auswertungBuildBtn" style="margin-top:18px;width:100%;padding:14px;font-size:14px">📊 Auswertung erstellen</button>
       <div class="error" id="auswertungHint"></div>
     </div>
@@ -10614,6 +10624,8 @@ function proceedToAuswertungPeriod(){
   $("auswertungPeriodHeader").textContent=headerLbl+sel;
   $("auswertungAkpChkRow").classList.toggle("hidden",auswertungTyp==="akp");
   $("auswertungAkpChk").checked=false;
+  $("auswertungVjChk").checked=false;
+  $("auswertungVvjChk").checked=false;
   if(!$("auswertungVonInput").value||!$("auswertungBisInput").value) applyAuswertungPreset("month");
 }
 function applyAuswertungPreset(preset){
@@ -10738,7 +10750,14 @@ function auswertungBuildSeries(units,vonISO,bisISO){
   let totalWgPrev=0,totalMietePrev=0;
   const monthsPrev=monthKeysInRange(vonPrev,bisPrev);
   for(const u of units) for(const mk of monthsPrev){ totalWgPrev+=u.monthlyWg[mk]||0; totalMietePrev+=u.monthlyMiete[mk]||0; }
-  return {weekly,buckets,totalWg,totalMiete,totalWgPrev,totalMietePrev,vonPrev,bisPrev};
+  // Vorvorjahr (Nutzervorgabe 24.09.2026, per Haken einzeln wählbar) - immer
+  // mitberechnet (kein zusätzlicher Query, gleicher monthlyWg-Pfad wie oben),
+  // Anzeige entscheidet der Aufrufer per showVvj-Flag.
+  const vonPrev2=addYearsIso(vonISO,-2), bisPrev2=addYearsIso(bisISO,-2);
+  let totalWgPrev2=0,totalMietePrev2=0;
+  const monthsPrev2=monthKeysInRange(vonPrev2,bisPrev2);
+  for(const u of units) for(const mk of monthsPrev2){ totalWgPrev2+=u.monthlyWg[mk]||0; totalMietePrev2+=u.monthlyMiete[mk]||0; }
+  return {weekly,buckets,totalWg,totalMiete,totalWgPrev,totalMietePrev,vonPrev,bisPrev,totalWgPrev2,totalMietePrev2,vonPrev2,bisPrev2};
 }
 // Lädt die Rohdaten je Einheit (FH-Zeile aus fh_contacts bzw. AKP aus dem
 // bereits im Speicher gehaltenen akpContactsIndex) inkl. verschmolzener
@@ -10833,9 +10852,32 @@ function auswertungSummaryStrip(series,unitCount,unitLabel){
     ${kennzahl("Veränderung ggü. Vorjahreszeitraum",yoy!=null?(yoy>=0?"+":"")+yoy.toFixed(1).replace(".",",")+" %":"–")}
   </div>`;
 }
+// Zusätzliche Detail-Vergleichstabelle (Nutzervorgabe 24.09.2026, per Haken
+// einzeln wählbar): ergänzt die immer sichtbare "Vorjahreszeitraum"-Kennzahl
+// oben um eine Tabelle mit Vorjahr UND (optional) Vorvorjahr nebeneinander,
+// nur gerendert wenn mindestens eine der beiden Checkboxen gesetzt ist.
+function auswertungVjVvjSectionHtml(series,showVj,showVvj){
+  if(!showVj&&!showVvj) return "";
+  const pct=(cur,prev)=>prev>0?((cur-prev)/prev*100):null;
+  const row=(label,periodTxt,val,changePct)=>`<tr>
+      <td>${escapeHtml(label)}</td><td>${escapeHtml(periodTxt)}</td>
+      <td class="r">${fmt(val)}</td>
+      <td class="r">${changePct!=null?(changePct>=0?"+":"")+changePct.toFixed(1).replace(".",",")+" %":"–"}</td>
+    </tr>`;
+  let rows=row("Aktuelle Periode","–",series.totalWg,null);
+  if(showVj) rows+=row("Vorjahr",fmtDate(series.vonPrev)+" – "+fmtDate(series.bisPrev),series.totalWgPrev,pct(series.totalWg,series.totalWgPrev));
+  if(showVvj) rows+=row("Vorvorjahr",fmtDate(series.vonPrev2)+" – "+fmtDate(series.bisPrev2),series.totalWgPrev2,pct(series.totalWg,series.totalWgPrev2));
+  return `<div class="pdf-block" style="margin-bottom:18px">
+    <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Vorjahresvergleich</div>
+    <table style="width:100%;border-collapse:collapse;font-size:10px">
+      <thead><tr style="color:#5D7284;text-align:left"><th>Zeitraum</th><th>Datum</th><th class="r">WG-Produktion</th><th class="r">Veränderung ggü. aktueller Periode</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
 // Ein Abschnitt je ausgewählter Einheit (Fachhändler oder AKP) - analog zum
 // Chefgespräch-Muster bei mehreren Filialen.
-function auswertungUnitSectionHtml(u,vonISO,bisISO,idx,total,showAkp,akpByFh){
+function auswertungUnitSectionHtml(u,vonISO,bisISO,idx,total,showAkp,akpByFh,showVj,showVvj){
   const series=auswertungBuildSeries([u],vonISO,bisISO);
   const kennzahl=(lbl,val)=>`<div style="text-align:center"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284">${lbl}</div><div style="font-size:18px;font-weight:900;color:#062A3F;margin-top:2px">${val}</div></div>`;
   const kennzahlBadge=(lbl,badgeHtml)=>`<div style="text-align:center;max-width:180px"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284;margin-bottom:5px">${lbl}</div>${badgeHtml}</div>`;
@@ -10881,13 +10923,14 @@ function auswertungUnitSectionHtml(u,vonISO,bisISO,idx,total,showAkp,akpByFh){
       ${u.kind==="fh"?kennzahlBadge("Club Weiss",u.clubWeiss?pdfBadge("✓ Mitglied","good"):pdfBadge("Kein Mitglied","muted")):""}
     </div>
     ${auswertungBucketsChart(series,series.totalMiete>0)}
+    ${auswertungVjVvjSectionHtml(series,showVj,showVvj)}
     ${akpTableHtml}
   `;
 }
 // Ein aggregierter Abschnitt für Kooperation/Weitere-Zuordnung: Summe über
 // alle Mitglieds-Fachhändler + nach Produktion sortierte Mitgliederliste,
 // optional inkl. AKP-Übersicht aller Mitglieds-Fachhändler.
-function auswertungAggregateSectionHtml(units,vonISO,bisISO,showAkp){
+function auswertungAggregateSectionHtml(units,vonISO,bisISO,showAkp,showVj,showVvj){
   const series=auswertungBuildSeries(units,vonISO,bisISO);
   const kennzahl=(lbl,val)=>`<div style="text-align:center"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284">${lbl}</div><div style="font-size:18px;font-weight:900;color:#062A3F;margin-top:2px">${val}</div></div>`;
   const yoy=series.totalWgPrev>0?((series.totalWg-series.totalWgPrev)/series.totalWgPrev*100):null;
@@ -10931,6 +10974,7 @@ function auswertungAggregateSectionHtml(units,vonISO,bisISO,showAkp){
       ${kennzahl("Veränderung ggü. Vorjahreszeitraum",yoy!=null?(yoy>=0?"+":"")+yoy.toFixed(1).replace(".",",")+" %":"–")}
     </div>
     ${auswertungBucketsChart(series,series.totalMiete>0)}
+    ${auswertungVjVvjSectionHtml(series,showVj,showVvj)}
     <div class="pdf-block" style="margin-bottom:18px">
       <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:10px">Mitglieds-Fachhändler (sortiert nach Produktion im Zeitraum)</div>
       <table style="width:100%;border-collapse:collapse;font-size:9.5px">
@@ -10945,7 +10989,7 @@ function auswertungPdfFilename(typ,singleVal,multiKeys){
   const label=AUSWERTUNG_SINGLE_TYPES.includes(typ)?singleVal:(multiKeys.length===1?auswertungEntityLabel(multiKeys[0]):multiKeys.length+"_Auswahl");
   return "Auswertung_"+asciiFilenamePart(label)+".pdf";
 }
-async function buildAuswertungPdfDoc(typ,singleVal,multiKeys,vonISO,bisISO,showAkp){
+async function buildAuswertungPdfDoc(typ,singleVal,multiKeys,vonISO,bisISO,showAkp,showVj,showVvj){
   if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)) throw new Error("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals versuchen.");
   const units=await auswertungLoadUnits(typ,singleVal,multiKeys);
   const nowStr=fmtNowDateTime();
@@ -10977,12 +11021,13 @@ async function buildAuswertungPdfDoc(typ,singleVal,multiKeys,vonISO,bisISO,showA
       <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:6px">Gesamtsumme (${units.length} ausgewählt)</div>
       ${auswertungSummaryStrip(totalSeries,units.length,typ==="akp"?"AKP":"Fachhändler")}
       ${auswertungBucketsChart(totalSeries,totalSeries.totalMiete>0,950)}
+      ${auswertungVjVvjSectionHtml(totalSeries,showVj,showVvj)}
     `;
     const detailBox=document.createElement("div");
     detailBox.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
     detailBox.innerHTML=`
       <div class="pdf-block" style="font-size:10.5px;font-weight:700;color:#5D7284;margin-bottom:16px">${escapeHtml(typLabel)} · ${escapeHtml(periodTxt)}</div>
-      ${units.map((u,i)=>auswertungUnitSectionHtml(u,vonISO,bisISO,i,units.length,showAkp,akpByFh)).join("")}
+      ${units.map((u,i)=>auswertungUnitSectionHtml(u,vonISO,bisISO,i,units.length,showAkp,akpByFh,showVj,showVvj)).join("")}
       ${footnoteHtml}
     `;
     document.body.appendChild(overviewBox);
@@ -11003,8 +11048,8 @@ async function buildAuswertungPdfDoc(typ,singleVal,multiKeys,vonISO,bisISO,showA
   // Einzelauswahl (ein Fachhändler/AKP) oder Kooperation/Weitere Zuordnung
   // (ein aggregierter Abschnitt): durchgehendes Hochformat-Dokument wie bisher.
   const bodyHtml=AUSWERTUNG_SINGLE_TYPES.includes(typ)
-    ? auswertungAggregateSectionHtml(units,vonISO,bisISO,showAkp)
-    : auswertungUnitSectionHtml(units[0],vonISO,bisISO,0,1,showAkp,showAkp?auswertungAkpByFh():{});
+    ? auswertungAggregateSectionHtml(units,vonISO,bisISO,showAkp,showVj,showVvj)
+    : auswertungUnitSectionHtml(units[0],vonISO,bisISO,0,1,showAkp,showAkp?auswertungAkpByFh():{},showVj,showVvj);
   const box=document.createElement("div");
   box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
   box.innerHTML=`${headerHtml}${bodyHtml}${footnoteHtml}`;
@@ -11018,12 +11063,12 @@ async function buildAuswertungPdfDoc(typ,singleVal,multiKeys,vonISO,bisISO,showA
   }
 }
 let auswertungPdfBusy=false;
-async function exportAuswertungPdf(typ,singleVal,multiKeys,vonISO,bisISO,showAkp){
+async function exportAuswertungPdf(typ,singleVal,multiKeys,vonISO,bisISO,showAkp,showVj,showVvj){
   if(auswertungPdfBusy) return;
   auswertungPdfBusy=true;
   toast("Auswertung wird erstellt …");
   try{
-    const {pdf,filename}=await buildAuswertungPdfDoc(typ,singleVal,multiKeys,vonISO,bisISO,showAkp);
+    const {pdf,filename}=await buildAuswertungPdfDoc(typ,singleVal,multiKeys,vonISO,bisISO,showAkp,showVj,showVvj);
     await finalizePdf(pdf,filename);
   }catch(e){
     console.error("exportAuswertungPdf failed:",e);
@@ -13444,9 +13489,13 @@ $("auswertungBuildBtn").onclick=()=>{
   if(von>bis){ $("auswertungHint").textContent="\"Von\" muss vor \"bis\" liegen."; return; }
   $("auswertungHint").textContent="";
   const showAkp=auswertungTyp==="akp"?true:$("auswertungAkpChk").checked;
+  const showVj=$("auswertungVjChk").checked, showVvj=$("auswertungVvjChk").checked;
   const typ=auswertungTyp, singleVal=auswertungSingleValue, multiKeys=auswertungMultiKeys.slice();
-  openPdfTargetChoice(()=>exportAuswertungPdf(typ,singleVal,multiKeys,von,bis,showAkp));
+  openPdfTargetChoice(()=>exportAuswertungPdf(typ,singleVal,multiKeys,von,bis,showAkp,showVj,showVvj));
 };
+// Vorvorjahr ohne Vorjahr wäre eine inkonsistente Darstellung (Lücke in der
+// Vergleichsreihe) - VVJ aktiviert daher automatisch auch VJ mit.
+$("auswertungVvjChk").onchange=()=>{ if($("auswertungVvjChk").checked) $("auswertungVjChk").checked=true; };
 $("perfDialogBtn").onclick=openPerfModal;
 $("perfClose").onclick=()=>{ savePerfDraft(); $("perfModal").classList.add("hidden"); };
 $("perfDialogAdminBtn").onclick=openPerfAdminModal;
