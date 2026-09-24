@@ -1574,3 +1574,23 @@ select cron.schedule(
   );
   $$
 );
+
+-- Nutzervorgabe 24.09.2026: eine Filialgruppe (fh_contacts.filialbetriebe-
+-- Wert) hat keine eigene FH-Nummer und damit keine natürliche fh_contacts-
+-- Zeile für einen zentralen Ansprechpartner - separate, kleine Tabelle
+-- analog fh_contacts' Kontaktfeldern, aber auf Gruppenebene (Primärschlüssel
+-- ist der filialbetriebe-Wert selbst). Wird u.a. als Empfänger-Vorschlag
+-- für die automatische Auswertung (Typ "filialbetriebe") genutzt.
+create table if not exists public.filialgruppen_contacts (
+  filialbetriebe text primary key,
+  ansprechpartner text,
+  ansprechpartner_email text,
+  telefon text,
+  email text,
+  updated_by uuid references auth.users(id),
+  updated_at timestamptz not null default now()
+);
+alter table public.filialgruppen_contacts enable row level security;
+drop policy if exists "Authenticated all filialgruppen_contacts" on public.filialgruppen_contacts;
+create policy "Authenticated all filialgruppen_contacts" on public.filialgruppen_contacts
+  for all to authenticated using (true) with check (true);

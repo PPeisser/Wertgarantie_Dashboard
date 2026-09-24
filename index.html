@@ -9213,18 +9213,22 @@ async function renderFhFilialbetriebeSwitcher(){
 // anzeigen" im FH-PopUp) - Gesamtproduktion, Aufteilung/Prozente je Filiale,
 // aggregierte Monatsproduktion (wie renderFhMonthly()) und die AKP der
 // gesamten Gruppe.
-let filialGruppeCurrentValue=null, filialGruppeCurrentMembers=[];
+let filialGruppeCurrentValue=null, filialGruppeCurrentMembers=[], filialGruppeContactCurrent=null;
 async function openFilialGruppeModal(){
   const value=fhContactCurrent&&fhContactCurrent.filialbetriebe;
   if(!value) return;
-  filialGruppeCurrentValue=value; filialGruppeCurrentMembers=[];
+  filialGruppeCurrentValue=value; filialGruppeCurrentMembers=[]; filialGruppeContactCurrent=null;
   $("filialGruppeTitle").textContent="Filialgruppe: "+value;
   $("filialGruppeBody").innerHTML=`<div class="empty-note">Lädt …</div>`;
   $("filialGruppeModal").classList.remove("hidden");
-  let members=[];
+  let members=[], groupContact=null;
   try{
-    const {data,error}=await sb.from("fh_contacts").select("fh_nr,prod_monthly,ansprechpartner,ansprechpartner_email,email,telefon").eq("filialbetriebe",value);
+    const [{data,error},{data:gc}]=await Promise.all([
+      sb.from("fh_contacts").select("fh_nr,prod_monthly,ansprechpartner,ansprechpartner_email,email,telefon").eq("filialbetriebe",value),
+      sb.from("filialgruppen_contacts").select("*").eq("filialbetriebe",value).maybeSingle(),
+    ]);
     if(!error&&data) members=data;
+    groupContact=gc||null;
   }catch(e){}
   // Falls der User inzwischen eine andere Filialgruppe geöffnet hat, ist
   // diese Antwort veraltet - filialGruppeCurrentMembers NICHT überschreiben,
@@ -9232,6 +9236,7 @@ async function openFilialGruppeModal(){
   // gemischt (siehe gleicher Guard bei loadFhContact/openAkpContact).
   if(filialGruppeCurrentValue!==value) return;
   filialGruppeCurrentMembers=members;
+  filialGruppeContactCurrent=groupContact;
   renderFilialGruppe(value,members);
 }
 // Gemeinsame Aufbereitung für Bildschirm-Anzeige (renderFilialGruppe) UND
@@ -9360,6 +9365,54 @@ async function saveFilialContact(fhNr,box){
     saveBtn.disabled=false;
   }
 }
+// Nutzervorgabe 24.09.2026 ("Ansprechpartner für die Filialgruppe, also
+// ganz oben"): zusätzlich zum Ansprechpartner je EINZELNER Filiale gibt es
+// jetzt auch einen zentralen Ansprechpartner für die GESAMTE Filialgruppe
+// (eigene Tabelle filialgruppen_contacts, da eine Filialgruppe keine eigene
+// FH-Nr hat) - u.a. als Empfänger-Vorschlag für die automatische Auswertung
+// vom Typ "filialbetriebe" nutzbar (siehe auswertungAutoRecipientSuggestion()).
+function filialGruppeContactEditFormHtml(c){
+  c=c||{};
+  return `<div class="filialgruppe-contact-edit hidden" style="display:flex;flex-direction:column;gap:8px;background:var(--panel-2);border-radius:8px;padding:10px 12px;margin-bottom:14px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div style="flex:1;min-width:160px"><label class="ac-lbl">Ansprechpartner</label><input class="fgce-ansprechpartner" value="${escapeHtml(c.ansprechpartner||"")}" autocomplete="off"></div>
+      <div style="flex:1;min-width:120px"><label class="ac-lbl">Telefon</label><input class="fgce-telefon" value="${escapeHtml(c.telefon||"")}" autocomplete="off"></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div style="flex:1;min-width:160px"><label class="ac-lbl">E-Mail Geschäft</label><input class="fgce-email" type="email" value="${escapeHtml(c.email||"")}" autocomplete="off"></div>
+      <div style="flex:1;min-width:160px"><label class="ac-lbl">E-Mail Ansprechpartner</label><input class="fgce-ap-email" type="email" value="${escapeHtml(c.ansprechpartner_email||"")}" autocomplete="off"></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button type="button" class="btn btn-blue filialgruppe-contact-save" style="padding:6px 12px;font-size:12px">Speichern</button>
+      <button type="button" class="btn btn-ghost filialgruppe-contact-cancel" style="padding:6px 12px;font-size:12px">Abbrechen</button>
+      <span class="error filialgruppe-contact-hint" style="margin:0"></span>
+    </div>
+  </div>`;
+}
+// upsert() statt update() (anders als saveFilialContact()): für eine
+// Filialgruppe existiert beim ersten Erfassen noch KEINE Zeile in
+// filialgruppen_contacts.
+async function saveFilialGruppeContact(value,box){
+  const ansprechpartner=box.querySelector(".fgce-ansprechpartner").value.trim()||null;
+  const telefon=box.querySelector(".fgce-telefon").value.trim()||null;
+  const email=box.querySelector(".fgce-email").value.trim()||null;
+  const ansprechpartner_email=box.querySelector(".fgce-ap-email").value.trim()||null;
+  const saveBtn=box.querySelector(".filialgruppe-contact-save");
+  const hint=box.querySelector(".filialgruppe-contact-hint");
+  saveBtn.disabled=true; hint.textContent="";
+  try{
+    const {error}=await sb.from("filialgruppen_contacts").upsert({
+      filialbetriebe:value,ansprechpartner,telefon,email,ansprechpartner_email,
+      updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString(),
+    },{onConflict:"filialbetriebe"});
+    if(error) throw error;
+    toast("Kontaktdaten der Filialgruppe gespeichert ✓");
+    await openFilialGruppeModal();
+  }catch(e){
+    hint.textContent="Fehler: "+(e.message||e);
+    saveBtn.disabled=false;
+  }
+}
 // AKP über die übergebenen Filialen der Gruppe, absteigend nach
 // Monatsproduktion - wiederverwendbar für Bildschirm UND PDF.
 function filialGruppeAkpHtml(fhNrs){
@@ -9405,7 +9458,16 @@ function renderFilialGruppe(value,members){
   const fhNrs=new Set(perFiliale.map(f=>f.fhNr));
   const akpHtml=filialGruppeAkpHtml(fhNrs);
 
+  const gc=filialGruppeContactCurrent||{};
   $("filialGruppeBody").innerHTML=`
+    <div style="border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:18px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:4px">
+        <div style="font-size:13px;font-weight:800;color:var(--wg-navy)">Ansprechpartner (Filialgruppe)</div>
+        <button type="button" class="btn btn-ghost filialgruppe-contact-toggle" style="padding:4px 9px;font-size:11px;flex-shrink:0">✎ Bearbeiten</button>
+      </div>
+      <div class="filialgruppe-contact-view">${fhContactInfoLineHtml(gc)}</div>
+      ${filialGruppeContactEditFormHtml(gc)}
+    </div>
     <div style="font-size:13px;color:var(--muted);margin-bottom:14px">${perFiliale.length} Filialen: ${perFiliale.map(f=>escapeHtml(fhNameOrt(f.name,f.ort))).join(" · ")}</div>
     <div style="margin-bottom:18px"><span class="ac-lbl">Gesamtproduktion ${year}</span><div class="ac-val" style="font-size:22px;font-weight:900;color:var(--wg-navy)">${fmt(gesamt)} Stk.</div></div>
     <h4 style="margin:0 0 8px;color:var(--wg-navy);font-size:13px">Aufteilung nach Filialen (${year})</h4>
@@ -9441,6 +9503,14 @@ function renderFilialGruppe(value,members){
       saveFilialContact(editBox.dataset.fhnr,editBox);
     };
   });
+  const gcToggle=gBox.querySelector(".filialgruppe-contact-toggle");
+  const gcEdit=gBox.querySelector(".filialgruppe-contact-edit");
+  const gcView=gBox.querySelector(".filialgruppe-contact-view");
+  if(gcToggle) gcToggle.onclick=()=>{ gcEdit.classList.remove("hidden"); gcView.classList.add("hidden"); };
+  const gcCancel=gBox.querySelector(".filialgruppe-contact-cancel");
+  if(gcCancel) gcCancel.onclick=()=>{ gcEdit.classList.add("hidden"); gcView.classList.remove("hidden"); };
+  const gcSave=gBox.querySelector(".filialgruppe-contact-save");
+  if(gcSave) gcSave.onclick=()=>saveFilialGruppeContact(value,gcEdit);
 }
 let filialGruppePdfBusy=false;
 async function exportFilialGruppePdf(){
@@ -9485,6 +9555,7 @@ async function exportFilialGruppePdf(){
         </div>
         <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Filialgruppen-Übersicht</div>
       </div>
+      <div class="pdf-block" style="margin-bottom:18px">${fhContactInfoLineHtml(filialGruppeContactCurrent||{})}</div>
       <div class="pdf-block" style="margin-bottom:18px"><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#5D7284;margin-bottom:3px">Gesamtproduktion ${year}</div><div style="font-size:20px;font-weight:900;color:#062A3F">${fmt(gesamt)} Stk.</div></div>
       <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Aufteilung nach Filialen (${year})</div>
       <div class="pdf-block" style="margin-bottom:18px"><table class="ac-yearly-table"><thead><tr><th>Filiale</th><th class="r">Produktion ${year}</th><th class="r">Anteil</th></tr></thead><tbody>${breakdownRows}</tbody></table></div>
@@ -10879,6 +10950,8 @@ function auswertungAutoEntityKey(){
 // 24.09.2026: bei Fachhändler/AKP aus hinterlegter E-Mail, sonst leer/frei).
 // FH: bevorzugt die Ansprechpartner-Mail, sonst die Geschäfts-Mail (analog
 // fhPdfSendExtra()). AKP: akpContactsIndex[nr].email, bereits im Speicher.
+// Filialbetriebe: seit dem neuen Filialgruppen-Ansprechpartner (Nutzervorgabe
+// 24.09.2026, filialgruppen_contacts) ebenfalls vorbefüllbar.
 async function auswertungAutoRecipientSuggestion(){
   if(auswertungTyp==="akp"){
     const nr=auswertungMultiKeys[0];
@@ -10888,6 +10961,12 @@ async function auswertungAutoRecipientSuggestion(){
     const fhNr=auswertungMultiKeys[0];
     try{
       const { data } = await sb.from("fh_contacts").select("email,ansprechpartner_email").eq("fh_nr",fhNr).maybeSingle();
+      return (data&&(data.ansprechpartner_email||data.email))||"";
+    }catch(e){ console.error("auswertungAutoRecipientSuggestion:",e); return ""; }
+  }
+  if(auswertungTyp==="filialbetriebe"){
+    try{
+      const { data } = await sb.from("filialgruppen_contacts").select("email,ansprechpartner_email").eq("filialbetriebe",auswertungSingleValue).maybeSingle();
       return (data&&(data.ansprechpartner_email||data.email))||"";
     }catch(e){ console.error("auswertungAutoRecipientSuggestion:",e); return ""; }
   }
