@@ -9301,17 +9301,64 @@ function fhYearlyTrendTableHtml(merged){
 }
 // Nutzervorgabe 24.09.2026: in "Alle Filialen"-Übersichten sollen je
 // Filiale dieselben Kontaktfelder wie im FH-PopUp sichtbar sein
-// (Ansprechpartner, Telefon, E-Mail Geschäft/Ansprechpartner) - Bearbeitung
-// bleibt bewusst nur im FH-PopUp selbst (kein Duplikat-Formular hier),
-// diese Zeile ist reine Anzeige. Leere Felder werden ausgeblendet.
+// (Ansprechpartner, Telefon, E-Mail Geschäft/Ansprechpartner). Leere Felder
+// werden ausgeblendet.
 function fhContactInfoLineHtml(f){
   const parts=[];
   if(f.ansprechpartner) parts.push("Ansprechpartner: "+escapeHtml(f.ansprechpartner));
   if(f.telefon) parts.push("Tel: "+escapeHtml(f.telefon));
   if(f.email) parts.push("E-Mail Geschäft: "+escapeHtml(f.email));
   if(f.ansprechpartnerEmail) parts.push("E-Mail Ansprechpartner: "+escapeHtml(f.ansprechpartnerEmail));
-  if(!parts.length) return "";
+  if(!parts.length) return `<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;font-style:italic">Keine Kontaktdaten hinterlegt.</div>`;
   return `<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">${parts.join(" · ")}</div>`;
+}
+// Nutzervorgabe 24.09.2026 ("einfach einen Bearbeiten-Button... damit wir
+// das dort direkt ändern können"): kompaktes Inline-Formular für GENAU die
+// 4 in fhContactInfoLineHtml() gezeigten Kontaktfelder - bewusst kein
+// Duplikat des vollen FH-Stammdaten-Formulars (das bleibt im FH-PopUp),
+// nur die hier sichtbaren Felder sind hier auch editierbar.
+function filialContactEditFormHtml(f){
+  return `<div class="filial-contact-edit hidden" data-fhnr="${escapeHtml(f.fhNr)}" style="display:flex;flex-direction:column;gap:8px;background:var(--panel-2);border-radius:8px;padding:10px 12px;margin-bottom:10px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div style="flex:1;min-width:160px"><label class="ac-lbl">Ansprechpartner</label><input class="fce-ansprechpartner" value="${escapeHtml(f.ansprechpartner||"")}" autocomplete="off"></div>
+      <div style="flex:1;min-width:120px"><label class="ac-lbl">Telefon</label><input class="fce-telefon" value="${escapeHtml(f.telefon||"")}" autocomplete="off"></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div style="flex:1;min-width:160px"><label class="ac-lbl">E-Mail Geschäft</label><input class="fce-email" type="email" value="${escapeHtml(f.email||"")}" autocomplete="off"></div>
+      <div style="flex:1;min-width:160px"><label class="ac-lbl">E-Mail Ansprechpartner</label><input class="fce-ap-email" type="email" value="${escapeHtml(f.ansprechpartnerEmail||"")}" autocomplete="off"></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button type="button" class="btn btn-blue filial-contact-save" style="padding:6px 12px;font-size:12px">Speichern</button>
+      <button type="button" class="btn btn-ghost filial-contact-cancel" style="padding:6px 12px;font-size:12px">Abbrechen</button>
+      <span class="error filial-contact-hint" style="margin:0"></span>
+    </div>
+  </div>`;
+}
+// Schreibt NUR die 4 Kontaktfelder (nicht die übrigen Stammdaten) per
+// update() statt upsert() - die Filiale hat bereits eine fh_contacts-Zeile
+// (sonst wäre sie nicht in dieser Übersicht gelistet), ein upsert mit nur
+// diesen 4 Feldern würde alle anderen Stammdaten (Name, Adresse, ...) sonst
+// überschreiben/löschen.
+async function saveFilialContact(fhNr,box){
+  const ansprechpartner=box.querySelector(".fce-ansprechpartner").value.trim()||null;
+  const telefon=box.querySelector(".fce-telefon").value.trim()||null;
+  const email=box.querySelector(".fce-email").value.trim()||null;
+  const ansprechpartner_email=box.querySelector(".fce-ap-email").value.trim()||null;
+  const saveBtn=box.querySelector(".filial-contact-save");
+  const hint=box.querySelector(".filial-contact-hint");
+  saveBtn.disabled=true; hint.textContent="";
+  try{
+    const {error}=await sb.from("fh_contacts").update({
+      ansprechpartner,telefon,email,ansprechpartner_email,
+      updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString(),
+    }).eq("fh_nr",fhNr);
+    if(error) throw error;
+    toast("Kontaktdaten gespeichert ✓");
+    await openFilialGruppeModal();
+  }catch(e){
+    hint.textContent="Fehler: "+(e.message||e);
+    saveBtn.disabled=false;
+  }
 }
 // AKP über die übergebenen Filialen der Gruppe, absteigend nach
 // Monatsproduktion - wiederverwendbar für Bildschirm UND PDF.
@@ -9344,8 +9391,12 @@ function renderFilialGruppe(value,members){
   const perFilialeBlocks=perFiliale.map(f=>{
     const fYearly=fhYearlyTrendTableHtml(f.merged);
     return `<div style="border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px">
-      <div style="font-size:14px;font-weight:900;color:var(--wg-navy);margin-bottom:4px">${escapeHtml(fhNameOrt(f.name,f.ort))}</div>
-      ${fhContactInfoLineHtml(f)}
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:4px">
+        <div style="font-size:14px;font-weight:900;color:var(--wg-navy)">${escapeHtml(fhNameOrt(f.name,f.ort))}</div>
+        <button type="button" class="btn btn-ghost filial-contact-toggle" data-fhnr="${escapeHtml(f.fhNr)}" style="padding:4px 9px;font-size:11px;flex-shrink:0">✎ Bearbeiten</button>
+      </div>
+      <div class="filial-contact-view" data-fhnr="${escapeHtml(f.fhNr)}">${fhContactInfoLineHtml(f)}</div>
+      ${filialContactEditFormHtml(f)}
       ${fhMonthlyTableHtml(f.merged)}
       ${fYearly?`<div style="margin-top:10px">${fYearly}</div>`:""}
     </div>`;
@@ -9367,6 +9418,29 @@ function renderFilialGruppe(value,members){
     <h4 style="margin:0 0 8px;color:var(--wg-navy);font-size:13px">Ansprechpartner (AKP)</h4>
     <div style="overflow-x:auto">${akpHtml}</div>
   `;
+  const gBox=$("filialGruppeBody");
+  gBox.querySelectorAll(".filial-contact-toggle").forEach(btn=>{
+    btn.onclick=()=>{
+      const editBox=gBox.querySelector(`.filial-contact-edit[data-fhnr="${btn.dataset.fhnr}"]`);
+      const viewBox=gBox.querySelector(`.filial-contact-view[data-fhnr="${btn.dataset.fhnr}"]`);
+      if(editBox) editBox.classList.remove("hidden");
+      if(viewBox) viewBox.classList.add("hidden");
+    };
+  });
+  gBox.querySelectorAll(".filial-contact-cancel").forEach(btn=>{
+    btn.onclick=()=>{
+      const editBox=btn.closest(".filial-contact-edit");
+      const viewBox=gBox.querySelector(`.filial-contact-view[data-fhnr="${editBox.dataset.fhnr}"]`);
+      editBox.classList.add("hidden");
+      if(viewBox) viewBox.classList.remove("hidden");
+    };
+  });
+  gBox.querySelectorAll(".filial-contact-save").forEach(btn=>{
+    btn.onclick=()=>{
+      const editBox=btn.closest(".filial-contact-edit");
+      saveFilialContact(editBox.dataset.fhnr,editBox);
+    };
+  });
 }
 let filialGruppePdfBusy=false;
 async function exportFilialGruppePdf(){
