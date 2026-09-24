@@ -2122,6 +2122,43 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <input type="checkbox" id="auswertungVvjChk" style="width:18px;height:18px;accent-color:var(--wg-blue);cursor:pointer;flex-shrink:0"> Vorvorjahr im Vergleich anzeigen
       </label>
       <button class="btn btn-blue" id="auswertungBuildBtn" style="margin-top:18px;width:100%;padding:14px;font-size:14px">📊 Auswertung erstellen</button>
+
+      <!-- Nutzervorgabe 24.09.2026: automatische wiederkehrende Auswertung
+           für GENAU DIESE Auswahl einrichten (pro Einzel-Entität, nicht
+           global). Nur sichtbar bei Kooperation/Weitere Zuordnung/
+           Filialbetriebe (immer Einzelwert) bzw. bei Fachhändler/AKP nur
+           wenn genau 1 Entität ausgewählt ist (auswertungAutoSectionUpdate()). -->
+      <div id="auswertungAutoSection" style="margin-top:22px;padding-top:16px;border-top:1px solid #E4EDF3">
+        <label id="auswertungAutoEnableRow" for="auswertungAutoEnableChk" style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;padding:4px 0;cursor:pointer">
+          <input type="checkbox" id="auswertungAutoEnableChk" style="width:18px;height:18px;accent-color:var(--wg-blue);cursor:pointer;flex-shrink:0"> 🔁 Automatische Auswertung für diese Auswahl aktivieren
+        </label>
+        <div id="auswertungAutoNote" class="empty-note" style="margin:4px 0 0"></div>
+        <div id="auswertungAutoBox" class="hidden" style="margin-top:10px;display:flex;flex-direction:column;gap:10px;background:var(--panel-2);border-radius:8px;padding:12px 14px">
+          <div>
+            <label class="ac-lbl" for="auswertungAutoInterval">Intervall</label>
+            <select id="auswertungAutoInterval">
+              <option value="daily">Täglich</option>
+              <option value="weekly" selected>Wöchentlich</option>
+              <option value="monthly">Monatlich</option>
+              <option value="quarterly">Quartal</option>
+              <option value="yearly">Jährlich</option>
+            </select>
+          </div>
+          <label id="auswertungAutoFixedRow" for="auswertungAutoFixedChk" style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:13.5px;cursor:pointer">
+            <input type="checkbox" id="auswertungAutoFixedChk" style="width:17px;height:17px;accent-color:var(--wg-blue);cursor:pointer;flex-shrink:0"> Fixer Zeitraum (statt dauerhaft) - am Ende automatisch ein Endstand
+          </label>
+          <div id="auswertungAutoFixedBox" class="hidden" style="display:flex;gap:14px;flex-wrap:wrap">
+            <div><label class="ac-lbl" for="auswertungAutoRangeStart">Start</label><input type="date" id="auswertungAutoRangeStart"></div>
+            <div><label class="ac-lbl" for="auswertungAutoRangeEnd">Ende</label><input type="date" id="auswertungAutoRangeEnd"></div>
+          </div>
+          <div>
+            <label class="ac-lbl" for="auswertungAutoRecipientInput">Empfänger-Mailadresse (Kunde)</label>
+            <input type="email" id="auswertungAutoRecipientInput" placeholder="kunde@beispiel.at">
+          </div>
+          <button class="btn btn-blue" id="auswertungAutoSaveBtn" style="padding:10px;font-size:13.5px">🔁 Automatisierung aktivieren</button>
+          <div class="error" id="auswertungAutoHint"></div>
+        </div>
+      </div>
       <div class="error" id="auswertungHint"></div>
     </div>
     <div id="auswertungTrainingStep" class="hidden">
@@ -5256,7 +5293,7 @@ async function loadAkpContactsIndex(){
   if(!(sb&&supaUser)) return;
   try{
     const rows=await fetchAllRowsParallel("akp_contacts",
-      "nr,vorname,nachname,firma,ort,fh_nr,prod_monthly,prod_monthly_other,poquote_monthly,q3fuer2_monthly,gesperrt_am,storno_widerruf_quote,storno_erstpraemie_quote,storno_wegfall_quote",
+      "nr,vorname,nachname,firma,ort,fh_nr,email,prod_monthly,prod_monthly_other,poquote_monthly,q3fuer2_monthly,gesperrt_am,storno_widerruf_quote,storno_erstpraemie_quote,storno_wegfall_quote",
       q=>q.order("nr"));
     const idx={};
     // FH-Nr auf kanonische Nummer auflösen (FH-Duplikate zusammenführen,
@@ -10627,6 +10664,80 @@ function proceedToAuswertungPeriod(){
   $("auswertungVjChk").checked=false;
   $("auswertungVvjChk").checked=false;
   if(!$("auswertungVonInput").value||!$("auswertungBisInput").value) applyAuswertungPreset("month");
+  auswertungAutoSectionReset();
+}
+// Liefert den Entity-Key für eine automatische Auswertung: Aggregat-Wert bei
+// Kooperation/Weitere Zuordnung/Filialbetriebe, sonst die einzige gewählte
+// FH-/AKP-Nr (nur dann ist die Automatisierungs-Sektion überhaupt sichtbar).
+function auswertungAutoEntityKey(){
+  return AUSWERTUNG_SINGLE_TYPES.includes(auswertungTyp)?auswertungSingleValue:auswertungMultiKeys[0];
+}
+// Schlägt die Empfänger-Mailadresse aus den Stammdaten vor (Klärung
+// 24.09.2026: bei Fachhändler/AKP aus hinterlegter E-Mail, sonst leer/frei).
+// FH: bevorzugt die Ansprechpartner-Mail, sonst die Geschäfts-Mail (analog
+// fhPdfSendExtra()). AKP: akpContactsIndex[nr].email, bereits im Speicher.
+async function auswertungAutoRecipientSuggestion(){
+  if(auswertungTyp==="akp"){
+    const nr=auswertungMultiKeys[0];
+    return (akpContactsIndex&&akpContactsIndex[nr]&&akpContactsIndex[nr].email)||"";
+  }
+  if(auswertungTyp==="fachhaendler"){
+    const fhNr=auswertungMultiKeys[0];
+    try{
+      const { data } = await sb.from("fh_contacts").select("email,ansprechpartner_email").eq("fh_nr",fhNr).maybeSingle();
+      return (data&&(data.ansprechpartner_email||data.email))||"";
+    }catch(e){ console.error("auswertungAutoRecipientSuggestion:",e); return ""; }
+  }
+  return "";
+}
+// Blendet die Automatisierungs-Sektion ein/aus (nur bei Einzelauswahl
+// sichtbar, siehe Klärung 24.09.2026) und setzt sie beim Betreten des
+// Zeitraum-Schritts zurück (kollabiert, Empfänger-Vorschlag neu geladen).
+async function auswertungAutoSectionReset(){
+  const section=$("auswertungAutoSection");
+  const isMultiType=auswertungTyp==="fachhaendler"||auswertungTyp==="akp";
+  const single=!isMultiType||auswertungMultiKeys.length===1;
+  section.classList.toggle("hidden",!single);
+  $("auswertungAutoNote").textContent=single?"":"Automatisierung nur bei Auswahl eines einzelnen Fachhändlers/AKP möglich.";
+  $("auswertungAutoEnableChk").checked=false;
+  $("auswertungAutoBox").classList.add("hidden");
+  $("auswertungAutoFixedChk").checked=false;
+  $("auswertungAutoFixedBox").classList.add("hidden");
+  $("auswertungAutoRangeStart").value="";
+  $("auswertungAutoRangeEnd").value="";
+  $("auswertungAutoInterval").value="weekly";
+  $("auswertungAutoHint").textContent="";
+  $("auswertungAutoRecipientInput").value="";
+  if(single) $("auswertungAutoRecipientInput").value=await auswertungAutoRecipientSuggestion();
+}
+async function saveAuswertungAutoSubscription(){
+  const recipient=$("auswertungAutoRecipientInput").value.trim();
+  if(!recipient||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)){ $("auswertungAutoHint").textContent="Bitte eine gültige Empfänger-Mailadresse angeben."; return; }
+  const fixedEnabled=$("auswertungAutoFixedChk").checked;
+  const rangeStart=$("auswertungAutoRangeStart").value, rangeEnd=$("auswertungAutoRangeEnd").value;
+  if(fixedEnabled&&(!rangeStart||!rangeEnd)){ $("auswertungAutoHint").textContent="Bitte bei fixem Zeitraum Start und Ende angeben."; return; }
+  if(fixedEnabled&&rangeStart>rangeEnd){ $("auswertungAutoHint").textContent="\"Start\" muss vor \"Ende\" liegen."; return; }
+  $("auswertungAutoHint").textContent="";
+  $("auswertungAutoSaveBtn").disabled=true;
+  try{
+    const { error } = await sb.from("auswertung_subscriptions").insert({
+      auswertung_typ:auswertungTyp, entity_key:auswertungAutoEntityKey(),
+      recipient_email:recipient, interval:$("auswertungAutoInterval").value,
+      fixed_range_enabled:fixedEnabled, range_start:fixedEnabled?rangeStart:null, range_end:fixedEnabled?rangeEnd:null,
+      include_vj:$("auswertungVjChk").checked, include_vvj:$("auswertungVvjChk").checked,
+      show_akp:auswertungTyp==="akp"?false:$("auswertungAkpChk").checked,
+      created_by:(supaUser&&supaUser.id)||null, created_by_name:myName||null,
+      created_by_email:(supaUser&&supaUser.email)||"",
+    });
+    if(error) throw error;
+    toast("Automatische Auswertung aktiviert ✓ Erster Versand erfolgt beim nächsten fälligen Intervall.");
+    $("auswertungAutoEnableChk").checked=false;
+    $("auswertungAutoBox").classList.add("hidden");
+  }catch(e){
+    $("auswertungAutoHint").textContent="Fehler: "+(e.message||e);
+  }finally{
+    $("auswertungAutoSaveBtn").disabled=false;
+  }
 }
 function applyAuswertungPreset(preset){
   const today=new Date(); const y=today.getUTCFullYear?today.getFullYear():today.getFullYear();
@@ -13496,6 +13607,9 @@ $("auswertungBuildBtn").onclick=()=>{
 // Vorvorjahr ohne Vorjahr wäre eine inkonsistente Darstellung (Lücke in der
 // Vergleichsreihe) - VVJ aktiviert daher automatisch auch VJ mit.
 $("auswertungVvjChk").onchange=()=>{ if($("auswertungVvjChk").checked) $("auswertungVjChk").checked=true; };
+$("auswertungAutoEnableChk").onchange=()=>{ $("auswertungAutoBox").classList.toggle("hidden",!$("auswertungAutoEnableChk").checked); };
+$("auswertungAutoFixedChk").onchange=()=>{ $("auswertungAutoFixedBox").classList.toggle("hidden",!$("auswertungAutoFixedChk").checked); };
+$("auswertungAutoSaveBtn").onclick=saveAuswertungAutoSubscription;
 $("perfDialogBtn").onclick=openPerfModal;
 $("perfClose").onclick=()=>{ savePerfDraft(); $("perfModal").classList.add("hidden"); };
 $("perfDialogAdminBtn").onclick=openPerfAdminModal;
