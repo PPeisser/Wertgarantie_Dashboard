@@ -10722,14 +10722,22 @@ function auswertungBuildSeries(units,vonISO,bisISO){
   }
   const totalWg=buckets.reduce((s,b)=>s+b.wg,0);
   const totalMiete=buckets.reduce((s,b)=>s+b.miete,0);
+  // Bug-Report 24.09.2026 (im Zuge der automatischen Auswertungen entdeckt):
+  // der Vorjahresvergleich wurde bei kurzen Zeiträumen (≤31 Tage, weekly=true
+  // - die häufigsten Presets "Dieser Monat"/"Letzte 4 Wochen") bisher aus
+  // u.dailyWg/dailyMiete (state.dailyFH/dailyAKP) berechnet. Für das VORJAHR
+  // ist diese Tageshistorie aber nie vorhanden (siehe fhMonatVJValue-
+  // Kommentar oben) - nur monthlyWg/monthlyMiete (prod_monthly) hält echte
+  // Mehrjahresdaten. Der VJ-Vergleich lieferte dadurch bei diesen Presets
+  // faktisch 0 statt der echten Vorjahreszahlen. Fix: Prev-Summe IMMER über
+  // die Monats-Buckets rechnen, unabhängig vom weekly-Flag der aktuellen
+  // Periode (die aktuelle totalWg/totalMiete-Berechnung oben bleibt davon
+  // unberührt - dort ist dailyWg korrekt, da innerhalb des laufenden
+  // Importfensters).
   const vonPrev=addYearsIso(vonISO,-1), bisPrev=addYearsIso(bisISO,-1);
   let totalWgPrev=0,totalMietePrev=0;
-  if(weekly){
-    for(const u of units){ totalWgPrev+=sumDailyRangeExclSunday(u.dailyWg,vonPrev,bisPrev); totalMietePrev+=sumDailyRangeExclSunday(u.dailyMiete,vonPrev,bisPrev); }
-  }else{
-    const monthsPrev=monthKeysInRange(vonPrev,bisPrev);
-    for(const u of units) for(const mk of monthsPrev){ totalWgPrev+=u.monthlyWg[mk]||0; totalMietePrev+=u.monthlyMiete[mk]||0; }
-  }
+  const monthsPrev=monthKeysInRange(vonPrev,bisPrev);
+  for(const u of units) for(const mk of monthsPrev){ totalWgPrev+=u.monthlyWg[mk]||0; totalMietePrev+=u.monthlyMiete[mk]||0; }
   return {weekly,buckets,totalWg,totalMiete,totalWgPrev,totalMietePrev,vonPrev,bisPrev};
 }
 // Lädt die Rohdaten je Einheit (FH-Zeile aus fh_contacts bzw. AKP aus dem
