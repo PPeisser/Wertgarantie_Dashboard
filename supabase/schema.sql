@@ -1594,3 +1594,23 @@ alter table public.filialgruppen_contacts enable row level security;
 drop policy if exists "Authenticated all filialgruppen_contacts" on public.filialgruppen_contacts;
 create policy "Authenticated all filialgruppen_contacts" on public.filialgruppen_contacts
   for all to authenticated using (true) with check (true);
+
+-- Nutzervorgabe 24.09.2026 (Ergänzung, direkt im Anschluss): statt nur
+-- einem einzelnen Ansprechpartner sollen für die Filialgruppe MEHRERE
+-- Ansprechpartner mit Rolle (Geschäftsführer/Vertriebsleiter/Inhaber/
+-- Sonstige, per Haken auswählbar) erfassbar sein, dazu eine allgemeine
+-- Zentraladresse und Zentralmailadresse (nicht an eine Person gebunden).
+alter table public.filialgruppen_contacts add column if not exists strasse text;
+alter table public.filialgruppen_contacts add column if not exists plz text;
+alter table public.filialgruppen_contacts add column if not exists ort text;
+alter table public.filialgruppen_contacts rename column email to zentral_email;
+alter table public.filialgruppen_contacts rename column telefon to zentral_telefon;
+-- Array von {rolle,name,email,telefon}.
+alter table public.filialgruppen_contacts add column if not exists ansprechpartner_liste jsonb not null default '[]'::jsonb;
+update public.filialgruppen_contacts
+set ansprechpartner_liste = jsonb_build_array(
+  jsonb_build_object('rolle','Ansprechpartner','name',ansprechpartner,'email',ansprechpartner_email,'telefon',null)
+)
+where ansprechpartner is not null and ansprechpartner_liste = '[]'::jsonb;
+alter table public.filialgruppen_contacts drop column if exists ansprechpartner;
+alter table public.filialgruppen_contacts drop column if exists ansprechpartner_email;

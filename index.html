@@ -9367,21 +9367,60 @@ async function saveFilialContact(fhNr,box){
 }
 // Nutzervorgabe 24.09.2026 ("Ansprechpartner für die Filialgruppe, also
 // ganz oben"): zusätzlich zum Ansprechpartner je EINZELNER Filiale gibt es
-// jetzt auch einen zentralen Ansprechpartner für die GESAMTE Filialgruppe
-// (eigene Tabelle filialgruppen_contacts, da eine Filialgruppe keine eigene
-// FH-Nr hat) - u.a. als Empfänger-Vorschlag für die automatische Auswertung
-// vom Typ "filialbetriebe" nutzbar (siehe auswertungAutoRecipientSuggestion()).
+// jetzt auch Kontaktdaten für die GESAMTE Filialgruppe (eigene Tabelle
+// filialgruppen_contacts, da eine Filialgruppe keine eigene FH-Nr hat) -
+// u.a. als Empfänger-Vorschlag für die automatische Auswertung vom Typ
+// "filialbetriebe" nutzbar (siehe auswertungAutoRecipientSuggestion()).
+// Ergänzung (Nutzervorgabe, direkt im Anschluss): statt nur einem
+// Ansprechpartner können MEHRERE mit Rolle erfasst werden (per Haken
+// auswählbar), dazu eine allgemeine Zentraladresse/-mailadresse/-telefon,
+// die nicht an eine Person gebunden ist.
+const FILIALGRUPPE_AP_ROLLEN=["Geschäftsführer","Vertriebsleiter","Inhaber"];
+function filialGruppeContactViewHtml(c){
+  c=c||{};
+  const adr=[c.strasse,[c.plz,c.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  const centralParts=[];
+  if(adr) centralParts.push("Zentraladresse: "+escapeHtml(adr));
+  if(c.zentral_telefon) centralParts.push("Zentraltelefon: "+escapeHtml(c.zentral_telefon));
+  if(c.zentral_email) centralParts.push("Zentralmailadresse: "+escapeHtml(c.zentral_email));
+  const centralLine=centralParts.length?`<div style="font-size:11.5px;color:var(--muted)">${centralParts.join(" · ")}</div>`:"";
+  const list=(c.ansprechpartner_liste||[]).filter(a=>a&&(a.name||a.email));
+  const apLines=list.map(a=>`<div style="font-size:11.5px;color:var(--muted)"><b>${escapeHtml(a.rolle||"Ansprechpartner")}:</b> ${escapeHtml(a.name||"–")}${a.email?" · "+escapeHtml(a.email):""}${a.telefon?" · "+escapeHtml(a.telefon):""}</div>`).join("");
+  if(!centralLine&&!apLines) return `<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;font-style:italic">Keine Kontaktdaten hinterlegt.</div>`;
+  return `<div style="margin-bottom:10px">${centralLine}${apLines}</div>`;
+}
 function filialGruppeContactEditFormHtml(c){
   c=c||{};
+  const list=c.ansprechpartner_liste||[];
+  const rolleRowHtml=(rolle,dataRolle,label,existing)=>{
+    const checked=!!existing;
+    return `<div class="fgap-rolle-row" data-rolle="${escapeHtml(dataRolle)}" style="margin-bottom:6px">
+      <label style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;cursor:pointer">
+        <input type="checkbox" class="fgap-chk" ${checked?"checked":""} style="width:16px;height:16px;flex-shrink:0"> ${escapeHtml(label)}
+      </label>
+      <div class="fgap-fields" style="display:${checked?"flex":"none"};gap:8px;flex-wrap:wrap;margin:4px 0 4px 24px">
+        ${dataRolle==="__custom__"?`<input class="fgap-custom-label" placeholder="Bezeichnung (z.B. Prokurist)" value="${escapeHtml(existing&&existing.rolle||"")}" autocomplete="off" style="flex:1;min-width:140px">`:""}
+        <input class="fgap-name" placeholder="Name" value="${escapeHtml(existing&&existing.name||"")}" autocomplete="off" style="flex:1;min-width:140px">
+        <input class="fgap-email" type="email" placeholder="E-Mail" value="${escapeHtml(existing&&existing.email||"")}" autocomplete="off" style="flex:1;min-width:140px">
+        <input class="fgap-tel" placeholder="Telefon" value="${escapeHtml(existing&&existing.telefon||"")}" autocomplete="off" style="flex:1;min-width:100px">
+      </div>
+    </div>`;
+  };
+  const rolleRows=FILIALGRUPPE_AP_ROLLEN.map(r=>rolleRowHtml(r,r,r,list.find(a=>a&&a.rolle===r))).join("")
+    +rolleRowHtml("__custom__","__custom__","Sonstige",list.find(a=>a&&a.rolle&&!FILIALGRUPPE_AP_ROLLEN.includes(a.rolle)));
   return `<div class="filialgruppe-contact-edit hidden" style="display:flex;flex-direction:column;gap:8px;background:var(--panel-2);border-radius:8px;padding:10px 12px;margin-bottom:14px">
+    <div class="ac-lbl" style="margin-bottom:0">Zentraladresse</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <div style="flex:1;min-width:160px"><label class="ac-lbl">Ansprechpartner</label><input class="fgce-ansprechpartner" value="${escapeHtml(c.ansprechpartner||"")}" autocomplete="off"></div>
-      <div style="flex:1;min-width:120px"><label class="ac-lbl">Telefon</label><input class="fgce-telefon" value="${escapeHtml(c.telefon||"")}" autocomplete="off"></div>
+      <input class="fgce-strasse" placeholder="Straße" value="${escapeHtml(c.strasse||"")}" autocomplete="off" style="flex:2;min-width:160px">
+      <input class="fgce-plz" placeholder="PLZ" value="${escapeHtml(c.plz||"")}" autocomplete="off" style="flex:1;min-width:70px">
+      <input class="fgce-ort" placeholder="Ort" value="${escapeHtml(c.ort||"")}" autocomplete="off" style="flex:1;min-width:120px">
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <div style="flex:1;min-width:160px"><label class="ac-lbl">E-Mail Geschäft</label><input class="fgce-email" type="email" value="${escapeHtml(c.email||"")}" autocomplete="off"></div>
-      <div style="flex:1;min-width:160px"><label class="ac-lbl">E-Mail Ansprechpartner</label><input class="fgce-ap-email" type="email" value="${escapeHtml(c.ansprechpartner_email||"")}" autocomplete="off"></div>
+      <div style="flex:1;min-width:160px"><label class="ac-lbl">Zentraltelefon</label><input class="fgce-zentral-telefon" value="${escapeHtml(c.zentral_telefon||"")}" autocomplete="off"></div>
+      <div style="flex:1;min-width:160px"><label class="ac-lbl">Zentralmailadresse</label><input class="fgce-zentral-email" type="email" value="${escapeHtml(c.zentral_email||"")}" autocomplete="off"></div>
     </div>
+    <div class="ac-lbl" style="margin:6px 0 0">Ansprechpartner (mehrere möglich)</div>
+    ${rolleRows}
     <div style="display:flex;gap:8px;align-items:center">
       <button type="button" class="btn btn-blue filialgruppe-contact-save" style="padding:6px 12px;font-size:12px">Speichern</button>
       <button type="button" class="btn btn-ghost filialgruppe-contact-cancel" style="padding:6px 12px;font-size:12px">Abbrechen</button>
@@ -9393,16 +9432,28 @@ function filialGruppeContactEditFormHtml(c){
 // Filialgruppe existiert beim ersten Erfassen noch KEINE Zeile in
 // filialgruppen_contacts.
 async function saveFilialGruppeContact(value,box){
-  const ansprechpartner=box.querySelector(".fgce-ansprechpartner").value.trim()||null;
-  const telefon=box.querySelector(".fgce-telefon").value.trim()||null;
-  const email=box.querySelector(".fgce-email").value.trim()||null;
-  const ansprechpartner_email=box.querySelector(".fgce-ap-email").value.trim()||null;
+  const strasse=box.querySelector(".fgce-strasse").value.trim()||null;
+  const plz=box.querySelector(".fgce-plz").value.trim()||null;
+  const ort=box.querySelector(".fgce-ort").value.trim()||null;
+  const zentral_telefon=box.querySelector(".fgce-zentral-telefon").value.trim()||null;
+  const zentral_email=box.querySelector(".fgce-zentral-email").value.trim()||null;
+  const ansprechpartner_liste=[];
+  box.querySelectorAll(".fgap-rolle-row").forEach(row=>{
+    if(!row.querySelector(".fgap-chk").checked) return;
+    const dataRolle=row.dataset.rolle;
+    const rolle=dataRolle==="__custom__"?(row.querySelector(".fgap-custom-label").value.trim()||"Sonstige"):dataRolle;
+    const name=row.querySelector(".fgap-name").value.trim();
+    const email=row.querySelector(".fgap-email").value.trim();
+    const telefon=row.querySelector(".fgap-tel").value.trim();
+    if(!name&&!email&&!telefon) return;
+    ansprechpartner_liste.push({rolle,name:name||null,email:email||null,telefon:telefon||null});
+  });
   const saveBtn=box.querySelector(".filialgruppe-contact-save");
   const hint=box.querySelector(".filialgruppe-contact-hint");
   saveBtn.disabled=true; hint.textContent="";
   try{
     const {error}=await sb.from("filialgruppen_contacts").upsert({
-      filialbetriebe:value,ansprechpartner,telefon,email,ansprechpartner_email,
+      filialbetriebe:value,strasse,plz,ort,zentral_telefon,zentral_email,ansprechpartner_liste,
       updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString(),
     },{onConflict:"filialbetriebe"});
     if(error) throw error;
@@ -9465,7 +9516,7 @@ function renderFilialGruppe(value,members){
         <div style="font-size:13px;font-weight:800;color:var(--wg-navy)">Ansprechpartner (Filialgruppe)</div>
         <button type="button" class="btn btn-ghost filialgruppe-contact-toggle" style="padding:4px 9px;font-size:11px;flex-shrink:0">✎ Bearbeiten</button>
       </div>
-      <div class="filialgruppe-contact-view">${fhContactInfoLineHtml(gc)}</div>
+      <div class="filialgruppe-contact-view">${filialGruppeContactViewHtml(gc)}</div>
       ${filialGruppeContactEditFormHtml(gc)}
     </div>
     <div style="font-size:13px;color:var(--muted);margin-bottom:14px">${perFiliale.length} Filialen: ${perFiliale.map(f=>escapeHtml(fhNameOrt(f.name,f.ort))).join(" · ")}</div>
@@ -9511,6 +9562,12 @@ function renderFilialGruppe(value,members){
   if(gcCancel) gcCancel.onclick=()=>{ gcEdit.classList.add("hidden"); gcView.classList.remove("hidden"); };
   const gcSave=gBox.querySelector(".filialgruppe-contact-save");
   if(gcSave) gcSave.onclick=()=>saveFilialGruppeContact(value,gcEdit);
+  gBox.querySelectorAll(".fgap-chk").forEach(chk=>{
+    chk.onchange=()=>{
+      const fields=chk.closest(".fgap-rolle-row").querySelector(".fgap-fields");
+      fields.style.display=chk.checked?"flex":"none";
+    };
+  });
 }
 let filialGruppePdfBusy=false;
 async function exportFilialGruppePdf(){
@@ -9555,7 +9612,7 @@ async function exportFilialGruppePdf(){
         </div>
         <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Filialgruppen-Übersicht</div>
       </div>
-      <div class="pdf-block" style="margin-bottom:18px">${fhContactInfoLineHtml(filialGruppeContactCurrent||{})}</div>
+      <div class="pdf-block" style="margin-bottom:18px">${filialGruppeContactViewHtml(filialGruppeContactCurrent||{})}</div>
       <div class="pdf-block" style="margin-bottom:18px"><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#5D7284;margin-bottom:3px">Gesamtproduktion ${year}</div><div style="font-size:20px;font-weight:900;color:#062A3F">${fmt(gesamt)} Stk.</div></div>
       <div class="pdf-block" style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:8px">Aufteilung nach Filialen (${year})</div>
       <div class="pdf-block" style="margin-bottom:18px"><table class="ac-yearly-table"><thead><tr><th>Filiale</th><th class="r">Produktion ${year}</th><th class="r">Anteil</th></tr></thead><tbody>${breakdownRows}</tbody></table></div>
@@ -10966,8 +11023,10 @@ async function auswertungAutoRecipientSuggestion(){
   }
   if(auswertungTyp==="filialbetriebe"){
     try{
-      const { data } = await sb.from("filialgruppen_contacts").select("email,ansprechpartner_email").eq("filialbetriebe",auswertungSingleValue).maybeSingle();
-      return (data&&(data.ansprechpartner_email||data.email))||"";
+      const { data } = await sb.from("filialgruppen_contacts").select("zentral_email,ansprechpartner_liste").eq("filialbetriebe",auswertungSingleValue).maybeSingle();
+      if(!data) return "";
+      const apMitMail=(data.ansprechpartner_liste||[]).find(a=>a&&a.email);
+      return (apMitMail&&apMitMail.email)||data.zentral_email||"";
     }catch(e){ console.error("auswertungAutoRecipientSuggestion:",e); return ""; }
   }
   return "";
