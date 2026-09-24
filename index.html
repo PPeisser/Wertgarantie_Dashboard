@@ -1758,6 +1758,14 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <input type="checkbox" id="auswertungEnabledChk" style="width:17px;height:17px;flex-shrink:0">
         Auswertungen
       </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content" title="Legt fest, ob Mitarbeiter bei der Einrichtung einer automatischen Auswertung 'Versand an Mitarbeiter' (an sich selbst) wählen können.">
+        <input type="checkbox" id="auswertungSendEmployeeAllowedChk" style="width:17px;height:17px;flex-shrink:0">
+        Auswertung: Versand an Mitarbeiter erlaubt
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content" title="Legt fest, ob Mitarbeiter bei der Einrichtung einer automatischen Auswertung 'Versand an Externe' (Kunde/Ansprechpartner) wählen können.">
+        <input type="checkbox" id="auswertungSendExternalAllowedChk" style="width:17px;height:17px;flex-shrink:0">
+        Auswertung: Versand an Externe erlaubt
+      </label>
       <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
         <input type="checkbox" id="fhZielEnabledChk" style="width:17px;height:17px;flex-shrink:0">
         Ziele (FH-Stammdaten)
@@ -2291,6 +2299,18 @@ let kooperationsgespraechEnabled = false;
 // (dashboard_kv-Key "auswertung_enabled", per Schalter im normalen
 // ADMIN-Panel gesetzt). Standardmäßig aus, bis Wert aus der DB geladen wurde.
 let auswertungEnabled = false;
+// Nutzervorgabe 24.09.2026 (Ergänzung 4): welche der beiden Versandarten
+// (an Mitarbeiter selbst / an Externe) Mitarbeiter bei der Einrichtung
+// einer automatischen Auswertung überhaupt WÄHLEN können, wird vom Admin
+// global freigegeben (dashboard_kv-Keys "auswertung_send_employee_allowed"/
+// "auswertung_send_external_allowed", Funktionen-Panel). Anders als die
+// übrigen Ein/Aus-Schalter defaulten diese beiden auf true (beide Optionen
+// verfügbar) - passend zum bereits in der DB gesetzten Startwert (Migration
+// "1" für beide), damit die gerade erst ausgelieferte Automatisierung nicht
+// unbeabsichtigt für alle Mitarbeiter verschwindet, bis ein Admin sie das
+// erste Mal im Funktionen-Panel bestätigt.
+let auswertungSendEmployeeAllowed = true;
+let auswertungSendExternalAllowed = true;
 // Globaler Ein/Aus-Schalter für das "Ziele"-Feld im FH-Popup (dashboard_kv-
 // Key "fh_ziel_enabled", per Schalter im normalen ADMIN-Panel gesetzt) -
 // anders als die übrigen Schalter blendet dieser kein Header-Button ein/aus,
@@ -2885,6 +2905,8 @@ function openAdminModal(){
   $("chefgespraechEnabledChk").checked=chefgespraechEnabled;
   $("kooperationsgespraechEnabledChk").checked=kooperationsgespraechEnabled;
   $("auswertungEnabledChk").checked=auswertungEnabled;
+  $("auswertungSendEmployeeAllowedChk").checked=auswertungSendEmployeeAllowed;
+  $("auswertungSendExternalAllowedChk").checked=auswertungSendExternalAllowed;
   $("fhZielEnabledChk").checked=fhZielEnabled;
   $("perfDialogAdminEnabledChk").checked=perfDialogAdminEnabled;
   $("fhSearchEnabledChk").checked=fhSearchEnabled;
@@ -3259,6 +3281,26 @@ async function toggleAuswertungEnabled(){
   try{
     await stSet("auswertung_enabled",on?"1":"0");
     toast(on?"\"Auswertung erfassen\"-Button aktiviert ✓":"\"Auswertung erfassen\"-Button deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
+async function toggleAuswertungSendEmployeeAllowed(){
+  const on=$("auswertungSendEmployeeAllowedChk").checked;
+  auswertungSendEmployeeAllowed=on;
+  try{
+    await stSet("auswertung_send_employee_allowed",on?"1":"0");
+    toast(on?"Versand an Mitarbeiter freigegeben ✓":"Versand an Mitarbeiter für Mitarbeiter-Einrichtung gesperrt");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
+async function toggleAuswertungSendExternalAllowed(){
+  const on=$("auswertungSendExternalAllowedChk").checked;
+  auswertungSendExternalAllowed=on;
+  try{
+    await stSet("auswertung_send_external_allowed",on?"1":"0");
+    toast(on?"Versand an Externe freigegeben ✓":"Versand an Externe für Mitarbeiter-Einrichtung gesperrt");
   }catch(e){
     toast("Speichern fehlgeschlagen: "+(e.message||e));
   }
@@ -7512,6 +7554,7 @@ async function loadAll(){
   const kv=await stGetMany([
     "wg-state","wg-goals","performance_dialog_enabled","performance_dialog_admin_enabled",
     "chefgespraech_enabled","kooperationsgespraech_enabled","auswertung_enabled","fh_ziel_enabled",
+    "auswertung_send_employee_allowed","auswertung_send_external_allowed",
     "fh_search_enabled","akp_peer_compare_enabled","karteileichen_jahre","karteileichen_review_fh",
     "karteileichen_review_akp","deckungsgrad_enabled","deckungsgrad_visible_metrics",
     "emp_ranking_enabled","stornoquoten_enabled","miete_last_import","akq_import_notify_enabled",
@@ -7524,6 +7567,8 @@ async function loadAll(){
   chefgespraechEnabled=kv["chefgespraech_enabled"]==="1";
   kooperationsgespraechEnabled=kv["kooperationsgespraech_enabled"]==="1";
   auswertungEnabled=kv["auswertung_enabled"]==="1";
+  auswertungSendEmployeeAllowed=kv["auswertung_send_employee_allowed"]==="1";
+  auswertungSendExternalAllowed=kv["auswertung_send_external_allowed"]==="1";
   fhZielEnabled=kv["fh_ziel_enabled"]==="1";
   fhSearchEnabled=kv["fh_search_enabled"]==="1";
   akpPeerCompareEnabled=kv["akp_peer_compare_enabled"]==="1";
@@ -11103,8 +11148,12 @@ async function auswertungAutoSectionReset(){
   const section=$("auswertungAutoSection");
   const isMultiType=auswertungTyp==="fachhaendler"||auswertungTyp==="akp";
   const single=!isMultiType||auswertungMultiKeys.length===1;
-  section.classList.toggle("hidden",!single);
-  $("auswertungAutoNote").textContent=single?"":"Automatisierung nur bei Auswahl eines einzelnen Fachhändlers/AKP möglich.";
+  const anyAllowed=auswertungSendEmployeeAllowed||auswertungSendExternalAllowed;
+  const visible=single&&anyAllowed;
+  section.classList.toggle("hidden",!visible);
+  $("auswertungAutoNote").textContent=!single
+    ? "Automatisierung nur bei Auswahl eines einzelnen Fachhändlers/AKP möglich."
+    : (!anyAllowed ? "Automatisierung ist derzeit deaktiviert (vom Admin kein Versand freigegeben)." : "");
   $("auswertungAutoEnableChk").checked=false;
   $("auswertungAutoBox").classList.add("hidden");
   $("auswertungAutoFixedChk").checked=false;
@@ -11114,8 +11163,17 @@ async function auswertungAutoSectionReset(){
   $("auswertungAutoInterval").value="weekly";
   $("auswertungAutoHint").textContent="";
   $("auswertungAutoRecipientExtra").value="";
-  $("auswertungAutoEmployeeOnlyChk").checked=false;
-  $("auswertungAutoRecipientSection").classList.remove("hidden");
+  // Nutzervorgabe 24.09.2026 (Ergänzung 4): ist nur EINE der beiden
+  // Versandarten vom Admin freigegeben, gibt es für Mitarbeiter nichts zu
+  // wählen - die Checkbox "Nur an mich selbst senden" wird ausgeblendet und
+  // der einzig mögliche Modus fest vorgegeben (Empfänger-Sektion passend
+  // ein-/ausgeblendet), statt eine Wahl zu zeigen, die am Ende ohnehin
+  // nicht gespeichert werden könnte.
+  const bothAllowed=auswertungSendEmployeeAllowed&&auswertungSendExternalAllowed;
+  $("auswertungAutoEmployeeOnlyRow").classList.toggle("hidden",!bothAllowed);
+  const forcedEmployeeOnly=auswertungSendEmployeeAllowed&&!auswertungSendExternalAllowed;
+  $("auswertungAutoEmployeeOnlyChk").checked=forcedEmployeeOnly;
+  $("auswertungAutoRecipientSection").classList.toggle("hidden",forcedEmployeeOnly);
   renderAuswertungAutoRecipientOptions(single?await auswertungAutoRecipientOptions():[]);
 }
 async function saveAuswertungAutoSubscription(){
@@ -11140,7 +11198,7 @@ async function saveAuswertungAutoSubscription(){
   try{
     const { error } = await sb.from("auswertung_subscriptions").insert({
       auswertung_typ:auswertungTyp, entity_key:auswertungAutoEntityKey(),
-      recipient_emails:recipients, send_to_external:!employeeOnly, send_to_employee:true, interval:$("auswertungAutoInterval").value,
+      recipient_emails:recipients, send_to_external:!employeeOnly, send_to_employee:auswertungSendEmployeeAllowed, interval:$("auswertungAutoInterval").value,
       fixed_range_enabled:fixedEnabled, range_start:fixedEnabled?rangeStart:null, range_end:fixedEnabled?rangeEnd:null,
       include_vj:$("auswertungVjChk").checked, include_vvj:$("auswertungVvjChk").checked,
       show_akp:auswertungTyp==="akp"?false:$("auswertungAkpChk").checked,
@@ -13906,6 +13964,8 @@ $("fhDupCreateBtn").onclick=createFhDupMerge;
 $("chefgespraechEnabledChk").onchange=toggleChefgespraechEnabled;
 $("kooperationsgespraechEnabledChk").onchange=toggleKooperationsgespraechEnabled;
 $("auswertungEnabledChk").onchange=toggleAuswertungEnabled;
+$("auswertungSendEmployeeAllowedChk").onchange=toggleAuswertungSendEmployeeAllowed;
+$("auswertungSendExternalAllowedChk").onchange=toggleAuswertungSendExternalAllowed;
 $("fhZielEnabledChk").onchange=toggleFhZielEnabled;
 $("fhSearchEnabledChk").onchange=toggleFhSearchEnabled;
 $("akpPeerCompareEnabledChk").onchange=toggleAkpPeerCompareEnabled;

@@ -1556,6 +1556,24 @@ alter table public.auswertung_subscriptions drop constraint if exists auswertung
 alter table public.auswertung_subscriptions drop column if exists employee_only;
 alter table public.auswertung_subscriptions add constraint auswertung_subscriptions_recipients_chk check (not send_to_external or array_length(recipient_emails,1) > 0);
 
+-- Nutzervorgabe 24.09.2026 (Ergänzung 4): die beiden Versandarten
+-- send_to_employee/send_to_external (oben) sollen für normale Mitarbeiter
+-- bei der EINRICHTUNG global vom Admin freischaltbar sein - ist z.B. nur
+-- "Versand an Externe" freigegeben, sieht die Einrichtungs-Oberfläche gar
+-- nicht erst die Option "Nur an mich selbst senden" (index.html,
+-- auswertungAutoSectionReset()). Zwei generische dashboard_kv-Flags
+-- (analog "auswertung_enabled", Funktionen-Panel), KEINE neue Tabelle
+-- nötig. Abweichend von der sonstigen Konvention ("Standard aus, bis ein
+-- Admin den Schalter das erste Mal setzt") werden beide hier explizit auf
+-- "1" (= beide Optionen weiterhin verfügbar) vorbelegt, damit die gerade
+-- erst ausgelieferte Automatisierung nicht unbeabsichtigt für alle
+-- Mitarbeiter verschwindet, bis ein Admin das Funktionen-Panel einmal
+-- besucht hat.
+insert into public.dashboard_kv (key, value) values
+  ('auswertung_send_employee_allowed', '1'),
+  ('auswertung_send_external_allowed', '1')
+on conflict (key) do nothing;
+
 -- Log jedes tatsächlich versendeten automatischen Berichts - Quelle der
 -- Wahrheit für Idempotenz (Unique-Index verhindert Doppel-Versand derselben
 -- Periode selbst bei überlappenden Cron-Läufen) UND Admin-Downloadliste,
