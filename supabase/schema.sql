@@ -1523,6 +1523,14 @@ create policy "Authenticated all auswertung_subscriptions" on public.auswertung_
 create index if not exists auswertung_subscriptions_active_idx on public.auswertung_subscriptions (active) where active;
 create index if not exists auswertung_subscriptions_entity_idx on public.auswertung_subscriptions (auswertung_typ, entity_key);
 
+-- Nutzervorgabe 24.09.2026 (Ergänzung): mehrere Empfänger-Mailadressen
+-- auswählbar/eingebbar statt nur einer einzelnen (z.B. Zentralmailadresse
+-- UND mehrere Ansprechpartner einer Filialgruppe gleichzeitig).
+alter table public.auswertung_subscriptions add column if not exists recipient_emails text[] not null default '{}';
+update public.auswertung_subscriptions set recipient_emails=array[recipient_email] where recipient_emails='{}' and recipient_email is not null;
+alter table public.auswertung_subscriptions drop column if exists recipient_email;
+alter table public.auswertung_subscriptions add constraint auswertung_subscriptions_recipients_chk check (array_length(recipient_emails,1) > 0);
+
 -- Log jedes tatsächlich versendeten automatischen Berichts - Quelle der
 -- Wahrheit für Idempotenz (Unique-Index verhindert Doppel-Versand derselben
 -- Periode selbst bei überlappenden Cron-Läufen) UND Admin-Downloadliste,

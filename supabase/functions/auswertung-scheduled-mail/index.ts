@@ -443,10 +443,17 @@ Deno.serve(async (req) => {
       if (upErr) { results.push({ subscription: sub.id, error: "Storage-Upload fehlgeschlagen: " + upErr.message }); continue; }
 
       const subject = `Wertgarantie Auswertung${isEndstand ? " – Abschlussbericht" : ""} (${fmtDateAT(toISO)})`;
+      // Nutzervorgabe 24.09.2026 (Ergänzung): mehrere Empfänger möglich
+      // (recipient_emails, Array statt einzelner Adresse) - je eine eigene
+      // Mail pro Empfänger, wie schon zwischen Kunde/Mitarbeiter-Kopie
+      // üblich. customer_email_sent bleibt ein einzelnes Flag (true nur
+      // wenn ALLE Empfänger erfolgreich zugestellt wurden).
+      const recipients: string[] = Array.isArray(sub.recipient_emails) ? sub.recipient_emails : [];
       let customerSent = false, employeeSent = false;
       if (!skipRealSend) {
-        customerSent = await sendMail(mailerUrl, secret, sub.recipient_email, subject, buildCustomerMailHtml(entityLabel, fromISO, toISO, isEndstand), pdfBase64, filename);
-        if (sub.created_by_email) employeeSent = await sendMail(mailerUrl, secret, sub.created_by_email, subject, buildEmployeeMailHtml(sub.created_by_name, sub.recipient_email, entityLabel, fromISO, toISO, isEndstand), pdfBase64, filename);
+        const results2 = await Promise.all(recipients.map((to) => sendMail(mailerUrl, secret, to, subject, buildCustomerMailHtml(entityLabel, fromISO, toISO, isEndstand), pdfBase64, filename)));
+        customerSent = recipients.length > 0 && results2.every(Boolean);
+        if (sub.created_by_email) employeeSent = await sendMail(mailerUrl, secret, sub.created_by_email, subject, buildEmployeeMailHtml(sub.created_by_name, recipients.join(", "), entityLabel, fromISO, toISO, isEndstand), pdfBase64, filename);
       }
 
       const { error: logErr } = await admin.from("auswertung_subscription_sends").insert({

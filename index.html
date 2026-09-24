@@ -2168,8 +2168,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
             <div><label class="ac-lbl" for="auswertungAutoRangeEnd">Ende</label><input type="date" id="auswertungAutoRangeEnd"></div>
           </div>
           <div>
-            <label class="ac-lbl" for="auswertungAutoRecipientInput">Empfänger-Mailadresse (Kunde)</label>
-            <input type="email" id="auswertungAutoRecipientInput" placeholder="kunde@beispiel.at">
+            <span class="ac-lbl">Empfänger (Kunde)</span>
+            <div id="auswertungAutoRecipientOptions" style="display:flex;flex-direction:column;gap:4px;margin:4px 0 8px"></div>
+            <label class="ac-lbl" for="auswertungAutoRecipientExtra">Weitere E-Mail-Adresse(n) (mit Komma, Semikolon oder Zeilenumbruch getrennt)</label>
+            <textarea id="auswertungAutoRecipientExtra" rows="2" placeholder="kunde@beispiel.at, weitere@beispiel.at"></textarea>
           </div>
           <button class="btn btn-blue" id="auswertungAutoSaveBtn" style="padding:10px;font-size:13.5px">🔁 Automatisierung aktivieren</button>
           <div class="error" id="auswertungAutoHint"></div>
@@ -2971,7 +2973,7 @@ async function renderAdminAuswertungAutoList(){
     return `<div class="akp-search-row" data-id="${escapeHtml(sub.id)}" style="flex-direction:column;align-items:stretch">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
         <span><b>${escapeHtml(AUSWERTUNG_TYP_LABEL[sub.auswertung_typ]||sub.auswertung_typ)}: ${escapeHtml(sub.entity_key)}</b>
-        <span class="betr">→ ${escapeHtml(sub.recipient_email)} · ${escapeHtml(AUSWERTUNG_INTERVAL_LABEL[sub.interval]||sub.interval)}${rangeTxt} · von ${escapeHtml(sub.created_by_name||"–")}${lastSend?" · zuletzt versendet "+fmtDateTime(lastSend.sent_at):" · noch nie versendet"}</span></span>
+        <span class="betr">→ ${escapeHtml((sub.recipient_emails||[]).join(", "))} · ${escapeHtml(AUSWERTUNG_INTERVAL_LABEL[sub.interval]||sub.interval)}${rangeTxt} · von ${escapeHtml(sub.created_by_name||"–")}${lastSend?" · zuletzt versendet "+fmtDateTime(lastSend.sent_at):" · noch nie versendet"}</span></span>
         <span class="val" style="flex-direction:row;align-items:center;gap:8px">
           ${statusBadge}
           ${subSends.length?`<button type="button" class="btn btn-ghost ausw-auto-toggle-history" style="padding:6px 10px;font-size:11.5px" data-sub="${escapeHtml(sub.id)}">Historie (${subSends.length})</button>`:""}
@@ -11005,35 +11007,53 @@ function auswertungAutoEntityKey(){
 }
 // Schlägt die Empfänger-Mailadresse aus den Stammdaten vor (Klärung
 // 24.09.2026: bei Fachhändler/AKP aus hinterlegter E-Mail, sonst leer/frei).
-// FH: bevorzugt die Ansprechpartner-Mail, sonst die Geschäfts-Mail (analog
-// fhPdfSendExtra()). AKP: akpContactsIndex[nr].email, bereits im Speicher.
-// Filialbetriebe: seit dem neuen Filialgruppen-Ansprechpartner (Nutzervorgabe
-// 24.09.2026, filialgruppen_contacts) ebenfalls vorbefüllbar.
-async function auswertungAutoRecipientSuggestion(){
+// FH: E-Mail Geschäft UND E-Mail Ansprechpartner (falls beide vorhanden)
+// als getrennte Optionen. AKP: akpContactsIndex[nr].email. Filialbetriebe:
+// Zentralmailadresse UND jeder Ansprechpartner mit hinterlegter Mail
+// (filialgruppen_contacts) - je eine eigene, einzeln ankreuzbare Option.
+// Nutzervorgabe 24.09.2026 (Ergänzung): mehrere Empfänger gleichzeitig
+// auswählbar/eingebbar statt nur einer einzelnen Adresse - liefert daher
+// eine Liste von {label,email}-Optionen statt eines einzelnen Strings.
+async function auswertungAutoRecipientOptions(){
+  const opts=[];
   if(auswertungTyp==="akp"){
     const nr=auswertungMultiKeys[0];
-    return (akpContactsIndex&&akpContactsIndex[nr]&&akpContactsIndex[nr].email)||"";
+    const email=akpContactsIndex&&akpContactsIndex[nr]&&akpContactsIndex[nr].email;
+    if(email) opts.push({label:"E-Mail",email});
+    return opts;
   }
   if(auswertungTyp==="fachhaendler"){
     const fhNr=auswertungMultiKeys[0];
     try{
       const { data } = await sb.from("fh_contacts").select("email,ansprechpartner_email").eq("fh_nr",fhNr).maybeSingle();
-      return (data&&(data.ansprechpartner_email||data.email))||"";
-    }catch(e){ console.error("auswertungAutoRecipientSuggestion:",e); return ""; }
+      if(data&&data.ansprechpartner_email) opts.push({label:"E-Mail Ansprechpartner",email:data.ansprechpartner_email});
+      if(data&&data.email) opts.push({label:"E-Mail Geschäft",email:data.email});
+    }catch(e){ console.error("auswertungAutoRecipientOptions:",e); }
+    return opts;
   }
   if(auswertungTyp==="filialbetriebe"){
     try{
       const { data } = await sb.from("filialgruppen_contacts").select("zentral_email,ansprechpartner_liste").eq("filialbetriebe",auswertungSingleValue).maybeSingle();
-      if(!data) return "";
-      const apMitMail=(data.ansprechpartner_liste||[]).find(a=>a&&a.email);
-      return (apMitMail&&apMitMail.email)||data.zentral_email||"";
-    }catch(e){ console.error("auswertungAutoRecipientSuggestion:",e); return ""; }
+      if(data){
+        for(const a of (data.ansprechpartner_liste||[])){
+          if(a&&a.email) opts.push({label:(a.rolle||"Ansprechpartner")+(a.name?" ("+a.name+")":""),email:a.email});
+        }
+        if(data.zentral_email) opts.push({label:"Zentralmailadresse",email:data.zentral_email});
+      }
+    }catch(e){ console.error("auswertungAutoRecipientOptions:",e); }
+    return opts;
   }
-  return "";
+  return opts;
+}
+function renderAuswertungAutoRecipientOptions(opts){
+  const box=$("auswertungAutoRecipientOptions");
+  box.innerHTML=opts.length?opts.map((o,i)=>`<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+      <input type="checkbox" class="auswertung-auto-recipient-chk" value="${escapeHtml(o.email)}" checked style="width:16px;height:16px;flex-shrink:0"> ${escapeHtml(o.label)} (${escapeHtml(o.email)})
+    </label>`).join(""):`<div class="empty-note">Keine hinterlegten Kontakt-Mailadressen gefunden - bitte unten eingeben.</div>`;
 }
 // Blendet die Automatisierungs-Sektion ein/aus (nur bei Einzelauswahl
 // sichtbar, siehe Klärung 24.09.2026) und setzt sie beim Betreten des
-// Zeitraum-Schritts zurück (kollabiert, Empfänger-Vorschlag neu geladen).
+// Zeitraum-Schritts zurück (kollabiert, Empfänger-Optionen neu geladen).
 async function auswertungAutoSectionReset(){
   const section=$("auswertungAutoSection");
   const isMultiType=auswertungTyp==="fachhaendler"||auswertungTyp==="akp";
@@ -11048,12 +11068,18 @@ async function auswertungAutoSectionReset(){
   $("auswertungAutoRangeEnd").value="";
   $("auswertungAutoInterval").value="weekly";
   $("auswertungAutoHint").textContent="";
-  $("auswertungAutoRecipientInput").value="";
-  if(single) $("auswertungAutoRecipientInput").value=await auswertungAutoRecipientSuggestion();
+  $("auswertungAutoRecipientExtra").value="";
+  renderAuswertungAutoRecipientOptions(single?await auswertungAutoRecipientOptions():[]);
 }
 async function saveAuswertungAutoSubscription(){
-  const recipient=$("auswertungAutoRecipientInput").value.trim();
-  if(!recipient||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)){ $("auswertungAutoHint").textContent="Bitte eine gültige Empfänger-Mailadresse angeben."; return; }
+  const checked=[...document.querySelectorAll("#auswertungAutoRecipientOptions .auswertung-auto-recipient-chk:checked")].map(el=>el.value);
+  const extraRaw=$("auswertungAutoRecipientExtra").value.trim();
+  const extra=extraRaw?extraRaw.split(/[,;\n]+/).map(s=>s.trim()).filter(Boolean):[];
+  const recipients=[...new Set([...checked,...extra])];
+  const emailRe=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const invalid=recipients.filter(e=>!emailRe.test(e));
+  if(!recipients.length){ $("auswertungAutoHint").textContent="Bitte mindestens eine Empfänger-Mailadresse auswählen oder eingeben."; return; }
+  if(invalid.length){ $("auswertungAutoHint").textContent="Ungültige Mailadresse(n): "+invalid.join(", "); return; }
   const fixedEnabled=$("auswertungAutoFixedChk").checked;
   const rangeStart=$("auswertungAutoRangeStart").value, rangeEnd=$("auswertungAutoRangeEnd").value;
   if(fixedEnabled&&(!rangeStart||!rangeEnd)){ $("auswertungAutoHint").textContent="Bitte bei fixem Zeitraum Start und Ende angeben."; return; }
@@ -11063,7 +11089,7 @@ async function saveAuswertungAutoSubscription(){
   try{
     const { error } = await sb.from("auswertung_subscriptions").insert({
       auswertung_typ:auswertungTyp, entity_key:auswertungAutoEntityKey(),
-      recipient_email:recipient, interval:$("auswertungAutoInterval").value,
+      recipient_emails:recipients, interval:$("auswertungAutoInterval").value,
       fixed_range_enabled:fixedEnabled, range_start:fixedEnabled?rangeStart:null, range_end:fixedEnabled?rangeEnd:null,
       include_vj:$("auswertungVjChk").checked, include_vvj:$("auswertungVvjChk").checked,
       show_akp:auswertungTyp==="akp"?false:$("auswertungAkpChk").checked,
