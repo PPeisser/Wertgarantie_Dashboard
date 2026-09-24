@@ -433,7 +433,13 @@ Deno.serve(async (req) => {
       const filename = `Auswertung_${slugify(entityLabel)}_${toISO}${isEndstand ? "_Endstand" : ""}.pdf`;
       const storagePath = `${sub.id}/${toISO}${isEndstand ? "-endstand" : ""}.pdf`;
 
-      const { error: upErr } = await admin.storage.from("auswertung-berichte").upload(storagePath, pdfBytes, { contentType: "application/pdf", upsert: false });
+      // upsert:true (nicht false wie beim Trainerbetreuung-Muster): sollte
+      // ein früherer Lauf für dieselbe Periode am Log-Insert oder Mailversand
+      // gescheitert sein (retry beim nächsten Cron-Tick, da kein Sende-Log
+      // existiert), würde ein reiner upload() sonst dauerhaft an "Objekt
+      // existiert bereits" scheitern - storagePath ist ohnehin schon eindeutig
+      // je Subscription+Periode.
+      const { error: upErr } = await admin.storage.from("auswertung-berichte").upload(storagePath, pdfBytes, { contentType: "application/pdf", upsert: true });
       if (upErr) { results.push({ subscription: sub.id, error: "Storage-Upload fehlgeschlagen: " + upErr.message }); continue; }
 
       const subject = `Wertgarantie Auswertung${isEndstand ? " – Abschlussbericht" : ""} (${fmtDateAT(toISO)})`;
