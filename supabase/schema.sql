@@ -1480,3 +1480,97 @@ create policy "Authenticated read trainerberichte"
   on storage.objects for select
   to authenticated
   using (bucket_id = 'trainerberichte');
+
+-- ==========================================================================
+-- Automatische wiederkehrende "Auswertungen" (Nutzervorgabe 24.09.2026):
+-- jede einzelne Auswertung (Kooperation/Weitere Zuordnung/Filialbetriebe/
+-- Fachhändler/AKP) kann beim Einrichten als wiederkehrender Mailversand an
+-- eine Kunden-Adresse abonniert werden - Intervall (täglich/wöchentlich/
+-- monatlich/Quartal/jährlich) ODER zusätzlich ein fixer Zeitraum (erzwingt
+-- am Ende einen einmaligen "Endstand"-Abschlussbericht). Kein Status-Feld
+-- für "aktiv/fällig" - wird von der Edge Function auswertung-scheduled-mail
+-- anhand von interval/fixed_range_enabled/range_end/endstand_sent_at und dem
+-- Sende-Log (auswertung_subscription_sends) täglich neu bestimmt, analog dem
+-- besuch_datum-Ableitungsprinzip bei trainerbesuche.
+create table if not exists public.auswertung_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  auswertung_typ text not null check (auswertung_typ in
+    ('kooperation','weitere_zuordnung','filialbetriebe','fachhaendler','akp')),
+  entity_key text not null,          -- Aggregat-Wert (Kooperation/Zuordnung/Filialkette) ODER genau 1 FH-Nr/AKP-Nr
+  recipient_email text not null,     -- Kunden-Zieladresse
+  interval text not null check (interval in ('daily','weekly','monthly','quarterly','yearly')),
+  fixed_range_enabled boolean not null default false,
+  range_start date,
+  range_end date,
+  include_vj boolean not null default false,   -- Vorjahresvergleich mit anführen
+  include_vvj boolean not null default false,  -- Vorvorjahresvergleich mit anführen
+  show_akp boolean not null default false,     -- Übernahme der bestehenden "AKP mit anzeigen"-Option
+  active boolean not null default true,
+  endstand_sent_at timestamptz,       -- Guard: Endstand-Mail nur 1x, nur relevant bei fixed_range_enabled
+  created_by uuid references auth.users(id),
+  created_by_name text,                -- Snapshot (analog trainerbesuche.trainer_name)
+  created_by_email text not null,      -- Ziel der Mitarbeiter-Kopie bei automatischen Sendungen
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint auswertung_subscriptions_range_chk check (
+    not fixed_range_enabled or (range_start is not null and range_end is not null and range_end >= range_start)
+  )
+);
+alter table public.auswertung_subscriptions enable row level security;
+drop policy if exists "Authenticated all auswertung_subscriptions" on public.auswertung_subscriptions;
+create policy "Authenticated all auswertung_subscriptions" on public.auswertung_subscriptions
+  for all to authenticated using (true) with check (true);
+create index if not exists auswertung_subscriptions_active_idx on public.auswertung_subscriptions (active) where active;
+create index if not exists auswertung_subscriptions_entity_idx on public.auswertung_subscriptions (auswertung_typ, entity_key);
+
+-- Log jedes tatsächlich versendeten automatischen Berichts - Quelle der
+-- Wahrheit für Idempotenz (Unique-Index verhindert Doppel-Versand derselben
+-- Periode selbst bei überlappenden Cron-Läufen) UND Admin-Downloadliste,
+-- analog trainerbetreuung_weekly_reports.
+create table if not exists public.auswertung_subscription_sends (
+  id uuid primary key default gen_random_uuid(),
+  subscription_id uuid not null references public.auswertung_subscriptions(id) on delete cascade,
+  period_start date not null,
+  period_end date not null,
+  is_endstand boolean not null default false,
+  sent_at timestamptz not null default now(),
+  storage_path text not null,
+  filename text not null,
+  customer_email_sent boolean not null default false,
+  employee_email_sent boolean not null default false,
+  created_at timestamptz not null default now()
+);
+alter table public.auswertung_subscription_sends enable row level security;
+drop policy if exists "Authenticated all auswertung_subscription_sends" on public.auswertung_subscription_sends;
+create policy "Authenticated all auswertung_subscription_sends" on public.auswertung_subscription_sends
+  for all to authenticated using (true) with check (true);
+create index if not exists auswertung_subscription_sends_sub_idx
+  on public.auswertung_subscription_sends (subscription_id, period_end desc);
+create unique index if not exists auswertung_subscription_sends_unique_period
+  on public.auswertung_subscription_sends (subscription_id, period_end, is_endstand);
+
+insert into storage.buckets (id, name, public)
+values ('auswertung-berichte', 'auswertung-berichte', false)
+on conflict (id) do nothing;
+drop policy if exists "Authenticated read auswertung-berichte" on storage.objects;
+create policy "Authenticated read auswertung-berichte" on storage.objects
+  for select to authenticated using (bucket_id = 'auswertung-berichte');
+
+-- pg_cron: täglich 06:00 UTC (identisch performance-dialog-reminder-daily,
+-- gleiche bekannte Einschränkung ohne Sommerzeit-Anpassung). Alle 5
+-- Intervalle sind tagesgenau prüfbar (die Function selbst entscheidet anhand
+-- von Wochentag/Monatstag, ob heute für eine Subscription fällig ist), daher
+-- reicht ein täglicher statt ein stündlicher Cron. <CRON_SECRET> durch
+-- denselben Wert wie bei den übrigen Cron-Jobs ersetzen.
+select cron.schedule(
+  'auswertung-scheduled-mail-daily',
+  '0 6 * * *',
+  $$
+  select net.http_post(
+    url := '<SUPABASE_PROJECT_URL>/functions/v1/auswertung-scheduled-mail',
+    headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'),
+    body := jsonb_build_object('trigger','cron'),
+    timeout_milliseconds := 55000
+  );
+  $$
+);
