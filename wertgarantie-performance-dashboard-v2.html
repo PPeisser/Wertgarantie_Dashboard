@@ -4974,20 +4974,48 @@ async function handleProfiTrainingFile(files){
   }
 }
 
-// Liest die Miete-Report-Datei ("MSK_Report_...", Club.Weiss): ein oder
-// mehrere Blätter "AT_<Jahr>" (z.B. AT_2026, AT_2025 - je nach Jahr(en) in
-// der Datei, dynamisch statt fest, damit künftige Jahre ohne Codeänderung
-// funktionieren). Jede Zeile ist ein einzelner Mietvertrag (keine
-// Aggregation in der Quelle). Liefert je Fachhändler die monatliche
+// Liest die Miete-Report-Datei (Club.Weiss) - unterstützt zwei Formate, siehe
+// parseMieteReportLegacy()/parseMieteReportV2() unten. Erkennung anhand der
+// Blattnamen, alles andere (Aggregation, RPC-Schreiben) bleibt für beide
+// Formate identisch. filename wird NUR fürs Neuformat gebraucht (siehe
+// DE-Guard unten) - beim Altformat steckt die Länderkennung schon in den
+// Blattnamen selbst ("AT_<Jahr>"), eine "DE_<Jahr>"-Tabelle würde dort
+// ohnehin nie in yearSheets landen.
+function parseMieteReport(wb,filename){
+  const legacySheets=wb.SheetNames.filter(n=>/^AT_\d{4}$/i.test(n.trim()));
+  if(legacySheets.length) return parseMieteReportLegacy(wb,legacySheets);
+  // Bug-Report 26.09.2026: "gestern wurde eine Mietliste eingespielt, wird
+  // aber nicht angezeigt" - Club.Weiss hat das Report-Format ohne Vorwarnung
+  // umgestellt (neuer Dateiname "*_CW-FH_Produktion.xlsx", neue Blattnamen
+  // "Produktion <Jahr>" statt "AT_<Jahr>"), seit 25.09.2026 lief daher jeder
+  // automatische Mail-Import (alle 15 Minuten) mit "Format nicht erkannt" ins
+  // Leere. Vermutlich auch Ursache für einen gemeldeten fehlgeschlagenen
+  // manuellen Upload.
+  const v2Sheets=wb.SheetNames.filter(n=>/^Produktion\s+\d{4}$/i.test(n.trim()));
+  if(!v2Sheets.length) return null;
+  // Anders als beim Altformat tragen die Blattnamen hier KEINE Länderkennung
+  // mehr (AT und DE kommen als getrennte Dateien mit identisch benannten
+  // Blättern "Produktion <Jahr>") - einzige verfügbare Unterscheidung ist der
+  // Dateiname ("AT_..."/"DE_..._CW-FH_Produktion.xlsx"). Dieses Dashboard
+  // kennt nur österreichische Fachhändler - ein DE-Report würde über
+  // fh_sync_miete (insert ... on conflict) unbekannte deutsche FH-Nummern
+  // als neue, hier fehlerhafte fh_contacts-Zeilen anlegen. Daher bewusst wie
+  // "nicht erkannt" behandelt (kein Absturz, keine Fehlermeldung nötig - das
+  // Mailpostfach bekommt ohnehin planmäßig auch die AT-Datei).
+  if(filename&&/^DE[_-]/i.test(filename.trim())) return null;
+  return parseMieteReportV2(wb,v2Sheets);
+}
+// Altformat ("MSK_Report_...", Blätter "AT_<Jahr>", z.B. AT_2026, AT_2025 -
+// je nach Jahr(en) in der Datei, dynamisch statt fest, damit künftige Jahre
+// ohne Codeänderung funktionieren). Jede Zeile ist ein einzelner Mietvertrag
+// (keine Aggregation in der Quelle). Liefert je Fachhändler die monatliche
 // Vertragsanzahl ("YYYY-MM" -> Anzahl), eine Sortiments-Aufstellung
 // (Sortiment -> Anzahl, Spalte "Sortiment") sowie die Club-Weiß-
 // Mitgliedsnummer (Spalte "Händler Nr geliefert"). Als Fachhändler-Schlüssel
 // dient bewusst "Fachhändler Nr geliefert" (Spalte AA) - das ist die im
 // restlichen Dashboard bekannte FH-Nr, NICHT die separate "FH Nr"-Spalte
 // (Spalte A) am Zeilenanfang, die davon abweichen kann.
-function parseMieteReport(wb){
-  const yearSheets=wb.SheetNames.filter(n=>/^AT_\d{4}$/i.test(n.trim()));
-  if(!yearSheets.length) return null;
+function parseMieteReportLegacy(wb,yearSheets){
   const byFh={};
   let totalRows=0;
   for(const sheetName of yearSheets){
@@ -5044,6 +5072,86 @@ function parseMieteReport(wb){
   }
   return totalRows?{byFh,totalRows}:null;
 }
+// Neuformat seit 25.09.2026 ("*_CW-FH_Produktion.xlsx", Blätter "Produktion
+// <Jahr>" statt "AT_<Jahr>"): anders als beim Altformat ist hier NICHT mehr
+// jede Zeile ein einzelner Mietvertrag, sondern jede Zeile EIN Fachhändler
+// mit bereits fertig aggregierten Monatswerten (Spalten-Tripel Miete/GVL/WG
+// je Monat). Zeile 1 ist eine Überschriften-Zeile mit Monats-Labels (nur an
+// der jeweils ERSTEN Spalte eines Tripels gesetzt, z.B. "Jan-26" oder - im
+// ältesten Jahresblatt ohne Vorjahresvergleich - nur "Januar" ohne Jahr),
+// Zeile 2 die eigentlichen Spaltennamen (Miete/GVL/WG), ab Zeile 3 die Daten.
+// Jedes Jahresblatt enthält NEBEN den eigenen Monaten zusätzlich das jeweilige
+// Vorjahr sowie eine Differenz-Spalte zum Vergleich (z.B. "Produktion 2026"
+// hat "Jan-26"+"Jan-25"+"Differenz zu 25") - nur die Spalten des Blatts mit
+// dem im Label genannten JAHR das SELBST ist (nicht Vorjahr/Differenz)
+// werden übernommen, sonst würde derselbe Monat doppelt gezählt (einmal aus
+// seinem eigenen Jahresblatt, einmal als Vorjahresvergleich im Folgejahr-
+// Blatt). Keine Sortiments-Aufstellung in diesem Format (Spalte entfällt
+// ersatzlos - JSONB-Merge in fh_sync_miete lässt bestehende Sortiment-Daten
+// unverändert, siehe dort).
+const MIETE_V2_MONAT_ABK=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const MIETE_V2_MONAT_LANG=["Jänner","Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+// Label-Zellen sind je Jahresblatt UNTERSCHIEDLICH typisiert (per XLSX-
+// Inspektion bestätigt, 26.09.2026): in den neueren Blättern ("Produktion
+// 2025"/"2026") sind es echte Datumswerte (toRows() mit cellDates:true
+// liefert dafür JS-Date-Objekte, Jahr/Monat direkt daraus lesbar), im
+// ältesten Blatt ("Produktion 2024") dagegen reiner Text ("Januar" ohne
+// Jahresangabe - dort gilt implizit das Jahr des Blatts selbst, da dieses
+// Blatt keine Vorjahresvergleichs-Spalten hat).
+function mieteV2MonthIndex(label,sheetYear){
+  if(label instanceof Date) return {month:label.getUTCMonth()+1,year:label.getUTCFullYear()};
+  const s=String(label).trim();
+  const mmYY=s.match(/^([A-Za-z]{3})-(\d{2})$/);
+  if(mmYY){
+    const mi=MIETE_V2_MONAT_ABK.indexOf(mmYY[1]);
+    return mi<0?null:{month:mi+1,year:2000+ +mmYY[2]};
+  }
+  const li=MIETE_V2_MONAT_LANG.indexOf(s);
+  return li<0?null:{month:(li===0?1:li),year:sheetYear}; // "Jänner"/"Januar" beide -> Monat 1
+}
+function parseMieteReportV2(wb,yearSheets){
+  const byFh={};
+  let totalRows=0;
+  for(const sheetName of yearSheets){
+    const sheetYear=+sheetName.match(/\d{4}/)[0];
+    const rows=toRows(wb.Sheets[sheetName]);
+    if(rows.length<3) continue;
+    const superHeader=rows[0];
+    const header=rows[1].map(normHeader);
+    const idxFh=header.findIndex(h=>h==="FH Nr");
+    const idxClubNr=header.findIndex(h=>h==="CW-Nr.");
+    const idxBez=header.findIndex(h=>h==="FH Bez (ohne Nr)");
+    if(idxFh<0) continue;
+    const monthCols=[];
+    for(let j=0;j<header.length;j++){
+      if(header[j]!=="Miete") continue;
+      const label=superHeader[j]; if(label==null||label==="") continue;
+      const parsed=mieteV2MonthIndex(label,sheetYear);
+      if(!parsed) continue;
+      // Nur übernehmen, wenn das im Label genannte Jahr mit dem Jahresblatt
+      // selbst übereinstimmt (sonst Vorjahresvergleichs-Spalte desselben
+      // Monats, die im jeweils eigenen Jahresblatt ohnehin schon vorkommt).
+      if(parsed.year!==sheetYear) continue;
+      monthCols.push({col:j,ym:sheetYear+"-"+String(parsed.month).padStart(2,"0")});
+    }
+    if(!monthCols.length) continue;
+    for(let i=2;i<rows.length;i++){
+      const r=rows[i]; if(!r||r[idxFh]==null||r[idxFh]==="") continue;
+      const fhNr=String(r[idxFh]).trim(); if(!fhNr) continue;
+      if(!/^\d+$/.test(fhNr)) continue;
+      if(!byFh[fhNr]) byFh[fhNr]={monthly:{},sortiment:{},clubNr:null,name:null};
+      for(const {col,ym} of monthCols){
+        const count=num(r[col]);
+        if(count){ byFh[fhNr].monthly[ym]=(byFh[fhNr].monthly[ym]||0)+count; totalRows+=count; }
+      }
+      const clubNr=idxClubNr>-1?String(r[idxClubNr]??"").trim():"";
+      if(clubNr) byFh[fhNr].clubNr=clubNr;
+      const bez=idxBez>-1?String(r[idxBez]??"").trim():"";
+      if(bez) byFh[fhNr].name=bez;
+    }
+  }
+  return totalRows?{byFh,totalRows}:null;
+}
 // Schreibt die je Fachhändler aggregierten Miete-Daten per RPC (fh_sync_miete,
 // siehe schema.sql) - JSONB-Merge statt Überschreiben, damit ein Import mit
 // weniger Jahresblättern ältere Monate/Sortimente nicht löscht. Kleinere
@@ -5074,7 +5182,7 @@ async function handleMieteFile(files){
   try{
     const buf=await files[0].arrayBuffer();
     const wb=XLSX.read(buf,{type:"array",cellDates:true});
-    const parsed=parseMieteReport(wb);
+    const parsed=parseMieteReport(wb,files[0].name);
     if(!parsed){ toast('Format nicht erkannt – bitte die Miete-Report-Datei mit Blatt "AT_<Jahr>" einspielen.'); return; }
     await upsertMieteData(parsed.byFh);
     await loadFhMieteIndex();
@@ -5325,7 +5433,7 @@ async function processPendingImports(){
             // Auch kein Segmentierungs-Format - könnte der Miete-Report
             // (Club.Weiss) sein, ebenfalls per Mail an input@wgaustria.at
             // zulässig (siehe parseMieteReport).
-            const parsed=parseMieteReport(wb);
+            const parsed=parseMieteReport(wb,row.filename);
             if(parsed){
               await upsertMieteData(parsed.byFh);
               mieteCount++; mieteFhCount+=Object.keys(parsed.byFh).length; importType="miete";
