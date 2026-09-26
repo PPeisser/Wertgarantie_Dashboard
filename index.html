@@ -1101,6 +1101,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div><span class="ac-lbl">Homepage</span><div class="ac-val" id="fhHomepageView">–</div></div>
         <div><span class="ac-lbl">Händlersegmentierung</span><div class="ac-val" style="display:flex;align-items:center;gap:6px"><span id="fhSegmentView">–</span><span id="fhSegmentTrend"></span></div></div>
         <div><span class="ac-lbl">Kooperation</span><div class="ac-val" id="fhKooperationView">–</div></div>
+        <div><span class="ac-lbl">Betreuer</span><div class="ac-val" id="fhBetreuerView">–</div></div>
         <div><span class="ac-lbl">Hauptzweig</span><div class="ac-val" id="fhHauptzweigView">–</div></div>
         <div><span class="ac-lbl">Letzter Besuch</span><div class="ac-val" id="fhBesuchView">–</div></div>
         <div><span class="ac-lbl">9-Wochen-Plan</span><div class="ac-val" id="fhNwView">–</div></div>
@@ -1144,6 +1145,9 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         </div>
         <div><label class="ac-lbl" for="fhKooperationEdit">Kooperation</label>
           <select id="fhKooperationEdit"></select>
+        </div>
+        <div><label class="ac-lbl" for="fhBetreuerEdit">Betreuer</label>
+          <select id="fhBetreuerEdit"></select>
         </div>
         <div><label class="ac-lbl" for="fhHauptzweigEdit">Hauptzweig</label>
           <select id="fhHauptzweigEdit"><option value="">–</option><option value="Akustik">Akustik</option><option value="Grüne Ware">Grüne Ware</option><option value="Industrie">Industrie</option><option value="IT">IT</option><option value="Küchenhandel">Küchenhandel</option><option value="Kundendienst">Kundendienst</option><option value="Makler">Makler</option><option value="Mobilfunk">Mobilfunk</option><option value="Optik">Optik</option><option value="Projekt">Projekt</option><option value="Sonstiges">Sonstiges</option><option value="Uhrenhandel">Uhrenhandel</option><option value="Vollsortiment">Vollsortiment</option></select>
@@ -9135,6 +9139,30 @@ function populateFhKooperationSelect(current){
   [...KOOPERATION_OPTIONS].sort((a,b)=>a.localeCompare(b,"de")).forEach(k=>opts.push(`<option value="${escapeHtml(k)}">${escapeHtml(k)}</option>`));
   $("fhKooperationEdit").innerHTML=opts.join("");
 }
+// Nutzervorgabe 26.09.2026: "eine Bearbeitungsfläche aktivieren dass wir
+// einen Betreuer definieren können" - manche Fachhändler (v.a. reine
+// Miete/Club.Weiss-Händler ohne eigene Akquiseliste- oder Tages-Auswertung-
+// Zeile, z.B. Kiendler GmbH Filiale Gralla) haben nirgends einen Betreuer
+// hinterlegt: fhEmpFor()/fhContactsAllIndex[nr].gl liest ausschließlich aus
+// state.latest.fh[nr].emp (heutige Tages-Auswertung) und als Fallback aus
+// fh_contacts.akq_gl (bisher NUR über den Akquiseliste-Import befüllt) -
+// ohne beide Quellen bleibt der Betreuer in JEDER Ansicht (v.a. der Miete-
+// Liste) dauerhaft leer. Schreibt bewusst in dieselbe Spalte akq_gl (keine
+// neue Spalte nötig), damit fhEmpFor() den manuell gesetzten Wert genau wie
+// einen aus der Akquiseliste importierten behandelt. Dropdown statt
+// Freitext (Muster: Mitarbeiterdropdown in buildMitarbeiterDropdown()),
+// damit der Wert garantiert 1:1 zu einem Mitarbeiternamen passt und
+// matchEmployee() ihn sicher auflöst - ein bereits gesetzter, nicht mehr
+// aktiver/gelisteter Wert bleibt als Zusatzoption erhalten, damit er beim
+// Öffnen nicht stillschweigend verschwindet.
+function populateFhBetreuerSelect(current){
+  const opts=["<option value=\"\">– kein Betreuer hinterlegt –</option>"];
+  const known=new Set(EMPLOYEES);
+  if(current&&!known.has(current)) opts.push(`<option value="${escapeHtml(current)}">${escapeHtml(current)} (nicht in Mitarbeiterliste)</option>`);
+  [...EMPLOYEES].sort((a,b)=>a.localeCompare(b,"de")).forEach(e=>opts.push(`<option value="${escapeHtml(e)}">${escapeHtml(e)}</option>`));
+  $("fhBetreuerEdit").innerHTML=opts.join("");
+  $("fhBetreuerEdit").value=current||"";
+}
 // "Weitere Zuordnung" (Nutzervorgabe 23.08.2026): optionales Zusatzfeld je
 // Händler mit einem einzigen fixen Basiswert ("A1 Shop") - alle weiteren
 // Optionen entstehen dynamisch aus den bereits vergebenen DISTINCT-Werten
@@ -9284,7 +9312,7 @@ async function loadFhContact(fhNr){
       const {data:aliasRows}=await sb.from("fh_contacts").select("*").in("fh_nr",aliasNrs);
       if(fhModalCurrent!==fhNr) return;
       const FILL_FIELDS=["name","strasse","plz","ort","telefon","email","ansprechpartner","ansprechpartner_email",
-        "homepage","segmentierung","segmentierung_prev","kooperation","hauptzweig","letzter_besuch","sonstige_infos",
+        "homepage","segmentierung","segmentierung_prev","kooperation","akq_gl","hauptzweig","letzter_besuch","sonstige_infos",
         "club_weiss_mitglied","club_weiss_mitgliedsnummer","filialbetriebe","weitere_zuordnung","ziel"];
       for(const row of (aliasRows||[])){
         for(const f of FILL_FIELDS){
@@ -9327,6 +9355,7 @@ function renderFhContactView(){
   const segTrend=fhSegmentTrend(c.segmentierung,c.segmentierung_prev);
   $("fhSegmentTrend").innerHTML=segTrend?`<span style="color:${DG_TREND_COLOR[segTrend]};font-weight:800;font-size:13px" title="${segTrend==="gleich"?"unverändert zum Vormonat":segTrend+" als Vormonat"}">${DG_TREND_ARROW[segTrend]}</span>`:"";
   $("fhKooperationView").textContent=c.kooperation||"–";
+  $("fhBetreuerView").textContent=c.akq_gl||"–";
   $("fhHauptzweigView").textContent=c.hauptzweig||"–";
   $("fhBesuchView").textContent=c.letzter_besuch?fmtDate(c.letzter_besuch):"–";
   $("fhNwView").textContent=c.neunwochen_erledigt?"✓ erledigt":"– offen";
@@ -12371,6 +12400,7 @@ async function toggleFhEdit(on){
     $("fhSegmentEdit").value=c.segmentierung||"";
     populateFhKooperationSelect(c.kooperation);
     $("fhKooperationEdit").value=c.kooperation||"";
+    populateFhBetreuerSelect(c.akq_gl);
     $("fhHauptzweigEdit").value=c.hauptzweig||"";
     $("fhBesuchEdit").value=c.letzter_besuch||"";
     $("fhNwEdit").checked=!!c.neunwochen_erledigt;
@@ -12414,6 +12444,7 @@ async function saveFhContact(){
   const segSel=$("fhSegmentEdit").value;
   const segmentierung=segSel===""?null:segSel;
   const kooperation=$("fhKooperationEdit").value.trim()||null;
+  const akq_gl=$("fhBetreuerEdit").value||null;
   const hauptzweig=$("fhHauptzweigEdit").value||null;
   const letzter_besuch=$("fhBesuchEdit").value||null;
   const neunwochen_erledigt=$("fhNwEdit").checked;
@@ -12431,12 +12462,18 @@ async function saveFhContact(){
   const ziel=fhZielEnabled?($("fhZielChk").checked?(parseFloat($("fhZielEdit").value)||null):null):fhContactCurrent.ziel;
   $("fhSaveBtn").disabled=true;
   const {error}=await sb.from("fh_contacts").upsert({
-    fh_nr:fhNr,name,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung,filialbetriebe,ziel,
+    fh_nr:fhNr,name,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,akq_gl,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung,filialbetriebe,ziel,
     updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()
   },{onConflict:"fh_nr"});
   $("fhSaveBtn").disabled=false;
   if(error){ $("fhSaveHint").textContent="Fehler: "+error.message; return; }
-  fhContactCurrent={...fhContactCurrent,fh_nr:fhNr,name,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung,filialbetriebe,ziel};
+  fhContactCurrent={...fhContactCurrent,fh_nr:fhNr,name,strasse,plz,ort,telefon,email,ansprechpartner,ansprechpartner_email,homepage,segmentierung,kooperation,akq_gl,hauptzweig,letzter_besuch,neunwochen_erledigt,club_weiss_mitglied,club_weiss_mitgliedsnummer,sonstige_infos,weitere_zuordnung,filialbetriebe,ziel};
+  // Betreuer (akq_gl) live in beiden Caches nachziehen - fhContactsAllIndex
+  // (fhEmpFor()/Miete-Liste-Betreuer-Spalte) UND, falls für diesen FH bereits
+  // ein AKQ-Eintrag existiert, auch fhAkqIndex (Akquiseliste-Betreuer-
+  // Anzeigen) - sonst zeigt sich der gerade gesetzte Betreuer erst nach einem
+  // Reload (gleiches Muster wie ort/filialbetriebe/weitereZuordnung unten).
+  if(fhAkqIndex[fhNr]) fhAkqIndex[fhNr].gl=akq_gl;
   // fhManualNameIndex live nachziehen (statt erst beim nächsten
   // loadFhContactsIndicesAll-Refresh) - sonst zeigt z.B. das Miete-PopUp den
   // gerade eingetragenen Namen erst nach einem Reload.
@@ -12448,6 +12485,7 @@ async function saveFhContact(){
   // die soeben getaggte Filiale nicht).
   if(!fhContactsAllIndex[fhNr]) fhContactsAllIndex[fhNr]={name:null,ort:null,gl:null,filialbetriebe:null,weitereZuordnung:null};
   fhContactsAllIndex[fhNr].ort=ort;
+  fhContactsAllIndex[fhNr].gl=akq_gl;
   fhContactsAllIndex[fhNr].filialbetriebe=filialbetriebe;
   fhContactsAllIndex[fhNr].weitereZuordnung=weitere_zuordnung;
   // Bug-Report 19.09.2026 ("nach dem Bearbeiten steht oben nur mehr die
