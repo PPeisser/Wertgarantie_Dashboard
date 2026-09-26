@@ -488,6 +488,19 @@ td .betr{font-size:11px;color:var(--muted)}
   background:#fff;border-radius:20px;max-width:430px;width:100%;
   padding:26px 26px 22px;box-shadow:0 20px 60px rgba(0,0,0,.25);
   border-top:6px solid var(--wg-blue);
+  /* Bug-Report 26.09.2026 (iPad: "können zeitweise keine Fenster schließen"):
+     nur .modal.wide hatte bisher max-height/overflow - ein normales .modal
+     ohne diese Eigenschaften kann bei sehr kleiner verfügbarer Höhe (iPad-
+     Bildschirmtastatur eingeblendet, Split-View, kleinere Auflösung) höher
+     werden als der Viewport. Da .modal-bg diesen Überlauf NICHT selbst
+     abschneidet (nur flex-zentriert, kein eigenes overflow), würde der obere
+     Rand mit dem "✕ Schließen"-Button dann über den sichtbaren Bildschirm
+     hinausragen - unerreichbar, ohne dass ein Scrollen dort hilft, da ja
+     gerade KEIN Scroll-Container vorhanden war. Dieselbe Absicherung wie bei
+     .modal.wide jetzt auf ALLE Modals ausgeweitet, nicht nur die großen -
+     eigentlicher Grund für die zeitweisen Fälle bislang nicht reproduzierbar,
+     das hier ist eine defensive Absicherung dagegen, kein bestätigter Fix. */
+  max-height:85vh;overflow:auto;overscroll-behavior:contain;
 }
 .modal h3{font-size:18px;color:var(--wg-navy);margin-bottom:4px}
 .modal p{font-size:13px;color:var(--muted);margin-bottom:14px}
