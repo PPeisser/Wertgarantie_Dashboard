@@ -111,24 +111,71 @@ function findExcelParts(node: BodyPart, out: { part: string; filename: string; e
 // die Mail trotzdem als gelesen markiert wird, sobald ihre anderen Anhänge
 // (hier: die beiden Miete-Dateien) erfolgreich verarbeitet wurden - sonst
 // bliebe die Mail wegen desselben zu großen Anhangs für immer ungelesen und
-// hängen. Schwelle konservativ zwischen den bekannten funktionierenden
-// Größen (613 KB/287 KB) und der bekannten abstürzenden Größe (~15 MB)
-// gewählt. Ein übergroßer Anhang wird dadurch NICHT automatisch importiert -
-// bei Bedarf weiterhin manuell über den Admin-Panel-Upload möglich.
-const MAX_EXCEL_ATTACHMENT_BYTES = 3 * 1024 * 1024;
+// hängen.
+//
+// Folgefix 28.09.2026 (Nutzervorgabe: "die müssen hochgeladen werden - alle
+// Anhänge egal wie groß, die Mietliste hat aktuell schon 16 MB"): die
+// ursprüngliche 3 MB-Schwelle war als Business-Limit zu niedrig gewählt und
+// hätte reguläre, wachsende Anhänge (Mietliste) mit ausgesperrt. Die
+// eigentliche Absturzursache war stattdessen die ineffiziente Byte-Lese-
+// und Base64-Decode-Logik (siehe readLiteral()/decodeBase64Bytes() unten,
+// jetzt auf O(n) statt O(n²) bzw. ohne JS-String-Zwischenkopien umgebaut) -
+// mit diesem Fix sollten auch deutlich größere Anhänge zuverlässig
+// durchlaufen. Diese Schwelle ist daher NICHT mehr als Geschäftslimit
+// gedacht, sondern nur noch als defensive Notbremse gegen eine wirklich
+// pathologische Datei (die sonst den gesamten 15-Minuten-Zyklus dauerhaft
+// blockieren könnte) - großzügig über jeder realistischen Mail-
+// Anhangsgröße gewählt (die meisten Mailserver deckeln Anhänge ohnehin bei
+// 25-50 MB).
+const MAX_EXCEL_ATTACHMENT_BYTES = 80 * 1024 * 1024;
 
 // BODY[<part>]-Fetches liefern den rohen (noch kodierten) Content-Transfer-
 // Encoding-Text des MIME-Teils - bei Anhängen praktisch immer base64, aber
 // zur Sicherheit anhand der bodyStructure-Angabe geprüft statt blind
 // anzunehmen.
-function decodeMimePart(bytes: Uint8Array, encoding: string): Uint8Array {
-  if (encoding === "base64") {
-    const text = new TextDecoder().decode(bytes).replace(/[\r\n\s]/g, "");
-    const bin = atob(text);
-    const out = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-    return out;
+//
+// Bug-Report 28.09.2026, Folgefix (Nutzervorgabe: "alle Anhänge, egal wie
+// groß, müssen hochgeladen werden - die Mietliste hat aktuell schon 16 MB"):
+// die bisherige Implementierung ging über new TextDecoder().decode(bytes)
+// (voller JS-String, wegen UTF-16 ca. doppelt so groß wie die Rohbytes),
+// dann .replace() (nochmal eine volle Kopie) und dann atob() (nochmal ein
+// voller "Binärstring", ebenfalls UTF-16, also nochmal ~2x). Bei einem
+// ~15 MB-base64-Text (≈20 MB Rohbytes) waren dadurch zeitweise mehrere
+// Zwischenkopien von zusammen 100+ MB gleichzeitig im Speicher - der
+// wahrscheinlichste Grund für den harten (nicht per try/catch fangbaren)
+// Laufzeit-Absturz kurz nach dem Decode. decodeBase64Bytes() arbeitet direkt
+// auf den Rohbytes (kein JS-String-Umweg) und schreibt in einen einmal
+// vorab dimensionierten Ausgabepuffer - Spitzenspeicher liegt dadurch nur
+// noch bei ca. 1,3x der Rohbytes-Größe statt einem Vielfachen.
+const B64_LOOKUP: Int16Array = (() => {
+  const table = new Int16Array(256).fill(-1);
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  for (let i = 0; i < chars.length; i++) table[chars.charCodeAt(i)] = i;
+  return table;
+})();
+
+function decodeBase64Bytes(src: Uint8Array): Uint8Array {
+  const out = new Uint8Array(Math.ceil(src.length * 3 / 4));
+  let outLen = 0;
+  let bits = 0, bitCount = 0;
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (c === 13 || c === 10 || c === 32 || c === 9) continue; // CR/LF/Space/Tab
+    if (c === 61) break; // "=" Padding -> Ende der Nutzdaten
+    const v = B64_LOOKUP[c];
+    if (v < 0) continue; // unbekanntes Zeichen defensiv überspringen
+    bits = (bits << 6) | v;
+    bitCount += 6;
+    if (bitCount >= 8) {
+      bitCount -= 8;
+      out[outLen++] = (bits >> bitCount) & 0xff;
+    }
   }
+  return out.subarray(0, outLen);
+}
+
+function decodeMimePart(bytes: Uint8Array, encoding: string): Uint8Array {
+  if (encoding === "base64") return decodeBase64Bytes(bytes);
   return bytes; // 7bit/8bit/binary - bereits Rohbytes
 }
 
@@ -165,10 +212,34 @@ async function rawFetchLiteral(
       await fill();
     }
   }
-  async function readExact(n: number): Promise<Uint8Array> {
-    while (buf.length < n) await fill();
-    const out = buf.slice(0, n);
-    buf = buf.slice(n);
+  // Für den großen Literal-Payload selbst (der Excel-Anhang, potenziell
+  // mehrere MB) bewusst NICHT über ein readExact()-artiges Pattern mit fill(): fill() baut bei
+  // JEDEM 64KB-Socket-Read das komplette bisherige Array per new
+  // Uint8Array(buf.length+n)+set()+set() neu auf - bei z.B. 15 MB sind das
+  // ~230 Durchläufe mit insgesamt mehreren GB an Kopierarbeit (O(n²)) und
+  // zeitweise mehrere große Arrays gleichzeitig im Speicher. readLiteral()
+  // kennt die Zielgröße vorab (aus dem "{n}"-Literal-Präfix) und schreibt
+  // direkt an der richtigen Stelle in einen EINMAL dimensionierten
+  // Ausgabepuffer - Spitzenspeicher bleibt dadurch bei ca. 1x n statt einem
+  // Vielfachen (Bug-Report 28.09.2026, Folgefix: wahrscheinliche
+  // Mitursache des Absturzes bei großen Anhängen).
+  async function readLiteral(n: number): Promise<Uint8Array> {
+    const out = new Uint8Array(n);
+    let filled = 0;
+    if (buf.length > 0) {
+      const take = Math.min(buf.length, n);
+      out.set(buf.subarray(0, take), 0);
+      filled = take;
+      buf = buf.slice(take);
+    }
+    while (filled < n) {
+      const remaining = n - filled;
+      const chunk = new Uint8Array(Math.min(65536, remaining));
+      const r = await conn.read(chunk);
+      if (r === null) throw new Error("IMAP-Verbindung unerwartet geschlossen");
+      out.set(chunk.subarray(0, r), filled);
+      filled += r;
+    }
     return out;
   }
   async function send(s: string) {
@@ -204,7 +275,7 @@ async function rawFetchLiteral(
         break;
       }
       const m = line.match(/\{(\d+)\}\s*$/);
-      if (m) literal = await readExact(parseInt(m[1], 10));
+      if (m) literal = await readLiteral(parseInt(m[1], 10));
     }
     if (!literal) throw new Error(`Kein Literal in FETCH-Antwort für uid=${uid} part=${part} gefunden`);
 
@@ -266,9 +337,13 @@ async function pollMailbox(admin: ReturnType<typeof createClient>) {
                 errors.push(msg2); log("attachment too large", ep.filename, ep.size); skipped++;
                 continue;
               }
+              // Timeout großzügiger als zuvor (25s -> 90s): mit der jetzt
+              // höheren MAX_EXCEL_ATTACHMENT_BYTES-Schwelle müssen auch
+              // deutlich größere Dateien über eine ggf. langsame IMAP-
+              // Verbindung vollständig durchgeladen werden können.
               const raw = await withTimeout(
                 rawFetchLiteral(host, port, user, pass, msg.uid, ep.part),
-                25000,
+                90000,
                 `rawFetchLiteral uid=${msg.uid} part=${ep.part}`,
               );
               const bytes = decodeMimePart(raw, ep.encoding);
@@ -280,7 +355,7 @@ async function pollMailbox(admin: ReturnType<typeof createClient>) {
                   contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                   upsert: false,
                 }),
-                20000,
+                60000,
                 `storage upload ${ep.filename}`,
               );
               if (upErr) { errors.push(`Upload ${ep.filename}: ${upErr.message}`); log("upload error", upErr); messageHadError = true; continue; }
@@ -346,7 +421,11 @@ Deno.serve(async (req) => {
   );
 
   try {
-    const result = await withTimeout(pollMailbox(admin), 55000, "pollMailbox gesamt");
+    // Von 55s auf 120s angehoben (Folgefix 28.09.2026): mit der höheren
+    // MAX_EXCEL_ATTACHMENT_BYTES-Schwelle kann ein Durchlauf mit mehreren
+    // größeren Anhängen insgesamt länger dauern als zuvor - 120s liegt
+    // weiterhin klar unter der 15-Minuten-Taktung des Cron-Jobs.
+    const result = await withTimeout(pollMailbox(admin), 120000, "pollMailbox gesamt");
     log("done", result);
     return json({ ok: true, ...result });
   } catch (e) {
