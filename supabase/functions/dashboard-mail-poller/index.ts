@@ -43,6 +43,20 @@ function isExcelAttachment(filename: string | undefined) {
   return !!filename && /\.(xlsx|xls)$/i.test(filename);
 }
 
+// Storage-Keys akzeptieren nicht jedes Zeichen aus einem Original-Dateinamen
+// (Bug-Report 10.09.2026: eine Mail "WG: Akquise Detailübersicht 2024-2026
+// Stand 2026-08 AT" mit Anhang "26-08_Gehaltsprämie 2026 Neue FH AT.xlsx"
+// scheiterte beim Storage-Upload mit "StorageApiError: Invalid key" wegen
+// des Umlauts "ä" im Dateinamen - die Mail wurde trotz des Fehlers als
+// gelesen markiert (siehe successUids-Fix unten) und ging dadurch komplett
+// verloren, ohne je in pending_imports zu landen). Ersetzt für den Storage-
+// KEY alles außerhalb von ASCII-Buchstaben/Ziffern/._- durch "_" - der
+// ORIGINALE Dateiname bleibt unverändert in pending_imports.filename
+// gespeichert (nur für den Objektpfad selbst muss er ASCII-sicher sein).
+function sanitizeStorageKeyPart(name: string): string {
+  return name.replace(/[^A-Za-z0-9._-]/g, "_");
+}
+
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
     p,
@@ -59,17 +73,49 @@ type BodyPart = any;
 // alle Teile, die wie ein Excel-Anhang aussehen (per Dateiname erkannt -
 // entweder als "attachment"-Disposition oder als benanntes Content-Type-
 // Parameter, je nachdem wie der sendende Mail-Client den Anhang markiert).
-function findExcelParts(node: BodyPart, out: { part: string; filename: string; encoding: string }[] = []) {
+// size (node.size, laut RFC 3501 body-fld-octets immer Teil der
+// BODYSTRUCTURE, KEIN zusätzlicher Server-Roundtrip nötig) wird mitgenommen,
+// damit übergroße Anhänge VOR dem eigentlichen Download aussortiert werden
+// können - siehe MAX_EXCEL_ATTACHMENT_BYTES-Kommentar unten.
+function findExcelParts(node: BodyPart, out: { part: string; filename: string; encoding: string; size: number }[] = []) {
   if (!node) return out;
   const filename = node.dispositionParameters?.filename || node.parameters?.name;
   if (filename && isExcelAttachment(filename) && node.part) {
-    out.push({ part: node.part, filename, encoding: String(node.encoding || "").toLowerCase() });
+    out.push({ part: node.part, filename, encoding: String(node.encoding || "").toLowerCase(), size: Number(node.size) || 0 });
   }
   if (node.childNodes) {
     for (const child of node.childNodes) findExcelParts(child, out);
   }
   return out;
 }
+// Bug-Report 28.09.2026 ("ständig Mietdateien, aktuelle Tagesauswertung wird
+// nicht hochgeladen"): eine Mail vom 25.09.2026 ("WG: Produktion
+// mietenstattkaufen (MsK) per 25.09.2026 - AT+DE", UID 45) brachte NEBEN den
+// beiden kleinen, längst funktionierenden AT/DE_CW-FH_Produktion.xlsx (~600
+// bzw. ~290 KB) noch einen ~15 MB-Anhang "20260925_Reporting_MsK.xlsx" mit
+// (Logs: "downloaded 20260925_Reporting_MsK.xlsx" lief jedes Mal an, aber
+// KEIN "inserted pending_imports row"/"marked seen"/"done"/"fatal" danach -
+// die Function wurde beim Verarbeiten dieses riesigen Anhangs vom Laufzeit-
+// Limit hart abgebrochen, nicht mit einer regulären JS-Exception, die das
+// bestehende try/catch je Mail hätte auffangen können). Da die Mail dadurch
+// NIE als gelesen markiert wurde, holte JEDER Cron-Lauf (alle 15 Min.)
+// dieselbe UID 45 erneut komplett von vorne - inkl. der beiden längst
+// erfolgreich importierten Miete-Dateien (Symptom 1: "ständig Mietdateien,
+// die er aber bereits am Samstag bekommen hat") UND blockierte dabei jeden
+// Poll-Durchlauf schon auf dieser einen alten Mail, bevor er je zu einer
+// NEUEN, ungelesenen Mail (z.B. der aktuellen Tagesauswertung) kommen konnte
+// (Symptom 2). Fix: Anhänge über dem Limit werden anhand der bereits
+// vorliegenden BODYSTRUCTURE-Größe (kein Download nötig) übersprungen, BEVOR
+// rawFetchLiteral() aufgerufen wird - das verhindert den Absturz. Ein
+// übersprungener Anhang zählt NICHT als Fehler (kein messageHadError), damit
+// die Mail trotzdem als gelesen markiert wird, sobald ihre anderen Anhänge
+// (hier: die beiden Miete-Dateien) erfolgreich verarbeitet wurden - sonst
+// bliebe die Mail wegen desselben zu großen Anhangs für immer ungelesen und
+// hängen. Schwelle konservativ zwischen den bekannten funktionierenden
+// Größen (613 KB/287 KB) und der bekannten abstürzenden Größe (~15 MB)
+// gewählt. Ein übergroßer Anhang wird dadurch NICHT automatisch importiert -
+// bei Bedarf weiterhin manuell über den Admin-Panel-Upload möglich.
+const MAX_EXCEL_ATTACHMENT_BYTES = 3 * 1024 * 1024;
 
 // BODY[<part>]-Fetches liefern den rohen (noch kodierten) Content-Transfer-
 // Encoding-Text des MIME-Teils - bei Anhängen praktisch immer base64, aber
@@ -194,6 +240,15 @@ async function pollMailbox(admin: ReturnType<typeof createClient>) {
         { uid: true, envelope: true, bodyStructure: true },
       )) {
         log("message", msg.uid, { subject: msg.envelope?.subject });
+        // Bug-Report 10.09.2026: früher wurde die Mail am Ende dieses Blocks
+        // IMMER als erfolgreich verarbeitet markiert (successUids.push), auch
+        // wenn ein einzelner Anhang beim Upload/Insert fehlgeschlagen war (der
+        // Fehler landete nur im errors-Array). Dadurch verschwand die Mail
+        // dauerhaft aus der ungelesenen Suche ({seen:false}), ohne je in
+        // pending_imports zu landen - kein Retry mehr möglich. Jetzt bleibt
+        // eine Mail mit einem gescheiterten Anhang ungelesen und wird beim
+        // nächsten Cron-Lauf (alle 15 Min.) automatisch erneut versucht.
+        let messageHadError = false;
         try {
           const excelParts = findExcelParts(msg.bodyStructure);
           log("excel parts", msg.uid, excelParts);
@@ -202,6 +257,15 @@ async function pollMailbox(admin: ReturnType<typeof createClient>) {
             skipped++;
           } else {
             for (const ep of excelParts) {
+              // Bug-Report 28.09.2026 (siehe MAX_EXCEL_ATTACHMENT_BYTES oben):
+              // übergroße Anhänge NICHT herunterladen (stürzt die Function
+              // ab) - bewusst OHNE messageHadError, damit die Mail trotzdem
+              // als gelesen gilt, sobald ihre übrigen Anhänge durchlaufen.
+              if (ep.size > MAX_EXCEL_ATTACHMENT_BYTES) {
+                const msg2 = `Anhang ${ep.filename} übersprungen (${ep.size} Bytes > Limit ${MAX_EXCEL_ATTACHMENT_BYTES}) - zu groß für den automatischen Import, bitte bei Bedarf manuell über das Admin-Panel einspielen.`;
+                errors.push(msg2); log("attachment too large", ep.filename, ep.size); skipped++;
+                continue;
+              }
               const raw = await withTimeout(
                 rawFetchLiteral(host, port, user, pass, msg.uid, ep.part),
                 25000,
@@ -210,7 +274,7 @@ async function pollMailbox(admin: ReturnType<typeof createClient>) {
               const bytes = decodeMimePart(raw, ep.encoding);
               log("downloaded", ep.filename, { rawBytes: raw.length, decodedBytes: bytes.length, encoding: ep.encoding });
 
-              const path = `pending/${crypto.randomUUID()}-${ep.filename}`;
+              const path = `pending/${crypto.randomUUID()}-${sanitizeStorageKeyPart(ep.filename)}`;
               const { error: upErr } = await withTimeout(
                 admin.storage.from("mail-imports").upload(path, bytes, {
                   contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -219,7 +283,7 @@ async function pollMailbox(admin: ReturnType<typeof createClient>) {
                 20000,
                 `storage upload ${ep.filename}`,
               );
-              if (upErr) { errors.push(`Upload ${ep.filename}: ${upErr.message}`); log("upload error", upErr); continue; }
+              if (upErr) { errors.push(`Upload ${ep.filename}: ${upErr.message}`); log("upload error", upErr); messageHadError = true; continue; }
 
               const { error: insErr } = await withTimeout(
                 admin.from("pending_imports").insert({
@@ -233,12 +297,12 @@ async function pollMailbox(admin: ReturnType<typeof createClient>) {
                 10000,
                 `db insert ${ep.filename}`,
               );
-              if (insErr) { errors.push(`DB-Insert ${ep.filename}: ${insErr.message}`); log("insert error", insErr); continue; }
+              if (insErr) { errors.push(`DB-Insert ${ep.filename}: ${insErr.message}`); log("insert error", insErr); messageHadError = true; continue; }
               log("inserted pending_imports row for", ep.filename);
               imported++;
             }
           }
-          successUids.push(msg.uid);
+          if (!messageHadError) successUids.push(msg.uid);
         } catch (e) {
           log("error processing uid", msg.uid, String(e));
           errors.push(`Mail ${msg.uid}: ${String(e)}`);
