@@ -5395,6 +5395,26 @@ async function handleFiles(files){
 const STALE_PROCESSING_MINUTES=15;
 async function processPendingImports(){
   if(!(sb&&supaUser)) return;
+  // Bug-Report 29.09.2026 ("Mitarbeiter-Daten fehlen teilweise, Rangliste
+  // Österreich gesamt leer"): mergeSnapshot() ordnet die Tagesproduktion je
+  // GL über matchEmployee() einem Mitarbeiternamen zu - schlägt das fehl
+  // (Rückgabe null), landet der Eintrag stattdessen unter einem "x_"-
+  // Präfix-Notschlüssel (siehe parseAuswertung() weiter unten), der von
+  // glRow()/renderEmpRanking() nie gefunden wird. matchEmployee() kann aber
+  // nur matchen, wenn EMPLOYEES/EMP_NORM (aus loadEmployees()) bereits
+  // befüllt sind - init() ruft zwar loadEmployees() vor
+  // processPendingImports() auf, refreshData() (Klick auf "Aktualisieren",
+  // visibilitychange-Tab-Reaktivierung, pageshow-bfcache-Restore) aber
+  // NICHT, weil EMPLOYEES dort normalerweise schon aus init() vorliegt. Trat
+  // init()s loadEmployees() aber (Netzwerk-Hänger o.ä., alle 3 Retry-
+  // Versuche fehlgeschlagen) NIE erfolgreich durch, blieb EMPLOYEES/
+  // EMP_NORM dauerhaft leer, und JEDE künftige Einspielung - auch über
+  // refreshData() - schlug für ALLE echten Mitarbeiter fehl (bestätigter
+  // Vorfall 29.09.2026: heutige Tagesauswertung landete komplett unter
+  // "x_"-Schlüsseln). Harte Absicherung direkt hier, unabhängig vom
+  // Aufrufer: ist EMPLOYEES gerade leer, zuerst (erneut) laden, bevor
+  // überhaupt eine Excel-Datei geparst/gemergt wird.
+  if(!EMPLOYEES.length) await loadEmployees();
   try{
     // Reclaim-Fix (Bug-Report 19.09.2026: "musste 2x mailen, damit es
     // übernommen wurde"): eine Zeile wird VOR der eigentlichen Verarbeitung
