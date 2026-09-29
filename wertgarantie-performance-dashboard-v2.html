@@ -4029,6 +4029,13 @@ werden. Die Alias-Nr verschwindet dadurch überall als eigener Eintrag;
 Kennzahlen (Produktion etc.) werden an den drei Konstruktionsstellen addiert. */
 let FH_DUP_MAP={}; // alias_fh_nr -> canonical_fh_nr
 let FH_DUP_ALIASES={}; // canonical_fh_nr -> [alias_fh_nr,...] (Kehrwert von FH_DUP_MAP, für Deckungsgrad-Fallback)
+// Markiert einen tatsächlich ABGESCHLOSSENEN (nicht zwingend fehlerfreien
+// Versuch würde reichen, aber hier: erfolgreichen) Ladeversuch - anders als
+// Object.keys(FH_DUP_MAP).length, das bei aktuell 0 bekannten FH-Duplikaten
+// (ein völlig normaler, häufiger Zustand) fälschlich wie "noch nicht
+// geladen" aussähe. Siehe processPendingImports()-Guard (Bug-Report
+// 29.09.2026, gleiche Fehlerklasse wie beim EMPLOYEES-Leerbleiben).
+let fhDupMergesLoaded=false;
 async function loadFhDuplicateMerges(){
   if(!sb){ FH_DUP_MAP={}; FH_DUP_ALIASES={}; return; }
   // Retry wie bei loadEmployees() oben (gleiches Muster: einmaliger
@@ -4040,6 +4047,7 @@ async function loadFhDuplicateMerges(){
     FH_DUP_MAP[r.alias_fh_nr]=r.canonical_fh_nr;
     (FH_DUP_ALIASES[r.canonical_fh_nr]||(FH_DUP_ALIASES[r.canonical_fh_nr]=[])).push(r.alias_fh_nr);
   }
+  fhDupMergesLoaded=true;
 }
 function resolveFhDup(nr){
   return (nr&&FH_DUP_MAP[nr])||nr;
@@ -5413,8 +5421,24 @@ async function processPendingImports(){
   // Vorfall 29.09.2026: heutige Tagesauswertung landete komplett unter
   // "x_"-Schlüsseln). Harte Absicherung direkt hier, unabhängig vom
   // Aufrufer: ist EMPLOYEES gerade leer, zuerst (erneut) laden, bevor
-  // überhaupt eine Excel-Datei geparst/gemergt wird.
+  // überhaupt eine Excel-Datei geparst/gemergt wird. Bleibt EMPLOYEES
+  // TROTZDEM leer (z.B. anhaltender Netzwerkausfall), lieber diesen
+  // gesamten Durchlauf abbrechen (Zeilen bleiben "pending" und werden beim
+  // nächsten Aufruf erneut versucht) als mit garantiert falscher
+  // Namenszuordnung zu mergen - das war exakt der Fehler vom 29.09.2026.
   if(!EMPLOYEES.length) await loadEmployees();
+  if(!EMPLOYEES.length){
+    console.error("processPendingImports abgebrochen: EMPLOYEES konnte nicht geladen werden.");
+    return;
+  }
+  // Gleiche Bug-Klasse, gleiche Absicherung: parseAuswertung() löst FH-
+  // Nummern über resolveFhDup()/FH_DUP_MAP auf (siehe Kommentar dort) -
+  // ohne bereits geladenes FH_DUP_MAP würde ein zusammengeführtes FH-
+  // Duplikat-Paar beim Merge fälschlich wieder als zwei getrennte Fachhändler
+  // auftauchen. fhDupMergesLoaded (statt Object.keys(FH_DUP_MAP).length, das
+  // bei 0 aktuell bekannten Duplikaten fälschlich "nicht geladen" bedeuten
+  // würde) markiert einen tatsächlich abgeschlossenen Ladeversuch.
+  if(!fhDupMergesLoaded) await loadFhDuplicateMerges();
   try{
     // Reclaim-Fix (Bug-Report 19.09.2026: "musste 2x mailen, damit es
     // übernommen wurde"): eine Zeile wird VOR der eigentlichen Verarbeitung
