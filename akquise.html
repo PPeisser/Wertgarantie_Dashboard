@@ -50,7 +50,13 @@ body{
 }
 [style*="overflow:auto"],[style*="overflow-y:auto"]{overscroll-behavior:contain}
 .hidden{display:none !important}
-.wrap{max-width:1600px;margin:0 auto;padding:12px 16px 24px}
+.wrap{
+  max-width:1600px;margin:0 auto;padding:12px 16px 24px;
+  /* viewport-fit=cover: auf iPhones mit Notch/Dynamic Island im Querformat
+     nicht unter die Aussparung bzw. den Home-Indikator rutschen. */
+  padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right));
+  padding-bottom:max(24px,env(safe-area-inset-bottom));
+}
 
 header{
   background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
@@ -108,7 +114,9 @@ select:focus,.inp:focus{border-color:var(--wg-blue)}
 .chk input{width:16px;height:16px}
 
 /* ---------- Karte + Liste ---------- */
-.main{margin-top:12px;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(340px,1fr);gap:12px;height:calc(100vh - 250px);min-height:520px}
+/* 100dvh statt 100vh: in Safari (iPad) zählt 100vh die ein-/ausblendende
+   Adressleiste mit - die Liste wäre unten abgeschnitten. */
+.main{margin-top:12px;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(340px,1fr);gap:12px;height:calc(100vh - 250px);height:calc(100dvh - 250px);min-height:520px}
 .map-card,.list-card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;position:relative}
 #map{width:100%;height:100%}
 .map-placeholder{
@@ -195,7 +203,7 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
 .nav-choice{display:flex;gap:8px;flex-wrap:wrap}
 
 .toast{
-  position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--wg-navy);color:#fff;
+  position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--wg-navy);color:#fff;
   padding:10px 16px;border-radius:12px;font-weight:600;font-size:13px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.25);
   max-width:calc(100vw - 32px);
 }
@@ -205,20 +213,76 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
 .progress{height:8px;background:#EAF3F9;border-radius:999px;overflow:hidden;margin-top:8px}
 .progress div{height:100%;background:var(--wg-blue);width:0;transition:width .3s}
 
+/* ---------- Touch-Geräte (iPad/iPhone) ---------- */
+@media (pointer:coarse){
+  /* iOS zoomt beim Antippen in Eingabefelder mit < 16px Schrift hinein. */
+  select,.inp,textarea,.modal .login-inp{font-size:16px}
+  /* Tippflächen nach Apple-Empfehlung (~44px). */
+  .btn{min-height:44px}
+  .btn-sm{min-height:40px}
+  .seg button{min-height:44px}
+  .chip{min-height:40px;padding:8px 13px}
+  .chk{min-height:40px}
+  .chk input{width:20px;height:20px}
+  .status-row button{min-height:38px;padding:7px 12px}
+  .wko-box a{display:inline-flex;align-items:center;min-height:34px;padding:4px 11px}
+  .item:hover{border-color:var(--line)}
+}
+
+/* ---------- iPad hoch / einspaltig ---------- */
 @media (max-width:1000px){
   .main{grid-template-columns:1fr;height:auto}
-  .map-card{height:48vh;min-height:300px}
-  .list-card{min-height:400px}
+  .map-card{height:40vh;height:40dvh;min-height:260px}
+  .list-card{min-height:300px}
   .list-body{max-height:none;overflow:visible}
 }
-@media (max-width:560px){
-  .wrap{padding:8px 10px 20px}
-  header{padding:10px 12px}
-  header img{height:30px}
-  .title-block h1{font-size:16px}
+
+/* ---------- iPhone hoch ---------- */
+@media (max-width:700px){
+  .wrap{padding-top:8px;padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right))}
+  header{padding:8px 10px;gap:8px;flex-wrap:nowrap}
+  header img{height:26px}
+  .title-block{min-width:0}
+  .title-block h1{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .title-block .sub,.role-badge{display:none !important}
+  .hdr-actions{flex-wrap:nowrap;gap:6px}
+  .hdr-actions .lbl{display:none}
+  .hdr-actions .btn{padding:7px 11px;font-size:16px}
+  .controls{padding:10px;gap:8px}
   .seg{width:100%}
   .seg button{flex:1;padding:9px 6px}
+  .loc-box{min-width:100%}
+  /* Sparten-Chips als eine wischbare Zeile statt vier Zeilen */
+  .chips{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex:1;min-width:0;padding-bottom:2px}
+  .chips::-webkit-scrollbar{display:none}
+  .chip{flex:none}
   .prod{grid-template-columns:repeat(3,1fr)}
+  /* Detailfenster als Blatt von unten, Buttons immer sichtbar */
+  .modal-bg{align-items:flex-end;padding:0}
+  .modal{border-radius:20px 20px 0 0;max-width:none !important;max-height:92vh;max-height:92dvh;padding:18px 16px calc(14px + env(safe-area-inset-bottom))}
+  #detailBox .actions{position:sticky;bottom:calc(-14px - env(safe-area-inset-bottom));background:#fff;margin:14px -16px calc(-14px - env(safe-area-inset-bottom));padding:10px 16px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
+  #detailBox .actions .btn{flex:1 1 auto;justify-content:center}
+  #authModal{align-items:center;padding:16px}
+  #authModal .modal{border-radius:20px}
+}
+
+/* ---------- iPhone quer ---------- */
+@media (max-height:500px) and (orientation:landscape){
+  header{padding:6px 12px}
+  header img{height:24px}
+  .title-block .sub,.role-badge{display:none !important}
+  .hdr-actions .lbl{display:none}
+  .controls{padding:8px 10px;gap:6px}
+  .chips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0}
+  .chips::-webkit-scrollbar{display:none}
+  .chip{flex:none}
+  /* Karte + Liste nebeneinander, bildschirmfüllend nach dem Hochscrollen */
+  .main{grid-template-columns:1fr 1fr;height:calc(100vh - 16px);height:calc(100dvh - 16px);min-height:280px}
+  .map-card{height:auto;min-height:0}
+  .list-card{min-height:0}
+  .list-body{overflow-y:auto}
+  .modal-bg{align-items:center;padding:8px}
+  .modal{max-height:94vh;max-height:94dvh}
 }
 </style>
 </head>
@@ -232,9 +296,9 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
     </div>
     <div class="hdr-actions">
       <span class="role-badge hidden" id="roleBadge"></span>
-      <button class="btn btn-ghost btn-sm hidden" id="settingsBtn" title="Einstellungen (Admin)">⚙ Einstellungen</button>
-      <a class="btn btn-ghost btn-sm" href="index.html">← Dashboard</a>
-      <button class="btn btn-ghost btn-sm hidden" id="logoutBtn">Abmelden</button>
+      <button class="btn btn-ghost btn-sm hidden" id="settingsBtn" title="Einstellungen (Admin)" aria-label="Einstellungen">⚙<span class="lbl"> Einstellungen</span></button>
+      <a class="btn btn-ghost btn-sm" href="index.html" title="Zum Dashboard" aria-label="Zum Dashboard">←<span class="lbl"> Dashboard</span></a>
+      <button class="btn btn-ghost btn-sm hidden" id="logoutBtn" title="Abmelden" aria-label="Abmelden">⏻<span class="lbl"> Abmelden</span></button>
     </div>
   </header>
 
@@ -721,15 +785,23 @@ function showMapPlaceholder(title,text){
   const p=$("mapPlaceholder"); p.classList.remove("hidden");
   p.innerHTML=`<div style="font-size:34px">🗺️</div><h3>${esc(title)}</h3><div>${esc(text)}</div>`;
 }
+function isSingleColumn(){
+  return matchMedia("(max-width:1000px)").matches && !matchMedia("(max-height:500px) and (orientation:landscape)").matches;
+}
 function onMapsLoaded(){
   mapsReady=true;
   gmap=new google.maps.Map($("map"),{
     center: myPos?{lat:myPos.lat,lng:myPos.lng}:{lat:47.6,lng:14.1}, zoom: myPos?12:7,
     mapTypeControl:false, streetViewControl:false, fullscreenControl:true, clickableIcons:false,
-    gestureHandling:"greedy",
+    // Einspaltig (iPhone hoch, iPad hoch) liegt die Karte mitten in der
+    // scrollenden Seite - "cooperative" (Karte mit zwei Fingern bewegen),
+    // sonst bleibt man beim Wischen über die Karte hängen.
+    gestureHandling: isSingleColumn()?"cooperative":"greedy",
   });
   updateMapPosition(true);
   renderMarkers();
+  // Drehen des Geräts: Layout wechselt zwischen ein- und zweispaltig
+  addEventListener("resize",()=>{ if(gmap) gmap.setOptions({gestureHandling:isSingleColumn()?"cooperative":"greedy"}); });
 }
 function updateMapPosition(fit){
   if(!mapsReady||!myPos) return;
