@@ -158,7 +158,7 @@ Geocoding API):
 
 | Schlüssel | Beschränkung | Hinterlegt in |
 |---|---|---|
-| Browser-Schlüssel | Websites: `https://dashboard.wgaustria.at/*`, `https://wertgarantie-dashboard.vercel.app/*`, `https://*-wertgarantie.vercel.app/*` · API: Maps JavaScript API | Akquisetool → ⚙ Einstellungen (`dashboard_kv` `google_maps_browser_key`) |
+| Browser-Schlüssel | Websites: `https://dashboard.wgaustria.at/*` (+ zum Testen die Vercel-Vorschau-Domain des Branches) · API: Maps JavaScript API | Akquisetool → ⚙ Einstellungen (`dashboard_kv` `google_maps_browser_key`) |
 | Server-Schlüssel | API: Places API (New), Geocoding API | Supabase → Edge Functions → Secrets: `GOOGLE_MAPS_SERVER_KEY` |
 
 Schema: `supabase/akquisetool_schema.sql` · Edge Function: `akquise-google`.
