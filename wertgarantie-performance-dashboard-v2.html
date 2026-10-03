@@ -1828,6 +1828,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <input type="checkbox" id="trainerbetreuungEnabledChk" style="width:17px;height:17px;flex-shrink:0">
         Trainerbetreuung
       </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+        <input type="checkbox" id="akquisetoolEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+        Akquisetool (für alle Nutzer freigeben)
+      </label>
     </div>
   </div>
 </div>
@@ -2401,6 +2405,10 @@ let neunWochenAllEnabled = false;
 // Kachel in "Auswertung erfassen". Anlegen/Ansicht für ALLE Rollen, Löschen
 // bleibt admin-only. Default false wie bei anderen neuen Features.
 let trainerbetreuungEnabled = false;
+// Akquisetool (akquise.html, eigene Seite) - Admin-Freischalter für alle
+// Nutzer (dashboard_kv-Key "akquisetool_enabled"). Admins können das Tool
+// auch bei ausgeschaltetem Schalter öffnen. Default false.
+let akquisetoolEnabled = false;
 // Akquiseliste-Import-Benachrichtigung (07.09.2026) - Admin-Freischalter für
 // die automatische Mail an alle Admin-/Außendienst-Nutzer bei jeder
 // Akquiseliste-Einspielung (siehe notifyAkqImport()/Edge Function
@@ -2935,6 +2943,7 @@ function openAdminModal(){
   $("akquisequoteAtEnabledChk").checked=akquisequoteAtEnabled;
   $("neunWochenAllEnabledChk").checked=neunWochenAllEnabled;
   $("trainerbetreuungEnabledChk").checked=trainerbetreuungEnabled;
+  $("akquisetoolEnabledChk").checked=akquisetoolEnabled;
 }
 // Lädt einen im Storage-Bucket abgelegten Blob per sb.storage.download() und
 // stößt den Browser-Download an - Muster wie pdf.save() bei jsPDF-Exporten,
@@ -3456,6 +3465,16 @@ async function toggleTrainerbetreuungEnabled(){
   try{
     await stSet("trainerbetreuung_enabled",on?"1":"0");
     toast(on?"Trainerbetreuung aktiviert ✓":"Trainerbetreuung deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
+async function toggleAkquisetoolEnabled(){
+  const on=$("akquisetoolEnabledChk").checked;
+  akquisetoolEnabled=on;
+  try{
+    await stSet("akquisetool_enabled",on?"1":"0");
+    toast(on?"Akquisetool für alle Nutzer freigegeben ✓":"Akquisetool deaktiviert (nur noch für Admins)");
   }catch(e){
     toast("Speichern fehlgeschlagen: "+(e.message||e));
   }
@@ -7703,7 +7722,8 @@ async function loadAll(){
     "fh_search_enabled","akp_peer_compare_enabled","karteileichen_jahre","karteileichen_review_fh",
     "karteileichen_review_akp","deckungsgrad_enabled","deckungsgrad_visible_metrics",
     "emp_ranking_enabled","stornoquoten_enabled","miete_last_import","akq_import_notify_enabled",
-    "perf_ergaenzungen_enabled","akquisequote_at_enabled","neunwochen_all_enabled","trainerbetreuung_enabled"
+    "perf_ergaenzungen_enabled","akquisequote_at_enabled","neunwochen_all_enabled","trainerbetreuung_enabled",
+    "akquisetool_enabled"
   ]);
   try{ const d=kv["wg-state"]; if(d){ const p=JSON.parse(d); if(p&&p.latest) state=p; } }catch(e){}
   try{ const g=kv["wg-goals"]; if(g) goals=JSON.parse(g); }catch(e){}
@@ -7729,6 +7749,7 @@ async function loadAll(){
   akquisequoteAtEnabled=kv["akquisequote_at_enabled"]==="1";
   neunWochenAllEnabled=kv["neunwochen_all_enabled"]==="1";
   trainerbetreuungEnabled=kv["trainerbetreuung_enabled"]==="1";
+  akquisetoolEnabled=kv["akquisetool_enabled"]==="1";
   mieteLastImport=kv["miete_last_import"];
   const emb=(typeof INITIAL_DATA!=="undefined")?JSON.parse(JSON.stringify(INITIAL_DATA)):null;
   if(!state.latest && emb){ state=emb; }
@@ -14163,6 +14184,7 @@ $("akqImportNotifyEnabledChk").onchange=toggleAkqImportNotifyEnabled;
 $("akquisequoteAtEnabledChk").onchange=toggleAkquisequoteAtEnabled;
 $("neunWochenAllEnabledChk").onchange=toggleNeunWochenAllEnabled;
 $("trainerbetreuungEnabledChk").onchange=toggleTrainerbetreuungEnabled;
+$("akquisetoolEnabledChk").onchange=toggleAkquisetoolEnabled;
 $("nwAllBtn").onclick=openNeunWochenAllModal;
 $("nwAllClose").onclick=()=>$("neunWochenAllModal").classList.add("hidden");
 $("perfDialogAdminEnabledChk").onchange=togglePerfDialogAdminEnabled;

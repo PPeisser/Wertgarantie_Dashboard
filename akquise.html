@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wertgarantie Performance Akquisetool</title>
+<meta name="robots" content="noindex, nofollow">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<!--
+  Wertgarantie Performance Akquisetool
+  Eigene Seite neben dem Dashboard (index.html), gleiche Supabase-Anmeldung
+  und gleiche Daten (dashboard_kv "wg-state", fh_contacts, trainerbesuche).
+
+  Zwei Funktionen:
+  1. Akquise: Betriebe der 7 Sparten im GPS-Umkreis über Google Places
+     (Edge Function akquise-google), abgeglichen gegen alle bei uns
+     angelegten Händler - angezeigt wird, was noch NICHT angelegt ist.
+  2. Bestehende Händler: alle Händler im Umkreis auf der Karte, mit
+     Besuchs-Score ("wo lohnt sich ein Besuch") aus letztem Besuch,
+     Potenzial (Segmentierung), Entwicklung (LJ vs. VJ/Plan) und Entfernung.
+
+  Freigabe: dashboard_kv "akquisetool_enabled" = "1" (Schalter im
+  Admin-Panel des Dashboards). Admins können das Tool auch ohne Freigabe
+  öffnen (zum Testen). Schema: supabase/akquisetool_schema.sql.
+-->
+<style>
+:root{
+  --wg-blue:#009FE3;
+  --wg-blue-dark:#0075AC;
+  --wg-navy:#062A3F;
+  --ink:#10202C;
+  --muted:#5D7284;
+  --paper:#EEF4F8;
+  --card:#FFFFFF;
+  --line:#DCE7EE;
+  --pos:#12A150;
+  --pos-bg:#E4F7EC;
+  --neg:#E0234E;
+  --neg-bg:#FDE8ED;
+  --amber:#F59E0B;
+  --amber-bg:#FEF3DC;
+  --radius:16px;
+  --shadow:0 2px 10px rgba(6,42,63,.08);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  font-family:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  background:var(--paper);color:var(--ink);font-size:14px;line-height:1.4;
+}
+[style*="overflow:auto"],[style*="overflow-y:auto"]{overscroll-behavior:contain}
+.hidden{display:none !important}
+.wrap{max-width:1600px;margin:0 auto;padding:12px 16px 24px}
+
+header{
+  background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+  padding:12px 18px;border-top:5px solid var(--wg-blue);
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+}
+header img{height:38px;width:auto}
+.title-block{flex:1;min-width:200px}
+.title-block h1{font-size:19px;color:var(--wg-navy);line-height:1.2}
+.title-block .sub{font-size:12px;color:var(--muted)}
+.hdr-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.role-badge{font-size:11.5px;font-weight:700;background:#EAF3F9;color:var(--wg-navy);border-radius:999px;padding:4px 10px}
+
+.btn{
+  font:inherit;font-weight:700;font-size:13.5px;border:none;border-radius:12px;
+  padding:10px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;
+  transition:filter .15s, transform .05s;text-decoration:none;white-space:nowrap;
+}
+.btn:active{transform:translateY(1px)}
+.btn:hover{filter:brightness(1.06)}
+.btn:disabled{background:#DCE4EA;color:#8CA0AF;cursor:not-allowed;filter:none;transform:none}
+.btn-blue{background:var(--wg-blue);color:#fff}
+.btn-navy{background:var(--wg-navy);color:#fff}
+.btn-ghost{background:#EAF3F9;color:var(--wg-navy)}
+.btn-sm{padding:7px 10px;font-size:12.5px;border-radius:10px}
+
+/* ---------- Steuerleiste ---------- */
+.controls{
+  margin-top:12px;background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+  padding:12px 14px;display:flex;flex-direction:column;gap:10px;
+}
+.ctrl-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.seg{display:inline-flex;background:#EAF3F9;border-radius:12px;padding:3px}
+.seg button{
+  font:inherit;font-weight:700;font-size:13.5px;border:none;background:transparent;color:var(--wg-navy);
+  padding:9px 14px;border-radius:10px;cursor:pointer;
+}
+.seg button.on{background:var(--wg-navy);color:#fff}
+select,.inp{
+  font:inherit;font-size:13.5px;font-weight:600;color:var(--wg-navy);
+  border:2px solid var(--line);border-radius:12px;padding:8px 10px;background:#fff;outline:none;
+}
+select:focus,.inp:focus{border-color:var(--wg-blue)}
+.loc-box{display:flex;gap:6px;flex:1;min-width:240px}
+.loc-box .inp{flex:1;min-width:0}
+.loc-info{font-size:12px;color:var(--muted)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{
+  font:inherit;font-size:12.5px;font-weight:700;border-radius:999px;padding:6px 11px;cursor:pointer;
+  border:2px solid var(--c,#999);background:#fff;color:var(--c,#999);display:inline-flex;align-items:center;gap:6px;
+}
+.chip.on{background:var(--c,#999);color:#fff}
+.chip .dot{width:8px;height:8px;border-radius:50%;background:currentColor}
+.chk{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--wg-navy);cursor:pointer}
+.chk input{width:16px;height:16px}
+
+/* ---------- Karte + Liste ---------- */
+.main{margin-top:12px;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(340px,1fr);gap:12px;height:calc(100vh - 250px);min-height:520px}
+.map-card,.list-card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;position:relative}
+#map{width:100%;height:100%}
+.map-placeholder{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:24px;color:var(--muted);gap:10px;background:repeating-linear-gradient(45deg,#F5F9FC,#F5F9FC 12px,#EEF4F8 12px,#EEF4F8 24px);
+}
+.map-placeholder h3{color:var(--wg-navy);font-size:16px}
+.list-card{display:flex;flex-direction:column}
+.list-head{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.list-head .row{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.list-head h2{font-size:15px;color:var(--wg-navy)}
+.list-head .count{font-size:12px;color:var(--muted)}
+.list-body{flex:1;overflow-y:auto;padding:8px}
+.list-foot{font-size:10.5px;color:var(--muted);padding:6px 12px;border-top:1px solid var(--line)}
+
+.item{
+  border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer;
+  display:flex;gap:10px;align-items:flex-start;background:#fff;transition:border-color .15s, box-shadow .15s;
+}
+.item:hover{border-color:var(--wg-blue)}
+.item.sel{border-color:var(--wg-blue);box-shadow:0 0 0 2px rgba(0,159,227,.25)}
+.item .badge{
+  flex:none;width:44px;height:44px;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  color:#fff;font-weight:800;font-size:15px;line-height:1;
+}
+.item .badge small{font-size:9px;font-weight:700;opacity:.9;margin-top:2px}
+.item .body{flex:1;min-width:0}
+.item .name{font-weight:700;color:var(--wg-navy);font-size:13.5px;overflow:hidden;text-overflow:ellipsis}
+.item .meta{font-size:12px;color:var(--muted);margin-top:2px}
+.item .tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
+.tag{font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 7px;background:#EAF3F9;color:var(--wg-navy)}
+.tag.warn{background:var(--amber-bg);color:#92560A}
+.tag.neg{background:var(--neg-bg);color:var(--neg)}
+.tag.pos{background:var(--pos-bg);color:var(--pos)}
+.item .dist{flex:none;font-size:12px;font-weight:700;color:var(--wg-navy);white-space:nowrap}
+
+.top-box{background:linear-gradient(135deg,#062A3F,#0B4A6E);color:#fff;border-radius:12px;padding:10px 12px;margin-bottom:10px}
+.top-box h3{font-size:13px;margin-bottom:6px}
+.top-box ol{padding-left:18px;font-size:12.5px}
+.top-box li{margin:3px 0;cursor:pointer}
+.top-box li:hover{text-decoration:underline}
+.top-box li span{opacity:.75}
+
+.empty{padding:30px 16px;text-align:center;color:var(--muted)}
+.empty h3{color:var(--wg-navy);font-size:15px;margin-bottom:6px}
+.wko-box{border:1px dashed var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:12.5px}
+.wko-box b{color:var(--wg-navy)}
+.wko-box .links{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.wko-box a{font-size:12px;font-weight:700;color:var(--wg-blue-dark);text-decoration:none;background:#EAF3F9;border-radius:999px;padding:3px 9px}
+
+/* ---------- Detail-/Modal ---------- */
+.modal-bg{position:fixed;inset:0;background:rgba(6,42,63,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
+.modal{
+  background:#fff;border-radius:20px;max-width:520px;width:100%;padding:22px 22px 18px;
+  box-shadow:0 20px 60px rgba(0,0,0,.25);border-top:6px solid var(--wg-blue);
+  max-height:88vh;overflow:auto;overscroll-behavior:contain;position:relative;
+}
+.modal h3{font-size:18px;color:var(--wg-navy);margin-bottom:4px;padding-right:40px}
+.modal p{font-size:13px;color:var(--muted);margin-bottom:12px}
+.modal .close{position:absolute;top:14px;right:14px}
+.modal .login-inp{
+  font:inherit;font-size:16px;font-weight:600;color:var(--wg-navy);width:100%;
+  border:2px solid var(--line);border-radius:12px;padding:10px 14px;outline:none;margin-bottom:8px;
+}
+.modal .login-inp:focus{border-color:var(--wg-blue)}
+.modal .error{color:var(--neg);font-size:12.5px;min-height:16px}
+.modal .actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px;margin:10px 0}
+.kv dt{color:var(--muted)}
+.kv dd{color:var(--ink);font-weight:600;word-break:break-word}
+.kv a{color:var(--wg-blue-dark)}
+.prod{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:10px 0}
+.prod div{background:#F3F7FA;border-radius:10px;padding:7px 4px;text-align:center}
+.prod b{display:block;font-size:15px;color:var(--wg-navy)}
+.prod span{font-size:10.5px;color:var(--muted)}
+.score-big{display:flex;gap:12px;align-items:center;background:#F3F7FA;border-radius:12px;padding:10px 12px;margin:10px 0}
+.score-big .num{width:56px;height:56px;border-radius:14px;color:#fff;font-weight:800;font-size:22px;display:flex;align-items:center;justify-content:center;flex:none}
+.score-big ul{font-size:12.5px;padding-left:16px;color:var(--ink)}
+.section-t{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:14px}
+.status-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.status-row button{font:inherit;font-size:12px;font-weight:700;border:2px solid var(--line);background:#fff;color:var(--wg-navy);border-radius:999px;padding:5px 10px;cursor:pointer}
+.status-row button.on{background:var(--wg-navy);border-color:var(--wg-navy);color:#fff}
+textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
+.nav-choice{display:flex;gap:8px;flex-wrap:wrap}
+
+.toast{
+  position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--wg-navy);color:#fff;
+  padding:10px 16px;border-radius:12px;font-weight:600;font-size:13px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.25);
+  max-width:calc(100vw - 32px);
+}
+.gate{max-width:520px;margin:60px auto;background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:26px;text-align:center;border-top:6px solid var(--wg-blue)}
+.gate h2{color:var(--wg-navy);margin-bottom:8px}
+.gate p{color:var(--muted)}
+.progress{height:8px;background:#EAF3F9;border-radius:999px;overflow:hidden;margin-top:8px}
+.progress div{height:100%;background:var(--wg-blue);width:0;transition:width .3s}
+
+@media (max-width:1000px){
+  .main{grid-template-columns:1fr;height:auto}
+  .map-card{height:48vh;min-height:300px}
+  .list-card{min-height:400px}
+  .list-body{max-height:none;overflow:visible}
+}
+@media (max-width:560px){
+  .wrap{padding:8px 10px 20px}
+  header{padding:10px 12px}
+  header img{height:30px}
+  .title-block h1{font-size:16px}
+  .seg{width:100%}
+  .seg button{flex:1;padding:9px 6px}
+  .prod{grid-template-columns:repeat(3,1fr)}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="WG_Logo_claim_rgb_DE.png" alt="Wertgarantie">
+    <div class="title-block">
+      <h1>Performance Akquisetool</h1>
+      <div class="sub">Akquise &amp; Händlerbesuche im Umkreis</div>
+    </div>
+    <div class="hdr-actions">
+      <span class="role-badge hidden" id="roleBadge"></span>
+      <button class="btn btn-ghost btn-sm hidden" id="settingsBtn" title="Einstellungen (Admin)">⚙ Einstellungen</button>
+      <a class="btn btn-ghost btn-sm" href="index.html">← Dashboard</a>
+      <button class="btn btn-ghost btn-sm hidden" id="logoutBtn">Abmelden</button>
+    </div>
+  </header>
+
+  <div id="gate" class="gate hidden"></div>
+
+  <div id="app" class="hidden">
+    <div class="controls">
+      <div class="ctrl-row">
+        <div class="seg" id="modeSeg">
+          <button data-mode="akquise" class="on">🎯 Akquise</button>
+          <button data-mode="haendler">🏪 Bestehende Händler</button>
+        </div>
+        <label class="loc-info" for="radiusSel">Umkreis</label>
+        <select id="radiusSel">
+          <option value="2000">2 km</option>
+          <option value="5000">5 km</option>
+          <option value="10000" selected>10 km</option>
+          <option value="20000">20 km</option>
+          <option value="30000">30 km</option>
+          <option value="50000">50 km</option>
+        </select>
+        <button class="btn btn-blue" id="gpsBtn">📍 Mein Standort</button>
+        <div class="loc-box">
+          <input class="inp" id="addrInp" placeholder="oder Adresse / Ort eingeben …" autocomplete="off">
+          <button class="btn btn-ghost" id="addrBtn">Suchen</button>
+        </div>
+      </div>
+      <div class="ctrl-row">
+        <div class="chips" id="spartenChips"></div>
+        <button class="btn btn-ghost btn-sm" id="spartenAllBtn">Alle</button>
+      </div>
+      <div class="loc-info" id="locInfo">Kein Standort gewählt.</div>
+    </div>
+
+    <div class="main">
+      <div class="map-card">
+        <div id="map"></div>
+        <div class="map-placeholder hidden" id="mapPlaceholder"></div>
+      </div>
+      <div class="list-card">
+        <div class="list-head" id="listHead"></div>
+        <div class="list-body" id="listBody"></div>
+        <div class="list-foot" id="listFoot"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Anmeldung -->
+<div class="modal-bg hidden" id="authModal">
+  <div class="modal">
+    <h3>Anmeldung erforderlich</h3>
+    <p>Bitte mit den Zugangsdaten des Performance Dashboards anmelden.</p>
+    <input type="email" class="login-inp" id="authEmail" placeholder="E-Mail" autocomplete="username">
+    <input type="password" class="login-inp" id="authPassword" placeholder="Passwort" autocomplete="current-password">
+    <div class="error" id="authHint"></div>
+    <div class="actions"><button class="btn btn-blue" id="authLoginBtn" style="width:100%;justify-content:center">Anmelden</button></div>
+  </div>
+</div>
+
+<!-- Detail -->
+<div class="modal-bg hidden" id="detailModal">
+  <div class="modal" id="detailBox"></div>
+</div>
+
+<!-- Navigation: App-Auswahl -->
+<div class="modal-bg hidden" id="navModal">
+  <div class="modal" style="max-width:380px">
+    <button class="btn btn-ghost btn-sm close" data-close="navModal">✕</button>
+    <h3>Navigation starten</h3>
+    <p id="navTarget"></p>
+    <div class="nav-choice">
+      <a class="btn btn-blue" id="navGoogle" target="_blank" rel="noopener">Google Maps</a>
+      <a class="btn btn-navy" id="navApple" target="_blank" rel="noopener">Apple Karten</a>
+      <a class="btn btn-ghost" id="navWaze" target="_blank" rel="noopener">Waze</a>
+    </div>
+  </div>
+</div>
+
+<!-- Einstellungen (nur Admin) -->
+<div class="modal-bg hidden" id="settingsModal">
+  <div class="modal" style="max-width:560px">
+    <button class="btn btn-ghost btn-sm close" data-close="settingsModal">✕</button>
+    <h3>Einstellungen Akquisetool</h3>
+    <p>Nur für Admins sichtbar.</p>
+
+    <div class="section-t">Freigabe</div>
+    <div id="setEnabledInfo" style="font-size:13px;margin-top:6px"></div>
+
+    <div class="section-t">Google Maps – Browser-Schlüssel</div>
+    <p style="margin:6px 0">Für die Kartenanzeige (Maps JavaScript API). Auf die Dashboard-Domains beschränken – der Schlüssel ist im Browser sichtbar.</p>
+    <div style="display:flex;gap:6px">
+      <input class="inp" id="setBrowserKey" placeholder="AIza…" style="flex:1;min-width:0" autocomplete="off">
+      <button class="btn btn-blue" id="setBrowserKeySave">Speichern</button>
+    </div>
+
+    <div class="section-t">Google Maps – Server-Schlüssel</div>
+    <div id="setServerInfo" style="font-size:13px;margin-top:6px">wird geprüft …</div>
+
+    <div class="section-t">Händler-Koordinaten (Geocoding)</div>
+    <div id="setGeoInfo" style="font-size:13px;margin-top:6px"></div>
+    <div class="progress hidden" id="geoProgress"><div></div></div>
+    <div class="actions"><button class="btn btn-navy" id="geoRunBtn">Händleradressen jetzt geocodieren</button></div>
+  </div>
+</div>
+
+<div class="toast hidden" id="toast"></div>
+
+<script>
+/* ---------- Konfiguration ---------- */
+const SUPABASE_URL = "https://gfyjftwlombhmwirbyse.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_cRlqSLEgLbOtIo_QX_Q3Zw_zWp2HmZU";
+const sb = (typeof supabase!=="undefined") ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  global: { fetch: (url, options) => fetch(url, { ...options, cache: "no-store" }) }
+}) : null;
+
+// Sparten: id = Schlüssel in Edge Function/DB, wko = Branchen-Slug für die
+// Firmen-A–Z-Links der WKO (firmen.wko.at/<wko>/<bezirk>_bezirk/).
+const SPARTEN = [
+  { id:"elektrohandel",  label:"Elektrohandel",         color:"#009FE3", wko:"elektrohandel" },
+  { id:"elektroservice", label:"Elektroservicebetrieb", color:"#0B6E99", wko:"elektrotechniker" },
+  { id:"mobilfunk",      label:"Mobilfunk",             color:"#7C3AED", wko:"handyshop" },
+  { id:"hoerakustik",    label:"Hörakustiker",          color:"#DB2777", wko:"hörakustiker" },
+  { id:"optiker",        label:"Optiker",               color:"#059669", wko:"optiker" },
+  { id:"kuechen",        label:"Küchenhändler",         color:"#D97706", wko:"küchenstudio" },
+  { id:"uhren",          label:"Uhrenhändler",          color:"#475569", wko:"uhrmacher" },
+];
+const SPARTE_BY_ID = Object.fromEntries(SPARTEN.map(s=>[s.id,s]));
+
+const PLACE_STATUS = [
+  { id:"offen",          label:"Offen" },
+  { id:"kontaktiert",    label:"Kontaktiert" },
+  { id:"termin",         label:"Termin vereinbart" },
+  { id:"kein_interesse", label:"Kein Interesse" },
+  { id:"angelegt",       label:"Bereits angelegt" },
+];
+
+const SEG_POT = { "A+":1, "A":.85, "B":.65, "C+":.45, "C":.3, "D":.15 };
+
+/* ---------- Zustand ---------- */
+let supaUser=null, myRole=null, myName=null;
+let toolEnabled=false, browserKey="";
+let mode="akquise";
+let radius=10000;
+let selSparten=new Set(SPARTEN.map(s=>s.id));
+let myPos=null;            // {lat,lng,label}
+let dealers=[];            // bestehende Händler (aufbereitet)
+let placeStatus={};        // place_id -> {status,notiz}
+let akqResults=null;       // letzte Akquise-Suche (Rohdaten + Abgleich)
+let akqKey="";             // Cache-Schlüssel der letzten Suche
+let akqLoading=false;
+let detailsCache={};       // place_id -> Details
+let reverseCache={};       // "lat,lng" -> Bezirk/Bundesland
+let showInactive=false, hideKnown=true, hideNoInterest=true, sortBy="score";
+let selectedId=null;
+let gmap=null, meMarker=null, circle=null, markers=[], mapsReady=false;
+
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt=n=>(n==null||isNaN(n))?"–":Math.round(n).toLocaleString("de-AT");
+const fmtKm=m=>m<1000?Math.round(m)+" m":(m/1000).toLocaleString("de-AT",{maximumFractionDigits:1})+" km";
+function toast(msg,ms=3200){ const t=$("toast"); t.textContent=msg; t.classList.remove("hidden"); clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.add("hidden"),ms); }
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+
+function distM(lat1,lng1,lat2,lng2){
+  const R=6371000, r=d=>d*Math.PI/180;
+  const a=Math.sin(r(lat2-lat1)/2)**2+Math.cos(r(lat1))*Math.cos(r(lat2))*Math.sin(r(lng2-lng1)/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
+}
+
+/* ---------- Supabase-Helfer ---------- */
+// PostgREST liefert je Abfrage max. 1000 Zeilen - seitenweise mit fester
+// Sortierung (Primärschlüssel), damit beim Blättern nichts doppelt/fehlt.
+async function fetchAll(table, cols, orderCol){
+  const out=[]; let from=0;
+  for(;;){
+    const q=sb.from(table).select(cols).order(orderCol).range(from,from+999);
+    const { data, error } = await q;
+    if(error) throw error;
+    out.push(...(data||[]));
+    if(!data || data.length<1000) break;
+    from+=1000;
+  }
+  return out;
+}
+async function kvGetMany(keys){
+  const { data, error } = await sb.from("dashboard_kv").select("key,value").in("key",keys);
+  if(error) throw error;
+  const out={}; for(const r of data||[]) out[r.key]=r.value; return out;
+}
+async function kvSet(k,v){
+  const { error } = await sb.from("dashboard_kv").upsert({ key:k, value:v, updated_at:new Date().toISOString() });
+  if(error) throw error;
+}
+async function callFn(action, payload={}){
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session) throw new Error("Nicht angemeldet");
+  const res = await fetch(SUPABASE_URL+"/functions/v1/akquise-google", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+session.access_token, "apikey":SUPABASE_ANON_KEY },
+    body: JSON.stringify({ action, ...payload }),
+  });
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error||("HTTP "+res.status));
+  return data;
+}
+
+/* ---------- Auth ---------- */
+async function init(){
+  if(!sb){ showGate("Verbindung fehlgeschlagen","Die Supabase-Bibliothek konnte nicht geladen werden."); return; }
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session){ $("authModal").classList.remove("hidden"); return; }
+  supaUser=session.user;
+  await afterLogin();
+}
+async function doLogin(){
+  const email=$("authEmail").value.trim(), password=$("authPassword").value;
+  if(!email||!password){ $("authHint").textContent="Bitte E-Mail und Passwort eingeben."; return; }
+  $("authLoginBtn").disabled=true;
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  $("authLoginBtn").disabled=false;
+  if(error){ $("authHint").textContent="Anmeldung fehlgeschlagen: "+error.message; return; }
+  supaUser=data.user;
+  $("authModal").classList.add("hidden");
+  await afterLogin();
+}
+async function doLogout(){
+  try{ await sb.auth.signOut(); }catch(e){}
+  location.reload();
+}
+function showGate(title, text, html){
+  $("app").classList.add("hidden");
+  const g=$("gate"); g.classList.remove("hidden");
+  g.innerHTML=`<h2>${esc(title)}</h2><p>${esc(text)}</p>${html||""}`;
+}
+async function afterLogin(){
+  $("logoutBtn").classList.remove("hidden");
+  const { data:p } = await sb.from("profiles").select("role,name,must_change_password").eq("id",supaUser.id).maybeSingle();
+  myRole=p&&p.role; myName=p&&p.name;
+  $("roleBadge").textContent=(myName||supaUser.email)+(myRole==="admin"?" · Admin":"");
+  $("roleBadge").classList.remove("hidden");
+  if(p&&p.must_change_password){
+    showGate("Passwort ändern","Bitte zuerst im Dashboard ein neues Passwort vergeben.",`<p style="margin-top:14px"><a class="btn btn-blue" href="index.html">Zum Dashboard</a></p>`);
+    return;
+  }
+  let kv={};
+  try{ kv=await kvGetMany(["akquisetool_enabled","google_maps_browser_key","wg-state"]); }
+  catch(e){ showGate("Daten konnten nicht geladen werden", e.message||String(e)); return; }
+  toolEnabled=kv["akquisetool_enabled"]==="1";
+  browserKey=(kv["google_maps_browser_key"]||"").trim();
+  if(!toolEnabled && myRole!=="admin"){
+    showGate("Akquisetool nicht freigeschaltet","Das Akquisetool ist derzeit noch nicht aktiviert. Bitte bei der Administration melden.");
+    return;
+  }
+  if(myRole==="admin") $("settingsBtn").classList.remove("hidden");
+  $("app").classList.remove("hidden");
+  if(!toolEnabled) toast("Hinweis: Das Tool ist noch nicht für alle freigeschaltet – nur Admins sehen es.",5000);
+  renderChips();
+  restorePrefs();
+  try{ await loadDealers(kv["wg-state"]); }
+  catch(e){ console.error(e); toast("Händlerdaten konnten nicht geladen werden: "+(e.message||e),6000); }
+  initMap();
+  const saved=lsGet("akq_pos");
+  if(saved){ try{ const p=JSON.parse(saved); if(p&&isFinite(p.lat)) setPosition(p.lat,p.lng,p.label||"Zuletzt verwendeter Standort",false); }catch(e){} }
+  if(!myPos) locateMe(true);
+  render();
+}
+
+/* ---------- Einstellungen merken ---------- */
+function restorePrefs(){
+  const m=lsGet("akq_mode"); if(m==="akquise"||m==="haendler") mode=m;
+  const r=parseInt(lsGet("akq_radius")); if(r) radius=r;
+  try{ const s=JSON.parse(lsGet("akq_sparten")||"null"); if(Array.isArray(s)&&s.length) selSparten=new Set(s.filter(x=>SPARTE_BY_ID[x])); }catch(e){}
+  $("radiusSel").value=String(radius);
+  if($("radiusSel").value!==String(radius)){ radius=10000; $("radiusSel").value="10000"; }
+  [...$("modeSeg").children].forEach(b=>b.classList.toggle("on",b.dataset.mode===mode));
+  renderChips();
+}
+function savePrefs(){
+  lsSet("akq_mode",mode); lsSet("akq_radius",String(radius)); lsSet("akq_sparten",JSON.stringify([...selSparten]));
+}
+
+/* ---------- Händlerdaten ---------- */
+// Sparte aus Name/Hauptzweig ableiten, solange keine manuelle Sparte
+// (akquise_geo.sparte) gesetzt ist.
+function guessSparte(name, hauptzweig){
+  const n=String(name||"").toLowerCase(), hz=String(hauptzweig||"").toLowerCase();
+  if(hz==="akustik"||/\bh(ö|oe)r(akustik|ger|zentr|center|studio|welt|service|lösung)|neuroth|hansaton|amplifon|audio ?h(ö|oe)r|akustik/.test(n)) return "hoerakustik";
+  if(/optik|optiker|brille|fielmann|pearle|augen/.test(n)) return "optiker";
+  if(/\buhr|uhren|juwel|schmuck|goldschmied/.test(n)) return "uhren";
+  if(/küche|kueche|kuchen ?studio|möbel|moebel|einricht|tischler/.test(n)) return "kuechen";
+  if(hz==="mobilfunk"||/handy|mobil|phone|telekom|a1 |magenta|\bdrei\b|smartphone|telefon/.test(n)) return "mobilfunk";
+  if(hz==="kundendienst"||/kundendienst|reparatur|service|elektrotechnik|installation/.test(n)) return "elektroservice";
+  return "elektrohandel";
+}
+
+async function loadDealers(stateRaw){
+  let latest=null;
+  try{ const st=stateRaw?JSON.parse(stateRaw):null; latest=st&&st.latest; }catch(e){}
+  const [contacts, geo, besuche, status] = await Promise.all([
+    fetchAll("fh_contacts","fh_nr,strasse,plz,ort,telefon,email,homepage,ansprechpartner,segmentierung,segmentierung_prev,letzter_besuch,hauptzweig,akq_name,akq_gl,kooperation","fh_nr"),
+    fetchAll("akquise_geo","fh_nr,lat,lng,genauigkeit,sparte,geocoded_at","fh_nr"),
+    fetchAll("trainerbesuche","fh_nr,besuch_datum,trainer_name","id"),
+    fetchAll("akquise_place_status","place_id,status,notiz","place_id"),
+  ]);
+  placeStatus={}; for(const s of status) placeStatus[s.place_id]=s;
+  const geoBy=Object.fromEntries(geo.map(g=>[g.fh_nr,g]));
+  const tbBy={};
+  for(const b of besuche){ const cur=tbBy[b.fh_nr]; if(!cur||b.besuch_datum>cur.besuch_datum) tbBy[b.fh_nr]=b; }
+  const fhLatest=(latest&&latest.fh)||{};
+  const akqBy={}; for(const a of (latest&&latest.akq)||[]) if(a&&a.nr) akqBy[String(a.nr)]=a;
+
+  dealers=contacts.map(c=>{
+    const nr=String(c.fh_nr);
+    const f=fhLatest[nr], a=akqBy[nr], g=geoBy[nr], tb=tbBy[nr];
+    const name=(f&&f.name)||(a&&a.name)||c.akq_name||("Fachhändler "+nr);
+    const visits=[c.letzter_besuch, tb&&tb.besuch_datum].filter(Boolean).sort();
+    return {
+      nr, name,
+      aktiv: !!f, akq: !!a,
+      betreuer: (f&&(f.emp||f.gl))||(a&&(a.emp||a.glRaw))||c.akq_gl||"",
+      strasse:c.strasse||(a&&a.strasse)||"", plz:c.plz||(f&&f.plz)||"", ort:c.ort||(f&&f.ort)||"",
+      telefon:c.telefon||(a&&a.tel)||"", email:c.email||"", homepage:c.homepage||"", ansprechpartner:c.ansprechpartner||"",
+      segment:c.segmentierung||"", segmentPrev:c.segmentierung_prev||"",
+      kooperation:c.kooperation||"",
+      vt:f?f.vt:null, monat:f?f.monat:null, lj:f?f.lj:(a?a.p2026:null), vj:f?f.vj:(a?a.p2025:null), plan:f?f.plan:null,
+      letzterBesuch: visits.length?visits[visits.length-1]:null,
+      trainerBesuch: tb||null,
+      lat: g&&g.lat!=null?g.lat:null, lng: g&&g.lng!=null?g.lng:null, genauigkeit: g&&g.genauigkeit||null,
+      sparteManuell: g&&g.sparte||null,
+      sparte: (g&&g.sparte)||guessSparte(name, c.hauptzweig),
+    };
+  });
+  // Akquisekunden ohne fh_contacts-Eintrag (selten) trotzdem fuer den
+  // Abgleich aufnehmen (ohne Koordinaten).
+  const known=new Set(dealers.map(d=>d.nr));
+  for(const [nr,a] of Object.entries(akqBy)){
+    if(known.has(nr)) continue;
+    dealers.push({ nr, name:a.name||("AKQ "+nr), aktiv:false, akq:true, betreuer:a.emp||a.glRaw||"", strasse:a.strasse||"", plz:a.plz||"", ort:a.ort||"",
+      telefon:a.tel||"", email:"", homepage:"", ansprechpartner:"", segment:"", segmentPrev:"", kooperation:"", vt:null, monat:null, lj:a.p2026, vj:a.p2025, plan:null,
+      letzterBesuch:null, trainerBesuch:null, lat:null, lng:null, genauigkeit:null, sparteManuell:null, sparte:guessSparte(a.name,"") });
+  }
+  for(const d of dealers){ d.addrKey=addrKey(d.strasse, d.plz); d.nameTokens=nameTokens(d.name); }
+}
+
+/* ---------- Abgleich Google-Treffer <-> bestehende Händler ---------- */
+function normStreet(s){
+  return String(s||"").toLowerCase()
+    .replace(/ß/g,"ss").replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue")
+    .replace(/strasse|straße|str\.?(?=\s|\d|$)/g,"str").replace(/gasse/g,"g").replace(/platz/g,"pl")
+    .replace(/[^a-z0-9]/g,"");
+}
+// "Hauptstraße 12a/3" -> "hauptstr|12|8010"
+function addrKey(strasse, plz, hausnr){
+  let s=String(strasse||"").trim(), nr=String(hausnr||"").trim();
+  if(!nr){ const m=s.match(/^(.*?)(\d+)/); if(m){ nr=m[2]; s=m[1]; } }
+  else { const m=nr.match(/\d+/); nr=m?m[0]:nr; }
+  const st=normStreet(s);
+  if(!st||!plz) return "";
+  return st+"|"+(nr||"")+"|"+String(plz).trim();
+}
+const NAME_STOP=new Set(["gmbh","mbh","ges","gesmbh","kg","og","eu","e.u","co","und","the","der","die","das","fa","firma","inh","inhaber","filiale","shop","store","austria","österreich","oesterreich","handel","handels","gesellschaft","ag","se","gmbhco","cokg"]);
+function nameTokens(n){
+  return String(n||"").toLowerCase().replace(/ß/g,"ss").replace(/[^a-z0-9äöü]+/g," ").split(" ")
+    .filter(t=>t.length>=3&&!NAME_STOP.has(t));
+}
+function nameSim(a,b){
+  if(!a.length||!b.length) return 0;
+  const B=new Set(b); let hit=0;
+  for(const t of new Set(a)) if(B.has(t)||[...B].some(x=>x.length>=5&&t.length>=5&&(x.startsWith(t)||t.startsWith(x)))) hit++;
+  return hit/Math.min(new Set(a).size,B.size);
+}
+// Ergebnis: "angelegt" (sicher bei uns), "pruefen" (möglicherweise), "neu".
+function matchPlace(p){
+  const key=addrKey(p.strasse, p.plz, p.hausnr);
+  const toks=nameTokens(p.name);
+  let best=null, bestLvl=0;
+  for(const d of dealers){
+    let lvl=0;
+    const sim=nameSim(toks, d.nameTokens);
+    const addrHit=key&&d.addrKey&&key===d.addrKey;
+    const dist=(d.lat!=null)?distM(p.lat,p.lng,d.lat,d.lng):Infinity;
+    if(addrHit&&sim>=.5) lvl=3;
+    else if(dist<120&&sim>=.5) lvl=3;
+    else if(sim>=.8&&p.plz&&p.plz===d.plz) lvl=3;
+    else if(addrHit) lvl=2;
+    else if(dist<35&&d.genauigkeit==="adresse") lvl=2;
+    else if(sim>=.6&&dist<1500) lvl=2;
+    if(lvl>bestLvl){ bestLvl=lvl; best=d; if(lvl===3) break; }
+  }
+  return { match: bestLvl===3?"angelegt":bestLvl===2?"pruefen":"neu", dealer: best };
+}
+
+/* ---------- Besuchs-Score ---------- */
+// Erwarteter Jahresanteil der Produktion (saisonal wie die Hochrechnung im
+// Dashboard: 71 % bis 30.09., restliche 29 % Okt–Dez - hier vereinfacht nach
+// Kalendertagen statt Arbeitstagen).
+function seasonalShare(d=new Date()){
+  const start=new Date(d.getFullYear(),0,1), sep30=new Date(d.getFullYear(),8,30), dec31=new Date(d.getFullYear(),11,31);
+  if(d<=sep30) return .71*((d-start)/(sep30-start));
+  return .71+.29*((d-sep30)/(dec31-sep30));
+}
+function daysSince(iso){ if(!iso) return null; const t=new Date(iso+"T00:00:00"); return Math.max(0,Math.floor((Date.now()-t)/86400000)); }
+
+function scoreDealer(d, dist){
+  const reasons=[];
+  // 1) Besuchsrückstand (35 %)
+  const days=daysSince(d.letzterBesuch);
+  let besuch;
+  if(days==null){ besuch=.8; reasons.push("Kein Besuch erfasst"); }
+  else { besuch=Math.min(days/180,1); if(days>=60) reasons.push(`Letzter Besuch vor ${days} Tagen`); else reasons.push(`Kürzlich besucht (vor ${days} Tagen)`); }
+  // 2) Potenzial (25 %)
+  let pot;
+  if(d.segment&&SEG_POT[d.segment]!=null){ pot=SEG_POT[d.segment]; if(pot>=.65) reasons.push(`Segment ${d.segment}`); }
+  else { const lj=d.lj||0; pot=lj>=200?.7:lj>=50?.5:.3; }
+  // 3) Entwicklung (25 %) - Rückgang zum Vorjahr bzw. Rückstand zum Plan
+  let entw=.4;
+  const ratios=[];
+  if(d.vj>0&&d.lj!=null){ const r=d.lj/d.vj; ratios.push(r); if(r<.9) reasons.push(`Produktion ${Math.round((r-1)*100)} % zum Vorjahr`); else if(r>1.1) reasons.push(`Produktion +${Math.round((r-1)*100)} % zum Vorjahr`); }
+  const share=seasonalShare();
+  if(d.plan>0&&d.lj!=null&&share>0){ const r=d.lj/(d.plan*share); ratios.push(r); if(r<.9) reasons.push(`Plan zu ${Math.round(r*100)} % erfüllt (saisonal)`); }
+  if(ratios.length){ const r=Math.min(...ratios); entw=r>=1?.2:Math.min(1,.2+(1-r)*1.6); }
+  if(d.monat===0&&(d.lj||0)>0){ entw=Math.min(1,entw+.15); reasons.push("Diesen Monat noch keine Produktion"); }
+  if(!d.aktiv&&!d.akq) reasons.push("Derzeit kein aktiver Händler (Reaktivierung?)");
+  // 4) Nähe (15 %)
+  const naehe=Math.max(0,1-dist/radius);
+  const score=Math.round(100*(.35*besuch+.25*pot+.25*entw+.15*naehe));
+  return { score, reasons };
+}
+function scoreColor(s){ return s>=70?"#E0234E":s>=50?"#F59E0B":"#12A150"; }
+function scoreLabel(s){ return s>=70?"Besuch sehr lohnend":s>=50?"Besuch lohnend":"Kann warten"; }
+
+/* ---------- Standort ---------- */
+function locateMe(silent){
+  if(!navigator.geolocation){ if(!silent) toast("GPS wird von diesem Gerät nicht unterstützt."); return; }
+  $("locInfo").textContent="Standort wird ermittelt …";
+  navigator.geolocation.getCurrentPosition(
+    pos=>setPosition(pos.coords.latitude,pos.coords.longitude,`GPS-Standort (± ${Math.round(pos.coords.accuracy)} m)`,true),
+    err=>{
+      const msg=err.code===1?"Standortzugriff wurde verweigert – bitte in den Browser-Einstellungen erlauben oder eine Adresse eingeben.":"Standort konnte nicht ermittelt werden – bitte eine Adresse eingeben.";
+      $("locInfo").textContent=myPos?("Standort: "+myPos.label):msg;
+      if(!silent) toast(msg,5000);
+    },
+    { enableHighAccuracy:true, timeout:15000, maximumAge:60000 }
+  );
+}
+async function searchAddress(){
+  const q=$("addrInp").value.trim(); if(!q) return;
+  $("addrBtn").disabled=true;
+  try{
+    const r=await callFn("geocode_address",{address:q});
+    setPosition(r.lat,r.lng,r.adresse,true);
+  }catch(e){ toast("Adresse nicht gefunden: "+(e.message||e),5000); }
+  $("addrBtn").disabled=false;
+}
+function setPosition(lat,lng,label,save){
+  myPos={lat,lng,label};
+  if(save) lsSet("akq_pos",JSON.stringify(myPos));
+  $("locInfo").textContent="Standort: "+label;
+  akqResults=null; akqKey="";
+  updateMapPosition(true);
+  render();
+}
+
+/* ---------- Google Maps ---------- */
+function initMap(){
+  if(!browserKey){
+    showMapPlaceholder("Karte noch nicht verbunden", myRole==="admin"
+      ? "Bitte unter ⚙ Einstellungen den Google-Maps-Browser-Schlüssel hinterlegen. Die Liste funktioniert auch ohne Karte."
+      : "Die Kartenanzeige wird gerade eingerichtet. Die Liste funktioniert bereits.");
+    return;
+  }
+  if(window.google&&window.google.maps){ onMapsLoaded(); return; }
+  window.__akqMapsCb=onMapsLoaded;
+  window.gm_authFailure=()=>showMapPlaceholder("Google-Maps-Schlüssel ungültig","Der Browser-Schlüssel wurde von Google abgelehnt (Domain-Beschränkung oder API nicht aktiviert).");
+  const s=document.createElement("script");
+  s.src="https://maps.googleapis.com/maps/api/js?key="+encodeURIComponent(browserKey)+"&v=weekly&language=de&region=AT&loading=async&callback=__akqMapsCb";
+  s.async=true;
+  s.onerror=()=>showMapPlaceholder("Karte konnte nicht geladen werden","Bitte Internetverbindung prüfen.");
+  document.head.appendChild(s);
+}
+function showMapPlaceholder(title,text){
+  const p=$("mapPlaceholder"); p.classList.remove("hidden");
+  p.innerHTML=`<div style="font-size:34px">🗺️</div><h3>${esc(title)}</h3><div>${esc(text)}</div>`;
+}
+function onMapsLoaded(){
+  mapsReady=true;
+  gmap=new google.maps.Map($("map"),{
+    center: myPos?{lat:myPos.lat,lng:myPos.lng}:{lat:47.6,lng:14.1}, zoom: myPos?12:7,
+    mapTypeControl:false, streetViewControl:false, fullscreenControl:true, clickableIcons:false,
+    gestureHandling:"greedy",
+  });
+  updateMapPosition(true);
+  renderMarkers();
+}
+function updateMapPosition(fit){
+  if(!mapsReady||!myPos) return;
+  const ll={lat:myPos.lat,lng:myPos.lng};
+  if(!meMarker){
+    meMarker=new google.maps.Marker({ map:gmap, position:ll, draggable:true, zIndex:9999, title:"Mein Standort (verschiebbar)",
+      icon:{ path:google.maps.SymbolPath.CIRCLE, scale:9, fillColor:"#009FE3", fillOpacity:1, strokeColor:"#fff", strokeWeight:3 } });
+    meMarker.addListener("dragend",e=>setPosition(e.latLng.lat(),e.latLng.lng(),"Manuell gesetzter Standort",true));
+  } else meMarker.setPosition(ll);
+  if(!circle){
+    circle=new google.maps.Circle({ map:gmap, center:ll, radius, strokeColor:"#009FE3", strokeOpacity:.7, strokeWeight:2, fillColor:"#009FE3", fillOpacity:.06, clickable:false });
+  } else { circle.setCenter(ll); circle.setRadius(radius); }
+  if(fit) gmap.fitBounds(circle.getBounds(),20);
+}
+function pinIcon(color, text, ring){
+  const t=esc(text||"");
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="30" height="42" viewBox="0 0 30 42"><path d="M15 1C7.3 1 1 7.2 1 14.9 1 25.3 15 41 15 41s14-15.7 14-26.1C29 7.2 22.7 1 15 1z" fill="${ring?"#fff":color}" stroke="${ring?color:"#fff"}" stroke-width="${ring?3:2}"/><text x="15" y="19.5" text-anchor="middle" font-family="Segoe UI,Arial" font-weight="800" font-size="${t.length>2?9.5:11}" fill="${ring?color:"#fff"}">${t}</text></svg>`;
+  return { url:"data:image/svg+xml;charset=UTF-8,"+encodeURIComponent(svg), scaledSize:new google.maps.Size(30,42), anchor:new google.maps.Point(15,41) };
+}
+function clearMarkers(){ for(const m of markers) m.setMap(null); markers=[]; }
+function renderMarkers(){
+  if(!mapsReady) return;
+  clearMarkers();
+  for(const it of currentItems()){
+    let icon;
+    if(it.kind==="dealer") icon=pinIcon(scoreColor(it.score), String(it.score), false);
+    else icon=pinIcon((SPARTE_BY_ID[it.sparten[0]]||{}).color||"#009FE3", it.match==="pruefen"?"?":"", it.match==="pruefen");
+    const m=new google.maps.Marker({ map:gmap, position:{lat:it.lat,lng:it.lng}, icon, title:it.name, zIndex:it.id===selectedId?5000:(it.score||0)+10 });
+    m.addListener("click",()=>{ selectItem(it.id,true); openDetail(it); });
+    markers.push(m);
+  }
+}
+
+/* ---------- Aufbereitung der Listen ---------- */
+function dealerItems(){
+  if(!myPos) return [];
+  const out=[];
+  for(const d of dealers){
+    if(d.lat==null) continue;
+    if(!showInactive&&!d.aktiv&&!d.akq) continue;
+    if(!selSparten.has(d.sparte)) continue;
+    const dist=distM(myPos.lat,myPos.lng,d.lat,d.lng);
+    if(dist>radius) continue;
+    const s=scoreDealer(d,dist);
+    out.push({ kind:"dealer", id:"fh:"+d.nr, d, name:d.name, lat:d.lat, lng:d.lng, dist, score:s.score, reasons:s.reasons });
+  }
+  out.sort(sortBy==="dist"?(a,b)=>a.dist-b.dist:sortBy==="besuch"?(a,b)=>(daysSince(b.d.letzterBesuch)??99999)-(daysSince(a.d.letzterBesuch)??99999):(a,b)=>b.score-a.score||a.dist-b.dist);
+  return out;
+}
+function akqItems(){
+  if(!akqResults) return [];
+  return akqResults.filter(p=>{
+    if(!p.sparten.some(s=>selSparten.has(s))) return false;
+    const st=placeStatus[p.place_id]&&placeStatus[p.place_id].status;
+    if(hideKnown&&(p.match==="angelegt"||st==="angelegt")) return false;
+    if(hideNoInterest&&st==="kein_interesse") return false;
+    return true;
+  });
+}
+function currentItems(){ return mode==="haendler"?dealerItems():akqItems(); }
+
+/* ---------- Akquise-Suche ---------- */
+async function runAkqSearch(force){
+  if(!myPos){ toast("Bitte zuerst einen Standort wählen."); return; }
+  const sparten=[...selSparten];
+  if(!sparten.length){ toast("Bitte mindestens eine Sparte wählen."); return; }
+  const key=[myPos.lat.toFixed(4),myPos.lng.toFixed(4),radius,sparten.sort().join(",")].join("|");
+  if(!force&&key===akqKey&&akqResults) return;
+  akqLoading=true; render();
+  try{
+    const r=await callFn("search",{ lat:myPos.lat, lng:myPos.lng, radius, sparten });
+    akqResults=(r.results||[]).map(p=>{ const m=matchPlace(p); return { ...p, kind:"place", id:"pl:"+p.place_id, match:m.match, matchDealer:m.dealer }; });
+    akqKey=key;
+    if(r.errors&&r.errors.length) toast("Teilweise Fehler bei der Suche: "+r.errors[0],6000);
+    loadReverse();
+  }catch(e){
+    toast("Suche fehlgeschlagen: "+(e.message||e),6000);
+  }
+  akqLoading=false; render();
+}
+async function loadReverse(){
+  if(!myPos) return;
+  const k=myPos.lat.toFixed(3)+","+myPos.lng.toFixed(3);
+  if(reverseCache[k]) return;
+  try{ reverseCache[k]=await callFn("reverse",{lat:myPos.lat,lng:myPos.lng}); render(); }catch(e){}
+}
+function wkoSlug(s){
+  return String(s||"").toLowerCase().replace(/^bezirk\s+/,"").replace(/^st\.\s*/,"sankt-")
+    .replace(/[()]/g,"").replace(/\./g,"").replace(/\s+/g,"-").replace(/-+/g,"-").trim();
+}
+function wkoLinks(){
+  if(!myPos) return null;
+  const rv=reverseCache[myPos.lat.toFixed(3)+","+myPos.lng.toFixed(3)];
+  if(!rv) return null;
+  const bl=wkoSlug(rv.bundesland);
+  let bz=wkoSlug(rv.bezirk);
+  if(bz==="graz") bz="graz-stadt";
+  const isWien=bl==="wien";
+  const area=(!isWien&&bz)?bz+"_bezirk":bl;
+  const areaLabel=(!isWien&&rv.bezirk)?("Bezirk "+rv.bezirk.replace(/^Bezirk\s+/,"")):rv.bundesland;
+  if(!area) return null;
+  return { areaLabel, links: SPARTEN.filter(s=>selSparten.has(s.id)).map(s=>({ label:s.label, url:"https://firmen.wko.at/"+encodeURIComponent(s.wko)+"/"+encodeURIComponent(area)+"/" })) };
+}
+
+/* ---------- Rendering ---------- */
+function renderChips(){
+  $("spartenChips").innerHTML=SPARTEN.map(s=>`<button class="chip ${selSparten.has(s.id)?"on":""}" style="--c:${s.color}" data-sp="${s.id}"><span class="dot"></span>${esc(s.label)}</button>`).join("");
+}
+function render(){
+  renderList();
+  renderMarkers();
+}
+function renderList(){
+  const head=$("listHead"), body=$("listBody"), foot=$("listFoot");
+  if(mode==="haendler"){
+    const items=dealerItems();
+    const withGeo=dealers.filter(d=>d.lat!=null).length;
+    head.innerHTML=`
+      <div class="row"><h2>Bestehende Händler im Umkreis</h2><span class="count">${items.length} Händler</span></div>
+      <div class="row">
+        <select id="sortSel">
+          <option value="score" ${sortBy==="score"?"selected":""}>Sortierung: Besuchs-Score</option>
+          <option value="dist" ${sortBy==="dist"?"selected":""}>Sortierung: Entfernung</option>
+          <option value="besuch" ${sortBy==="besuch"?"selected":""}>Sortierung: Längster Besuch her</option>
+        </select>
+        <label class="chk"><input type="checkbox" id="inactChk" ${showInactive?"checked":""}> inaktive Händler zeigen</label>
+      </div>`;
+    foot.textContent=`Score = Besuchsrückstand 35 % · Potenzial (Segment) 25 % · Entwicklung (LJ zu VJ/Plan) 25 % · Nähe 15 %. Koordinaten vorhanden für ${withGeo} von ${dealers.length} Händlern.`;
+    if(!myPos){ body.innerHTML=emptyHtml("Kein Standort","Bitte „📍 Mein Standort“ tippen oder eine Adresse eingeben."); return; }
+    if(!withGeo){ body.innerHTML=emptyHtml("Händler noch ohne Koordinaten", myRole==="admin"?"Bitte unter ⚙ Einstellungen die Händleradressen geocodieren (einmalig, danach automatisch alle 30 Tage).":"Die Händleradressen werden gerade für die Karte aufbereitet."); return; }
+    if(!items.length){ body.innerHTML=emptyHtml("Keine Händler im Umkreis","Radius vergrößern oder andere Sparten wählen."); return; }
+    const top=items.slice(0,5);
+    body.innerHTML=(sortBy==="score"&&items.length>3?`<div class="top-box"><h3>🔥 Die lohnendsten Besuche in deiner Nähe</h3><ol>${top.map(it=>`<li data-id="${esc(it.id)}">${esc(it.name)} <span>· ${it.score} Pkt. · ${fmtKm(it.dist)}</span></li>`).join("")}</ol></div>`:"")
+      +items.slice(0,300).map(dealerItemHtml).join("")
+      +(items.length>300?`<div class="empty">… und ${items.length-300} weitere – Radius verkleinern.</div>`:"");
+  } else {
+    const items=akqItems();
+    const total=akqResults?akqResults.length:0;
+    const known=akqResults?akqResults.filter(p=>p.match==="angelegt").length:0;
+    head.innerHTML=`
+      <div class="row"><h2>Akquise – noch nicht bei uns</h2><span class="count">${akqResults?items.length+" Treffer":""}</span></div>
+      <div class="row">
+        <button class="btn btn-blue btn-sm" id="akqSearchBtn" ${akqLoading||!myPos?"disabled":""}>${akqLoading?"Suche läuft …":(akqResults?"🔄 Neu suchen":"🔍 Akquisen im Umkreis suchen")}</button>
+        <label class="chk"><input type="checkbox" id="hideKnownChk" ${hideKnown?"checked":""}> bereits angelegte ausblenden${akqResults?` (${known})`:""}</label>
+        <label class="chk"><input type="checkbox" id="hideNoIntChk" ${hideNoInterest?"checked":""}> „kein Interesse“ ausblenden</label>
+      </div>`;
+    foot.innerHTML=`Ergebnisse: Google Maps · Abgleich mit ${dealers.length} angelegten Händlern über Adresse, Name und Lage. „?“ = möglicherweise bereits angelegt.`;
+    if(!myPos){ body.innerHTML=emptyHtml("Kein Standort","Bitte „📍 Mein Standort“ tippen oder eine Adresse eingeben."); return; }
+    const wko=wkoLinks();
+    const wkoHtml=wko?`<div class="wko-box"><b>WKO Firmen A–Z</b> – ${esc(wko.areaLabel)}:<div class="links">${wko.links.map(l=>`<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)} ↗</a>`).join("")}</div></div>`:"";
+    if(akqLoading){ body.innerHTML=emptyHtml("Suche läuft …","Betriebe im Umkreis werden gesucht und mit unseren Händlern abgeglichen."); return; }
+    if(!akqResults){ body.innerHTML=wkoHtml+emptyHtml("Bereit zur Suche",`Umkreis ${fmtKm(radius)} · ${selSparten.size} Sparte(n). Tippe auf „Akquisen im Umkreis suchen“.`); return; }
+    if(!items.length){ body.innerHTML=wkoHtml+emptyHtml("Keine neuen Akquisen",total?`${total} Betriebe gefunden – alle bereits angelegt oder ausgeblendet.`:"Im Umkreis wurden keine passenden Betriebe gefunden."); return; }
+    body.innerHTML=wkoHtml+items.map(placeItemHtml).join("");
+  }
+}
+function emptyHtml(t,x){ return `<div class="empty"><h3>${esc(t)}</h3><div>${esc(x)}</div></div>`; }
+function dealerItemHtml(it){
+  const d=it.d, sp=SPARTE_BY_ID[d.sparte];
+  const days=daysSince(d.letzterBesuch);
+  return `<div class="item ${it.id===selectedId?"sel":""}" data-id="${esc(it.id)}">
+    <div class="badge" style="background:${scoreColor(it.score)}">${it.score}<small>Pkt.</small></div>
+    <div class="body">
+      <div class="name">${esc(d.name)}</div>
+      <div class="meta">${esc([d.strasse,[d.plz,d.ort].filter(Boolean).join(" ")].filter(Boolean).join(", "))}${d.betreuer?" · "+esc(d.betreuer):""}</div>
+      <div class="tags">
+        ${sp?`<span class="tag" style="background:${sp.color}1A;color:${sp.color}">${esc(sp.label)}</span>`:""}
+        ${d.segment?`<span class="tag">Segment ${esc(d.segment)}</span>`:""}
+        <span class="tag ${days==null||days>=90?"warn":""}">${days==null?"kein Besuch erfasst":"Besuch vor "+days+" T."}</span>
+        ${d.lj!=null?`<span class="tag">LJ ${fmt(d.lj)}${d.vj?" / VJ "+fmt(d.vj):""}</span>`:""}
+        ${!d.aktiv?`<span class="tag neg">${d.akq?"Akquisekunde":"inaktiv"}</span>`:""}
+      </div>
+    </div>
+    <div class="dist">${fmtKm(it.dist)}</div>
+  </div>`;
+}
+function placeItemHtml(p){
+  const st=placeStatus[p.place_id];
+  const stLbl=st?(PLACE_STATUS.find(s=>s.id===st.status)||{}).label:"";
+  return `<div class="item ${p.id===selectedId?"sel":""}" data-id="${esc(p.id)}">
+    <div class="badge" style="background:${(SPARTE_BY_ID[p.sparten[0]]||{}).color||"#009FE3"}">${p.match==="pruefen"?"?":"NEU"}<small>${p.match==="pruefen"?"prüfen":""}</small></div>
+    <div class="body">
+      <div class="name">${esc(p.name)}</div>
+      <div class="meta">${esc(p.adresse)}</div>
+      <div class="tags">
+        ${p.sparten.map(s=>SPARTE_BY_ID[s]).filter(Boolean).map(s=>`<span class="tag" style="background:${s.color}1A;color:${s.color}">${esc(s.label)}</span>`).join("")}
+        ${p.match==="pruefen"&&p.matchDealer?`<span class="tag warn">ähnlich: ${esc(p.matchDealer.name)}</span>`:""}
+        ${p.match==="angelegt"&&p.matchDealer?`<span class="tag pos">angelegt: ${esc(p.matchDealer.name)}</span>`:""}
+        ${stLbl?`<span class="tag ${st.status==="termin"?"pos":st.status==="kein_interesse"?"neg":""}">${esc(stLbl)}</span>`:""}
+      </div>
+    </div>
+    <div class="dist">${fmtKm(p.dist)}</div>
+  </div>`;
+}
+function selectItem(id, scroll){
+  selectedId=id;
+  document.querySelectorAll(".item.sel").forEach(e=>e.classList.remove("sel"));
+  const el=document.querySelector(`.item[data-id="${CSS.escape(id)}"]`);
+  if(el){ el.classList.add("sel"); if(scroll) el.scrollIntoView({block:"nearest",behavior:"smooth"}); }
+}
+function findItem(id){ return currentItems().find(i=>i.id===id); }
+
+/* ---------- Detail ---------- */
+function navTo(lat,lng,label,addr){
+  const dest=(lat!=null&&lng!=null)?`${lat},${lng}`:addr;
+  $("navTarget").textContent=label+(addr?" – "+addr:"");
+  $("navGoogle").href="https://www.google.com/maps/dir/?api=1&destination="+encodeURIComponent(dest)+"&travelmode=driving";
+  $("navApple").href="https://maps.apple.com/?daddr="+encodeURIComponent(dest)+"&dirflg=d";
+  $("navWaze").href=(lat!=null)?`https://waze.com/ul?ll=${lat},${lng}&navigate=yes`:"https://waze.com/ul?q="+encodeURIComponent(addr)+"&navigate=yes";
+  $("navModal").classList.remove("hidden");
+}
+function openDetail(it){
+  if(it.kind==="dealer") openDealerDetail(it); else openPlaceDetail(it);
+  $("detailModal").classList.remove("hidden");
+}
+function openDealerDetail(it){
+  const d=it.d;
+  const addr=[d.strasse,[d.plz,d.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  const yDev=d.vj>0&&d.lj!=null?Math.round((d.lj/d.vj-1)*100):null;
+  const share=seasonalShare();
+  const planPct=d.plan>0&&d.lj!=null?Math.round(d.lj/(d.plan*share)*100):null;
+  const tb=d.trainerBesuch;
+  $("detailBox").innerHTML=`
+    <button class="btn btn-ghost btn-sm close" data-close="detailModal">✕</button>
+    <h3>${esc(d.name)}</h3>
+    <p>FH-Nr. ${esc(d.nr)}${d.betreuer?" · Betreuer: "+esc(d.betreuer):""}${!d.aktiv?(d.akq?" · Akquisekunde":" · derzeit inaktiv"):""}</p>
+    <div class="score-big"><div class="num" style="background:${scoreColor(it.score)}">${it.score}</div>
+      <div><b style="color:var(--wg-navy)">${scoreLabel(it.score)}</b><ul>${it.reasons.map(r=>`<li>${esc(r)}</li>`).join("")}</ul></div></div>
+    <div class="prod">
+      <div><b>${fmt(d.vt)}</b><span>Vortag</span></div>
+      <div><b>${fmt(d.monat)}</b><span>Monat</span></div>
+      <div><b>${fmt(d.lj)}</b><span>lfd. Jahr</span></div>
+      <div><b>${fmt(d.vj)}</b><span>Vorjahr${yDev!=null?` (${yDev>0?"+":""}${yDev} %)`:""}</span></div>
+      <div><b>${fmt(d.plan)}</b><span>Plan${planPct!=null?` (${planPct} %)`:""}</span></div>
+    </div>
+    <dl class="kv">
+      <dt>Adresse</dt><dd>${esc(addr)||"–"}${d.genauigkeit==="ort"?' <span class="tag warn">nur Ort genau</span>':""}</dd>
+      <dt>Entfernung</dt><dd>${fmtKm(it.dist)}</dd>
+      <dt>Telefon</dt><dd>${d.telefon?`<a href="tel:${esc(d.telefon.replace(/[^\d+]/g,""))}">${esc(d.telefon)}</a>`:"–"}</dd>
+      ${d.email?`<dt>E-Mail</dt><dd><a href="mailto:${esc(d.email)}">${esc(d.email)}</a></dd>`:""}
+      ${d.ansprechpartner?`<dt>Ansprechpartner</dt><dd>${esc(d.ansprechpartner)}</dd>`:""}
+      ${d.homepage?`<dt>Homepage</dt><dd><a href="${esc(/^https?:/i.test(d.homepage)?d.homepage:"https://"+d.homepage)}" target="_blank" rel="noopener">${esc(d.homepage)}</a></dd>`:""}
+      <dt>Segment</dt><dd>${esc(d.segment||"–")}${d.segmentPrev&&d.segmentPrev!==d.segment?` (Vormonat ${esc(d.segmentPrev)})`:""}</dd>
+      ${d.kooperation?`<dt>Kooperation</dt><dd>${esc(d.kooperation)}</dd>`:""}
+      <dt>Letzter Besuch</dt><dd>${d.letzterBesuch?new Date(d.letzterBesuch+"T00:00:00").toLocaleDateString("de-AT"):"nicht erfasst"}</dd>
+      ${tb?`<dt>Trainerbesuch</dt><dd>${new Date(tb.besuch_datum+"T00:00:00").toLocaleDateString("de-AT")} · ${esc(tb.trainer_name)}</dd>`:""}
+      <dt>Sparte</dt><dd><select id="sparteSel" data-nr="${esc(d.nr)}">${SPARTEN.map(s=>`<option value="${s.id}" ${s.id===d.sparte?"selected":""}>${esc(s.label)}</option>`).join("")}</select>${d.sparteManuell?"":' <span class="tag">automatisch erkannt</span>'}</dd>
+    </dl>
+    <div class="actions">
+      <button class="btn btn-blue" id="detNav">🧭 Navigation</button>
+      ${d.telefon?`<a class="btn btn-ghost" href="tel:${esc(d.telefon.replace(/[^\d+]/g,""))}">📞 Anrufen</a>`:""}
+    </div>`;
+  $("detNav").onclick=()=>navTo(d.lat,d.lng,d.name,addr);
+  $("sparteSel").onchange=e=>saveSparte(d, e.target.value);
+}
+async function saveSparte(d, sparte){
+  const row={ sparte, updated_at:new Date().toISOString(), updated_by:supaUser.id };
+  try{
+    const { data, error } = await sb.from("akquise_geo").update(row).eq("fh_nr",d.nr).select("fh_nr");
+    if(error) throw error;
+    if(!data||!data.length){ const { error:e2 } = await sb.from("akquise_geo").insert({ fh_nr:d.nr, ...row }); if(e2) throw e2; }
+    d.sparte=sparte; d.sparteManuell=sparte;
+    toast("Sparte gespeichert ✓");
+    render();
+  }catch(e){ toast("Speichern fehlgeschlagen: "+(e.message||e),5000); }
+}
+async function openPlaceDetail(p){
+  const st=placeStatus[p.place_id]||{};
+  const box=$("detailBox");
+  // WKO Firmen A–Z hat keine Direktsuche nach Firmenname per URL - verlinkt
+  // wird die Branchenliste des Bezirks, in der der Betrieb zu finden ist.
+  const wko=wkoLinks();
+  const wkoSp=wko&&wko.links.find(l=>l.label===(SPARTE_BY_ID[p.sparten[0]]||{}).label);
+  const wkoUrl=wkoSp?wkoSp.url:"", wkoArea=wko?wko.areaLabel:"";
+  box.innerHTML=`
+    <button class="btn btn-ghost btn-sm close" data-close="detailModal">✕</button>
+    <h3>${esc(p.name)}</h3>
+    <p>${esc(p.typ||"")}${p.typ?" · ":""}${fmtKm(p.dist)} entfernt</p>
+    ${p.match==="pruefen"&&p.matchDealer?`<div class="score-big" style="background:var(--amber-bg)"><div><b>Möglicherweise bereits angelegt</b><div style="font-size:12.5px">Ähnlich: ${esc(p.matchDealer.name)} (FH-Nr. ${esc(p.matchDealer.nr)}, ${esc([p.matchDealer.strasse,p.matchDealer.plz,p.matchDealer.ort].filter(Boolean).join(" "))})</div></div></div>`:""}
+    ${p.match==="angelegt"&&p.matchDealer?`<div class="score-big" style="background:var(--pos-bg)"><div><b>Bereits angelegt</b><div style="font-size:12.5px">${esc(p.matchDealer.name)} (FH-Nr. ${esc(p.matchDealer.nr)})</div></div></div>`:""}
+    <dl class="kv" id="placeKv">
+      <dt>Adresse</dt><dd>${esc(p.adresse)}</dd>
+      <dt>Sparte</dt><dd>${p.sparten.map(s=>esc((SPARTE_BY_ID[s]||{}).label||s)).join(", ")}</dd>
+      <dt>Telefon</dt><dd id="plTel">wird geladen …</dd>
+      <dt>Website</dt><dd id="plWeb">…</dd>
+      <dt>Öffnungszeiten</dt><dd id="plHours">…</dd>
+      <dt>Bewertung</dt><dd id="plRating">…</dd>
+    </dl>
+    <div class="section-t">Akquise-Status</div>
+    <div class="status-row" id="plStatus">${PLACE_STATUS.map(s=>`<button data-st="${s.id}" class="${(st.status||"")===s.id?"on":""}">${esc(s.label)}</button>`).join("")}</div>
+    <textarea class="inp" id="plNote" placeholder="Notiz (z. B. Ansprechpartner, nächster Schritt) …">${esc(st.notiz||"")}</textarea>
+    <div class="actions">
+      <button class="btn btn-blue" id="detNav">🧭 Navigation</button>
+      <a class="btn btn-ghost hidden" id="plCall">📞 Anrufen</a>
+      ${p.maps_url?`<a class="btn btn-ghost" href="${esc(p.maps_url)}" target="_blank" rel="noopener">In Google Maps ↗</a>`:""}
+      ${wkoUrl?`<a class="btn btn-ghost" href="${esc(wkoUrl)}" target="_blank" rel="noopener">WKO-Liste ${esc(wkoArea)} ↗</a>`:""}
+      <button class="btn btn-navy" id="plSave">Status speichern</button>
+    </div>
+    <div style="font-size:10.5px;color:var(--muted);margin-top:8px">Firmendaten: Google Maps</div>`;
+  $("detNav").onclick=()=>navTo(p.lat,p.lng,p.name,p.adresse);
+  let selSt=st.status||"";
+  $("plStatus").onclick=e=>{ const b=e.target.closest("button[data-st]"); if(!b) return; selSt=b.dataset.st; [...$("plStatus").children].forEach(x=>x.classList.toggle("on",x===b)); };
+  $("plSave").onclick=()=>savePlaceStatus(p, selSt, $("plNote").value);
+  try{
+    const det=detailsCache[p.place_id]||(detailsCache[p.place_id]=await callFn("details",{place_id:p.place_id}));
+    if(!$("plTel")) return;
+    $("plTel").innerHTML=det.telefon?`<a href="tel:${esc(det.telefon.replace(/[^\d+]/g,""))}">${esc(det.telefon)}</a>`:"–";
+    $("plWeb").innerHTML=det.website?`<a href="${esc(det.website)}" target="_blank" rel="noopener">${esc(det.website.replace(/^https?:\/\/(www\.)?/,"").replace(/\/$/,""))}</a>`:"–";
+    $("plHours").innerHTML=det.oeffnungszeiten&&det.oeffnungszeiten.length?det.oeffnungszeiten.map(esc).join("<br>"):"–";
+    $("plRating").textContent=det.rating!=null?`${det.rating.toLocaleString("de-AT")} ★ (${det.ratings||0} Bewertungen)`:"–";
+    if(det.telefon){ const c=$("plCall"); c.href="tel:"+det.telefon.replace(/[^\d+]/g,""); c.classList.remove("hidden"); }
+  }catch(e){
+    if($("plTel")) $("plTel").textContent="Details nicht verfügbar ("+(e.message||e)+")";
+    ["plWeb","plHours","plRating"].forEach(id=>{ if($(id)) $(id).textContent="–"; });
+  }
+}
+async function savePlaceStatus(p, status, notiz){
+  if(!status){ toast("Bitte einen Status wählen."); return; }
+  const row={ place_id:p.place_id, status, notiz:notiz||null, sparte:p.sparten[0]||null, updated_at:new Date().toISOString(), updated_by:supaUser.id };
+  const { error } = await sb.from("akquise_place_status").upsert(row);
+  if(error){ toast("Speichern fehlgeschlagen: "+error.message,5000); return; }
+  placeStatus[p.place_id]=row;
+  toast("Status gespeichert ✓");
+  $("detailModal").classList.add("hidden");
+  render();
+}
+
+/* ---------- Einstellungen (Admin) ---------- */
+async function openSettings(){
+  $("settingsModal").classList.remove("hidden");
+  $("setBrowserKey").value=browserKey;
+  $("setEnabledInfo").innerHTML=toolEnabled
+    ? '<span class="tag pos">aktiv</span> Das Tool ist für alle Nutzer freigeschaltet (Schalter im Admin-Panel des Dashboards).'
+    : '<span class="tag warn">nicht freigeschaltet</span> Nur Admins können das Tool öffnen. Freigabe über das Admin-Panel des Dashboards („Akquisetool“).';
+  $("setServerInfo").textContent="wird geprüft …";
+  try{
+    const s=await callFn("status");
+    $("setServerInfo").innerHTML=s.configured
+      ? '<span class="tag pos">hinterlegt</span> Secret GOOGLE_MAPS_SERVER_KEY ist in Supabase gesetzt.'
+      : '<span class="tag neg">fehlt</span> Bitte in Supabase unter Edge Functions → Secrets den Namen GOOGLE_MAPS_SERVER_KEY mit dem Server-Schlüssel anlegen.';
+  }catch(e){ $("setServerInfo").textContent="Prüfung fehlgeschlagen: "+(e.message||e); }
+  updateGeoInfo();
+}
+function updateGeoInfo(){
+  const withAddr=dealers.filter(d=>d.plz||d.ort).length;
+  const geo=dealers.filter(d=>d.lat!=null).length;
+  const aktiv=dealers.filter(d=>d.aktiv), aktivGeo=aktiv.filter(d=>d.lat!=null).length;
+  $("setGeoInfo").innerHTML=`${geo} von ${withAddr} Händlern mit Adresse haben Koordinaten (aktive Händler: ${aktivGeo} von ${aktiv.length}). Koordinaten werden laut Google-Bedingungen alle 30 Tage aufgefrischt.`;
+}
+async function runGeocode(){
+  const btn=$("geoRunBtn"); btn.disabled=true;
+  const bar=$("geoProgress"); bar.classList.remove("hidden");
+  let done=0, startOffen=null;
+  try{
+    for(let i=0;i<40;i++){
+      const r=await callFn("geocode",{limit:150});
+      done+=r.verarbeitet||0;
+      if(startOffen==null) startOffen=(r.offen||0)+(r.verarbeitet||0);
+      bar.firstElementChild.style.width=(startOffen?Math.min(100,done/startOffen*100):100)+"%";
+      $("setGeoInfo").textContent=`${done} verarbeitet, ${r.offen} offen${r.fehler?` · ${r.fehler} nicht auffindbar im letzten Durchlauf`:""} …`;
+      if(r.warnung){ toast("Hinweis: "+r.warnung,6000); break; }
+      if(!r.offen||!r.verarbeitet) break;
+    }
+    toast("Geocoding abgeschlossen ✓");
+    const kv=await kvGetMany(["wg-state"]);
+    await loadDealers(kv["wg-state"]);
+    updateGeoInfo(); render();
+  }catch(e){ toast("Geocoding fehlgeschlagen: "+(e.message||e),6000); }
+  btn.disabled=false;
+}
+
+/* ---------- Events ---------- */
+$("authLoginBtn").onclick=doLogin;
+$("authPassword").addEventListener("keydown",e=>{ if(e.key==="Enter") doLogin(); });
+$("logoutBtn").onclick=doLogout;
+$("gpsBtn").onclick=()=>locateMe(false);
+$("addrBtn").onclick=searchAddress;
+$("addrInp").addEventListener("keydown",e=>{ if(e.key==="Enter") searchAddress(); });
+$("radiusSel").onchange=e=>{ radius=parseInt(e.target.value)||10000; savePrefs(); akqResults=null; akqKey=""; updateMapPosition(true); render(); };
+$("modeSeg").onclick=e=>{
+  const b=e.target.closest("button[data-mode]"); if(!b) return;
+  mode=b.dataset.mode; [...$("modeSeg").children].forEach(x=>x.classList.toggle("on",x===b));
+  selectedId=null; savePrefs(); render();
+};
+$("spartenChips").onclick=e=>{
+  const b=e.target.closest("button[data-sp]"); if(!b) return;
+  const id=b.dataset.sp;
+  if(selSparten.has(id)) selSparten.delete(id); else selSparten.add(id);
+  renderChips(); savePrefs(); render();
+};
+$("spartenAllBtn").onclick=()=>{
+  selSparten=selSparten.size===SPARTEN.length?new Set():new Set(SPARTEN.map(s=>s.id));
+  renderChips(); savePrefs(); render();
+};
+$("listHead").addEventListener("click",e=>{ if(e.target.id==="akqSearchBtn") runAkqSearch(!!akqResults); });
+$("listHead").addEventListener("change",e=>{
+  if(e.target.id==="sortSel"){ sortBy=e.target.value; render(); }
+  if(e.target.id==="inactChk"){ showInactive=e.target.checked; render(); }
+  if(e.target.id==="hideKnownChk"){ hideKnown=e.target.checked; render(); }
+  if(e.target.id==="hideNoIntChk"){ hideNoInterest=e.target.checked; render(); }
+});
+$("listBody").addEventListener("click",e=>{
+  const el=e.target.closest("[data-id]"); if(!el) return;
+  const it=findItem(el.dataset.id); if(!it) return;
+  selectItem(it.id,false);
+  if(mapsReady){ gmap.panTo({lat:it.lat,lng:it.lng}); }
+  openDetail(it);
+});
+document.addEventListener("click",e=>{
+  const c=e.target.closest("[data-close]"); if(c){ $(c.dataset.close).classList.add("hidden"); return; }
+  if(e.target.classList.contains("modal-bg")&&e.target.id!=="authModal") e.target.classList.add("hidden");
+});
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") ["detailModal","navModal","settingsModal"].forEach(id=>$(id).classList.add("hidden")); });
+$("settingsBtn").onclick=openSettings;
+$("setBrowserKeySave").onclick=async()=>{
+  const v=$("setBrowserKey").value.trim();
+  try{ await kvSet("google_maps_browser_key",v); browserKey=v; toast("Browser-Schlüssel gespeichert – Seite wird neu geladen …"); setTimeout(()=>location.reload(),900); }
+  catch(e){ toast("Speichern fehlgeschlagen: "+(e.message||e),5000); }
+};
+$("geoRunBtn").onclick=runGeocode;
+
+init();
+</script>
+</body>
+</html>

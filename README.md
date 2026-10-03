@@ -138,6 +138,33 @@ Client-Key (Nachfolger des `anon`-Keys) – er darf im Frontend-Code sichtbar
 sein, die eigentliche Absicherung erfolgt über Row Level Security (Schritt 2)
 und den Login-Zwang.
 
+## Performance Akquisetool (`akquise.html`)
+
+Eigene Seite neben dem Dashboard, gleiche Anmeldung und gleiche Daten. Freigabe für alle
+Nutzer über den Schalter **„Akquisetool“** im Admin-Panel (`dashboard_kv` `akquisetool_enabled`);
+Admins können das Tool auch ohne Freigabe öffnen.
+
+- **Akquise:** Betriebe der Sparten Elektrohandel, Elektroservicebetrieb, Mobilfunk, Hörakustiker,
+  Optiker, Küchenhändler und Uhrenhändler im GPS-Umkreis (Google Places), abgeglichen gegen alle
+  angelegten Händler (Adresse, Name, Lage) – angezeigt wird, was noch nicht angelegt ist.
+  Status je Treffer (kontaktiert, Termin, kein Interesse …) in `akquise_place_status`.
+  WKO-Firmen-A–Z-Links je Sparte für den aktuellen Bezirk.
+- **Bestehende Händler:** alle Händler im Umkreis mit Besuchs-Score
+  (Besuchsrückstand 35 % · Segment 25 % · LJ zu VJ/Plan 25 % · Nähe 15 %).
+- **Navigation** per Google Maps, Apple Karten oder Waze.
+
+**Google Maps Platform** (ein Google-Cloud-Projekt, APIs: Maps JavaScript API, Places API (New),
+Geocoding API):
+
+| Schlüssel | Beschränkung | Hinterlegt in |
+|---|---|---|
+| Browser-Schlüssel | Websites: `https://dashboard.wgaustria.at/*`, `https://wertgarantie-dashboard.vercel.app/*`, `https://*-wertgarantie.vercel.app/*` · API: Maps JavaScript API | Akquisetool → ⚙ Einstellungen (`dashboard_kv` `google_maps_browser_key`) |
+| Server-Schlüssel | API: Places API (New), Geocoding API | Supabase → Edge Functions → Secrets: `GOOGLE_MAPS_SERVER_KEY` |
+
+Schema: `supabase/akquisetool_schema.sql` · Edge Function: `akquise-google`.
+Händleradressen werden über ⚙ Einstellungen → „Händleradressen jetzt geocodieren“ in
+Koordinaten umgerechnet (`akquise_geo`, laut Google-Bedingungen alle 30 Tage aufzufrischen).
+
 ## Domain (`dashboard.wgaustria.at`)
 
 Eigenes Vercel-Projekt **`wertgarantie-dashboard`** (Team `wertgarantie`,
