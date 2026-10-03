@@ -435,7 +435,7 @@ async function callFn(action, payload={}){
   if(!session) throw new Error("Nicht angemeldet");
   const res = await fetch(SUPABASE_URL+"/functions/v1/akquise-google", {
     method:"POST",
-    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+session.access_token, "apikey":SUPABASE_ANON_KEY },
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+session.access_token },
     body: JSON.stringify({ action, ...payload }),
   });
   const data = await res.json().catch(()=>({}));
