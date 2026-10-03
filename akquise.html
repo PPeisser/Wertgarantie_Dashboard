@@ -806,7 +806,8 @@ async function runAkqSearch(force){
     if(r.errors&&r.errors.length) toast("Teilweise Fehler bei der Suche: "+r.errors[0],6000);
     loadReverse();
   }catch(e){
-    toast("Suche fehlgeschlagen: "+(e.message||e),6000);
+    const hint=errorHint(e.message||e);
+    toast("Suche fehlgeschlagen: "+(e.message||e)+(hint?" – "+hint:""),12000);
   }
   akqLoading=false; render();
 }
@@ -1058,6 +1059,25 @@ async function savePlaceStatus(p, status, notiz){
 }
 
 /* ---------- Einstellungen (Admin) ---------- */
+// Übersetzt typische Google-/Supabase-Fehlermeldungen in einen konkreten
+// Lösungsschritt (Einrichtungsfehler in der Google Cloud Console).
+function errorHint(msg){
+  const m=String(msg||"");
+  if(/referer restrictions/i.test(m)) return "Der Server-Schlüssel hat eine Website-Einschränkung. In der Google Cloud Console beim Server-Schlüssel unter „Anwendungseinschränkungen“ auf „Keine“ stellen.";
+  if(/not authorized to use this (service|API)|API_KEY_SERVICE_BLOCKED|blocked/i.test(m)) return "Der Server-Schlüssel darf diese API nicht nutzen. Beim Server-Schlüssel unter „API-Einschränkungen“ die Geocoding API und Places API (New) anhaken.";
+  if(/not activated|has not been used|is disabled|SERVICE_DISABLED|not enabled/i.test(m)) return "Die API ist im Google-Projekt nicht aktiviert. Unter „APIs & Dienste → Bibliothek“ Geocoding API bzw. Places API (New) aktivieren (danach 2–5 Minuten warten).";
+  if(/billing/i.test(m)) return "Für das Google-Projekt ist keine Abrechnung aktiv. Unter „Abrechnung“ ein Rechnungskonto mit dem Projekt verknüpfen.";
+  if(/API key not valid|invalid.*key|API_KEY_INVALID/i.test(m)) return "Der hinterlegte Server-Schlüssel ist ungültig. In Supabase das Secret GOOGLE_MAPS_SERVER_KEY prüfen (vollständig kopiert, keine Leerzeichen).";
+  if(/GOOGLE_MAPS_SERVER_KEY/i.test(m)) return "In Supabase fehlt das Secret GOOGLE_MAPS_SERVER_KEY (Edge Functions → Secrets, Name exakt so schreiben).";
+  if(/OVER_QUERY_LIMIT|quota/i.test(m)) return "Google-Kontingent erreicht. In der Google Cloud Console unter „Kontingente“ prüfen oder später erneut versuchen.";
+  if(/Failed to fetch|NetworkError|Load failed/i.test(m)) return "Keine Verbindung zum Server – Internetverbindung prüfen und erneut versuchen.";
+  return "";
+}
+function showGeoError(e){
+  const msg=e&&e.message||String(e), hint=errorHint(msg);
+  $("setGeoInfo").innerHTML=`<div style="background:var(--neg-bg);color:var(--neg);border-radius:10px;padding:8px 10px"><b>Fehler:</b> ${esc(msg)}</div>`
+    +(hint?`<div style="margin-top:6px"><b>Lösung:</b> ${esc(hint)}</div>`:"");
+}
 async function openSettings(){
   $("settingsModal").classList.remove("hidden");
   $("setBrowserKey").value=browserKey;
@@ -1070,7 +1090,7 @@ async function openSettings(){
     $("setServerInfo").innerHTML=s.configured
       ? '<span class="tag pos">hinterlegt</span> Secret GOOGLE_MAPS_SERVER_KEY ist in Supabase gesetzt.'
       : '<span class="tag neg">fehlt</span> Bitte in Supabase unter Edge Functions → Secrets den Namen GOOGLE_MAPS_SERVER_KEY mit dem Server-Schlüssel anlegen.';
-  }catch(e){ $("setServerInfo").textContent="Prüfung fehlgeschlagen: "+(e.message||e); }
+  }catch(e){ $("setServerInfo").textContent="Prüfung fehlgeschlagen: "+(e.message||e)+(errorHint(e.message)?" – "+errorHint(e.message):""); }
   updateGeoInfo();
 }
 function updateGeoInfo(){
@@ -1090,14 +1110,14 @@ async function runGeocode(){
       if(startOffen==null) startOffen=(r.offen||0)+(r.verarbeitet||0);
       bar.firstElementChild.style.width=(startOffen?Math.min(100,done/startOffen*100):100)+"%";
       $("setGeoInfo").textContent=`${done} verarbeitet, ${r.offen} offen${r.fehler?` · ${r.fehler} nicht auffindbar im letzten Durchlauf`:""} …`;
-      if(r.warnung){ toast("Hinweis: "+r.warnung,6000); break; }
+      if(r.warnung){ showGeoError(new Error(r.warnung)); btn.disabled=false; return; }
       if(!r.offen||!r.verarbeitet) break;
     }
     toast("Geocoding abgeschlossen ✓");
     const kv=await kvGetMany(["wg-state"]);
     await loadDealers(kv["wg-state"]);
     updateGeoInfo(); render();
-  }catch(e){ toast("Geocoding fehlgeschlagen: "+(e.message||e),6000); }
+  }catch(e){ showGeoError(e); }
   btn.disabled=false;
 }
 
