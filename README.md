@@ -75,6 +75,27 @@ und Ziele werden – sofern eingeloggt – zentral in Supabase gespeichert, sons
 eine Storage-API bzw. im Speicher gehalten; die zuletzt eingebettete Auswertung dient
 als Startzustand.
 
+## iPhone/iPad-App (Home-Bildschirm)
+
+Das Dashboard lässt sich als App installieren: in **Safari** öffnen →
+Teilen-Symbol → **„Zum Home-Bildschirm"**. Es startet dann im Vollbild ohne
+Safari-Leiste, mit eigenem Symbol und Startbildschirm.
+
+- `manifest.webmanifest` – App-Name, Farben, Symbole (`icons/icon-*.png`)
+- `icons/splash/` – Startbildschirme je iPhone-/iPad-Größe (hochkant und quer),
+  eingebunden über `apple-touch-startup-image` im `<head>` von `index.html`
+- `sw.js` – Service Worker: Dashboard und Supabase-Daten kommen **immer frisch
+  aus dem Netz**; zwischengespeichert werden nur die Offline-Seite
+  (`offline.html`), die Symbole und die CDN-Bibliotheken (schnellerer Start).
+  Bei Änderungen an `sw.js` `CACHE_VERSION` erhöhen.
+- **PDFs in der App:** Statt eines neuen Fensters (aus dem man in der App ohne
+  Zurück-Button nicht mehr herauskommt) erscheint „PDF ist fertig" →
+  **Teilen** öffnet das iOS-Teilen-Menü (In Dateien sichern, Drucken, Mail,
+  AirDrop). Im normalen Browser bleibt alles wie bisher.
+- Offline-Leiste oben, solange keine Verbindung besteht; sichere Ränder für
+  Notch/Dynamic Island/Home-Balken; kein Auto-Zoom beim Antippen von
+  Eingabefeldern auf iOS.
+
 ## Supabase-Setup
 
 Das Dashboard ist per Login geschützt und speichert Zieldaten & eingespielte

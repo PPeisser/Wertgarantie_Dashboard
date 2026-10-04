@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Wertgarantie Performance Dashboard Österreich</title>
 <!-- App-Symbol beim Hinzufügen zum Homebildschirm (iPhone/iPad) - blauer
      Wertgarantie-Pfeil auf weißem Grund. iOS rundet die Ecken selbst ab,
@@ -13,10 +13,81 @@
 <link rel="apple-touch-icon" sizes="120x120" href="icons/apple-touch-icon-120x120.png">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
 <meta name="apple-mobile-web-app-title" content="WG Dashboard">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<!-- Home-Bildschirm-App (PWA): Vollbild ohne Safari-Leiste, Statusleiste in
+     der Seitenfarbe, Startbildschirm mit Logo statt weißem Aufblitzen.
+     Startbilder je Gerätegröße (iOS wählt per media-Query genau eines). -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#EEF4F8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-startup-image" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1320x2868.png">
+<link rel="apple-touch-startup-image" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2868x1320.png">
+<link rel="apple-touch-startup-image" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1206x2622.png">
+<link rel="apple-touch-startup-image" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2622x1206.png">
+<link rel="apple-touch-startup-image" media="(device-width: 420px) and (device-height: 912px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1260x2736.png">
+<link rel="apple-touch-startup-image" media="(device-width: 420px) and (device-height: 912px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2736x1260.png">
+<link rel="apple-touch-startup-image" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1290x2796.png">
+<link rel="apple-touch-startup-image" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2796x1290.png">
+<link rel="apple-touch-startup-image" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1179x2556.png">
+<link rel="apple-touch-startup-image" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2556x1179.png">
+<link rel="apple-touch-startup-image" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1284x2778.png">
+<link rel="apple-touch-startup-image" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2778x1284.png">
+<link rel="apple-touch-startup-image" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1170x2532.png">
+<link rel="apple-touch-startup-image" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2532x1170.png">
+<link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1125x2436.png">
+<link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2436x1125.png">
+<link rel="apple-touch-startup-image" media="(device-width: 360px) and (device-height: 780px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1080x2340.png">
+<link rel="apple-touch-startup-image" media="(device-width: 360px) and (device-height: 780px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2340x1080.png">
+<link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1242x2688.png">
+<link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2688x1242.png">
+<link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-828x1792.png">
+<link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-1792x828.png">
+<link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1242x2208.png">
+<link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2208x1242.png">
+<link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-750x1334.png">
+<link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-1334x750.png">
+<link rel="apple-touch-startup-image" media="(device-width: 1032px) and (device-height: 1376px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-2064x2752.png">
+<link rel="apple-touch-startup-image" media="(device-width: 1032px) and (device-height: 1376px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-2752x2064.png">
+<link rel="apple-touch-startup-image" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-2048x2732.png">
+<link rel="apple-touch-startup-image" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-2732x2048.png">
+<link rel="apple-touch-startup-image" media="(device-width: 834px) and (device-height: 1210px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-1668x2420.png">
+<link rel="apple-touch-startup-image" media="(device-width: 834px) and (device-height: 1210px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-2420x1668.png">
+<link rel="apple-touch-startup-image" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-1668x2388.png">
+<link rel="apple-touch-startup-image" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-2388x1668.png">
+<link rel="apple-touch-startup-image" media="(device-width: 820px) and (device-height: 1180px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-1640x2360.png">
+<link rel="apple-touch-startup-image" media="(device-width: 820px) and (device-height: 1180px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-2360x1640.png">
+<link rel="apple-touch-startup-image" media="(device-width: 834px) and (device-height: 1112px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-1668x2224.png">
+<link rel="apple-touch-startup-image" media="(device-width: 834px) and (device-height: 1112px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-2224x1668.png">
+<link rel="apple-touch-startup-image" media="(device-width: 810px) and (device-height: 1080px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-1620x2160.png">
+<link rel="apple-touch-startup-image" media="(device-width: 810px) and (device-height: 1080px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-2160x1620.png">
+<link rel="apple-touch-startup-image" media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-1536x2048.png">
+<link rel="apple-touch-startup-image" media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-2048x1536.png">
+<link rel="apple-touch-startup-image" media="(device-width: 744px) and (device-height: 1133px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-1488x2266.png">
+<link rel="apple-touch-startup-image" media="(device-width: 744px) and (device-height: 1133px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-2266x1488.png">
+<script>
+// IS_STANDALONE_APP: true, wenn das Dashboard als App vom Home-Bildschirm
+// gestartet wurde (kein Safari-Rahmen, kein Zurück-Button). Dort dürfen PDFs
+// nicht in neuen Fenstern aufgehen (man käme nicht mehr zurück) - sie laufen
+// stattdessen über das iOS-Teilen-Menü (siehe deliverFileInApp()).
+var IS_STANDALONE_APP=!!(window.navigator.standalone||(window.matchMedia&&window.matchMedia("(display-mode: standalone)").matches));
+// iPhone/iPad: Safari zoomt beim Antippen eines Eingabefelds mit Schrift
+// < 16px automatisch hinein und bleibt dann vergrößert. maximum-scale=1
+// verhindert nur dieses Auto-Zoomen - Zoomen mit zwei Fingern bleibt auf iOS
+// trotzdem möglich. Bewusst NUR auf iOS gesetzt (Android würde damit das
+// Zoomen ganz sperren). iPadOS meldet sich als "MacIntel" mit Touch.
+(function(){
+  var ua=navigator.userAgent||"";
+  var isIOS=/iPhone|iPad|iPod/.test(ua)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+  if(!isIOS) return;
+  var vp=document.querySelector('meta[name="viewport"]');
+  if(vp&&vp.content.indexOf("maximum-scale")<0) vp.content+=", maximum-scale=1";
+})();
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" crossorigin="anonymous"></script>
 <style>
 :root{
   --wg-blue:#009FE3;
@@ -37,7 +108,7 @@
   --shadow:0 2px 10px rgba(6,42,63,.08);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html{-webkit-text-size-adjust:100%}
+html{-webkit-text-size-adjust:100%;background:var(--paper)}
 body{
   font-family:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
   background:var(--paper);
@@ -46,6 +117,10 @@ body{
   line-height:1.4;
 }
 .wrap{max-width:1440px;margin:0 auto;padding:16px 20px 40px}
+/* iPhone mit Notch/Dynamic Island bzw. Home-Indikator (viewport-fit=cover):
+   Inhalt nie unter Statusleiste, Kamera-Aussparung oder Home-Balken legen.
+   env() ist 0 auf Geräten ohne solche Bereiche - dort ändert sich nichts. */
+body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 
 /* Bug-Report 26.08.2026 (iPad Safari): Seite springt beim Scrollen
    selbstständig nach oben. Ursache: viele Listen (Beobachtungen, AKQ,
@@ -246,7 +321,7 @@ h2.sec small{font-weight:600;text-transform:none;color:var(--muted);letter-spaci
 .sp-row{display:flex;justify-content:space-between;align-items:center;padding:8px 4px;border-bottom:1px solid #ECF2F6;font-size:13px}
 .sp-row:last-of-type{border-bottom:none}
 .sp-row b{font-size:16px;font-weight:900;color:var(--wg-navy)}
-.modal.wide{max-width:760px;max-height:85vh;overflow:auto;overscroll-behavior:contain}
+.modal.wide{max-width:760px;max-height:85vh;max-height:85dvh;overflow:auto;overscroll-behavior:contain}
 .akp-h:first-child{margin-top:2px}
 .tabs.mini{padding:3px;border-radius:10px}
 .tabs.mini button{padding:4px 10px;font-size:11px;border-radius:7px}
@@ -445,6 +520,7 @@ td .betr{font-size:11px;color:var(--muted)}
 .modal-bg{
   position:fixed;inset:0;background:rgba(6,42,63,.55);
   display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;
+  padding:max(20px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));
 }
 /* FH- und AKP-Detail-PopUps werden von .fh-name-link/.akp-name-link aus
    praktisch JEDER Listen-/Übersichts-Kachel heraus geöffnet (Akquiseliste,
@@ -501,6 +577,9 @@ td .betr{font-size:11px;color:var(--muted)}
      eigentlicher Grund für die zeitweisen Fälle bislang nicht reproduzierbar,
      das hier ist eine defensive Absicherung dagegen, kein bestätigter Fix. */
   max-height:85vh;overflow:auto;overscroll-behavior:contain;
+  /* dvh = tatsächlich sichtbare Höhe (ohne ein-/ausfahrende Safari-Leisten);
+     ältere Browser ignorieren die Zeile und nehmen die vh-Angabe darüber. */
+  max-height:85dvh;
 }
 .modal h3{font-size:18px;color:var(--wg-navy);margin-bottom:4px}
 .modal p{font-size:13px;color:var(--muted);margin-bottom:14px}
@@ -576,7 +655,7 @@ td .betr{font-size:11px;color:var(--muted)}
 
 /* ---------- Toast ---------- */
 #toast{
-  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  position:fixed;bottom:24px;bottom:calc(24px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
   background:var(--wg-navy);color:#fff;font-weight:700;font-size:13px;
   padding:12px 20px;border-radius:99px;box-shadow:var(--shadow);z-index:60;
   opacity:0;transition:opacity .3s;pointer-events:none;max-width:90vw;text-align:center;
@@ -2730,6 +2809,13 @@ async function finalizePdf(pdf, filename, windowRef){
     else toast("Mailversand fehlgeschlagen: "+((res&&res.error)||"unbekannter Fehler"));
     return;
   }
+  // Home-Bildschirm-App: kein neues Fenster/kein Download-Link, sondern das
+  // iOS-Teilen-Menü (Sichern in Dateien, AirDrop, Mail, Drucken, ...).
+  if(IS_STANDALONE_APP){
+    if(windowRef){ try{ windowRef.close(); }catch(e){} }
+    deliverFileInApp(pdf.output("blob"),filename,"application/pdf");
+    return;
+  }
   if(windowRef!==undefined){
     const blobUrl=pdf.output("bloburl");
     if(windowRef) windowRef.location.href=blobUrl; else window.open(blobUrl,"_blank");
@@ -2940,6 +3026,7 @@ function openAdminModal(){
 // stößt den Browser-Download an - Muster wie pdf.save() bei jsPDF-Exporten,
 // aber hier für bereits fertige (nicht selbst gebaute) Dateien.
 function downloadBlob(blob,filename){
+  if(IS_STANDALONE_APP){ deliverFileInApp(blob,filename,blob.type||"application/pdf"); return; }
   const url=URL.createObjectURL(blob);
   const a=document.createElement("a");
   a.href=url; a.download=filename; document.body.appendChild(a); a.click();
@@ -9842,7 +9929,7 @@ async function exportFilialGruppePdf(){
   const value=filialGruppeCurrentValue, members=filialGruppeCurrentMembers;
   if(!value||!members.length) return;
   filialGruppePdfBusy=true;
-  const pdfWindow=pdfSendTarget?null:window.open("","_blank");
+  const pdfWindow=(pdfSendTarget||IS_STANDALONE_APP)?null:window.open("","_blank");
   if(pdfWindow) pdfWindow.document.write("<p style='font-family:sans-serif;padding:20px;color:#5D7284'>PDF wird erstellt …</p>");
   toast("PDF wird erstellt …");
   const box=document.createElement("div");
@@ -12600,7 +12687,7 @@ async function exportFhPdf(includeAkp){
   // sonst werten Browser das spätere window.open() als Popup außerhalb einer
   // Nutzer-Interaktion und blockieren es stillschweigend. Beim Versenden per
   // Mail wird das PDF nicht angezeigt - kein Tab nötig.
-  const pdfWindow=pdfSendTarget?null:window.open("","_blank");
+  const pdfWindow=(pdfSendTarget||IS_STANDALONE_APP)?null:window.open("","_blank");
   if(pdfWindow) pdfWindow.document.write("<p style='font-family:sans-serif;padding:20px;color:#5D7284'>PDF wird erstellt …</p>");
   toast("PDF wird erstellt …");
   const box=document.createElement("div");
@@ -13236,7 +13323,7 @@ async function exportAkpTopFlopPdf(){
     return;
   }
   akpTopFlopPdfBusy=true;
-  const pdfWindow=pdfSendTarget?null:window.open("","_blank");
+  const pdfWindow=(pdfSendTarget||IS_STANDALONE_APP)?null:window.open("","_blank");
   if(pdfWindow) pdfWindow.document.write("<p style='font-family:sans-serif;padding:20px;color:#5D7284'>PDF wird erstellt …</p>");
   toast("PDF wird erstellt …");
   const box=document.createElement("div");
@@ -13328,7 +13415,7 @@ async function exportFhTopFlopPdf(){
     return;
   }
   fhTopFlopPdfBusy=true;
-  const pdfWindow=pdfSendTarget?null:window.open("","_blank");
+  const pdfWindow=(pdfSendTarget||IS_STANDALONE_APP)?null:window.open("","_blank");
   if(pdfWindow) pdfWindow.document.write("<p style='font-family:sans-serif;padding:20px;color:#5D7284'>PDF wird erstellt …</p>");
   toast("PDF wird erstellt …");
   const box=document.createElement("div");
@@ -13433,7 +13520,7 @@ async function exportAkqStaffelnPdf(){
   }
   const s=state.latest; if(!s) return;
   akqStaffelnPdfBusy=true;
-  const pdfWindow=pdfSendTarget?null:window.open("","_blank");
+  const pdfWindow=(pdfSendTarget||IS_STANDALONE_APP)?null:window.open("","_blank");
   if(pdfWindow) pdfWindow.document.write("<p style='font-family:sans-serif;padding:20px;color:#5D7284'>PDF wird erstellt …</p>");
   toast("PDF wird erstellt …");
   const box=document.createElement("div");
@@ -14527,6 +14614,96 @@ function buildMitarbeiterDropdown(){
     maybeAutoShowNotifications();
   }
 })();
+</script>
+<!-- ---------- Home-Bildschirm-App (PWA) ----------
+     Fertige Dateien (PDFs) in der App über das iOS-Teilen-Menü ausgeben,
+     Offline-Hinweis und Service Worker. -->
+<div class="modal-bg hidden" id="appFileModal" style="z-index:90">
+  <div class="modal" style="max-width:380px">
+    <h3 style="margin:0 0 6px">PDF ist fertig</h3>
+    <p id="appFileName" style="font-size:13px;color:var(--muted);margin:0 0 4px;word-break:break-all"></p>
+    <p style="font-size:12.5px;color:var(--muted);margin:0">Über „Teilen“ lässt sich das PDF in Dateien sichern, drucken, per Mail/AirDrop senden oder in einer anderen App öffnen.</p>
+    <div class="actions">
+      <button class="btn btn-ghost" id="appFileClose" type="button">Schließen</button>
+      <button class="btn btn-blue" id="appFileShare" type="button">⬆︎ Teilen</button>
+    </div>
+  </div>
+</div>
+<div id="offlineBanner" class="hidden" role="status">Offline – keine Internetverbindung. Änderungen werden erst wieder gespeichert, wenn die Verbindung zurück ist.</div>
+<style>
+#offlineBanner{
+  position:fixed;left:0;right:0;top:0;z-index:95;
+  padding:8px 16px;padding-top:calc(8px + env(safe-area-inset-top));
+  background:var(--amber);color:#3B2600;font-weight:700;font-size:13px;text-align:center;
+  box-shadow:var(--shadow);
+}
+</style>
+<script>
+// Das Teilen-Menü (navigator.share) darf iOS nur direkt nach einem Antippen
+// öffnen - die PDF-Erstellung (html2canvas) dauert aber oft mehrere
+// Sekunden, danach wäre diese "Nutzer-Geste" verfallen und iOS würde den
+// Aufruf blockieren. Deshalb erst dieser kleine Dialog "PDF ist fertig",
+// dessen Button-Tipp dann das Teilen-Menü öffnet.
+let appFilePending=null;
+function deliverFileInApp(blob,filename,type){
+  appFilePending={blob,filename,type:type||blob.type||"application/octet-stream"};
+  document.getElementById("appFileName").textContent=filename;
+  document.getElementById("appFileModal").classList.remove("hidden");
+}
+function appFileFallbackOpen(f){
+  // Ohne Datei-Teilen (ältere iOS-Versionen): Download-Link. iOS zeigt das
+  // PDF dann in einer Vorschau mit eigenem "Fertig"- und Teilen-Button.
+  const url=URL.createObjectURL(f.blob);
+  const a=document.createElement("a");
+  a.href=url; a.download=f.filename; document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+document.getElementById("appFileShare").onclick=async()=>{
+  const f=appFilePending; if(!f) return;
+  const file=new File([f.blob],f.filename,{type:f.type});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){
+    try{
+      await navigator.share({files:[file],title:f.filename});
+      document.getElementById("appFileModal").classList.add("hidden");
+      appFilePending=null;
+    }catch(e){
+      // AbortError = Teilen-Menü ohne Auswahl geschlossen -> Dialog bleibt
+      // offen, damit man es nochmals versuchen kann.
+      if(e&&e.name!=="AbortError"){ console.error("share failed:",e); appFileFallbackOpen(f); }
+    }
+  }else{
+    appFileFallbackOpen(f);
+  }
+};
+document.getElementById("appFileClose").onclick=()=>{
+  document.getElementById("appFileModal").classList.add("hidden");
+  appFilePending=null;
+};
+// Alle übrigen Exporte rufen direkt jsPDF.save() auf (Download) - in der
+// App wird das zentral auf das Teilen-Menü umgeleitet, statt jede einzelne
+// Stelle anzupassen.
+if(IS_STANDALONE_APP&&window.jspdf&&window.jspdf.jsPDF&&window.jspdf.jsPDF.API){
+  window.jspdf.jsPDF.API.save=function(filename){
+    deliverFileInApp(this.output("blob"),filename||"dokument.pdf","application/pdf");
+    return this;
+  };
+}
+// Offline-Hinweis (Leiste oben), solange keine Verbindung besteht.
+(function(){
+  const banner=document.getElementById("offlineBanner");
+  const upd=()=>banner.classList.toggle("hidden",navigator.onLine!==false);
+  window.addEventListener("online",upd);
+  window.addEventListener("offline",upd);
+  upd();
+})();
+// Service Worker: Offline-Seite + schnellerer Start (siehe sw.js). Nur über
+// https/localhost - beim direkten Öffnen der Datei (file://) gibt es keinen.
+if("serviceWorker" in navigator&&(location.protocol==="https:"||location.hostname==="localhost")){
+  window.addEventListener("load",()=>{
+    navigator.serviceWorker.register("sw.js").catch(e=>console.warn("Service Worker nicht registriert:",e));
+  });
+}
 </script>
 </body>
 </html>
