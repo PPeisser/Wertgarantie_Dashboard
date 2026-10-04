@@ -241,7 +241,7 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
    ========================================================== */
 .m-only{display:none !important}
 .m-loc{display:none}
-@media (max-width:1000px), (max-height:500px) and (orientation:landscape) and (pointer:coarse){
+@media (max-width:1000px), (orientation:landscape) and (pointer:coarse){
   body.app-on{overflow:hidden;height:100vh;height:100dvh;overscroll-behavior:none}
   body.app-on header{display:none}
   body.app-on .wrap{padding:0;max-width:none}
@@ -392,17 +392,28 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
   .list-card{left:12px;right:12px;border-radius:22px 22px 0 0}
   .modal{max-width:640px !important;margin:0 auto;border-radius:22px 22px 0 0}
 }
-/* iPhone quer: Liste als Seitenleiste rechts, Karte links */
-@media (max-height:500px) and (orientation:landscape) and (pointer:coarse){
-  .controls{right:min(46%,420px);padding-top:8px}
-  .list-card{left:auto;top:0;width:min(46%,420px);height:auto !important;border-radius:0;padding-top:env(safe-area-inset-top);padding-right:env(safe-area-inset-right)}
+/* iPhone quer + iPad quer: Liste als Seitenleiste rechts, Karte links */
+@media (orientation:landscape) and (pointer:coarse){
+  :root{--panelW:min(46%,440px)}
+  .controls{right:var(--panelW);padding-top:calc(env(safe-area-inset-top) + 8px)}
+  .list-card{left:auto;top:0;width:var(--panelW);height:auto !important;border-radius:0;padding-top:env(safe-area-inset-top);padding-right:env(safe-area-inset-right);box-shadow:-8px 0 30px rgba(6,42,63,.16)}
   .sheet-handle{display:none !important}
   .list-head{padding-top:10px}
-  #gpsBtn{right:calc(min(46%,420px) + 12px);bottom:calc(12px + env(safe-area-inset-bottom))}
+  #gpsBtn{right:calc(var(--panelW) + 12px);bottom:calc(12px + env(safe-area-inset-bottom))}
   .toast{bottom:16px}
   .map-placeholder{padding:110px 24px 20px}
   .modal-bg{align-items:center;padding:8px}
   .modal{border-radius:20px;max-width:560px !important;max-height:94vh;max-height:94dvh}
+}
+/* iPad quer: mehr Platz - Leiste und Seitenleiste großzügiger */
+@media (orientation:landscape) and (pointer:coarse) and (min-height:501px){
+  :root{--panelW:min(40%,460px)}
+  .seg-long{display:inline}
+  .controls{padding-top:calc(env(safe-area-inset-top) + 14px);padding-left:max(16px,env(safe-area-inset-left))}
+  .row-top{max-width:640px}
+  .list-head{padding:16px 18px 12px}
+  .list-body{padding:6px 14px 16px}
+  .map-placeholder{padding:150px 24px 20px}
 }
 </style>
 </head>
@@ -1096,14 +1107,14 @@ function wkoLinks(){
 }
 
 /* ---------- Mobil: Layout, Listen-Blatt, Menü ---------- */
-function isMobileLayout(){ return matchMedia("(max-width:1000px), (max-height:500px) and (orientation:landscape) and (pointer:coarse)").matches; }
-function isSheetLayout(){ return isMobileLayout() && !matchMedia("(max-height:500px) and (orientation:landscape) and (pointer:coarse)").matches; }
+function isMobileLayout(){ return matchMedia("(max-width:1000px), (orientation:landscape) and (pointer:coarse)").matches; }
+function isSheetLayout(){ return isMobileLayout() && !matchMedia("(orientation:landscape) and (pointer:coarse)").matches; }
 // Kartenausschnitt so wählen, dass Bedienleiste oben und Listen-Blatt unten
 // den Suchkreis nicht verdecken.
 function mapPadding(){
   if(!isMobileLayout()) return 20;
   const top=$("controls").getBoundingClientRect().bottom+8;
-  if(!isSheetLayout()) return {top, bottom:16, left:16, right:16};
+  if(!isSheetLayout()) return {top, bottom:16, left:16, right:$("listCard").getBoundingClientRect().width+16};
   return {top, bottom:Math.min(sheetPx()+16, innerHeight*.6), left:16, right:16};
 }
 const SHEET_STATES=["peek","half","full"];
