@@ -664,6 +664,8 @@ td .betr{font-size:11px;color:var(--muted)}
 .ac-month-table.mt-tall th{font-size:11.5px}
 .ac-month-table.mt-tall tr.cur td{background:#F2F8FC}
 .ac-month-table.mt-tall tr.sum td{border-top:2px solid var(--line);font-weight:800}
+.ac-month-table.mt-tall td.yoy-up{color:var(--pos);font-weight:700}
+.ac-month-table.mt-tall td.yoy-down{color:var(--neg);font-weight:700}
 .ac-month-note{font-size:11px;color:var(--muted);margin-top:8px;display:flex;align-items:center;gap:6px}
 .ac-month-note .dot-amber{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--amber);flex:none}
 .ac-yearly-table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
@@ -882,6 +884,39 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
   html.is-app #fhMonthly .mt-wide,html.is-app #acMonthly .mt-wide{display:none}
   html.is-app #fhMonthly .mt-tall,html.is-app #acMonthly .mt-tall{display:table}
   html.is-app #fhMonthly .mt-tall tr.cur td:first-child,html.is-app #acMonthly .mt-tall tr.cur td:first-child{background:#F2F8FC}
+  /* Kartenansicht (nur Handy-App, Nutzer-Feedback 04.10.2026): Akquisestaffeln
+     und Top & Flop Händler/AKP als eine Karte je Zeile statt einer breiten
+     Tabelle - oben Rang + Name, darunter die Kennzahlen mit kleiner
+     Beschriftung (data-label der Zelle). Kein seitliches Scrollen mehr;
+     hebt dafür die fixierten Spalten von oben wieder auf. Im Browser und
+     im PDF bleibt die Tabelle. */
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) :is(table,tbody,tr,td){display:block}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) thead{display:none}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody){overflow:visible !important}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) tr{
+    display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px 6px;
+    border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:#fff;
+  }
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td{
+    position:static !important;box-shadow:none !important;background:none !important;
+    border:0;padding:0;white-space:normal;text-align:left;
+  }
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td:first-child{flex:0 0 auto;padding-top:1px}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td:nth-child(2){flex:1 1 0;min-width:0}
+  /* Zeilenumbruch nach Rang + Name: ::before ist selbst ein Flex-Element
+     mit voller Breite und sitzt per order zwischen Kopf und Kennzahlen. */
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) tr::before{content:"";flex-basis:100%;height:0;order:2}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td{order:1}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td[data-label]{order:3}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td:nth-child(2) .hname{max-width:100%;white-space:normal;text-align:left}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td[data-label]{flex:1 1 0;min-width:0;font-size:13px;white-space:nowrap}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td[data-label].card-wide{flex-basis:100%}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td[data-label="VT"]{flex:0 0 34px;text-align:right}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td[data-label]::before{
+    content:attr(data-label);display:block;font-size:9.5px;font-weight:800;letter-spacing:.3px;
+    text-transform:uppercase;color:var(--muted);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td[data-label=""]::before{content:"\00a0"}
 }
 @media (max-width:480px){
   .ac-grid{grid-template-columns:1fr}
@@ -8561,9 +8596,9 @@ function openAkqStaffelnModal(){
     rows.map((r,i)=>`<tr>
       <td><span class="rank">${i+1}</span></td>
       <td><button type="button" class="hname fh-name-link" data-fh-nr="${escapeHtml(r.fhNr)}">${escapeHtml(r.name)}</button><br><span class="betr">${escapeHtml(r.fhNr)}${r.ort?" · "+escapeHtml(r.ort):""}${r.betreuer?" · "+escapeHtml(r.betreuer):""}</span></td>
-      <td class="r" style="font-weight:900">${r.punkte!=null?fmt(r.punkte):"–"}</td>
-      <td class="r"><span class="pill ${r.reachedCount>=7?"pos":"neu"}">${r.reachedCount}/7</span></td>
-      <td style="font-size:11.5px;color:var(--muted)">${r.next?`noch ${fmt(r.next.missing)} bis Staffel ${r.next.nextIdx+1} (${r.next.threshold})`:`<span class="pos-t">alle 7 erreicht 🏆</span>`}</td>
+      <td class="r" style="font-weight:900" data-label="Punkte">${r.punkte!=null?fmt(r.punkte):"–"}</td>
+      <td class="r" data-label="Staffeln"><span class="pill ${r.reachedCount>=7?"pos":"neu"}">${r.reachedCount}/7</span></td>
+      <td class="card-wide" style="font-size:11.5px;color:var(--muted)" data-label="Nächste Stufe">${r.next?`noch ${fmt(r.next.missing)} bis Staffel ${r.next.nextIdx+1} (${r.next.threshold})`:`<span class="pos-t">alle 7 erreicht 🏆</span>`}</td>
     </tr>`).join("")+`</tbody></table>`:`<div class="empty-note">Keine Akquisestaffel-Daten für diese Ansicht.</div>`;
   $("akqStaffelnModal").classList.remove("hidden");
 }
@@ -8689,6 +8724,9 @@ function tbl(rows,showGL,p,labels,kind){
   let head;
   if(flopNoHist) head=`<th class="r">Vortag</th><th class="r">Ø/Tag Monat</th><th class="r">Monat</th><th class="r"></th>`;
   else head=`<th class="r">${labels[p][0]}</th><th class="r">${labels[p][1]}</th><th class="r">+/− Stk.</th><th class="r">+/− %</th>`;
+  // data-label = Spaltenname je Zelle, für die Kartenansicht in der Handy-App
+  // (siehe "Kartenansicht" im CSS) - dort gibt es keinen Tabellenkopf.
+  const dl=(flopNoHist?["Vortag","Ø/Tag Monat","Monat",""]:[labels[p][0],labels[p][1],"+/− Stk.","+/− %"]).map(escapeHtml);
   return `<table><thead><tr><th></th><th>Händler</th>${head}<th class="r">VT</th></tr></thead><tbody>`+rows.map((r,i)=>{
     let c1,c2,c3,c4;
     if(flopNoHist){ c1=`<b>0</b>`; c2=r.avg.toFixed(1).replace(".",","); c3=fmt(r.monat); c4=`<span class="pill neg">gestern 0</span>`; }
@@ -8700,8 +8738,8 @@ function tbl(rows,showGL,p,labels,kind){
     return `<tr class="${i===0&&kind==="top"?"top1":""}">
       <td><span class="rank">${i+1}</span></td>
       <td><button type="button" class="hname fh-name-link" data-fh-nr="${escapeHtml(r.nr)}" title="${escapeHtml(r.name)} · ${escapeHtml(r.ort)} (FH ${escapeHtml(r.nr)}) – klicken für AKP dieses Händlers">${escapeHtml(r.name)}</button><br><span class="betr">${escapeHtml(r.nr)} · ${escapeHtml(r.ort)}${showGL?" · "+escapeHtml(r.emp||r.gl||"— ohne Betreuer —"):""}</span></td>
-      <td class="r">${c1}</td><td class="r" style="color:var(--muted)">${c2}</td><td class="r">${c3}</td><td class="r">${c4}</td>
-      <td class="r" style="color:var(--muted)">${fmt(r.vt)}</td>
+      <td class="r" data-label="${dl[0]}">${c1}</td><td class="r" style="color:var(--muted)" data-label="${dl[1]}">${c2}</td><td class="r" data-label="${dl[2]}">${c3}</td><td class="r" data-label="${dl[3]}">${c4}</td>
+      <td class="r" style="color:var(--muted)" data-label="VT">${fmt(r.vt)}</td>
     </tr>`;}).join("")+`</tbody></table>`;
 }
 
@@ -9001,9 +9039,9 @@ function openAkpModal(){
       list.slice(0,akpN).map((r,i)=>`<tr>
         <td><span class="rank" style="${neg?"background:var(--neg-bg);color:var(--neg)":""}">${i+1}</span></td>
         <td><button type="button" class="hname akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button><br><span class="betr"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.fhNr||"")}">${escapeHtml(r.firma||"")}</button> · ${escapeHtml(r.ort||"")}${showGL&&r.emp?" · "+escapeHtml(r.emp):""}</span></td>
-        <td class="r" style="font-weight:900">${fmt(r.val)}</td>
-        <td class="r" style="color:var(--muted)">${fmt(r.vt)}</td>
-        <td class="r">${r.vjDiff==null?"–":`<span class="pill ${r.vjDiff>=0?"pos":"neg"}">${fmtSign(r.vjDiff)}</span>`}</td>
+        <td class="r" style="font-weight:900" data-label="${escapeHtml(unit)}">${fmt(r.val)}</td>
+        <td class="r" style="color:var(--muted)" data-label="VT">${fmt(r.vt)}</td>
+        <td class="r" data-label="vs. VJ">${r.vjDiff==null?"–":`<span class="pill ${r.vjDiff>=0?"pos":"neg"}">${fmtSign(r.vjDiff)}</span>`}</td>
       </tr>`).join("")+`</tbody></table>`;
     $("amBody").innerHTML=
       `<div class="akp-h pos-t">TOP ${akpN}</div>`+mkTbl(ranked.top,false)+
@@ -12014,17 +12052,25 @@ function fhMonthlyMerged(fhNr,contact){
 // Hochkant-Variante der Monatsproduktion fürs Handy (siehe .mt-tall im CSS):
 // Monate als Zeilen, Jahre als Spalten - neuestes Jahr links, damit der
 // Vergleich mit dem Vorjahr direkt nebeneinander steht. cellFn(y,i) liefert
-// {html,val} für Jahr y / Monat i (0-11) bzw. null, wenn kein Wert vorliegt.
+// {val,cls} für Jahr y / Monat i (0-11) bzw. null, wenn kein Wert vorliegt.
+// Werte über/unter dem Vorjahresmonat grün/rot - außer beim laufenden Monat
+// (noch nicht abgeschlossen, wäre sonst fast immer rot) und bei Zellen mit
+// eigener Markierung (cls, z.B. other-fh im AKP-PopUp).
 function monthTallTableHtml(years,cellFn){
   const ys=[...years].reverse();
-  const curM=new Date().getMonth();
+  const now=new Date(), curM=now.getMonth(), curY=String(now.getFullYear());
   const sums={};
   const rows=MONTH_LABELS.map((m,i)=>{
     const cells=ys.map(y=>{
       const c=cellFn(y,i);
       if(!c) return `<td class="empty">–</td>`;
       sums[y]=(sums[y]||0)+c.val;
-      return c.html;
+      let cls=c.cls||"";
+      if(!cls&&!(y===curY&&i===curM)){
+        const prev=cellFn(String(+y-1),i);
+        if(prev&&c.val!==prev.val) cls=c.val>prev.val?"yoy-up":"yoy-down";
+      }
+      return `<td class="${cls}">${fmt(c.val)}</td>`;
     }).join("");
     return `<tr class="${i===curM?"cur":""}"><td><b>${m}</b></td>${cells}</tr>`;
   }).join("");
@@ -12049,7 +12095,7 @@ function renderFhMonthly(){
     }).join("")+`</tbody></table>`+
     monthTallTableHtml(years,(y,i)=>{
       const v=merged[y+"-"+String(i+1).padStart(2,"0")];
-      return v==null?null:{val:v,html:`<td>${fmt(v)}</td>`};
+      return v==null?null:{val:v};
     })+`</div>`;
 }
 // Nächste offene Akquisestaffel: "Punkte" aus der Staffeldatei ist das
@@ -13265,7 +13311,7 @@ function renderAkpMonthly(){
       const cv=prod[k], ov=other[k];
       if(cv==null&&ov==null) return null;
       const total=(cv||0)+(ov||0);
-      return {val:total,html:`<td class="${ov?"other-fh":""}">${fmt(total)}</td>`};
+      return {val:total,cls:ov?"other-fh":""};
     })+`</div>`+
     (hasOther?`<div class="ac-month-note"><span class="dot-amber"></span>Zahlen in dieser Farbe wurden nicht beim aktuell hinterlegten Fachhändler produziert, sind aber in der Gesamtproduktion mit eingerechnet.</div>`:"");
 }
