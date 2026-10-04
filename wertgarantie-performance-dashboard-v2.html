@@ -901,6 +901,31 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
   /* Summe + Vorjahresvergleich zuerst (wichtigste Zahlen), Rest darunter */
   html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt td[data-label="Summe"]{order:1;flex-basis:30%}
   html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt td[data-label="vs. Vorjahr"]{order:2;flex-basis:55%}
+  /* Kompakte Listen im Dashboard selbst (nur Handy-App): Top/Flop Händler,
+     Akquise ohne Produktion, 9-Wochen-Plan. Bewusst KEINE Karten (würde die
+     Startseite sehr lang machen), sondern eine dichte Zeile je Eintrag:
+     oben Rang/Symbol + Name (+ Nr/Ort) + Hauptwert rechts (c-main: Stück
+     bzw. Telefon bzw. Resttage), darunter die übrigen Werte klein in einer
+     Zeile mit Kurzbeschriftung (data-label). Nicht im Dashboard-PDF
+     (body.pdf-mode fotografiert die Seite selbst). */
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) :is(table,tbody,tr,td){display:block}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) thead{display:none}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody){overflow:visible !important}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) tr{display:flex;flex-wrap:wrap;align-items:center;column-gap:8px;row-gap:3px;padding:7px 2px;border-bottom:1px solid #ECF2F6}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) tr:last-child{border-bottom:0}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) tr::before{content:"";flex-basis:100%;height:0;order:4}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td{border:0;padding:0;text-align:left;white-space:nowrap;order:5;font-size:12px;max-width:none}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td.c-lead{order:1;flex:none}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td.c-name{order:2;flex:1 1 0;min-width:0}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td.c-name :is(.hname,b,.betr){max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td.c-main{order:3;flex:none;text-align:right;font-size:14px}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td.c-name br{display:none}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td.c-addr{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td[data-label="Termine"] .betr{font-size:10px}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) .c-yr{display:none}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td.c-addr .akqop-addr{height:auto;max-width:none;-webkit-line-clamp:unset;display:inline}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td[data-label]:not(.c-main)::before{content:attr(data-label) " ";font-size:10px;font-weight:700;color:var(--muted)}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td.c-main[data-label]::after{content:" " attr(data-label);display:block;font-size:9.5px;font-weight:700;color:var(--muted);text-align:right}
   html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt td[data-label]::before{
     content:attr(data-label);display:block;font-size:9.5px;font-weight:800;letter-spacing:.3px;
     text-transform:uppercase;color:var(--muted);margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;
@@ -8758,9 +8783,9 @@ function tbl(rows,showGL,p,labels,kind){
       c4=`<span class="pill ${r.diff>0?"pos":(r.diff<0?"neg":"neu")}">${fmtPct(r.pct)}</span>`;
     }
     return `<tr class="${i===0&&kind==="top"?"top1":""}">
-      <td><span class="rank">${i+1}</span></td>
-      <td><button type="button" class="hname fh-name-link" data-fh-nr="${escapeHtml(r.nr)}" title="${escapeHtml(r.name)} · ${escapeHtml(r.ort)} (FH ${escapeHtml(r.nr)}) – klicken für AKP dieses Händlers">${escapeHtml(r.name)}</button><br><span class="betr">${escapeHtml(r.nr)} · ${escapeHtml(r.ort)}${showGL?" · "+escapeHtml(r.emp||r.gl||"— ohne Betreuer —"):""}</span></td>
-      <td class="r" data-label="${dl[0]}">${c1}</td><td class="r" style="color:var(--muted)" data-label="${dl[1]}">${c2}</td><td class="r" data-label="${dl[2]}">${c3}</td><td class="r" data-label="${dl[3]}">${c4}</td>
+      <td class="c-lead"><span class="rank">${i+1}</span></td>
+      <td class="c-name"><button type="button" class="hname fh-name-link" data-fh-nr="${escapeHtml(r.nr)}" title="${escapeHtml(r.name)} · ${escapeHtml(r.ort)} (FH ${escapeHtml(r.nr)}) – klicken für AKP dieses Händlers">${escapeHtml(r.name)}</button><br><span class="betr">${escapeHtml(r.nr)} · ${escapeHtml(r.ort)}${showGL?" · "+escapeHtml(r.emp||r.gl||"— ohne Betreuer —"):""}</span></td>
+      <td class="r c-main" data-label="${dl[0]}">${c1}</td><td class="r" style="color:var(--muted)" data-label="${dl[1]}">${c2}</td><td class="r" data-label="${dl[2]}">${c3}</td><td class="r" data-label="${dl[3]}">${c4}</td>
       <td class="r" style="color:var(--muted)" data-label="VT">${fmt(r.vt)}</td>
     </tr>`;}).join("")+`</tbody></table>`;
 }
@@ -13973,10 +13998,10 @@ function renderAkqOhneProd(){
   if(!rows.length){ $("akqOpBody").innerHTML=`<div class="empty-note">Alle Akquisekunden dieser Ansicht haben ${s.jahr} bereits produziert. 🎉</div>`; return; }
   $("akqOpBody").innerHTML=`<table class="akqop-table"><thead><tr><th>Händler${showGL?" / Betreuer":""}</th><th>Adresse</th><th>Beginn</th><th>Telefon</th></tr></thead><tbody>`+
     rows.map(a=>`<tr>
-      <td class="akqop-name"><b title="${escapeHtml(a.name)}"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(a.nr||"")}">${escapeHtml(a.name)}</button></b><span class="betr">${escapeHtml(a.nr)}${showGL?" · "+escapeHtml(a.emp||a.glRaw||"–"):""}</span></td>
-      <td><span class="betr akqop-addr">${a.strasse||""}${a.strasse?", ":""}${a.plz} ${a.ort}</span></td>
-      <td>${a.beginn?fmtDate(a.beginn):"–"}</td>
-      <td>${a.tel?`<a href="tel:${a.tel.replace(/[^+\d]/g,"")}" style="color:var(--wg-blue);font-weight:700;text-decoration:none">${a.tel}</a>`:"–"}</td>
+      <td class="akqop-name c-name"><b title="${escapeHtml(a.name)}"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(a.nr||"")}">${escapeHtml(a.name)}</button></b><span class="betr">${escapeHtml(a.nr)}${showGL?" · "+escapeHtml(a.emp||a.glRaw||"–"):""}</span></td>
+      <td class="c-addr"><span class="betr akqop-addr">${a.strasse||""}${a.strasse?", ":""}${a.plz} ${a.ort}</span></td>
+      <td data-label="Beginn">${a.beginn?fmtDate(a.beginn):"–"}</td>
+      <td class="c-main">${a.tel?`<a href="tel:${a.tel.replace(/[^+\d]/g,"")}" style="color:var(--wg-blue);font-weight:700;text-decoration:none">${a.tel}</a>`:"–"}</td>
     </tr>`).join("")+`</tbody></table>`;
 }
 
@@ -14010,12 +14035,12 @@ function renderNeunWochen(){
   if(!visibleRows.length){ $("nwBody").innerHTML=`<div class="empty-note">Keine Händler mit Beginn der Zusammenarbeit in den letzten 9 Wochen.</div>`; return; }
   $("nwBody").innerHTML=`<table><thead><tr><th></th><th>Händler${showGL?" / Betreuer":""}</th><th class="r">Resttage</th><th>Beginn</th><th class="r">Termine</th><th class="r">Prod. ${s.jahr}</th></tr></thead><tbody>`+
     visibleRows.map(a=>`<tr>
-      <td>${a.warn?"⚠️":"✅"}</td>
-      <td><b><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(a.nr||"")}">${escapeHtml(a.name)}</button></b><br><span class="betr">${escapeHtml(a.nr)} · ${escapeHtml(a.ort)}${showGL?" · "+escapeHtml(a.emp||a.glRaw||"–"):""}</span></td>
-      <td class="r" style="font-weight:800;${a.resttage<=14?"color:var(--neg)":""}">${a.resttage}</td>
-      <td>${fmtDate(a.beginn)}</td>
-      <td class="r" style="font-weight:800;${a.termine<5?"color:var(--neg)":""}">${fmt(a.termine)} <span class="betr">(${fmt(a.besP)} p. / ${fmt(a.besT)} t. / ${fmt(a.besG)} g.)</span></td>
-      <td class="r" style="font-weight:800;${(a.p2026||0)<20?"color:var(--neg)":""}">${fmt(a.p2026)}</td>
+      <td class="c-lead">${a.warn?"⚠️":"✅"}</td>
+      <td class="c-name"><b><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(a.nr||"")}">${escapeHtml(a.name)}</button></b><br><span class="betr">${escapeHtml(a.nr)} · ${escapeHtml(a.ort)}${showGL?" · "+escapeHtml(a.emp||a.glRaw||"–"):""}</span></td>
+      <td class="r c-main" data-label="Resttage" style="font-weight:800;${a.resttage<=14?"color:var(--neg)":""}">${a.resttage}</td>
+      <td data-label="Beginn">${fmtDate(a.beginn).slice(0,6)}<span class="c-yr">${fmtDate(a.beginn).slice(6)}</span></td>
+      <td class="r" data-label="Termine" style="font-weight:800;${a.termine<5?"color:var(--neg)":""}">${fmt(a.termine)} <span class="betr">(${fmt(a.besP)} p. / ${fmt(a.besT)} t. / ${fmt(a.besG)} g.)</span></td>
+      <td class="r" data-label="Prod." style="font-weight:800;${(a.p2026||0)<20?"color:var(--neg)":""}">${fmt(a.p2026)}</td>
     </tr>`).join("")+`</tbody></table>
     <div class="mix-sub" style="margin-top:6px">Resttage = 63 minus Tage seit Beginn · ⚠️ = weniger als 5 Termine (persönlich + telefonisch) UND weniger als 20 Verträge</div>`;
 }
