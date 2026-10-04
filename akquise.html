@@ -104,6 +104,7 @@ select:focus,.inp:focus{border-color:var(--wg-blue)}
 .loc-box .inp{flex:1;min-width:0}
 .loc-info{font-size:12px;color:var(--muted)}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
+.row-filter .chips{flex:1 1 0;min-width:260px}
 .chip{
   font:inherit;font-size:12.5px;font-weight:700;border-radius:999px;padding:6px 11px;cursor:pointer;
   border:2px solid var(--c,#999);background:#fff;color:var(--c,#999);display:inline-flex;align-items:center;gap:6px;
@@ -229,60 +230,136 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
   .item:hover{border-color:var(--line)}
 }
 
-/* ---------- iPad hoch / einspaltig ---------- */
-@media (max-width:1000px){
-  .main{grid-template-columns:1fr;height:auto}
-  .map-card{height:40vh;height:40dvh;min-height:260px}
-  .list-card{min-height:300px}
-  .list-body{max-height:none;overflow:visible}
-}
+/* ==========================================================
+   Mobil-App-Ansicht (iPhone, iPad hoch, iPhone quer):
+   Karte bildschirmfüllend, schwebende Bedienleiste oben, Liste als
+   ziehbares Blatt von unten (iPhone quer: Seitenleiste rechts).
+   iPad quer + Desktop behalten das zweispaltige Layout oben.
+   --sheetH (Höhe des Listen-Blatts) setzt setSheet() per JS.
+   ========================================================== */
+.m-only{display:none !important}
+.m-loc{display:none}
+@media (max-width:1000px), (max-height:500px) and (orientation:landscape) and (pointer:coarse){
+  body.app-on{overflow:hidden;height:100vh;height:100dvh;overscroll-behavior:none}
+  body.app-on header{display:none}
+  body.app-on .wrap{padding:0;max-width:none}
+  .m-only{display:inline-flex !important}
+  .d-only{display:none !important}
+  .controls .lbl{display:none}
 
-/* ---------- iPhone hoch ---------- */
-@media (max-width:700px){
-  .wrap{padding-top:8px;padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right))}
-  header{padding:8px 10px;gap:8px;flex-wrap:nowrap}
-  header img{height:26px}
-  .title-block{min-width:0}
-  .title-block h1{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .title-block .sub,.role-badge{display:none !important}
-  .hdr-actions{flex-wrap:nowrap;gap:6px}
-  .hdr-actions .lbl{display:none}
-  .hdr-actions .btn{padding:7px 11px;font-size:16px}
-  .controls{padding:10px;gap:8px}
-  .seg{width:100%}
-  .seg button{flex:1;padding:9px 6px}
-  .loc-box{min-width:100%}
-  /* Sparten-Chips als eine wischbare Zeile statt vier Zeilen */
-  .chips{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex:1;min-width:0;padding-bottom:2px}
-  .chips::-webkit-scrollbar{display:none}
-  .chip{flex:none}
-  .prod{grid-template-columns:repeat(3,1fr)}
+  /* Schwebende Bedienleiste */
+  .controls{
+    position:fixed;top:0;left:0;right:0;z-index:30;margin:0;gap:8px;
+    background:transparent;box-shadow:none;border-radius:0;pointer-events:none;
+    padding:calc(env(safe-area-inset-top) + 8px) max(10px,env(safe-area-inset-right)) 0 max(10px,env(safe-area-inset-left));
+  }
+  .ctrl-row{pointer-events:none}
+  .ctrl-row > *{pointer-events:auto}
+  .row-top{flex-wrap:wrap;gap:8px}
+  .seg{flex:1;min-width:0;background:rgba(255,255,255,.97);box-shadow:0 4px 16px rgba(6,42,63,.18);border-radius:14px;padding:4px}
+  .seg button{flex:1;min-width:0;padding:8px 6px;font-size:14.5px;min-height:40px;white-space:nowrap}
+  .m-icon{
+    width:48px;height:48px;min-height:48px;padding:0;justify-content:center;font-size:19px;
+    background:rgba(255,255,255,.97);color:var(--wg-navy);border-radius:14px;box-shadow:0 4px 16px rgba(6,42,63,.18);flex:none;
+  }
+  body.m-search #mSearchBtn{background:var(--wg-navy)}
+  .loc-box{display:none;order:10;flex-basis:100%;min-width:0}
+  body.m-search .loc-box{display:flex;background:#fff;border-radius:14px;box-shadow:0 4px 16px rgba(6,42,63,.18);padding:6px;gap:6px}
+  body.m-search .loc-box .inp{border-color:transparent;background:#F3F7FA}
+  .row-filter{
+    flex-wrap:nowrap;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;
+    margin:0 -10px;padding:2px 10px 8px;
+  }
+  .row-filter::-webkit-scrollbar{display:none}
+  .chips,.row-filter .chips{flex-wrap:nowrap;flex:none;min-width:0;gap:6px}
+  /* Ruhigere Sparten-Chips auf der Karte: weiß mit Farbpunkt, abgewählt blass */
+  .chip{flex:none;box-shadow:0 2px 8px rgba(6,42,63,.16);border:2px solid transparent;background:#fff;color:var(--wg-navy)}
+  .chip .dot{width:10px;height:10px;background:var(--c)}
+  .chip.on{background:#fff;color:var(--wg-navy);border-color:var(--c)}
+  .chip:not(.on){background:rgba(255,255,255,.85);color:#8CA0AF}
+  .chip:not(.on) .dot{background:#C9D6DF}
+  #radiusSel,#spartenAllBtn{
+    flex:none;border:none;border-radius:999px;box-shadow:0 2px 8px rgba(6,42,63,.16);
+    background-color:#fff;min-height:40px;padding:6px 14px;font-weight:700;
+  }
+  #radiusSel{background:var(--wg-navy) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' stroke='white' stroke-width='2' fill='none' stroke-linecap='round'/></svg>") no-repeat right 11px center;color:#fff;padding-right:30px;-webkit-appearance:none;appearance:none}
+
+  /* Standort-Button schwebt über dem Blatt */
+  #gpsBtn{
+    position:fixed;z-index:25;right:max(12px,env(safe-area-inset-right));bottom:calc(var(--sheetH,170px) + 12px);
+    width:52px;height:52px;min-height:52px;border-radius:50%;padding:0;justify-content:center;font-size:21px;
+    background:#fff;box-shadow:0 6px 20px rgba(6,42,63,.28);transition:bottom .28s cubic-bezier(.2,.8,.2,1);
+  }
+  body.dragging #gpsBtn{transition:none}
+  body.sheet-full #gpsBtn{opacity:0;pointer-events:none}
+  #gpsBtn.locating{animation:akqPulse 1s infinite}
+  @keyframes akqPulse{50%{box-shadow:0 0 0 10px rgba(0,159,227,.25),0 6px 20px rgba(6,42,63,.28)}}
+
+  /* Karte bildschirmfüllend */
+  .main{margin:0;display:block;height:auto;min-height:0}
+  .map-card{position:fixed;inset:0;border-radius:0;box-shadow:none;height:auto;min-height:0;z-index:1}
+  .map-placeholder{padding:140px 24px calc(var(--sheetH,170px) + 20px)}
+
+  /* Listen-Blatt */
+  .list-card{
+    position:fixed;left:0;right:0;bottom:0;z-index:20;min-height:0;
+    height:var(--sheetH,170px);border-radius:22px 22px 0 0;
+    box-shadow:0 -8px 30px rgba(6,42,63,.20);
+    transition:height .28s cubic-bezier(.2,.8,.2,1);
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  .list-card.dragging,.list-card.dragging ~ *{transition:none}
+  .sheet-handle{display:flex !important;justify-content:center;padding:9px 0 3px;cursor:grab;touch-action:none;flex:none}
+  .sheet-handle span{width:42px;height:5px;border-radius:3px;background:#C9D6DF}
+  .list-head{padding:2px 14px 10px;touch-action:none;flex:none}
+  .list-head{gap:6px}
+  .list-head h2{font-size:16px}
+  /* Werkzeuge im Listenkopf: eine wischbare Zeile kleiner Schaltflächen */
+  .head-tools{flex-wrap:nowrap !important;justify-content:flex-start !important;overflow-x:auto;scrollbar-width:none;margin:0 -14px;padding:2px 14px;gap:6px !important}
+  .head-tools::-webkit-scrollbar{display:none}
+  .head-tools > *{flex:none}
+  .head-tools .btn-sm{min-height:38px;border-radius:999px;padding:6px 14px}
+  .head-tools select{min-height:38px;border-radius:999px;padding:5px 12px;border-width:0;background-color:#F3F7FA}
+  .head-tools .chk{min-height:38px;border-radius:999px;padding:6px 13px;background:#F3F7FA;font-size:13px;white-space:nowrap;gap:0}
+  .head-tools .chk input{position:absolute;opacity:0;width:1px;height:1px}
+  .head-tools .chk:has(input:checked){background:var(--wg-navy);color:#fff}
+  .head-tools .chk:has(input:checked)::before{content:"✓ ";white-space:pre}
+  .m-loc{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:-4px}
+  .list-body{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:4px 10px 12px}
+  .list-foot{display:none}
+  .toast{bottom:calc(var(--sheetH,170px) + 76px)}
+
   /* Detailfenster als Blatt von unten, Buttons immer sichtbar */
   .modal-bg{align-items:flex-end;padding:0}
-  .modal{border-radius:20px 20px 0 0;max-width:none !important;max-height:92vh;max-height:92dvh;padding:18px 16px calc(14px + env(safe-area-inset-bottom))}
+  .modal{border-radius:22px 22px 0 0;max-width:none !important;max-height:92vh;max-height:92dvh;padding:18px 16px calc(14px + env(safe-area-inset-bottom))}
   #detailBox .actions{position:sticky;bottom:calc(-14px - env(safe-area-inset-bottom));background:#fff;margin:14px -16px calc(-14px - env(safe-area-inset-bottom));padding:10px 16px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
   #detailBox .actions .btn{flex:1 1 auto;justify-content:center}
   #authModal{align-items:center;padding:16px}
   #authModal .modal{border-radius:20px}
+  .menu-sheet{display:flex;flex-direction:column;gap:8px}
+  .menu-sheet .btn{justify-content:center;width:100%}
+  .menu-user{font-size:13px;color:var(--muted);text-align:center;padding:2px 0 6px}
+  .prod{grid-template-columns:repeat(3,1fr)}
 }
-
-/* ---------- iPhone quer ---------- */
-@media (max-height:500px) and (orientation:landscape){
-  header{padding:6px 12px}
-  header img{height:24px}
-  .title-block .sub,.role-badge{display:none !important}
-  .hdr-actions .lbl{display:none}
-  .controls{padding:8px 10px;gap:6px}
-  .chips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0}
-  .chips::-webkit-scrollbar{display:none}
-  .chip{flex:none}
-  /* Karte + Liste nebeneinander, bildschirmfüllend nach dem Hochscrollen */
-  .main{grid-template-columns:1fr 1fr;height:calc(100vh - 16px);height:calc(100dvh - 16px);min-height:280px}
-  .map-card{height:auto;min-height:0}
-  .list-card{min-height:0}
-  .list-body{overflow-y:auto}
+@media (max-width:420px), (max-height:500px) and (orientation:landscape) and (pointer:coarse){
+  .seg-long{display:none}
+}
+/* iPad hoch: Blatt etwas schmaler und zentriert wirkt ruhiger */
+@media (min-width:700px) and (max-width:1000px) and (orientation:portrait){
+  .list-card{left:12px;right:12px;border-radius:22px 22px 0 0}
+  .modal{max-width:640px !important;margin:0 auto;border-radius:22px 22px 0 0}
+}
+/* iPhone quer: Liste als Seitenleiste rechts, Karte links */
+@media (max-height:500px) and (orientation:landscape) and (pointer:coarse){
+  .controls{right:min(46%,420px);padding-top:8px}
+  .list-card{left:auto;top:0;width:min(46%,420px);height:auto !important;border-radius:0;padding-top:env(safe-area-inset-top);padding-right:env(safe-area-inset-right)}
+  .sheet-handle{display:none !important}
+  .list-head{padding-top:10px}
+  #gpsBtn{right:calc(min(46%,420px) + 12px);bottom:calc(12px + env(safe-area-inset-bottom))}
+  .toast{bottom:16px}
+  .map-placeholder{padding:110px 24px 20px}
   .modal-bg{align-items:center;padding:8px}
-  .modal{max-height:94vh;max-height:94dvh}
+  .modal{border-radius:20px;max-width:560px !important;max-height:94vh;max-height:94dvh}
 }
 </style>
 </head>
@@ -305,14 +382,23 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
   <div id="gate" class="gate hidden"></div>
 
   <div id="app" class="hidden">
-    <div class="controls">
-      <div class="ctrl-row">
+    <div class="controls" id="controls">
+      <div class="ctrl-row row-top">
         <div class="seg" id="modeSeg">
           <button data-mode="akquise" class="on">🎯 Akquise</button>
-          <button data-mode="haendler">🏪 Bestehende Händler</button>
+          <button data-mode="haendler">🏪 <span class="seg-long">Bestehende </span>Händler</button>
         </div>
-        <label class="loc-info" for="radiusSel">Umkreis</label>
-        <select id="radiusSel">
+        <button class="btn m-only m-icon" id="mSearchBtn" aria-label="Adresse suchen" title="Adresse suchen">🔍</button>
+        <button class="btn m-only m-icon" id="mMenuBtn" aria-label="Menü" title="Menü">☰</button>
+        <button class="btn btn-blue" id="gpsBtn" aria-label="Mein Standort" title="Mein Standort">📍<span class="lbl"> Mein Standort</span></button>
+        <div class="loc-box">
+          <input class="inp" id="addrInp" placeholder="Adresse oder Ort eingeben …" autocomplete="off" enterkeyhint="search">
+          <button class="btn btn-ghost" id="addrBtn">Suchen</button>
+        </div>
+      </div>
+      <div class="ctrl-row row-filter">
+        <label class="loc-info d-only" for="radiusSel">Umkreis</label>
+        <select id="radiusSel" aria-label="Umkreis">
           <option value="2000">2 km</option>
           <option value="5000">5 km</option>
           <option value="10000" selected>10 km</option>
@@ -320,17 +406,10 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
           <option value="30000">30 km</option>
           <option value="50000">50 km</option>
         </select>
-        <button class="btn btn-blue" id="gpsBtn">📍 Mein Standort</button>
-        <div class="loc-box">
-          <input class="inp" id="addrInp" placeholder="oder Adresse / Ort eingeben …" autocomplete="off">
-          <button class="btn btn-ghost" id="addrBtn">Suchen</button>
-        </div>
-      </div>
-      <div class="ctrl-row">
         <div class="chips" id="spartenChips"></div>
         <button class="btn btn-ghost btn-sm" id="spartenAllBtn">Alle</button>
       </div>
-      <div class="loc-info" id="locInfo">Kein Standort gewählt.</div>
+      <div class="loc-info d-only" id="locInfo">Kein Standort gewählt.</div>
     </div>
 
     <div class="main">
@@ -338,7 +417,8 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
         <div id="map"></div>
         <div class="map-placeholder hidden" id="mapPlaceholder"></div>
       </div>
-      <div class="list-card">
+      <div class="list-card" id="listCard">
+        <div class="sheet-handle m-only" id="sheetHandle" role="button" aria-label="Liste vergrößern/verkleinern"><span></span></div>
         <div class="list-head" id="listHead"></div>
         <div class="list-body" id="listBody"></div>
         <div class="list-foot" id="listFoot"></div>
@@ -375,6 +455,17 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
       <a class="btn btn-navy" id="navApple" target="_blank" rel="noopener">Apple Karten</a>
       <a class="btn btn-ghost" id="navWaze" target="_blank" rel="noopener">Waze</a>
     </div>
+  </div>
+</div>
+
+<!-- Menü (mobil) -->
+<div class="modal-bg hidden" id="menuModal">
+  <div class="modal menu-sheet">
+    <div class="menu-user" id="menuUser"></div>
+    <a class="btn btn-ghost" href="index.html">← Zum Dashboard</a>
+    <button class="btn btn-ghost hidden" id="menuSettingsBtn">⚙ Einstellungen</button>
+    <button class="btn btn-ghost" id="menuLogoutBtn">⏻ Abmelden</button>
+    <button class="btn btn-navy" data-close="menuModal">Schließen</button>
   </div>
 </div>
 
@@ -556,6 +647,9 @@ async function afterLogin(){
   }
   if(myRole==="admin") $("settingsBtn").classList.remove("hidden");
   $("app").classList.remove("hidden");
+  document.body.classList.add("app-on");
+  $("menuUser").textContent=(myName||supaUser.email)+(myRole==="admin"?" · Admin":"");
+  if(myRole==="admin") $("menuSettingsBtn").classList.remove("hidden");
   if(!toolEnabled) toast("Hinweis: Das Tool ist noch nicht für alle freigeschaltet – nur Admins sehen es.",5000);
   renderChips();
   restorePrefs();
@@ -736,9 +830,11 @@ function scoreLabel(s){ return s>=70?"Besuch sehr lohnend":s>=50?"Besuch lohnend
 function locateMe(silent){
   if(!navigator.geolocation){ if(!silent) toast("GPS wird von diesem Gerät nicht unterstützt."); return; }
   $("locInfo").textContent="Standort wird ermittelt …";
+  $("gpsBtn").classList.add("locating");
   navigator.geolocation.getCurrentPosition(
-    pos=>setPosition(pos.coords.latitude,pos.coords.longitude,`GPS-Standort (± ${Math.round(pos.coords.accuracy)} m)`,true),
+    pos=>{ $("gpsBtn").classList.remove("locating"); setPosition(pos.coords.latitude,pos.coords.longitude,`GPS-Standort (± ${Math.round(pos.coords.accuracy)} m)`,true); },
     err=>{
+      $("gpsBtn").classList.remove("locating");
       const msg=err.code===1?"Standortzugriff wurde verweigert – bitte in den Browser-Einstellungen erlauben oder eine Adresse eingeben.":"Standort konnte nicht ermittelt werden – bitte eine Adresse eingeben.";
       $("locInfo").textContent=myPos?("Standort: "+myPos.label):msg;
       if(!silent) toast(msg,5000);
@@ -752,6 +848,7 @@ async function searchAddress(){
   try{
     const r=await callFn("geocode_address",{address:q});
     setPosition(r.lat,r.lng,r.adresse,true);
+    document.body.classList.remove("m-search"); $("addrInp").blur();
   }catch(e){ toast("Adresse nicht gefunden: "+(e.message||e),5000); }
   $("addrBtn").disabled=false;
 }
@@ -785,23 +882,19 @@ function showMapPlaceholder(title,text){
   const p=$("mapPlaceholder"); p.classList.remove("hidden");
   p.innerHTML=`<div style="font-size:34px">🗺️</div><h3>${esc(title)}</h3><div>${esc(text)}</div>`;
 }
-function isSingleColumn(){
-  return matchMedia("(max-width:1000px)").matches && !matchMedia("(max-height:500px) and (orientation:landscape)").matches;
-}
 function onMapsLoaded(){
   mapsReady=true;
   gmap=new google.maps.Map($("map"),{
     center: myPos?{lat:myPos.lat,lng:myPos.lng}:{lat:47.6,lng:14.1}, zoom: myPos?12:7,
-    mapTypeControl:false, streetViewControl:false, fullscreenControl:true, clickableIcons:false,
-    // Einspaltig (iPhone hoch, iPad hoch) liegt die Karte mitten in der
-    // scrollenden Seite - "cooperative" (Karte mit zwei Fingern bewegen),
-    // sonst bleibt man beim Wischen über die Karte hängen.
-    gestureHandling: isSingleColumn()?"cooperative":"greedy",
+    mapTypeControl:false, streetViewControl:false, clickableIcons:false,
+    // Mobil ist die Karte bildschirmfüllend (kein Seiten-Scroll) - daher
+    // überall "greedy": ein Finger verschiebt die Karte.
+    gestureHandling:"greedy",
+    fullscreenControl:!isMobileLayout(), zoomControl:!isMobileLayout(),
   });
   updateMapPosition(true);
   renderMarkers();
-  // Drehen des Geräts: Layout wechselt zwischen ein- und zweispaltig
-  addEventListener("resize",()=>{ if(gmap) gmap.setOptions({gestureHandling:isSingleColumn()?"cooperative":"greedy"}); });
+  addEventListener("resize",()=>{ if(gmap) gmap.setOptions({fullscreenControl:!isMobileLayout(),zoomControl:!isMobileLayout()}); });
 }
 function updateMapPosition(fit){
   if(!mapsReady||!myPos) return;
@@ -814,7 +907,7 @@ function updateMapPosition(fit){
   if(!circle){
     circle=new google.maps.Circle({ map:gmap, center:ll, radius, strokeColor:"#009FE3", strokeOpacity:.7, strokeWeight:2, fillColor:"#009FE3", fillOpacity:.06, clickable:false });
   } else { circle.setCenter(ll); circle.setRadius(radius); }
-  if(fit) gmap.fitBounds(circle.getBounds(),20);
+  if(fit) gmap.fitBounds(circle.getBounds(),mapPadding());
 }
 function pinIcon(color, text, ring){
   const t=esc(text||"");
@@ -830,7 +923,7 @@ function renderMarkers(){
     if(it.kind==="dealer") icon=pinIcon(scoreColor(it.score), String(it.score), false);
     else icon=pinIcon((SPARTE_BY_ID[it.sparten[0]]||{}).color||"#009FE3", it.match==="pruefen"?"?":"", it.match==="pruefen");
     const m=new google.maps.Marker({ map:gmap, position:{lat:it.lat,lng:it.lng}, icon, title:it.name, zIndex:it.id===selectedId?5000:(it.score||0)+10 });
-    m.addListener("click",()=>{ selectItem(it.id,true); openDetail(it); });
+    m.addListener("click",()=>{ if(isSheetLayout()&&sheetState==="peek") setSheet("half"); selectItem(it.id,true); openDetail(it); });
     markers.push(m);
   }
 }
@@ -907,6 +1000,81 @@ function wkoLinks(){
   return { areaLabel, links: SPARTEN.filter(s=>selSparten.has(s.id)).map(s=>({ label:s.label, url:"https://firmen.wko.at/"+encodeURIComponent(s.wko)+"/"+encodeURIComponent(area)+"/" })) };
 }
 
+/* ---------- Mobil: Layout, Listen-Blatt, Menü ---------- */
+function isMobileLayout(){ return matchMedia("(max-width:1000px), (max-height:500px) and (orientation:landscape) and (pointer:coarse)").matches; }
+function isSheetLayout(){ return isMobileLayout() && !matchMedia("(max-height:500px) and (orientation:landscape) and (pointer:coarse)").matches; }
+// Kartenausschnitt so wählen, dass Bedienleiste oben und Listen-Blatt unten
+// den Suchkreis nicht verdecken.
+function mapPadding(){
+  if(!isMobileLayout()) return 20;
+  const top=$("controls").getBoundingClientRect().bottom+8;
+  if(!isSheetLayout()) return {top, bottom:16, left:16, right:16};
+  return {top, bottom:Math.min(sheetPx()+16, innerHeight*.6), left:16, right:16};
+}
+const SHEET_STATES=["peek","half","full"];
+let sheetState="half";
+function sheetHeights(){
+  const card=$("listCard"), vh=innerHeight;
+  const padB=parseFloat(getComputedStyle(card).paddingBottom)||0;
+  const peek=Math.round(Math.min(vh*.42, $("sheetHandle").offsetHeight+$("listHead").offsetHeight+padB+6));
+  const full=Math.round(vh-$("controls").getBoundingClientRect().bottom-4);
+  const half=Math.round(Math.max(peek+60, Math.min(full, vh*.5)));
+  return { peek, half, full:Math.max(full,half) };
+}
+function sheetPx(){ const v=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sheetH")); return isFinite(v)?v:0; }
+function setSheet(state, px){
+  if(!isSheetLayout()){ document.documentElement.style.removeProperty("--sheetH"); return; }
+  if(state) sheetState=state;
+  const H=sheetHeights(), h=px!=null?px:H[sheetState];
+  document.documentElement.style.setProperty("--sheetH", h+"px");
+  document.body.classList.toggle("sheet-full", h>=H.full-40);
+}
+(function initSheetDrag(){
+  let d=null;
+  const zone=e=>e.target.closest("#sheetHandle")||(e.target.closest("#listHead")&&!e.target.closest("input,select,button,label,a"));
+  function start(e){
+    if(!isSheetLayout()||!zone(e)) return;
+    const t=e.touches?e.touches[0]:e;
+    d={ y:t.clientY, h:$("listCard").offsetHeight, t:Date.now(), last:t.clientY, moved:false, H:sheetHeights() };
+    $("listCard").classList.add("dragging"); document.body.classList.add("dragging");
+  }
+  function move(e){
+    if(!d) return;
+    const t=e.touches?e.touches[0]:e;
+    const dy=d.y-t.clientY;
+    if(Math.abs(dy)>5) d.moved=true;
+    if(!d.moved) return;
+    e.preventDefault();
+    d.last=t.clientY;
+    setSheet(null, Math.max(d.H.peek-20, Math.min(d.H.full, d.h+dy)));
+  }
+  function end(){
+    if(!d) return;
+    $("listCard").classList.remove("dragging"); document.body.classList.remove("dragging");
+    const H=d.H;
+    if(!d.moved){
+      setSheet(sheetState==="peek"?"half":sheetState==="half"?"full":"half");
+    } else {
+      const cur=sheetPx(), v=(d.y-d.last)/Math.max(1,Date.now()-d.t); // px/ms, + = nach oben
+      let next;
+      if(v>.5) next=cur<H.half?"half":"full";
+      else if(v<-.5) next=cur>H.half?"half":"peek";
+      else next=SHEET_STATES.reduce((a,b)=>Math.abs(H[b]-cur)<Math.abs(H[a]-cur)?b:a);
+      setSheet(next);
+    }
+    d=null;
+  }
+  const card=document.getElementById("listCard");
+  card.addEventListener("touchstart",start,{passive:true});
+  card.addEventListener("touchmove",move,{passive:false});
+  card.addEventListener("touchend",end);
+  card.addEventListener("touchcancel",end);
+  card.addEventListener("mousedown",start);
+  addEventListener("mousemove",move);
+  addEventListener("mouseup",end);
+})();
+addEventListener("resize",()=>setSheet());
+
 /* ---------- Rendering ---------- */
 function renderChips(){
   $("spartenChips").innerHTML=SPARTEN.map(s=>`<button class="chip ${selSparten.has(s.id)?"on":""}" style="--c:${s.color}" data-sp="${s.id}"><span class="dot"></span>${esc(s.label)}</button>`).join("");
@@ -914,6 +1082,7 @@ function renderChips(){
 function render(){
   renderList();
   renderMarkers();
+  setSheet();
 }
 function renderList(){
   const head=$("listHead"), body=$("listBody"), foot=$("listFoot");
@@ -922,13 +1091,14 @@ function renderList(){
     const withGeo=dealers.filter(d=>d.lat!=null).length;
     head.innerHTML=`
       <div class="row"><h2>Bestehende Händler im Umkreis</h2><span class="count">${items.length} Händler</span></div>
-      <div class="row">
-        <select id="sortSel">
-          <option value="score" ${sortBy==="score"?"selected":""}>Sortierung: Besuchs-Score</option>
-          <option value="dist" ${sortBy==="dist"?"selected":""}>Sortierung: Entfernung</option>
-          <option value="besuch" ${sortBy==="besuch"?"selected":""}>Sortierung: Längster Besuch her</option>
+      ${mLocHtml()}
+      <div class="row head-tools">
+        <select id="sortSel" aria-label="Sortierung">
+          <option value="score" ${sortBy==="score"?"selected":""}>↓ Besuchs-Score</option>
+          <option value="dist" ${sortBy==="dist"?"selected":""}>↓ Entfernung</option>
+          <option value="besuch" ${sortBy==="besuch"?"selected":""}>↓ Längster Besuch her</option>
         </select>
-        <label class="chk"><input type="checkbox" id="inactChk" ${showInactive?"checked":""}> inaktive Händler zeigen</label>
+        <label class="chk"><input type="checkbox" id="inactChk" ${showInactive?"checked":""}> inaktive zeigen</label>
       </div>`;
     foot.textContent=`Score = Besuchsrückstand 35 % · Potenzial (Segment) 25 % · Entwicklung (LJ zu VJ/Plan) 25 % · Nähe 15 %. Koordinaten vorhanden für ${withGeo} von ${dealers.length} Händlern.`;
     if(!myPos){ body.innerHTML=emptyHtml("Kein Standort","Bitte „📍 Mein Standort“ tippen oder eine Adresse eingeben."); return; }
@@ -944,9 +1114,10 @@ function renderList(){
     const known=akqResults?akqResults.filter(p=>p.match==="angelegt").length:0;
     head.innerHTML=`
       <div class="row"><h2>Akquise – noch nicht bei uns</h2><span class="count">${akqResults?items.length+" Treffer":""}</span></div>
-      <div class="row">
-        <button class="btn btn-blue btn-sm" id="akqSearchBtn" ${akqLoading||!myPos?"disabled":""}>${akqLoading?"Suche läuft …":(akqResults?"🔄 Neu suchen":"🔍 Akquisen im Umkreis suchen")}</button>
-        <label class="chk"><input type="checkbox" id="hideKnownChk" ${hideKnown?"checked":""}> bereits angelegte ausblenden${akqResults?` (${known})`:""}</label>
+      ${mLocHtml()}
+      <div class="row head-tools">
+        <button class="btn btn-blue btn-sm" id="akqSearchBtn" ${akqLoading||!myPos?"disabled":""}>${akqLoading?"Suche läuft …":(akqResults?"🔄 Neu suchen":"🔍 Im Umkreis suchen")}</button>
+        <label class="chk"><input type="checkbox" id="hideKnownChk" ${hideKnown?"checked":""}> angelegte ausblenden${akqResults?` (${known})`:""}</label>
         <label class="chk"><input type="checkbox" id="hideNoIntChk" ${hideNoInterest?"checked":""}> „kein Interesse“ ausblenden</label>
       </div>`;
     foot.innerHTML=`Ergebnisse: Google Maps · Abgleich mit ${dealers.length} angelegten Händlern über Adresse, Name und Lage. „?“ = möglicherweise bereits angelegt.`;
@@ -954,11 +1125,12 @@ function renderList(){
     const wko=wkoLinks();
     const wkoHtml=wko?`<div class="wko-box"><b>WKO Firmen A–Z</b> – ${esc(wko.areaLabel)}:<div class="links">${wko.links.map(l=>`<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)} ↗</a>`).join("")}</div></div>`:"";
     if(akqLoading){ body.innerHTML=emptyHtml("Suche läuft …","Betriebe im Umkreis werden gesucht und mit unseren Händlern abgeglichen."); return; }
-    if(!akqResults){ body.innerHTML=wkoHtml+emptyHtml("Bereit zur Suche",`Umkreis ${fmtKm(radius)} · ${selSparten.size} Sparte(n). Tippe auf „Akquisen im Umkreis suchen“.`); return; }
+    if(!akqResults){ body.innerHTML=wkoHtml+emptyHtml("Bereit zur Suche",`Umkreis ${fmtKm(radius)} · ${selSparten.size} Sparte(n). Tippe auf „🔍 Im Umkreis suchen“.`); return; }
     if(!items.length){ body.innerHTML=wkoHtml+emptyHtml("Keine neuen Akquisen",total?`${total} Betriebe gefunden – alle bereits angelegt oder ausgeblendet.`:"Im Umkreis wurden keine passenden Betriebe gefunden."); return; }
     body.innerHTML=wkoHtml+items.map(placeItemHtml).join("");
   }
 }
+function mLocHtml(){ return `<div class="m-loc">📍 ${esc(myPos?myPos.label+" · "+fmtKm(radius)+" Umkreis":"Kein Standort – 📍 tippen oder 🔍 Adresse suchen")}</div>`; }
 function emptyHtml(t,x){ return `<div class="empty"><h3>${esc(t)}</h3><div>${esc(x)}</div></div>`; }
 function dealerItemHtml(it){
   const d=it.d, sp=SPARTE_BY_ID[d.sparte];
@@ -1234,8 +1406,12 @@ document.addEventListener("click",e=>{
   const c=e.target.closest("[data-close]"); if(c){ $(c.dataset.close).classList.add("hidden"); return; }
   if(e.target.classList.contains("modal-bg")&&e.target.id!=="authModal") e.target.classList.add("hidden");
 });
-document.addEventListener("keydown",e=>{ if(e.key==="Escape") ["detailModal","navModal","settingsModal"].forEach(id=>$(id).classList.add("hidden")); });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") ["detailModal","navModal","settingsModal","menuModal"].forEach(id=>$(id).classList.add("hidden")); });
 $("settingsBtn").onclick=openSettings;
+$("mSearchBtn").onclick=()=>{ const on=document.body.classList.toggle("m-search"); if(on) setTimeout(()=>$("addrInp").focus(),50); setSheet(); };
+$("mMenuBtn").onclick=()=>$("menuModal").classList.remove("hidden");
+$("menuSettingsBtn").onclick=()=>{ $("menuModal").classList.add("hidden"); openSettings(); };
+$("menuLogoutBtn").onclick=doLogout;
 $("setBrowserKeySave").onclick=async()=>{
   const v=$("setBrowserKey").value.trim();
   try{ await kvSet("google_maps_browser_key",v); browserKey=v; toast("Browser-Schlüssel gespeichert – Seite wird neu geladen …"); setTimeout(()=>location.reload(),900); }
