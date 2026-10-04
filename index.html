@@ -910,7 +910,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
      (body.pdf-mode fotografiert die Seite selbst). */
   html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) :is(table,tbody,tr,td){display:block}
   html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) thead{display:none}
-  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody){overflow:visible !important}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody){overflow-x:hidden !important}
+  /* Akquise/9-Wochen haben eine feste Höhe (max-height inline) - innerhalb
+     dieser Box muss weiter senkrecht gescrollt werden können. */
+  html.is-app body:not(.pdf-mode) :is(#akqOpBody,#nwBody){overflow-y:auto !important;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
   html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) tr{display:flex;flex-wrap:wrap;align-items:center;column-gap:8px;row-gap:3px;padding:7px 2px;border-bottom:1px solid #ECF2F6}
   html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) tr:last-child{border-bottom:0}
   html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) tr::before{content:"";flex-basis:100%;height:0;order:4}
