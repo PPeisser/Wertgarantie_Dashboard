@@ -657,7 +657,7 @@ td .betr{font-size:11px;color:var(--muted)}
    (Nutzer-Feedback 04.10.2026) - hochkant gedreht passen mehrere Jahre ohne
    Scrollen nebeneinander, und der Vorjahresvergleich je Monat steht direkt
    in einer Zeile. Umschalten nur INNERHALB von #fhMonthly/#acMonthly/
-   #filialGruppeBody ("Alle Filialen"-Übersicht), damit
+   #filialGruppeBody ("Alle Filialen"-Übersicht)/#fhMieteSection (Miete), damit
    die PDFs (kopieren dieses HTML in ein eigenes Element) immer die breite
    Variante zeigen, auch wenn sie am Handy erstellt werden. */
 .ac-month-table.mt-tall{display:none}
@@ -882,26 +882,26 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
   #acMonthly td:first-child,#acMonthly th:first-child{position:sticky;left:0;background:#fff;z-index:1;box-shadow:6px 0 8px -6px rgba(6,42,63,.35)}
   /* Handy-App (Home-Bildschirm): hochkant gedrehte Tabelle statt der breiten
      (siehe .mt-tall). Im normalen Browser bleibt die gewohnte Ansicht. */
-  html.is-app :is(#fhMonthly,#acMonthly,#filialGruppeBody) .mt-wide{display:none}
-  html.is-app :is(#fhMonthly,#acMonthly,#filialGruppeBody) .mt-tall{display:table}
+  html.is-app :is(#fhMonthly,#acMonthly,#filialGruppeBody,#fhMieteSection) .mt-wide{display:none}
+  html.is-app :is(#fhMonthly,#acMonthly,#filialGruppeBody,#fhMieteSection) .mt-tall{display:table}
   /* Jahresvergleich (FH-/AKP-PopUp, "Alle Filialen"): eine Karte je Jahr -
      Jahr als Überschrift, darunter Erfasst/Summe/vs. Vorjahr (FH zusätzlich
      beitragsfrei + 3-für-2-Quote) mit kleiner Beschriftung (data-label). */
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody) .yt :is(tbody,tr,td){display:block}
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody) .yt{display:block}
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody) .yt thead{display:none}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt :is(tbody,tr,td){display:block}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt{display:block}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt thead{display:none}
   /* neuestes Jahr oben - wie die hochkant gedrehte Monatstabelle (neuestes links) */
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody) .yt tbody{display:flex;flex-direction:column-reverse}
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody) .yt tr{
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt tbody{display:flex;flex-direction:column-reverse}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt tr{
     display:flex;flex-wrap:wrap;gap:6px 10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:#fff;
   }
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody) .yt td{border:0;padding:0;text-align:left;white-space:nowrap}
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody) .yt td:first-child{flex-basis:100%;font-size:14px;color:var(--wg-navy)}
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody) .yt td[data-label]{flex:1 1 26%;min-width:0;order:3}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt td{border:0;padding:0;text-align:left;white-space:nowrap}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt td:first-child{flex-basis:100%;font-size:14px;color:var(--wg-navy)}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt td[data-label]{flex:1 1 26%;min-width:0;order:3}
   /* Summe + Vorjahresvergleich zuerst (wichtigste Zahlen), Rest darunter */
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody) .yt td[data-label="Summe"]{order:1;flex-basis:30%}
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody) .yt td[data-label="vs. Vorjahr"]{order:2;flex-basis:55%}
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody) .yt td[data-label]::before{
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt td[data-label="Summe"]{order:1;flex-basis:30%}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt td[data-label="vs. Vorjahr"]{order:2;flex-basis:55%}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt td[data-label]::before{
     content:attr(data-label);display:block;font-size:9.5px;font-weight:800;letter-spacing:.3px;
     text-transform:uppercase;color:var(--muted);margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;
   }
@@ -12227,7 +12227,7 @@ function renderFhMieteSection(){
   const sortiment=(c.miete_sortiment||{})[String(state.latest.jahr)]||{};
   const years=[...new Set(Object.keys(monthly).map(k=>k.slice(0,4)))].sort();
   const monthlyTbl=years.length
-    ?`<div style="overflow:auto"><table class="ac-month-table"><thead><tr><th>Jahr</th>${MONTH_LABELS.map(m=>`<th>${m}</th>`).join("")}<th>Summe</th></tr></thead><tbody>`+
+    ?`<div style="overflow:auto"><table class="ac-month-table mt-wide"><thead><tr><th>Jahr</th>${MONTH_LABELS.map(m=>`<th>${m}</th>`).join("")}<th>Summe</th></tr></thead><tbody>`+
       years.map(y=>{
         let sum=0;
         const cells=MONTH_LABELS.map((_,i)=>{
@@ -12238,7 +12238,11 @@ function renderFhMieteSection(){
           return `<td>${fmt(v)}</td>`;
         }).join("");
         return `<tr><td><b>${y}</b></td>${cells}<td><b>${fmt(sum)}</b></td></tr>`;
-      }).join("")+`</tbody></table></div>`
+      }).join("")+`</tbody></table>`+
+      monthTallTableHtml(years,(y,i)=>{
+        const v=monthly[y+"-"+String(i+1).padStart(2,"0")];
+        return v==null?null:{val:v};
+      })+`</div>`
     :`<div class="empty-note">Keine Miete-Monatsdaten vorhanden.</div>`;
   let yearlyTbl="";
   if(years.length>=2){
@@ -12249,11 +12253,11 @@ function renderFhMieteSection(){
       const diff=prevSum==null?null:sum-prevSum;
       const pct=prevSum==null?null:pctOf(sum,prevSum);
       prevSum=sum;
-      return `<tr><td><b>${y}</b></td><td>${fmt(sum)}</td>
-        <td>${diff==null?"–":`<span class="pill ${diff>=0?"pos":"neg"}">${fmtSign(diff)} (${fmtPct(pct)})</span>`}</td></tr>`;
+      return `<tr><td><b>${y}</b></td><td data-label="Summe">${fmt(sum)}</td>
+        <td data-label="vs. Vorjahr">${diff==null?"–":`<span class="pill ${diff>=0?"pos":"neg"}">${fmtSign(diff)} (${fmtPct(pct)})</span>`}</td></tr>`;
     }).join("");
     yearlyTbl=`<h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:13px">Jahresvergleich Miete</h4>
-      <table class="ac-yearly-table"><thead><tr><th>Jahr</th><th>Summe</th><th>vs. Vorjahr</th></tr></thead><tbody>${rows}</tbody></table>`;
+      <table class="ac-yearly-table yt"><thead><tr><th>Jahr</th><th>Summe</th><th>vs. Vorjahr</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
   // Sortiment-Spalte im Miete-Report enthaelt bei einzelnen Zeilen statt einer
   // Kategorie (z.B. "Weiße Ware") einen Auftrags-/Produktcode (z.B. "R260081") -
