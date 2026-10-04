@@ -276,6 +276,32 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
   }
   .row-filter::-webkit-scrollbar{display:none}
   .chips,.row-filter .chips{flex-wrap:nowrap;flex:none;min-width:0;gap:6px}
+  /* Mobil: statt sieben Chips ein schlanker "Sparten ▾"-Knopf */
+  .row-filter .chips,#spartenAllBtn{display:none !important}
+  .row-filter{overflow:visible}
+  #mSpartenBtn{
+    flex:none;min-height:40px;padding:6px 14px;border-radius:999px;background:#fff;color:var(--wg-navy);
+    font-size:15px;font-weight:700;box-shadow:0 2px 8px rgba(6,42,63,.16);gap:8px;
+  }
+  #mSpartenBtn .caret{font-size:11px;opacity:.6}
+  .mini-dots{display:inline-flex}
+  .mini-dots i{width:10px;height:10px;border-radius:50%;border:2px solid #fff;margin-left:-4px;display:block}
+  .mini-dots i:first-child{margin-left:0}
+  .sp-sheet{padding-top:14px}
+  .sp-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .sp-head h3{margin:0;padding:0}
+  .sp-list{display:flex;flex-direction:column}
+  .sp-row{
+    display:flex;align-items:center;gap:12px;width:100%;min-height:52px;padding:8px 4px;border:none;background:none;
+    font:inherit;font-size:16px;font-weight:600;color:var(--wg-navy);border-bottom:1px solid var(--line);cursor:pointer;text-align:left;
+  }
+  .sp-row:last-child{border-bottom:none}
+  .sp-row .dot{width:14px;height:14px;border-radius:50%;background:var(--c);flex:none}
+  .sp-row .lbl2{flex:1}
+  .sp-row .chk2{width:26px;height:26px;border-radius:50%;border:2px solid #C9D6DF;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex:none}
+  .sp-row.on .chk2{background:var(--c);border-color:var(--c)}
+  .sp-row:not(.on){color:#8CA0AF}
+  .sp-done{width:100%;justify-content:center;margin-top:12px}
   /* Ruhigere Sparten-Chips auf der Karte: weiß mit Farbpunkt, abgewählt blass */
   .chip{flex:none;box-shadow:0 2px 8px rgba(6,42,63,.16);border:2px solid transparent;background:#fff;color:var(--wg-navy)}
   .chip .dot{width:10px;height:10px;background:var(--c)}
@@ -412,6 +438,7 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
         </select>
         <div class="chips" id="spartenChips"></div>
         <button class="btn btn-ghost btn-sm" id="spartenAllBtn">Alle</button>
+        <button class="btn m-only" id="mSpartenBtn" aria-label="Sparten wählen"><span class="mini-dots" id="mSpartenDots"></span><span id="mSpartenLbl">Alle Sparten</span> <span class="caret">▾</span></button>
       </div>
       <div class="loc-info d-only" id="locInfo">Kein Standort gewählt.</div>
     </div>
@@ -483,6 +510,15 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
       <button class="btn btn-ghost" data-close="geoHelpModal">Schließen</button>
       <button class="btn btn-blue" id="geoHelpRetry">Erneut versuchen</button>
     </div>
+  </div>
+</div>
+
+<!-- Sparten-Auswahl (mobil) -->
+<div class="modal-bg hidden" id="spartenModal">
+  <div class="modal sp-sheet">
+    <div class="sp-head"><h3>Sparten</h3><button class="btn btn-ghost btn-sm" id="spAllToggle">Alle</button></div>
+    <div class="sp-list" id="spList"></div>
+    <button class="btn btn-navy sp-done" data-close="spartenModal">Fertig</button>
   </div>
 </div>
 
@@ -1115,6 +1151,12 @@ addEventListener("resize",()=>setSheet());
 /* ---------- Rendering ---------- */
 function renderChips(){
   $("spartenChips").innerHTML=SPARTEN.map(s=>`<button class="chip ${selSparten.has(s.id)?"on":""}" style="--c:${s.color}" data-sp="${s.id}"><span class="dot"></span>${esc(s.label)}</button>`).join("");
+  // Mobil: Knopf-Beschriftung + Liste im Sparten-Blatt
+  const sel=SPARTEN.filter(s=>selSparten.has(s.id));
+  $("mSpartenLbl").textContent=sel.length===SPARTEN.length?"Alle Sparten":sel.length===0?"Keine Sparte":sel.length===1?sel[0].label:sel.length+" Sparten";
+  $("mSpartenDots").innerHTML=sel.map(s=>`<i style="background:${s.color}"></i>`).join("");
+  $("spList").innerHTML=SPARTEN.map(s=>`<button class="sp-row ${selSparten.has(s.id)?"on":""}" style="--c:${s.color}" data-sp="${s.id}"><span class="dot"></span><span class="lbl2">${esc(s.label)}</span><span class="chk2">${selSparten.has(s.id)?"✓":""}</span></button>`).join("");
+  $("spAllToggle").textContent=selSparten.size===SPARTEN.length?"Keine":"Alle";
 }
 function render(){
   renderList();
@@ -1416,6 +1458,17 @@ $("modeSeg").onclick=e=>{
   mode=b.dataset.mode; [...$("modeSeg").children].forEach(x=>x.classList.toggle("on",x===b));
   selectedId=null; savePrefs(); render();
 };
+$("mSpartenBtn").onclick=()=>$("spartenModal").classList.remove("hidden");
+$("spList").onclick=e=>{
+  const b=e.target.closest("button[data-sp]"); if(!b) return;
+  const id=b.dataset.sp;
+  if(selSparten.has(id)) selSparten.delete(id); else selSparten.add(id);
+  renderChips(); savePrefs(); render();
+};
+$("spAllToggle").onclick=()=>{
+  selSparten=selSparten.size===SPARTEN.length?new Set():new Set(SPARTEN.map(s=>s.id));
+  renderChips(); savePrefs(); render();
+};
 $("spartenChips").onclick=e=>{
   const b=e.target.closest("button[data-sp]"); if(!b) return;
   const id=b.dataset.sp;
@@ -1444,7 +1497,7 @@ document.addEventListener("click",e=>{
   const c=e.target.closest("[data-close]"); if(c){ $(c.dataset.close).classList.add("hidden"); return; }
   if(e.target.classList.contains("modal-bg")&&e.target.id!=="authModal") e.target.classList.add("hidden");
 });
-document.addEventListener("keydown",e=>{ if(e.key==="Escape") ["detailModal","navModal","settingsModal","menuModal","geoHelpModal"].forEach(id=>$(id).classList.add("hidden")); });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") ["detailModal","navModal","settingsModal","menuModal","geoHelpModal","spartenModal"].forEach(id=>$(id).classList.add("hidden")); });
 $("settingsBtn").onclick=openSettings;
 $("mSearchBtn").onclick=()=>{ const on=document.body.classList.toggle("m-search"); if(on) setTimeout(()=>$("addrInp").focus(),50); setSheet(); };
 $("mMenuBtn").onclick=()=>$("menuModal").classList.remove("hidden");
