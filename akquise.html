@@ -238,6 +238,7 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
    --sheetH (Höhe des Listen-Blatts) setzt setSheet() per JS.
    ========================================================== */
 .m-only{display:none !important}
+.seg-sub{display:none}
 .m-loc{display:none}
 @media (max-width:1000px), (max-height:500px) and (orientation:landscape) and (pointer:coarse){
   body.app-on{overflow:hidden;height:100vh;height:100dvh;overscroll-behavior:none}
@@ -257,7 +258,10 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
   .ctrl-row > *{pointer-events:auto}
   .row-top{flex-wrap:wrap;gap:8px}
   .seg{flex:1;min-width:0;background:rgba(255,255,255,.97);box-shadow:0 4px 16px rgba(6,42,63,.18);border-radius:14px;padding:4px}
-  .seg button{flex:1;min-width:0;padding:8px 6px;font-size:14.5px;min-height:40px;white-space:nowrap}
+  .seg button{flex:1;min-width:0;padding:5px 6px;font-size:14.5px;min-height:44px;white-space:nowrap;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.15}
+  /* Mobil: kurzer Name + kleine Unterzeile ("Händler" / "bestehend") */
+  .seg-long{display:none}
+  .seg-sub{display:block;font-size:10.5px;font-weight:600;opacity:.7;letter-spacing:.01em}
   .m-icon{
     width:48px;height:48px;min-height:48px;padding:0;justify-content:center;font-size:19px;
     background:rgba(255,255,255,.97);color:var(--wg-navy);border-radius:14px;box-shadow:0 4px 16px rgba(6,42,63,.18);flex:none;
@@ -338,11 +342,11 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
   #authModal .modal{border-radius:20px}
   .menu-sheet{display:flex;flex-direction:column;gap:8px}
   .menu-sheet .btn{justify-content:center;width:100%}
-  .menu-user{font-size:13px;color:var(--muted);text-align:center;padding:2px 0 6px}
+  .menu-brand{display:flex;flex-direction:column;align-items:center;gap:4px;padding:2px 0 2px}
+  .menu-brand img{height:34px;width:auto}
+  .menu-brand div{font-weight:800;color:var(--wg-navy);font-size:15px}
+  .menu-user{font-size:13px;color:var(--muted);text-align:center;padding:0 0 6px}
   .prod{grid-template-columns:repeat(3,1fr)}
-}
-@media (max-width:420px), (max-height:500px) and (orientation:landscape) and (pointer:coarse){
-  .seg-long{display:none}
 }
 /* iPad hoch: Blatt etwas schmaler und zentriert wirkt ruhiger */
 @media (min-width:700px) and (max-width:1000px) and (orientation:portrait){
@@ -385,8 +389,8 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
     <div class="controls" id="controls">
       <div class="ctrl-row row-top">
         <div class="seg" id="modeSeg">
-          <button data-mode="akquise" class="on">🎯 Akquise</button>
-          <button data-mode="haendler">🏪 <span class="seg-long">Bestehende </span>Händler</button>
+          <button data-mode="akquise" class="on"><span class="seg-main">🎯 Akquise</span><small class="seg-sub">neue Betriebe</small></button>
+          <button data-mode="haendler"><span class="seg-main">🏪 <span class="seg-long">Bestehende </span>Händler</span><small class="seg-sub">bestehend</small></button>
         </div>
         <button class="btn m-only m-icon" id="mSearchBtn" aria-label="Adresse suchen" title="Adresse suchen">🔍</button>
         <button class="btn m-only m-icon" id="mMenuBtn" aria-label="Menü" title="Menü">☰</button>
@@ -461,6 +465,7 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
 <!-- Menü (mobil) -->
 <div class="modal-bg hidden" id="menuModal">
   <div class="modal menu-sheet">
+    <div class="menu-brand"><img src="WG_Logo_claim_rgb_DE.png" alt="Wertgarantie"><div>Performance Akquisetool</div></div>
     <div class="menu-user" id="menuUser"></div>
     <a class="btn btn-ghost" href="index.html">← Zum Dashboard</a>
     <button class="btn btn-ghost hidden" id="menuSettingsBtn">⚙ Einstellungen</button>
