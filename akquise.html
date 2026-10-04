@@ -354,6 +354,13 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
   .head-tools .chk input{position:absolute;opacity:0;width:1px;height:1px}
   .head-tools .chk:has(input:checked){background:var(--wg-navy);color:#fff}
   .head-tools .chk:has(input:checked)::before{content:"✓ ";white-space:pre}
+  /* Mobil: Werkzeugzeile passt ohne Wischen auf den Bildschirm */
+  .head-tools{overflow:visible !important;margin:0 !important;padding:2px 0 !important}
+  .head-tools #akqSearchBtn,.head-tools select{flex:1 1 auto;min-width:0;justify-content:center}
+  .head-tools select{text-overflow:ellipsis}
+  .head-tools .akq-opt{display:none !important}
+  .head-filter{flex:none;min-height:38px;border-radius:999px;padding:6px 14px;background:#F3F7FA;color:var(--wg-navy);font-size:14px;gap:6px}
+  .head-filter .caret{font-size:11px;opacity:.6}
   .m-loc{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:-4px}
   .list-body{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:4px 10px 12px}
   .list-foot{display:none}
@@ -373,6 +380,12 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
   .menu-brand div{font-weight:800;color:var(--wg-navy);font-size:15px}
   .menu-user{font-size:13px;color:var(--muted);text-align:center;padding:0 0 6px}
   .prod{grid-template-columns:repeat(3,1fr)}
+}
+/* Schmale iPhones (SE, mini) */
+@media (max-width:380px){
+  .seg button{font-size:13.5px;padding:8px 4px}
+  .m-icon{width:44px;height:44px;min-height:44px}
+  .row-top{gap:6px}
 }
 /* iPad hoch: Blatt etwas schmaler und zentriert wirkt ruhiger */
 @media (min-width:700px) and (max-width:1000px) and (orientation:portrait){
@@ -519,6 +532,15 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
     <div class="sp-head"><h3>Sparten</h3><button class="btn btn-ghost btn-sm" id="spAllToggle">Alle</button></div>
     <div class="sp-list" id="spList"></div>
     <button class="btn btn-navy sp-done" data-close="spartenModal">Fertig</button>
+  </div>
+</div>
+
+<!-- Akquise-Filter (mobil) -->
+<div class="modal-bg hidden" id="akqFilterModal">
+  <div class="modal sp-sheet">
+    <div class="sp-head"><h3>Filter</h3></div>
+    <div class="sp-list" id="akqFilterList"></div>
+    <button class="btn btn-navy sp-done" data-close="akqFilterModal">Fertig</button>
   </div>
 </div>
 
@@ -1173,9 +1195,9 @@ function renderList(){
       ${mLocHtml()}
       <div class="row head-tools">
         <select id="sortSel" aria-label="Sortierung">
-          <option value="score" ${sortBy==="score"?"selected":""}>↓ Besuchs-Score</option>
-          <option value="dist" ${sortBy==="dist"?"selected":""}>↓ Entfernung</option>
-          <option value="besuch" ${sortBy==="besuch"?"selected":""}>↓ Längster Besuch her</option>
+          <option value="score" ${sortBy==="score"?"selected":""}>↓ Score</option>
+          <option value="dist" ${sortBy==="dist"?"selected":""}>↓ Nähe</option>
+          <option value="besuch" ${sortBy==="besuch"?"selected":""}>↓ Besuch überfällig</option>
         </select>
         <label class="chk"><input type="checkbox" id="inactChk" ${showInactive?"checked":""}> inaktive zeigen</label>
       </div>`;
@@ -1196,9 +1218,11 @@ function renderList(){
       ${mLocHtml()}
       <div class="row head-tools">
         <button class="btn btn-blue btn-sm" id="akqSearchBtn" ${akqLoading||!myPos?"disabled":""}>${akqLoading?"Suche läuft …":(akqResults?"🔄 Neu suchen":"🔍 Im Umkreis suchen")}</button>
-        <label class="chk"><input type="checkbox" id="hideKnownChk" ${hideKnown?"checked":""}> angelegte ausblenden${akqResults?` (${known})`:""}</label>
-        <label class="chk"><input type="checkbox" id="hideNoIntChk" ${hideNoInterest?"checked":""}> „kein Interesse“ ausblenden</label>
+        <label class="chk akq-opt"><input type="checkbox" id="hideKnownChk" ${hideKnown?"checked":""}> angelegte ausblenden${akqResults?` (${known})`:""}</label>
+        <label class="chk akq-opt"><input type="checkbox" id="hideNoIntChk" ${hideNoInterest?"checked":""}> „kein Interesse“ ausblenden</label>
+        <button class="btn m-only head-filter" id="akqFilterBtn">Filter${(hideKnown?1:0)+(hideNoInterest?1:0)?` · ${(hideKnown?1:0)+(hideNoInterest?1:0)}`:""} <span class="caret">▾</span></button>
       </div>`;
+    renderAkqFilterSheet(known);
     foot.innerHTML=`Ergebnisse: Google Maps · Abgleich mit ${dealers.length} angelegten Händlern über Adresse, Name und Lage. „?“ = möglicherweise bereits angelegt.`;
     if(!myPos){ body.innerHTML=emptyHtml("Kein Standort","Bitte „📍 Mein Standort“ tippen oder eine Adresse eingeben."); return; }
     const wko=wkoLinks();
@@ -1208,6 +1232,13 @@ function renderList(){
     if(!items.length){ body.innerHTML=wkoHtml+emptyHtml("Keine neuen Akquisen",total?`${total} Betriebe gefunden – alle bereits angelegt oder ausgeblendet.`:"Im Umkreis wurden keine passenden Betriebe gefunden."); return; }
     body.innerHTML=wkoHtml+items.map(placeItemHtml).join("");
   }
+}
+function renderAkqFilterSheet(known){
+  const opts=[
+    { id:"known", on:hideKnown, label:`Bereits angelegte ausblenden${akqResults?` (${known})`:""}` },
+    { id:"noint", on:hideNoInterest, label:"„Kein Interesse“ ausblenden" },
+  ];
+  $("akqFilterList").innerHTML=opts.map(o=>`<button class="sp-row ${o.on?"on":""}" style="--c:var(--wg-navy)" data-opt="${o.id}"><span class="lbl2">${esc(o.label)}</span><span class="chk2">${o.on?"✓":""}</span></button>`).join("");
 }
 function mLocHtml(){ return `<div class="m-loc">📍 ${esc(myPos?myPos.label+" · "+fmtKm(radius)+" Umkreis":"Kein Standort – 📍 tippen oder 🔍 Adresse suchen")}</div>`; }
 function emptyHtml(t,x){ return `<div class="empty"><h3>${esc(t)}</h3><div>${esc(x)}</div></div>`; }
@@ -1479,7 +1510,15 @@ $("spartenAllBtn").onclick=()=>{
   selSparten=selSparten.size===SPARTEN.length?new Set():new Set(SPARTEN.map(s=>s.id));
   renderChips(); savePrefs(); render();
 };
-$("listHead").addEventListener("click",e=>{ if(e.target.id==="akqSearchBtn") runAkqSearch(!!akqResults); });
+$("listHead").addEventListener("click",e=>{
+  if(e.target.closest("#akqSearchBtn")) runAkqSearch(!!akqResults);
+  if(e.target.closest("#akqFilterBtn")) $("akqFilterModal").classList.remove("hidden");
+});
+$("akqFilterList").onclick=e=>{
+  const b=e.target.closest("button[data-opt]"); if(!b) return;
+  if(b.dataset.opt==="known") hideKnown=!hideKnown; else hideNoInterest=!hideNoInterest;
+  render();
+};
 $("listHead").addEventListener("change",e=>{
   if(e.target.id==="sortSel"){ sortBy=e.target.value; render(); }
   if(e.target.id==="inactChk"){ showInactive=e.target.checked; render(); }
@@ -1497,7 +1536,7 @@ document.addEventListener("click",e=>{
   const c=e.target.closest("[data-close]"); if(c){ $(c.dataset.close).classList.add("hidden"); return; }
   if(e.target.classList.contains("modal-bg")&&e.target.id!=="authModal") e.target.classList.add("hidden");
 });
-document.addEventListener("keydown",e=>{ if(e.key==="Escape") ["detailModal","navModal","settingsModal","menuModal","geoHelpModal","spartenModal"].forEach(id=>$(id).classList.add("hidden")); });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") ["detailModal","navModal","settingsModal","menuModal","geoHelpModal","spartenModal","akqFilterModal"].forEach(id=>$(id).classList.add("hidden")); });
 $("settingsBtn").onclick=openSettings;
 $("mSearchBtn").onclick=()=>{ const on=document.body.classList.toggle("m-search"); if(on) setTimeout(()=>$("addrInp").focus(),50); setSheet(); };
 $("mMenuBtn").onclick=()=>$("menuModal").classList.remove("hidden");
