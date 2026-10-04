@@ -202,10 +202,12 @@ select:focus,.inp:focus{border-color:var(--wg-blue)}
 .status-row button.on{background:var(--wg-navy);border-color:var(--wg-navy);color:#fff}
 textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
 .nav-choice{display:flex;gap:8px;flex-wrap:wrap}
+.help-steps{font-size:13px;padding-left:20px;margin:6px 0 4px;color:var(--ink)}
+.help-steps li{margin:4px 0}
 
 .toast{
   position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--wg-navy);color:#fff;
-  padding:10px 16px;border-radius:12px;font-weight:600;font-size:13px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.25);
+  padding:10px 16px;border-radius:12px;font-weight:600;font-size:13px;z-index:45;box-shadow:0 8px 24px rgba(0,0,0,.25);
   max-width:calc(100vw - 32px);
 }
 .gate{max-width:520px;margin:60px auto;background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:26px;text-align:center;border-top:6px solid var(--wg-blue)}
@@ -458,6 +460,30 @@ textarea.inp{width:100%;min-height:60px;margin-top:8px;resize:vertical}
       <a class="btn btn-blue" id="navGoogle" target="_blank" rel="noopener">Google Maps</a>
       <a class="btn btn-navy" id="navApple" target="_blank" rel="noopener">Apple Karten</a>
       <a class="btn btn-ghost" id="navWaze" target="_blank" rel="noopener">Waze</a>
+    </div>
+  </div>
+</div>
+
+<!-- Hilfe: Standortzugriff verweigert -->
+<div class="modal-bg hidden" id="geoHelpModal">
+  <div class="modal" style="max-width:480px">
+    <button class="btn btn-ghost btn-sm close" data-close="geoHelpModal">✕</button>
+    <h3>Standort freigeben</h3>
+    <p>Das Gerät blockiert den Standort für diese Seite. Am iPhone/iPad sind <b>zwei</b> Freigaben nötig:</p>
+    <div class="section-t">1. iPhone-Einstellungen</div>
+    <ol class="help-steps">
+      <li><b>Einstellungen → Datenschutz &amp; Sicherheit → Ortungsdienste</b>: einschalten.</li>
+      <li>In derselben Liste <b>Safari-Websites</b> (bzw. <b>Chrome</b>) antippen → <b>„Beim Verwenden der App“</b> und <b>„Genauer Standort“</b> einschalten.</li>
+    </ol>
+    <div class="section-t">2. In Safari für diese Seite</div>
+    <ol class="help-steps">
+      <li>In der Adressleiste links auf <b>„aA“</b> (bzw. das Seiten-Symbol) tippen → <b>Website-Einstellungen</b> → <b>Standort: „Erlauben“</b>.</li>
+      <li>Alternativ: <b>Einstellungen → Apps → Safari → Standort</b> auf <b>„Fragen“</b> oder <b>„Erlauben“</b> stellen.</li>
+    </ol>
+    <p style="margin-top:10px">Danach die Seite <b>neu laden</b> und erneut auf 📍 tippen. Bis dahin kannst du den Standort auch über 🔍 per Adresse setzen.</p>
+    <div class="actions">
+      <button class="btn btn-ghost" data-close="geoHelpModal">Schließen</button>
+      <button class="btn btn-blue" id="geoHelpRetry">Erneut versuchen</button>
     </div>
   </div>
 </div>
@@ -832,20 +858,28 @@ function scoreColor(s){ return s>=70?"#E0234E":s>=50?"#F59E0B":"#12A150"; }
 function scoreLabel(s){ return s>=70?"Besuch sehr lohnend":s>=50?"Besuch lohnend":"Kann warten"; }
 
 /* ---------- Standort ---------- */
-function locateMe(silent){
-  if(!navigator.geolocation){ if(!silent) toast("GPS wird von diesem Gerät nicht unterstützt."); return; }
+// Standort: erst genau (GPS), bei Zeitüberschreitung/kein Signal ein zweiter
+// Versuch mit ungenauerem Standort (WLAN/Mobilfunk) - in Gebäuden findet
+// das iPhone sonst oft innerhalb der Frist kein GPS-Signal.
+function getPos(high){
+  return new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,
+    high?{enableHighAccuracy:true,timeout:12000,maximumAge:30000}:{enableHighAccuracy:false,timeout:20000,maximumAge:300000}));
+}
+async function locateMe(silent){
+  if(!window.isSecureContext||!navigator.geolocation){ if(!silent) toast("Standortbestimmung ist in diesem Browser nicht verfügbar – bitte eine Adresse eingeben.",6000); return; }
   $("locInfo").textContent="Standort wird ermittelt …";
   $("gpsBtn").classList.add("locating");
-  navigator.geolocation.getCurrentPosition(
-    pos=>{ $("gpsBtn").classList.remove("locating"); setPosition(pos.coords.latitude,pos.coords.longitude,`GPS-Standort (± ${Math.round(pos.coords.accuracy)} m)`,true); },
-    err=>{
-      $("gpsBtn").classList.remove("locating");
-      const msg=err.code===1?"Standortzugriff wurde verweigert – bitte in den Browser-Einstellungen erlauben oder eine Adresse eingeben.":"Standort konnte nicht ermittelt werden – bitte eine Adresse eingeben.";
-      $("locInfo").textContent=myPos?("Standort: "+myPos.label):msg;
-      if(!silent) toast(msg,5000);
-    },
-    { enableHighAccuracy:true, timeout:15000, maximumAge:60000 }
-  );
+  let pos=null, err=null;
+  try{ pos=await getPos(true); }
+  catch(e){ err=e; if(e.code!==1){ try{ pos=await getPos(false); err=null; }catch(e2){ err=e2; } } }
+  $("gpsBtn").classList.remove("locating");
+  if(pos){ setPosition(pos.coords.latitude,pos.coords.longitude,`GPS-Standort (± ${Math.round(pos.coords.accuracy)} m)`,true); return; }
+  const denied=err&&err.code===1;
+  const msg=denied?"Standortzugriff wurde verweigert.":"Standort konnte nicht ermittelt werden (kein GPS-/Netzsignal) – bitte erneut versuchen oder eine Adresse eingeben.";
+  $("locInfo").textContent=myPos?("Standort: "+myPos.label):msg;
+  if(silent) return;
+  if(denied) $("geoHelpModal").classList.remove("hidden");
+  else toast(msg,6000);
 }
 async function searchAddress(){
   const q=$("addrInp").value.trim(); if(!q) return;
@@ -1375,6 +1409,7 @@ $("authLoginBtn").onclick=doLogin;
 $("authPassword").addEventListener("keydown",e=>{ if(e.key==="Enter") doLogin(); });
 $("logoutBtn").onclick=doLogout;
 $("gpsBtn").onclick=()=>locateMe(false);
+$("geoHelpRetry").onclick=()=>{ $("geoHelpModal").classList.add("hidden"); locateMe(false); };
 $("addrBtn").onclick=searchAddress;
 $("addrInp").addEventListener("keydown",e=>{ if(e.key==="Enter") searchAddress(); });
 $("radiusSel").onchange=e=>{ radius=parseInt(e.target.value)||10000; savePrefs(); akqResults=null; akqKey=""; updateMapPosition(true); render(); };
@@ -1411,7 +1446,7 @@ document.addEventListener("click",e=>{
   const c=e.target.closest("[data-close]"); if(c){ $(c.dataset.close).classList.add("hidden"); return; }
   if(e.target.classList.contains("modal-bg")&&e.target.id!=="authModal") e.target.classList.add("hidden");
 });
-document.addEventListener("keydown",e=>{ if(e.key==="Escape") ["detailModal","navModal","settingsModal","menuModal"].forEach(id=>$(id).classList.add("hidden")); });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") ["detailModal","navModal","settingsModal","menuModal","geoHelpModal"].forEach(id=>$(id).classList.add("hidden")); });
 $("settingsBtn").onclick=openSettings;
 $("mSearchBtn").onclick=()=>{ const on=document.body.classList.toggle("m-search"); if(on) setTimeout(()=>$("addrInp").focus(),50); setSheet(); };
 $("mMenuBtn").onclick=()=>$("menuModal").classList.remove("hidden");
