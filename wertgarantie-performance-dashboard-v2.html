@@ -6570,6 +6570,22 @@ async function savePerfDraft(){
   perfDraftSaveBusy=true;
   updatePerfSaveStatus("saving");
   try{
+    // Bug-Report 06.10.2026 (Peter Peißer, September - derselbe Fehler wie
+    // schon beim Bug-Report 05.09.2026, diesmal aber trotz des damaligen
+    // Fixes erneut aufgetreten): perfSubmitDone ist eine reine In-Memory-
+    // Variable dieser EINEN Browser-Sitzung - ein zweiter, älterer/paralleler
+    // Tab (oder ein Dialog, der vor dem Absenden geöffnet blieb und erst
+    // Tage später wieder angefasst/geschlossen wird) weiß davon nichts und
+    // kann trotz openPerfModal()'s is_draft-Check einen längst final
+    // abgeschickten Bericht wieder auf is_draft:true zurückstufen - die
+    // Datenbank selbst (nicht der In-Memory-Zustand dieser Sitzung) muss
+    // deshalb die letzte, maßgebliche Instanz sein. Direkt vor jedem
+    // Entwurf-Autosave wird der tatsächliche DB-Stand erneut geprüft; ist
+    // der Bericht dort inzwischen (durch diese oder eine andere Sitzung)
+    // final abgeschickt, wird NICHT mehr drübergespeichert.
+    const {data:cur}=await sb.from("performance_dialog_reports").select("is_draft")
+      .eq("employee",perfEmployee).eq("year",perfReportYear).eq("month",perfReportMonth).maybeSingle();
+    if(cur&&cur.is_draft===false){ perfSubmitDone=true; updatePerfSaveStatus(""); return; }
     const goalsPayload=perfGoalIds.map(g=>({goal_id:g,snapshot:perfSnapshots[g],answers:perfAnswers[g]}));
     const {error}=await sb.from("performance_dialog_reports").upsert({
       employee:perfEmployee,year:perfReportYear,month:perfReportMonth,goals:goalsPayload,
