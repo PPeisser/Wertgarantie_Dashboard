@@ -12380,7 +12380,8 @@ function buildTrainerberichtPdfDoc(besuch){
         <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:6px">Produktionsentwicklung</div>
         <div style="font-size:13px">Produktion am Einsatztag (${fmtDate(besuch.besuch_datum)}): <b>${fmt(trainerbesuchTagesproduktion(besuch.fh_nr,besuch.besuch_datum))}</b> Stk.<br>
         Tagesschnitt vorher (3 Monate vor Besuch): <b>${fmtAvg1(besuch.baseline_avg)}</b> Stk./Tag<br>
-        Tagesschnitt nachher (4 Wochen nach Besuch): <b>${fmtAvg1(besuch.nachher_avg)}</b> Stk./Tag${diff!=null?`<br>Veränderung: <b style="color:${diff>=0?"#1B7A43":"#B3324A"}">${diff>=0?"+":""}${fmtAvg1(diff)}</b> Stk./Tag`:""}</div>
+        Tagesschnitt nachher (4 Wochen nach Besuch): <b>${fmtAvg1(besuch.nachher_avg)}</b> Stk./Tag${diff!=null?`<br>Veränderung: <b style="color:${diff>=0?"#1B7A43":"#B3324A"}">${diff>=0?"+":""}${fmtAvg1(diff)}</b> Stk./Tag`:""}
+        ${besuch.nachher_avg!=null?`<br>Gesamtproduktion Beobachtungszeitraum (4 Wochen nach Besuch): <b>${fmt(Math.round(besuch.nachher_avg*28))}</b> Stk.`:""}</div>
       </div>
     `;
     document.body.appendChild(box);
