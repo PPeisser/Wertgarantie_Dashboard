@@ -1,259 +1,661 @@
--- Wertgarantie Performance Dashboard – Supabase Schema
--- Im Supabase SQL-Editor (https://supabase.com/dashboard/project/_/sql) einmalig ausführen.
-
-create table if not exists public.dashboard_kv (
-  key        text primary key,
-  value      text not null,
-  updated_at timestamptz not null default now()
-);
-
-alter table public.dashboard_kv enable row level security;
-
--- Nur eingeloggte Nutzer dürfen den gemeinsamen Datenstand (Ziele, Excel-Auswertung) lesen/schreiben.
-create policy "Authenticated read dashboard_kv"
-  on public.dashboard_kv for select
-  to authenticated
-  using (true);
-
-create policy "Authenticated insert dashboard_kv"
-  on public.dashboard_kv for insert
-  to authenticated
-  with check (true);
-
-create policy "Authenticated update dashboard_kv"
-  on public.dashboard_kv for update
-  to authenticated
-  using (true)
-  with check (true);
-
--- ---------- Rollen (Admin / Außendienst) ----------
-
-create table if not exists public.profiles (
-  id                   uuid primary key references auth.users(id) on delete cascade,
-  email                text,
-  name                 text,
-  role                 text not null default 'aussendienst' check (role in ('admin','aussendienst','trainer')),
-  must_change_password boolean not null default false,
-  created_at           timestamptz not null default now()
-);
-
-alter table public.profiles add column if not exists name text;
-alter table public.profiles add column if not exists must_change_password boolean not null default false;
--- Rolle "Trainer" (wie Außendienst, aber ohne Zugriff auf den Performance
--- Dialog - steuert der Client, siehe index.html).
-alter table public.profiles drop constraint if exists profiles_role_check;
-alter table public.profiles add constraint profiles_role_check check (role in ('admin','aussendienst','trainer'));
-
-alter table public.profiles enable row level security;
-
--- Jeder eingeloggte Nutzer darf alle Rollen sehen (kleines Team, für UI-Zwecke).
-create policy "Authenticated read profiles"
-  on public.profiles for select
-  to authenticated
-  using (true);
-
--- Hilfsfunktion (security definer, umgeht RLS gezielt) um rekursive Policy-Auswertung zu vermeiden.
-create or replace function public.is_admin()
-returns boolean
-language sql
-security definer
-set search_path = public
-as $$
-  select exists (select 1 from public.profiles where id = auth.uid() and role = 'admin');
-$$;
-
--- Nur Admins dürfen Rollen ändern.
-create policy "Admins can update roles"
-  on public.profiles for update
-  to authenticated
-  using (public.is_admin())
-  with check (public.is_admin());
-
--- Setzt must_change_password auf false für den eigenen Account, nachdem der
--- Nutzer im Client sein Passwort geändert hat (client darf profiles sonst
--- nicht selbst updaten, siehe Policy oben – nur Admins dürfen das direkt).
-create or replace function public.mark_password_changed()
-returns void
-language sql
-security definer
-set search_path = public
-as $$
-  update public.profiles set must_change_password = false where id = auth.uid();
-$$;
-
--- Legt bei jeder Neuregistrierung automatisch ein Profil mit Standardrolle "aussendienst" an.
-create or replace function public.handle_new_user()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  insert into public.profiles (id, email, name, role)
-  values (new.id, new.email, new.raw_user_meta_data->>'name', 'aussendienst');
-  return new;
-end;
-$$;
-
-drop trigger if exists on_auth_user_created on auth.users;
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();
-
--- Postgres vergibt EXECUTE standardmäßig an PUBLIC – das würde beide Funktionen
--- als öffentliche RPC-Endpunkte exponieren (/rest/v1/rpc/...). Einschränken:
--- handle_new_user() braucht niemand direkt aufrufbar (nur der Trigger nutzt sie).
--- is_admin() muss für authenticated ausführbar bleiben (RLS-Policy oben ruft sie auf).
-revoke execute on function public.handle_new_user() from public;
-revoke execute on function public.is_admin() from public;
-grant execute on function public.is_admin() to authenticated;
-revoke execute on function public.mark_password_changed() from public;
-grant execute on function public.mark_password_changed() to authenticated;
-
--- Bestehenden Nutzer peter@peisser.com als Admin anlegen/markieren (einmalig, idempotent).
-insert into public.profiles (id, email, name, role)
-select id, email, 'Peter Peißer', 'admin' from auth.users where email = 'peter@peisser.com'
-on conflict (id) do update set role = 'admin', name = coalesce(public.profiles.name, excluded.name);
-
--- ---------- AKP-Kontakte (Ansprechpartner beim Fachhändler) ----------
-
-create table if not exists public.akp_contacts (
-  nr               text primary key,
-  fh_nr            text not null default '',
-  vorname          text,
-  nachname         text,
-  firma            text,
-  strasse          text,
-  plz              text,
-  ort              text,
-  telefon          text,
-  email            text,
-  geburtsdatum     date,
-  aktionsteilnahme boolean,
-  -- Monatsproduktion als offene Kalender-Map "YYYY-MM" -> Verträge, damit
-  -- künftige Monate bei jeder täglichen Einspielung einfach ergänzt werden
-  -- können, ohne das Schema zu ändern.
-  prod_monthly     jsonb not null default '{}'::jsonb,
-  -- Produktion in Monaten, in denen die Person bei einem ANDEREN (frueheren)
-  -- Fachhaendler produziert hat, nicht beim aktuell hinterlegten (fh_nr).
-  -- Wird separat/farblich im Popup angezeigt, zaehlt aber in der Gesamtsumme mit.
-  prod_monthly_other jsonb not null default '{}'::jsonb,
-  updated_at       timestamptz not null default now(),
-  updated_by       uuid references auth.users(id)
-);
-
-alter table public.akp_contacts add column if not exists prod_monthly_other jsonb not null default '{}'::jsonb;
-
--- PO-Quote und 3-fuer-2-Quote gab es bisher nur als EIN aktueller LJ-Snapshot
--- (state.latest.akp[].poQuote/.q3fuer2 aus dem Tagesimport), keine Historie wie
--- bei prod_monthly. Seit Migration akp_contacts_quota_monthly_snapshots wird
--- pro Kalendermonat der zuletzt bekannte Stand mitgeschrieben.
+-- ============================================================
+-- Wertgarantie Performance Dashboard - vollständiger Schema-Dump
+-- ============================================================
+-- Supabase-Projekt: gfyjftwlombhmwirbyse (Region: siehe Supabase Dashboard
+-- -> Project Settings -> General). Erzeugt am 06.10.2026 per manueller
+-- pg_catalog/information_schema-Introspektion (kein pg_dump-Zugriff
+-- verfügbar), zum Zweck einer vollständigen Grundgerüst-Sicherung, mit der
+-- das Backend bei Bedarf auf einem anderen Host/Projekt neu aufgebaut
+-- werden kann. Ersetzt die vorherige, veraltete schema.sql-Referenz.
 --
--- WICHTIG - andere Semantik als prod_monthly: prod_monthly[YYYY-MM] ist eine
--- additive, bereits kumulierte Monats-STUECKZAHL (jeder Import ueberschreibt
--- den Schluessel, am Monatsende steht der Endwert). poquote_monthly[YYYY-MM] /
--- q3fuer2_monthly[YYYY-MM] sind dagegen Verhaeltniszahlen (Jahres-kumulativer
--- Anteil, als Bruch z.B. 0.483 = 48,3%) - "Summe eines Monats" ist dafuer
--- bedeutungslos. Hier gilt: der ZULETZT BEKANNTE WERT innerhalb dieses
--- Kalendermonats (jeder Import ueberschreibt den Schluessel des laufenden
--- Monats; am Monatsende bleibt der Stand per Monatsultimo stehen). Ein
--- "Monatswert" ist also ein Stand zum Monatsende, KEIN Monatsanteil -
--- rueckwirkend nicht verfuegbar, waechst erst ab jetzt.
-alter table public.akp_contacts add column if not exists poquote_monthly jsonb not null default '{}'::jsonb;
-alter table public.akp_contacts add column if not exists q3fuer2_monthly jsonb not null default '{}'::jsonb;
+-- Reihenfolge wichtig: Tabellen -> Constraints/Indizes -> RLS -> Funktionen/
+-- Trigger -> Extensions -> Storage -> pg_cron. Enthält NICHT: Daten (siehe
+-- docs/REHOSTING.md für den Hinweis auf separaten Daten-Export), Secrets
+-- (NIE im Repo - siehe docs/REHOSTING.md für die Liste der benötigten
+-- Secret-NAMEN), den auth.users-Trigger "on_auth_user_created" (liegt auf
+-- schema "auth", siehe Kommentar bei den Triggern unten).
+--
+-- WICHTIG: Die pg_cron-Jobs ganz unten enthalten PLATZHALTER statt echter
+-- Secret-Werte (<CRON_SECRET>, <CRON_SECRET_EVENT_MAILER>, <PROJECT_REF>) -
+-- diese NIEMALS durch echte Werte ersetzt committen.
 
--- Stornoquoten je AKP (02.09.2026, "Vermittlerübersicht mit Stornoquoten",
--- siehe parseAkpStornoquoten in index.html) - EIN aktueller Snapshot, keine
--- Historie (wie poquote_monthly), da die Quelldatei selbst bereits ein
--- kumuliertes "laufendes Jahr bis Vormonat"-Stand ist. Werte als Bruch
--- (nicht ×100). NICHT vertraulich - im Gegensatz zu fh_deckungsgrad für
--- alle authentifizierten Nutzer über die bestehenden akp_contacts-Policies
--- lesbar (siehe unten), da diese Quoten laut Nutzervorgabe für alle
--- Mitarbeiter sichtbar sein sollen. Nur 3 der 4 Quoten aus der Quelldatei
--- werden gespeichert (1) Widerruf, 2) Nichtzahlung Erstprämie, 4) Wegfall
--- versichertes Interesse) - Quote 3) "Kulanz/Wegfall (erste 6 Monate)" wird
--- im Dashboard nicht angezeigt.
-alter table public.akp_contacts add column if not exists storno_widerruf_quote numeric;
-alter table public.akp_contacts add column if not exists storno_erstpraemie_quote numeric;
-alter table public.akp_contacts add column if not exists storno_wegfall_quote numeric;
-alter table public.akp_contacts add column if not exists storno_quoten_updated_at timestamptz;
+-- ============================================================
+-- SECTION 1: TABLES (columns only, constraints/indexes folgen)
+-- ============================================================
 
--- Profi-Training/Service-Training zu einem einzigen Feld "training_status"
--- zusammengefuehrt (Nutzervorgabe 06.09.2026 - "sie sollen alle im 'Profi
--- Training' angezeigt werden"; ursprünglich am 02.09.2026 als zwei getrennte
--- Felder eingeführt, da ein AKP theoretisch beide Programme abschließen
--- konnte - das kam in der Praxis aber kaum vor und wurde beim Zusammenführen
--- per höherwertigem Stand aufgelöst). "keines" = null.
--- verkauf1/2/3, service1/2 = einzelne Trainingsstufen (Verkauf = normales
--- Profi-Training, Service = ServiceTraining). "abgeschlossen" wird beim
--- Import gesetzt, wenn die jeweils HÖCHSTE Stufe (Verkauf 3 bzw. Service 2)
--- erfolgreich erreicht wurde - ersetzt dann verkauf3/service2 direkt, damit
--- diese beiden Werte nicht redundant neben "abgeschlossen" auftauchen (sie
--- bleiben im Enum nur für manuelle Sonderfälle wählbar). "teilgenommen" kommt
--- (noch) aus keiner automatisierten Einspielung, sondern ist ein manuell
--- pflegbarer Stand für Personen, die nur am Trainingsevent teilgenommen,
--- aber keine Stufe erfolgreich abgeschlossen haben - laut Nutzervorgabe soll
--- dafür künftig eine eigene, separate Teilnahmeliste eingespielt werden
--- (Format/Parser noch nicht vorhanden). "500" = 500-Verträge-Meilenstein,
--- fachlich unabhängig vom Training - siehe akp_sync_daily weiter unten für
--- die (vorbereitete) Automatik.
-alter table public.akp_contacts drop column if exists profi_training;
-alter table public.akp_contacts drop column if exists service_training;
-alter table public.akp_contacts add column if not exists training_status text
-  check (training_status is null or training_status in
-    ('verkauf1','verkauf2','verkauf3','service1','service2','abgeschlossen','teilgenommen','500'));
+CREATE TABLE IF NOT EXISTS public.akp_contacts (
+  nr text NOT NULL,
+  fh_nr text NOT NULL DEFAULT ''::text,
+  vorname text,
+  nachname text,
+  firma text,
+  strasse text,
+  plz text,
+  ort text,
+  telefon text,
+  email text,
+  geburtsdatum date,
+  aktionsteilnahme boolean,
+  prod_monthly jsonb NOT NULL DEFAULT '{}'::jsonb,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_by uuid,
+  prod_monthly_other jsonb NOT NULL DEFAULT '{}'::jsonb,
+  poquote_monthly jsonb NOT NULL DEFAULT '{}'::jsonb,
+  q3fuer2_monthly jsonb NOT NULL DEFAULT '{}'::jsonb,
+  gesperrt_am timestamp with time zone,
+  storno_widerruf_quote numeric,
+  storno_erstpraemie_quote numeric,
+  storno_wegfall_quote numeric,
+  storno_quoten_updated_at timestamp with time zone,
+  training_status text,
+  training_status_by_year jsonb NOT NULL DEFAULT '{}'::jsonb
+);
 
--- Hält den zuletzt bekannten training_status je Kalenderjahr fest (offene
--- Map wie prod_monthly/poquote_monthly oben) - Grundlage für die "500
--- Verträge"-Automatik: sobald für ein Vorjahr ein echter Snapshot existiert,
--- kann geprüft werden, ob der AKP im Vorjahr "abgeschlossen" oder
--- "teilgenommen" war. Wird bei jeder Änderung von training_status für das
--- AKTUELLE Jahr mitgeschrieben (akp_profi_training_upsert unten sowie der
--- manuelle Speicherpfad in index.html/saveAkpContact) - "das kommende Jahr"
--- (Nutzervorgabe 06.09.2026) hat dadurch ab Tag 1 einen echten Vorjahreswert.
-alter table public.akp_contacts add column if not exists training_status_by_year jsonb not null default '{}'::jsonb;
+CREATE TABLE IF NOT EXISTS public.akquise_geo (
+  fh_nr text NOT NULL,
+  lat double precision,
+  lng double precision,
+  genauigkeit text,
+  address_key text,
+  geocoded_at timestamp with time zone,
+  sparte text,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_by uuid
+);
 
-alter table public.akp_contacts enable row level security;
+CREATE TABLE IF NOT EXISTS public.akquise_place_status (
+  place_id text NOT NULL,
+  status text NOT NULL,
+  notiz text,
+  sparte text,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_by uuid
+);
 
--- Kontaktdaten sind Team-Arbeitswerkzeug: jeder eingeloggte Nutzer (jede Rolle)
--- darf lesen und pflegen, analog zu dashboard_kv.
-create policy "Authenticated read akp_contacts"
-  on public.akp_contacts for select
-  to authenticated
-  using (true);
+CREATE TABLE IF NOT EXISTS public.auswertung_subscription_sends (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  subscription_id uuid NOT NULL,
+  period_start date NOT NULL,
+  period_end date NOT NULL,
+  is_endstand boolean NOT NULL DEFAULT false,
+  sent_at timestamp with time zone NOT NULL DEFAULT now(),
+  storage_path text NOT NULL,
+  filename text NOT NULL,
+  customer_email_sent boolean NOT NULL DEFAULT false,
+  employee_email_sent boolean NOT NULL DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
 
-create policy "Authenticated insert akp_contacts"
-  on public.akp_contacts for insert
-  to authenticated
-  with check (true);
+CREATE TABLE IF NOT EXISTS public.auswertung_subscriptions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  auswertung_typ text NOT NULL,
+  entity_key text NOT NULL,
+  "interval" text NOT NULL,
+  fixed_range_enabled boolean NOT NULL DEFAULT false,
+  range_start date,
+  range_end date,
+  include_vj boolean NOT NULL DEFAULT false,
+  include_vvj boolean NOT NULL DEFAULT false,
+  show_akp boolean NOT NULL DEFAULT false,
+  active boolean NOT NULL DEFAULT true,
+  endstand_sent_at timestamp with time zone,
+  created_by uuid,
+  created_by_name text,
+  created_by_email text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  recipient_emails text[] NOT NULL DEFAULT '{}'::text[],
+  send_to_employee boolean NOT NULL DEFAULT true,
+  send_to_external boolean NOT NULL DEFAULT true
+);
 
-create policy "Authenticated update akp_contacts"
-  on public.akp_contacts for update
-  to authenticated
-  using (true)
-  with check (true);
+CREATE TABLE IF NOT EXISTS public.dashboard_kv (
+  key text NOT NULL,
+  value text NOT NULL,
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
 
-create index if not exists akp_contacts_nr_idx on public.akp_contacts (nr);
+CREATE TABLE IF NOT EXISTS public.email_recipients (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  email text NOT NULL,
+  frequency text NOT NULL,
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
 
--- Wird bei jeder täglichen Excel-Einspielung aufgerufen (siehe syncAkpContacts
--- in index.html): legt neue AKP an (Name best-effort aus der Einspielliste
--- gesplittet) und hält bei bereits bekannten AKP zumindest Fachhändler/Firma/
--- Ort sowie die Monatsproduktion aktuell (Kontaktdaten/Vorname/Nachname aus
--- der Stammliste bzw. manuellen Bearbeitung bleiben dabei unangetastet).
-create or replace function public.akp_sync_daily(rows jsonb) returns void
-language plpgsql security definer set search_path = public as $$
+CREATE TABLE IF NOT EXISTS public.employees (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  pers_jahresziel numeric NOT NULL DEFAULT 0,
+  miete_jahresziel numeric,
+  akq_staffel_ziel numeric NOT NULL DEFAULT 0,
+  perf_goal_ids jsonb NOT NULL DEFAULT '[1, 2, 3]'::jsonb,
+  match_aliases text[] NOT NULL DEFAULT '{}'::text[],
+  admin_only boolean NOT NULL DEFAULT false,
+  active boolean NOT NULL DEFAULT true,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.event_dates (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  event_id uuid NOT NULL,
+  event_date date NOT NULL,
+  start_time time without time zone NOT NULL,
+  end_time time without time zone,
+  location text NOT NULL DEFAULT ''::text,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.event_form_fields (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  event_id uuid NOT NULL,
+  field_key text NOT NULL,
+  enabled boolean NOT NULL DEFAULT true,
+  required boolean NOT NULL DEFAULT false,
+  sort_order integer NOT NULL DEFAULT 0,
+  label text
+);
+
+CREATE TABLE IF NOT EXISTS public.events (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  title text NOT NULL DEFAULT 'Wertgarantie Veranstaltung'::text,
+  description text NOT NULL DEFAULT ''::text,
+  is_active boolean NOT NULL DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  privacy_text text NOT NULL DEFAULT ''::text,
+  photo_url text
+);
+
+CREATE TABLE IF NOT EXISTS public.fh_contacts (
+  fh_nr text NOT NULL,
+  strasse text,
+  plz text,
+  ort text,
+  telefon text,
+  email text,
+  ansprechpartner text,
+  homepage text,
+  segmentierung text,
+  letzter_besuch date,
+  sonstige_infos text,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_by uuid,
+  prod_monthly jsonb NOT NULL DEFAULT '{}'::jsonb,
+  neunwochen_erledigt boolean NOT NULL DEFAULT false,
+  beitragsfrei_yearly jsonb NOT NULL DEFAULT '{}'::jsonb,
+  akq_punkte numeric,
+  akq_staffeln jsonb NOT NULL DEFAULT '[]'::jsonb,
+  akq_gl text,
+  akq_name text,
+  ansprechpartner_email text,
+  club_weiss_mitglied boolean NOT NULL DEFAULT false,
+  club_weiss_mitgliedsnummer text,
+  miete_monthly jsonb NOT NULL DEFAULT '{}'::jsonb,
+  miete_sortiment jsonb NOT NULL DEFAULT '{}'::jsonb,
+  kooperation text,
+  hauptzweig text,
+  weitere_zuordnung text,
+  ziel numeric,
+  filialbetriebe text,
+  name text,
+  miete_name text,
+  gesperrt_am timestamp with time zone,
+  segmentierung_prev text,
+  segmentierung_month text
+);
+
+CREATE TABLE IF NOT EXISTS public.fh_deckungsgrad (
+  fh_nr text NOT NULL,
+  bestand numeric,
+  provision_lj numeric,
+  schaeden_lj integer,
+  schadenbetrag_lj numeric,
+  db1_lj numeric,
+  dg1_lj numeric,
+  db2_lj numeric,
+  dg2_lj numeric,
+  db1_vj numeric,
+  dg1_vj numeric,
+  db2_vj numeric,
+  dg2_vj numeric,
+  imported_at timestamp with time zone NOT NULL DEFAULT now(),
+  imported_by uuid
+);
+
+CREATE TABLE IF NOT EXISTS public.fh_duplicate_merges (
+  alias_fh_nr text NOT NULL,
+  canonical_fh_nr text NOT NULL,
+  note text,
+  created_by uuid,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.fh_kooperation_pending (
+  fh_nr text NOT NULL,
+  kooperation text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.filialgruppen_contacts (
+  filialbetriebe text NOT NULL,
+  zentral_telefon text,
+  zentral_email text,
+  updated_by uuid,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  strasse text,
+  plz text,
+  ort text,
+  ansprechpartner_liste jsonb NOT NULL DEFAULT '[]'::jsonb
+);
+
+CREATE TABLE IF NOT EXISTS public.import_log (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  imported_at timestamp with time zone,
+  type text NOT NULL,
+  filename text,
+  vortag date,
+  source text NOT NULL DEFAULT 'upload'::text,
+  imported_by text,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.pending_imports (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  filename text NOT NULL,
+  storage_path text NOT NULL,
+  status text NOT NULL DEFAULT 'pending'::text,
+  source_subject text,
+  source_from text,
+  received_at timestamp with time zone NOT NULL DEFAULT now(),
+  processed_at timestamp with time zone,
+  error text,
+  claimed_at timestamp with time zone
+);
+
+CREATE TABLE IF NOT EXISTS public.performance_dialog_reports (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  employee text NOT NULL,
+  year integer NOT NULL,
+  month integer NOT NULL,
+  goals jsonb NOT NULL DEFAULT '[]'::jsonb,
+  submitted_at timestamp with time zone,
+  submitted_by uuid,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  is_draft boolean NOT NULL DEFAULT false
+);
+
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id uuid NOT NULL,
+  email text,
+  role text NOT NULL DEFAULT 'aussendienst'::text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  name text,
+  must_change_password boolean NOT NULL DEFAULT false
+);
+
+CREATE TABLE IF NOT EXISTS public.registrations (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  event_id uuid NOT NULL,
+  event_date_id uuid NOT NULL,
+  data jsonb NOT NULL DEFAULT '{}'::jsonb,
+  email text,
+  consent_at timestamp with time zone NOT NULL DEFAULT now(),
+  confirmation_sent_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.trainerbesuche (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  fh_nr text NOT NULL,
+  trainer_name text NOT NULL,
+  besuch_datum date NOT NULL,
+  taetigkeiten text,
+  akp_teilnehmer jsonb NOT NULL DEFAULT '[]'::jsonb,
+  baseline_avg numeric,
+  nachher_avg numeric,
+  endbericht_sent_at timestamp with time zone,
+  created_by uuid,
+  updated_by uuid,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  trainingsart jsonb NOT NULL DEFAULT '[]'::jsonb
+);
+
+CREATE TABLE IF NOT EXISTS public.trainerbetreuung_weekly_reports (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  trainer_name text NOT NULL,
+  sent_at timestamp with time zone NOT NULL DEFAULT now(),
+  period_reference date NOT NULL,
+  storage_path text NOT NULL,
+  filename text NOT NULL,
+  visit_count integer NOT NULL DEFAULT 0,
+  trainer_email_sent boolean NOT NULL DEFAULT false,
+  admin_email_sent boolean NOT NULL DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.user_settings (
+  user_id uuid NOT NULL,
+  notif_akp_enabled boolean NOT NULL DEFAULT false,
+  notif_akp_days integer NOT NULL DEFAULT 30,
+  notif_fh_enabled boolean NOT NULL DEFAULT false,
+  notif_fh_days integer NOT NULL DEFAULT 30,
+  notif_scope text NOT NULL DEFAULT 'own'::text,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  notif_trainerbetreuung_frequency text NOT NULL DEFAULT 'weekly'::text
+);
+
+-- ============================================================
+-- SECTION 2: CONSTRAINTS (PK/UNIQUE/CHECK/FK)
+-- ============================================================
+
+ALTER TABLE ONLY public.akp_contacts ADD CONSTRAINT akp_contacts_pkey PRIMARY KEY (nr);
+ALTER TABLE ONLY public.akp_contacts ADD CONSTRAINT akp_contacts_training_status_check CHECK (((training_status IS NULL) OR (training_status = ANY (ARRAY['verkauf1'::text, 'verkauf2'::text, 'verkauf3'::text, 'service1'::text, 'service2'::text, 'abgeschlossen'::text, 'teilgenommen'::text, '500'::text]))));
+ALTER TABLE ONLY public.akp_contacts ADD CONSTRAINT akp_contacts_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES auth.users(id);
+ALTER TABLE ONLY public.akquise_geo ADD CONSTRAINT akquise_geo_genauigkeit_check CHECK (((genauigkeit IS NULL) OR (genauigkeit = ANY (ARRAY['adresse'::text, 'ort'::text, 'fehler'::text]))));
+ALTER TABLE ONLY public.akquise_geo ADD CONSTRAINT akquise_geo_pkey PRIMARY KEY (fh_nr);
+ALTER TABLE ONLY public.akquise_geo ADD CONSTRAINT akquise_geo_sparte_check CHECK (((sparte IS NULL) OR (sparte = ANY (ARRAY['elektrohandel'::text, 'elektroservice'::text, 'mobilfunk'::text, 'hoerakustik'::text, 'optiker'::text, 'kuechen'::text, 'uhren'::text]))));
+ALTER TABLE ONLY public.akquise_place_status ADD CONSTRAINT akquise_place_status_pkey PRIMARY KEY (place_id);
+ALTER TABLE ONLY public.akquise_place_status ADD CONSTRAINT akquise_place_status_status_check CHECK ((status = ANY (ARRAY['offen'::text, 'kontaktiert'::text, 'termin'::text, 'kein_interesse'::text, 'angelegt'::text])));
+ALTER TABLE ONLY public.auswertung_subscription_sends ADD CONSTRAINT auswertung_subscription_sends_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.auswertung_subscription_sends ADD CONSTRAINT auswertung_subscription_sends_subscription_id_fkey FOREIGN KEY (subscription_id) REFERENCES auswertung_subscriptions(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.auswertung_subscriptions ADD CONSTRAINT auswertung_subscriptions_auswertung_typ_check CHECK ((auswertung_typ = ANY (ARRAY['kooperation'::text, 'weitere_zuordnung'::text, 'filialbetriebe'::text, 'fachhaendler'::text, 'akp'::text])));
+ALTER TABLE ONLY public.auswertung_subscriptions ADD CONSTRAINT auswertung_subscriptions_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id);
+ALTER TABLE ONLY public.auswertung_subscriptions ADD CONSTRAINT auswertung_subscriptions_interval_check CHECK (("interval" = ANY (ARRAY['daily'::text, 'weekly'::text, 'monthly'::text, 'quarterly'::text, 'yearly'::text])));
+ALTER TABLE ONLY public.auswertung_subscriptions ADD CONSTRAINT auswertung_subscriptions_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.auswertung_subscriptions ADD CONSTRAINT auswertung_subscriptions_range_chk CHECK (((NOT fixed_range_enabled) OR ((range_start IS NOT NULL) AND (range_end IS NOT NULL) AND (range_end >= range_start))));
+ALTER TABLE ONLY public.auswertung_subscriptions ADD CONSTRAINT auswertung_subscriptions_recipients_chk CHECK (((NOT send_to_external) OR (array_length(recipient_emails, 1) > 0)));
+ALTER TABLE ONLY public.dashboard_kv ADD CONSTRAINT dashboard_kv_pkey PRIMARY KEY (key);
+ALTER TABLE ONLY public.email_recipients ADD CONSTRAINT email_recipients_email_frequency_key UNIQUE (email, frequency);
+ALTER TABLE ONLY public.email_recipients ADD CONSTRAINT email_recipients_frequency_check CHECK ((frequency = ANY (ARRAY['daily'::text, 'weekly'::text])));
+ALTER TABLE ONLY public.email_recipients ADD CONSTRAINT email_recipients_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.employees ADD CONSTRAINT employees_name_key UNIQUE (name);
+ALTER TABLE ONLY public.employees ADD CONSTRAINT employees_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.event_dates ADD CONSTRAINT event_dates_event_id_fkey FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.event_dates ADD CONSTRAINT event_dates_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.event_form_fields ADD CONSTRAINT event_form_fields_event_id_field_key_key UNIQUE (event_id, field_key);
+ALTER TABLE ONLY public.event_form_fields ADD CONSTRAINT event_form_fields_event_id_fkey FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.event_form_fields ADD CONSTRAINT event_form_fields_field_key_check CHECK ((field_key = ANY (ARRAY['vorname'::text, 'nachname'::text, 'plz'::text, 'ort'::text, 'geburtsdatum'::text, 'akp_nummer'::text, 'fh_nummer'::text, 'fachhaendler'::text, 'telefon'::text, 'email'::text, 'anreise_auto'::text, 'bemerkungen'::text])));
+ALTER TABLE ONLY public.event_form_fields ADD CONSTRAINT event_form_fields_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.events ADD CONSTRAINT events_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.fh_contacts ADD CONSTRAINT fh_contacts_hauptzweig_check CHECK (((hauptzweig IS NULL) OR (hauptzweig = ANY (ARRAY['Vollsortiment'::text, 'Mobilfunk'::text, 'IT'::text, 'Kundendienst'::text, 'Industrie'::text, 'Akustik'::text, 'Optik'::text, 'Küchenhandel'::text, 'Uhrenhandel'::text, 'Grüne Ware'::text, 'Makler'::text, 'Projekt'::text, 'Sonstiges'::text]))));
+ALTER TABLE ONLY public.fh_contacts ADD CONSTRAINT fh_contacts_pkey PRIMARY KEY (fh_nr);
+ALTER TABLE ONLY public.fh_contacts ADD CONSTRAINT fh_contacts_segmentierung_check CHECK (((segmentierung IS NULL) OR (segmentierung = ANY (ARRAY['A+'::text, 'A'::text, 'B'::text, 'C+'::text, 'C'::text, 'D'::text]))));
+ALTER TABLE ONLY public.fh_contacts ADD CONSTRAINT fh_contacts_segmentierung_prev_check CHECK (((segmentierung_prev IS NULL) OR (segmentierung_prev = ANY (ARRAY['A+'::text, 'A'::text, 'B'::text, 'C+'::text, 'C'::text, 'D'::text]))));
+ALTER TABLE ONLY public.fh_contacts ADD CONSTRAINT fh_contacts_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES auth.users(id);
+ALTER TABLE ONLY public.fh_deckungsgrad ADD CONSTRAINT fh_deckungsgrad_imported_by_fkey FOREIGN KEY (imported_by) REFERENCES auth.users(id);
+ALTER TABLE ONLY public.fh_deckungsgrad ADD CONSTRAINT fh_deckungsgrad_pkey PRIMARY KEY (fh_nr);
+ALTER TABLE ONLY public.fh_duplicate_merges ADD CONSTRAINT fh_duplicate_merges_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id);
+ALTER TABLE ONLY public.fh_duplicate_merges ADD CONSTRAINT fh_duplicate_merges_not_self CHECK ((alias_fh_nr <> canonical_fh_nr));
+ALTER TABLE ONLY public.fh_duplicate_merges ADD CONSTRAINT fh_duplicate_merges_pkey PRIMARY KEY (alias_fh_nr);
+ALTER TABLE ONLY public.fh_kooperation_pending ADD CONSTRAINT fh_kooperation_pending_pkey PRIMARY KEY (fh_nr);
+ALTER TABLE ONLY public.filialgruppen_contacts ADD CONSTRAINT filialgruppen_contacts_pkey PRIMARY KEY (filialbetriebe);
+ALTER TABLE ONLY public.filialgruppen_contacts ADD CONSTRAINT filialgruppen_contacts_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES auth.users(id);
+ALTER TABLE ONLY public.import_log ADD CONSTRAINT import_log_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.import_log ADD CONSTRAINT import_log_source_check CHECK ((source = ANY (ARRAY['upload'::text, 'mail'::text, 'backfill'::text])));
+ALTER TABLE ONLY public.pending_imports ADD CONSTRAINT pending_imports_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.pending_imports ADD CONSTRAINT pending_imports_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'processing'::text, 'processed'::text, 'failed'::text])));
+ALTER TABLE ONLY public.performance_dialog_reports ADD CONSTRAINT performance_dialog_reports_employee_year_month_key UNIQUE (employee, year, month);
+ALTER TABLE ONLY public.performance_dialog_reports ADD CONSTRAINT performance_dialog_reports_month_check CHECK (((month >= 1) AND (month <= 12)));
+ALTER TABLE ONLY public.performance_dialog_reports ADD CONSTRAINT performance_dialog_reports_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.performance_dialog_reports ADD CONSTRAINT performance_dialog_reports_submitted_by_fkey FOREIGN KEY (submitted_by) REFERENCES auth.users(id);
+ALTER TABLE ONLY public.profiles ADD CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.profiles ADD CONSTRAINT profiles_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.profiles ADD CONSTRAINT profiles_role_check CHECK ((role = ANY (ARRAY['admin'::text, 'aussendienst'::text, 'trainer'::text])));
+ALTER TABLE ONLY public.registrations ADD CONSTRAINT registrations_event_date_id_fkey FOREIGN KEY (event_date_id) REFERENCES event_dates(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.registrations ADD CONSTRAINT registrations_event_id_fkey FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.registrations ADD CONSTRAINT registrations_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.trainerbesuche ADD CONSTRAINT trainerbesuche_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id);
+ALTER TABLE ONLY public.trainerbesuche ADD CONSTRAINT trainerbesuche_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.trainerbesuche ADD CONSTRAINT trainerbesuche_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES auth.users(id);
+ALTER TABLE ONLY public.trainerbetreuung_weekly_reports ADD CONSTRAINT trainerbetreuung_weekly_reports_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.user_settings ADD CONSTRAINT user_settings_akp_days_check CHECK ((notif_akp_days = ANY (ARRAY[30, 60, 90])));
+ALTER TABLE ONLY public.user_settings ADD CONSTRAINT user_settings_fh_days_check CHECK ((notif_fh_days = ANY (ARRAY[30, 60, 90])));
+ALTER TABLE ONLY public.user_settings ADD CONSTRAINT user_settings_pkey PRIMARY KEY (user_id);
+ALTER TABLE ONLY public.user_settings ADD CONSTRAINT user_settings_scope_check CHECK ((notif_scope = ANY (ARRAY['own'::text, 'all'::text, 'Klaus Witting'::text, 'Florian Hasibeder'::text, 'Dominik Szendi'::text, 'Helmut Otto'::text, 'Peter Peißer'::text, 'Thomas Eitzinger'::text])));
+ALTER TABLE ONLY public.user_settings ADD CONSTRAINT user_settings_tb_freq_check CHECK ((notif_trainerbetreuung_frequency = ANY (ARRAY['never'::text, 'weekly'::text, 'monthly'::text])));
+ALTER TABLE ONLY public.user_settings ADD CONSTRAINT user_settings_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+
+-- ============================================================
+-- SECTION 3: INDIZES (ohne die bereits durch Constraints oben
+-- impliziten PK/UNIQUE-Indizes)
+-- ============================================================
+
+CREATE INDEX akp_contacts_updated_by_idx ON public.akp_contacts USING btree (updated_by);
+CREATE INDEX auswertung_subscription_sends_sub_idx ON public.auswertung_subscription_sends USING btree (subscription_id, period_end DESC);
+CREATE UNIQUE INDEX auswertung_subscription_sends_unique_period ON public.auswertung_subscription_sends USING btree (subscription_id, period_end, is_endstand);
+CREATE INDEX auswertung_subscriptions_active_idx ON public.auswertung_subscriptions USING btree (active) WHERE active;
+CREATE INDEX auswertung_subscriptions_created_by_idx ON public.auswertung_subscriptions USING btree (created_by);
+CREATE INDEX auswertung_subscriptions_entity_idx ON public.auswertung_subscriptions USING btree (auswertung_typ, entity_key);
+CREATE INDEX employees_active_idx ON public.employees USING btree (active, sort_order);
+CREATE INDEX event_dates_event_idx ON public.event_dates USING btree (event_id, sort_order);
+CREATE UNIQUE INDEX events_single_active_idx ON public.events USING btree ((true)) WHERE is_active;
+CREATE INDEX fh_contacts_updated_by_idx ON public.fh_contacts USING btree (updated_by);
+CREATE INDEX fh_deckungsgrad_imported_by_idx ON public.fh_deckungsgrad USING btree (imported_by);
+CREATE INDEX fh_duplicate_merges_canonical_idx ON public.fh_duplicate_merges USING btree (canonical_fh_nr);
+CREATE INDEX fh_duplicate_merges_created_by_idx ON public.fh_duplicate_merges USING btree (created_by);
+CREATE INDEX filialgruppen_contacts_updated_by_idx ON public.filialgruppen_contacts USING btree (updated_by);
+CREATE INDEX import_log_imported_at_idx ON public.import_log USING btree (imported_at DESC NULLS LAST);
+CREATE INDEX performance_dialog_reports_employee_idx ON public.performance_dialog_reports USING btree (employee, year, month);
+CREATE INDEX performance_dialog_reports_submitted_by_idx ON public.performance_dialog_reports USING btree (submitted_by);
+CREATE INDEX registrations_event_date_id_idx ON public.registrations USING btree (event_date_id);
+CREATE INDEX registrations_event_idx ON public.registrations USING btree (event_id, event_date_id);
+CREATE INDEX trainerbesuche_created_by_idx ON public.trainerbesuche USING btree (created_by);
+CREATE INDEX trainerbesuche_endbericht_pending_idx ON public.trainerbesuche USING btree (besuch_datum) WHERE (endbericht_sent_at IS NULL);
+CREATE INDEX trainerbesuche_fh_nr_idx ON public.trainerbesuche USING btree (fh_nr, besuch_datum DESC);
+CREATE INDEX trainerbesuche_trainer_idx ON public.trainerbesuche USING btree (trainer_name, besuch_datum DESC);
+CREATE INDEX trainerbesuche_updated_by_idx ON public.trainerbesuche USING btree (updated_by);
+CREATE INDEX trainerbetreuung_weekly_reports_sent_at_idx ON public.trainerbetreuung_weekly_reports USING btree (sent_at DESC);
+
+-- ============================================================
+-- SECTION 4: ROW LEVEL SECURITY
+-- ============================================================
+
+ALTER TABLE public.akp_contacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.akquise_geo ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.akquise_place_status ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.auswertung_subscription_sends ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.auswertung_subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.dashboard_kv ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.email_recipients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.employees ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.event_dates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.event_form_fields ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fh_contacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fh_deckungsgrad ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fh_duplicate_merges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fh_kooperation_pending ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.filialgruppen_contacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.import_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pending_imports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.performance_dialog_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.registrations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.trainerbesuche ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.trainerbetreuung_weekly_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Authenticated insert akp_contacts" ON public.akp_contacts FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Authenticated read akp_contacts" ON public.akp_contacts FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Authenticated update akp_contacts" ON public.akp_contacts FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated insert akquise_geo" ON public.akquise_geo FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Authenticated read akquise_geo" ON public.akquise_geo FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Authenticated update akquise_geo" ON public.akquise_geo FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated all akquise_place_status" ON public.akquise_place_status FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated all auswertung_subscription_sends" ON public.auswertung_subscription_sends FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated all auswertung_subscriptions" ON public.auswertung_subscriptions FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated insert dashboard_kv" ON public.dashboard_kv FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Authenticated read dashboard_kv" ON public.dashboard_kv FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Authenticated update dashboard_kv" ON public.dashboard_kv FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Admins manage email_recipients" ON public.email_recipients FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+CREATE POLICY "Admins can delete employees" ON public.employees FOR DELETE TO authenticated USING (is_admin());
+CREATE POLICY "Admins can insert employees" ON public.employees FOR INSERT TO authenticated WITH CHECK (is_admin());
+CREATE POLICY "Admins can update employees" ON public.employees FOR UPDATE TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+CREATE POLICY "Authenticated read employees" ON public.employees FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Admins delete event_dates" ON public.event_dates FOR DELETE TO authenticated USING (is_admin());
+CREATE POLICY "Admins insert event_dates" ON public.event_dates FOR INSERT TO authenticated WITH CHECK (is_admin());
+CREATE POLICY "Admins update event_dates" ON public.event_dates FOR UPDATE TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+CREATE POLICY "Public read event_dates" ON public.event_dates FOR SELECT TO anon, authenticated USING (true);
+CREATE POLICY "Admins delete event_form_fields" ON public.event_form_fields FOR DELETE TO authenticated USING (is_admin());
+CREATE POLICY "Admins insert event_form_fields" ON public.event_form_fields FOR INSERT TO authenticated WITH CHECK (is_admin());
+CREATE POLICY "Admins update event_form_fields" ON public.event_form_fields FOR UPDATE TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+CREATE POLICY "Public read event_form_fields" ON public.event_form_fields FOR SELECT TO anon, authenticated USING (true);
+CREATE POLICY "Admins delete events" ON public.events FOR DELETE TO authenticated USING (is_admin());
+CREATE POLICY "Admins insert events" ON public.events FOR INSERT TO authenticated WITH CHECK (is_admin());
+CREATE POLICY "Admins update events" ON public.events FOR UPDATE TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+CREATE POLICY "Public read active events" ON public.events FOR SELECT TO anon, authenticated USING (true);
+CREATE POLICY "Authenticated insert fh_contacts" ON public.fh_contacts FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Authenticated read fh_contacts" ON public.fh_contacts FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Authenticated update fh_contacts" ON public.fh_contacts FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Admins can insert fh_deckungsgrad" ON public.fh_deckungsgrad FOR INSERT TO authenticated WITH CHECK (is_admin());
+CREATE POLICY "Admins can update fh_deckungsgrad" ON public.fh_deckungsgrad FOR UPDATE TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+CREATE POLICY "Admins can delete fh_duplicate_merges" ON public.fh_duplicate_merges FOR DELETE TO authenticated USING (is_admin());
+CREATE POLICY "Admins can insert fh_duplicate_merges" ON public.fh_duplicate_merges FOR INSERT TO authenticated WITH CHECK (is_admin());
+CREATE POLICY "Authenticated read fh_duplicate_merges" ON public.fh_duplicate_merges FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Authenticated delete fh_kooperation_pending" ON public.fh_kooperation_pending FOR DELETE TO authenticated USING (true);
+CREATE POLICY "Authenticated insert fh_kooperation_pending" ON public.fh_kooperation_pending FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Authenticated read fh_kooperation_pending" ON public.fh_kooperation_pending FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Authenticated all filialgruppen_contacts" ON public.filialgruppen_contacts FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated insert import_log" ON public.import_log FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Authenticated read import_log" ON public.import_log FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Authenticated read pending_imports" ON public.pending_imports FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Authenticated update pending_imports" ON public.pending_imports FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Admin delete performance_dialog_reports" ON public.performance_dialog_reports FOR DELETE TO authenticated USING (is_admin());
+CREATE POLICY "Own or admin insert performance_dialog_reports" ON public.performance_dialog_reports FOR INSERT TO authenticated WITH CHECK ((is_admin() OR (employee = ( SELECT profiles.name FROM profiles WHERE (profiles.id = ( SELECT auth.uid() AS uid))))));
+CREATE POLICY "Own or admin read performance_dialog_reports" ON public.performance_dialog_reports FOR SELECT TO authenticated USING ((is_admin() OR (employee = ( SELECT profiles.name FROM profiles WHERE (profiles.id = ( SELECT auth.uid() AS uid))))));
+CREATE POLICY "Own or admin update performance_dialog_reports" ON public.performance_dialog_reports FOR UPDATE TO authenticated USING ((is_admin() OR (employee = ( SELECT profiles.name FROM profiles WHERE (profiles.id = ( SELECT auth.uid() AS uid)))))) WITH CHECK ((is_admin() OR (employee = ( SELECT profiles.name FROM profiles WHERE (profiles.id = ( SELECT auth.uid() AS uid))))));
+CREATE POLICY "Admins can update roles" ON public.profiles FOR UPDATE TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+CREATE POLICY "Authenticated read profiles" ON public.profiles FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Admins delete registrations" ON public.registrations FOR DELETE TO authenticated USING (is_admin());
+CREATE POLICY "Admins read registrations" ON public.registrations FOR SELECT TO authenticated USING (is_admin());
+CREATE POLICY "Public insert registrations" ON public.registrations FOR INSERT TO anon, authenticated WITH CHECK (true);
+CREATE POLICY "Authenticated all trainerbesuche" ON public.trainerbesuche FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated all trainerbetreuung_weekly_reports" ON public.trainerbetreuung_weekly_reports FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Users insert own settings" ON public.user_settings FOR INSERT TO authenticated WITH CHECK ((( SELECT auth.uid() AS uid) = user_id));
+CREATE POLICY "Users read own settings" ON public.user_settings FOR SELECT TO authenticated USING ((( SELECT auth.uid() AS uid) = user_id));
+CREATE POLICY "Users update own settings" ON public.user_settings FOR UPDATE TO authenticated USING ((( SELECT auth.uid() AS uid) = user_id)) WITH CHECK ((( SELECT auth.uid() AS uid) = user_id));
+
+-- storage.objects (Storage-RLS, pro Bucket)
+CREATE POLICY "Admins delete event photos" ON storage.objects FOR DELETE TO authenticated USING (((bucket_id = 'event-photos'::text) AND is_admin()));
+CREATE POLICY "Admins update event photos" ON storage.objects FOR UPDATE TO authenticated USING (((bucket_id = 'event-photos'::text) AND is_admin())) WITH CHECK (((bucket_id = 'event-photos'::text) AND is_admin()));
+CREATE POLICY "Admins upload event photos" ON storage.objects FOR INSERT TO authenticated WITH CHECK (((bucket_id = 'event-photos'::text) AND is_admin()));
+CREATE POLICY "Authenticated read auswertung-berichte" ON storage.objects FOR SELECT TO authenticated USING ((bucket_id = 'auswertung-berichte'::text));
+CREATE POLICY "Authenticated read mail-imports" ON storage.objects FOR SELECT TO authenticated USING ((bucket_id = 'mail-imports'::text));
+CREATE POLICY "Authenticated read trainerberichte" ON storage.objects FOR SELECT TO authenticated USING ((bucket_id = 'trainerberichte'::text));
+CREATE POLICY "Public read event photos" ON storage.objects FOR SELECT TO anon, authenticated USING ((bucket_id = 'event-photos'::text));
+-- Hinweis: INSERT/UPDATE auf auswertung-berichte/mail-imports/trainerberichte
+-- läuft ausschließlich über den service_role Key in den Edge Functions
+-- (dashboard-mail-poller, auswertung-scheduled-mail, trainerbetreuung-weekly-
+-- mail) - service_role umgeht RLS grundsätzlich, daher bewusst keine
+-- zusätzliche INSERT-Policy für "authenticated" auf diesen drei Buckets.
+
+-- ============================================================
+-- SECTION 5: FUNKTIONEN
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.akp_monthly_json(v1 integer, v2 integer, v3 integer, v4 integer, v5 integer, v6 integer, v7 integer, v8 integer, v9 integer, v10 integer, v11 integer, v12 integer, v13 integer, v14 integer)
+ RETURNS jsonb
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  select coalesce(jsonb_object_agg(k, v) filter (where v <> 0), '{}'::jsonb)
+  from unnest(
+    array['2025-01','2025-02','2025-03','2025-04','2025-05','2025-06','2025-07',
+          '2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07'],
+    array[v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14]
+  ) as t(k, v);
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.akp_monthly_json2(idxs integer[], vals integer[])
+ RETURNS jsonb
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  select coalesce(jsonb_object_agg(k[i], v), '{}'::jsonb)
+  from unnest(idxs, vals) as t(i, v),
+  (select array['2025-01','2025-02','2025-03','2025-04','2025-05','2025-06','2025-07',
+                '2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07'] as k) m;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.akp_monthly_json_2425(idxs integer[], vals integer[])
+ RETURNS jsonb
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  select coalesce(jsonb_object_agg(k, v), '{}'::jsonb)
+  from unnest(idxs, vals) as t(i, v)
+  join lateral (
+    select (array[
+      '2024-01','2024-02','2024-03','2024-04','2024-05','2024-06',
+      '2024-07','2024-08','2024-09','2024-10','2024-11','2024-12',
+      '2025-01','2025-02','2025-03','2025-04','2025-05','2025-06',
+      '2025-07','2025-08','2025-09','2025-10','2025-11','2025-12'
+    ])[t.i] as k
+  ) m on true
+  where v is not null and v <> 0;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.akp_profi_training_upsert(rows jsonb)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  r jsonb;
+  new_ts text;
+  cur_ts text;
+  rank_of jsonb := '{"teilgenommen":1,"service1":1,"verkauf1":1,"verkauf2":2,"service2":2,"verkauf3":2,"abgeschlossen":3,"500":4}'::jsonb;
+  cur_year text := to_char(now(),'YYYY');
+begin
+  if auth.uid() is null then
+    raise exception 'Anmeldung erforderlich';
+  end if;
+  for r in select * from jsonb_array_elements(rows) loop
+    if coalesce(r->>'nr','') = '' then continue; end if;
+    new_ts := nullif(r->>'training_status','');
+    if new_ts is null then continue; end if;
+
+    select training_status into cur_ts from public.akp_contacts where nr = r->>'nr';
+    if not found then continue; end if;
+
+    if cur_ts is distinct from '500'
+       and (cur_ts is null or coalesce((rank_of->>new_ts)::int,0) > coalesce((rank_of->>cur_ts)::int,0)) then
+      update public.akp_contacts set
+        training_status = new_ts,
+        training_status_by_year = jsonb_set(training_status_by_year, array[cur_year], to_jsonb(new_ts), true),
+        updated_at = now()
+      where nr = r->>'nr';
+    end if;
+  end loop;
+end;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.akp_sync_daily(rows jsonb)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
 declare
   r jsonb; nm text; vn text; nn text; sp int; mval int; mkey text; monthjson jsonb;
   poval numeric; f2val numeric; pojson jsonb; f2json jsonb;
   cur_year text; prev_year text; prev_status text; year_prod numeric;
   cur_ts text; cur_tsby jsonb; cur_prod jsonb;
 begin
-  -- Haertung (DSGVO-Pruefung 05.09.2026): trotz "revoke ... from public /
-  -- grant ... to authenticated" unten meldete der Supabase Security Advisor
-  -- diese Funktion als fuer die Rolle anon ausfuehrbar - die genaue Ursache
-  -- der Rechte-Drift wurde nicht abschliessend geklaert. Diese explizite
-  -- Laufzeitpruefung schuetzt unabhaengig von den GRANT/REVOKE-Rechten auf
-  -- Datenbankebene und ist damit robust gegen ein erneutes Auftreten.
   if auth.uid() is null then
     raise exception 'Anmeldung erforderlich';
   end if;
@@ -268,18 +670,7 @@ begin
     end if;
     mkey := r->>'mk';
     mval := coalesce((r->>'mv')::int, 0);
-    -- Bugfix 04.09.2026: vormals "and mval <> 0" - dadurch schrieb ein
-    -- korrigierter, echter 0-Wert (z.B. Monatswechsel-Fix im Client) nie in
-    -- prod_monthly, da der Merge unten (coalesce||excluded) eine leere
-    -- monthjson als No-Op behandelt. Ein stehengebliebener alter Wert konnte
-    -- so nie mehr überschrieben werden (Bug-Report: "Schachermayer
-    -- Aktionsgeräteschutz hat im September noch nichts gemacht", 309
-    -- betroffene AKP per Einmalkorrektur bereinigt). Der Monatsschlüssel wird
-    -- jetzt immer geschrieben, auch bei mval=0.
     monthjson := case when mkey is not null then jsonb_build_object(mkey, mval) else '{}'::jsonb end;
-    -- po/f2: zuletzt bekannter Stand des Kalendermonats, siehe Spaltenkommentar
-    -- oben - kein Additions-/Ist-0-Filter wie bei mval, da 0 ein gueltiger
-    -- Quotenwert ist (nur explizites null im Import ueberspringen).
     poval := nullif(r->>'po','')::numeric;
     f2val := nullif(r->>'f2','')::numeric;
     pojson := case when mkey is not null and poval is not null then jsonb_build_object(mkey, poval) else '{}'::jsonb end;
@@ -296,16 +687,6 @@ begin
       q3fuer2_monthly = coalesce(akp_contacts.q3fuer2_monthly,'{}'::jsonb) || excluded.q3fuer2_monthly,
       updated_at = now();
 
-    -- "500 Verträge"-Automatik (Nutzervorgabe 06.09.2026, vorbereitet für
-    -- die Zukunft - siehe training_status_by_year-Kommentar bei der Spalte
-    -- oben): war der AKP im VORJAHR "abgeschlossen" oder "teilgenommen" und
-    -- hat er heuer bereits 500 Verträge Jahresproduktion (Summe prod_monthly
-    -- des laufenden Jahres) erreicht, wird training_status automatisch auf
-    -- "500" gesetzt (nie zurückgestuft, siehe akp_profi_training_upsert
-    -- unten). Greift real erst, sobald für ein Vorjahr ein echter Snapshot
-    -- existiert (ab 2027 für 2026) - für 2026 selbst aktuell ein No-Op, da
-    -- noch kein Vorjahreswert vorliegt ("nur vorbereitet für das kommende
-    -- Jahr").
     if mkey is not null then
       select training_status, training_status_by_year, prod_monthly
         into cur_ts, cur_tsby, cur_prod
@@ -330,777 +711,16 @@ begin
     end if;
   end loop;
 end;
-$$;
+$function$
+;
 
-revoke execute on function public.akp_sync_daily(jsonb) from public;
-grant execute on function public.akp_sync_daily(jsonb) to authenticated;
-
--- Bulk-Import der "Profi Training"-Teilnehmerliste (Blatt "Liste zum
--- Abgleich", siehe parseProfiTraining in index.html): ergänzt training_status
--- NUR bei bereits vorhandenen AKP (kein Insert für unbekannte AKP-Nr,
--- Nutzervorgabe 02.09.2026 - "nur bei den Vorhandenen ergänzen") - "not
--- found" nach dem select bricht die Zeile einfach ab.
---
--- Downgrade-Schutz (Nutzervorgabe 02.09.2026, 06.09.2026 auf das
--- zusammengeführte Feld erweitert): ein bereits gesetzter, laut rank_of
--- HÖHERER Stand wird nie durch einen niedrigeren aus der Liste ersetzt (z.B.
--- Stufe 2 bleibt Stufe 2, auch wenn die aktuelle Liste nur eine erfolgreiche
--- Stufe 1 zeigt). Der Sonderwert "500" (500-Verträge-Meilenstein, fachlich
--- unabhängig vom Training) wird NIE überschrieben. Jede Aktualisierung
--- schreibt zusätzlich den Jahres-Snapshot fort (training_status_by_year).
-create or replace function public.akp_profi_training_upsert(rows jsonb) returns void
-language plpgsql security definer set search_path = public as $$
-declare
-  r jsonb;
-  new_ts text;
-  cur_ts text;
-  rank_of jsonb := '{"teilgenommen":1,"service1":1,"verkauf1":1,"verkauf2":2,"service2":2,"verkauf3":2,"abgeschlossen":3,"500":4}'::jsonb;
-  cur_year text := to_char(now(),'YYYY');
+CREATE OR REPLACE FUNCTION public.fh_deckungsgrad_for(p_fh_nr text)
+ RETURNS TABLE(fh_nr text, bestand numeric, provision_lj numeric, schaeden_lj integer, schadenbetrag_lj numeric, dg1_ampel text, dg1_trend text, dg2_ampel text, dg2_trend text, db1_ampel text, db1_trend text, db2_ampel text, db2_trend text, imported_at timestamp with time zone)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
 begin
-  -- Haertung (DSGVO-Pruefung 05.09.2026), analog akp_sync_daily oben.
-  if auth.uid() is null then
-    raise exception 'Anmeldung erforderlich';
-  end if;
-  for r in select * from jsonb_array_elements(rows) loop
-    if coalesce(r->>'nr','') = '' then continue; end if;
-    new_ts := nullif(r->>'training_status','');
-    if new_ts is null then continue; end if;
-
-    select training_status into cur_ts from public.akp_contacts where nr = r->>'nr';
-    if not found then continue; end if;
-
-    if cur_ts is distinct from '500'
-       and (cur_ts is null or coalesce((rank_of->>new_ts)::int,0) > coalesce((rank_of->>cur_ts)::int,0)) then
-      update public.akp_contacts set
-        training_status = new_ts,
-        training_status_by_year = jsonb_set(training_status_by_year, array[cur_year], to_jsonb(new_ts), true),
-        updated_at = now()
-      where nr = r->>'nr';
-    end if;
-  end loop;
-end;
-$$;
-
-revoke execute on function public.akp_profi_training_upsert(jsonb) from public;
-grant execute on function public.akp_profi_training_upsert(jsonb) to authenticated;
-
--- ---------- Fachhändler-Zusatzdaten (Adresse, Kontakt, Ansprechpartner, Segmentierung, Besuch, Notizen) ----------
-
-create table if not exists public.fh_contacts (
-  fh_nr            text primary key,
-  strasse          text,
-  plz              text,
-  ort              text,
-  telefon          text,
-  email            text, -- "E-Mail Geschäft"
-  ansprechpartner  text,
-  ansprechpartner_email text, -- getrennt von der geschäftlichen E-Mail-Adresse
-  homepage         text,
-  -- Feste Segmentierung A+/A/B/C+/C/D (Händlerpotenzial). segmentierung_prev
-  -- ist der zuletzt bekannte VORMONATSwert, segmentierung_month der
-  -- Kalendermonat ("YYYY-MM"), für den "segmentierung" aktuell gilt - beide
-  -- werden ausschließlich von der RPC fh_segmentierung_upsert gepflegt
-  -- (siehe unten), Basis für den Trendpfeil im FH-PopUp (fhSegmentTrend).
-  segmentierung    text check (segmentierung is null or segmentierung in ('A+','A','B','C+','C','D')),
-  segmentierung_prev text check (segmentierung_prev is null or segmentierung_prev in ('A+','A','B','C+','C','D')),
-  segmentierung_month text,
-  letzter_besuch   date,
-  sonstige_infos   text,
-  -- Monatsproduktion je Fachhändler (analog zu akp_contacts.prod_monthly),
-  -- "YYYY-MM" -> Verträge. Wird über einen Bulk-Import befüllt; bis dahin
-  -- ergänzt der Client die Ansicht clientseitig aus der Tages-Historie.
-  prod_monthly     jsonb not null default '{}'::jsonb,
-  -- Manuell oder automatisch (alte Händler ohne aktuellen Akquise-Beginn,
-  -- bzw. 5+ Termine oder 20+ Verträge im laufenden Jahr) gesetzter Status:
-  -- Händler ist mit dem 9-Wochen-Plan durch. Einmal gesetzt, "rastet" der
-  -- Status dauerhaft ein (kein automatisches Zurücksetzen).
-  neunwochen_erledigt boolean not null default false,
-  -- Jährliche "davon beitragsfrei"-Summe (aus dem Bulk-Import, nicht in der
-  -- täglichen Auswertung enthalten) - "YYYY" -> Anzahl. Jeder beitragsfreie
-  -- Vertrag entspricht einer 3-für-2-Aktion; die Quote wird clientseitig aus
-  -- prod_monthly (Jahressumme) und diesem Wert berechnet.
-  beitragsfrei_yearly jsonb not null default '{}'::jsonb,
-  updated_at       timestamptz not null default now(),
-  updated_by       uuid references auth.users(id)
-);
-
-alter table public.fh_contacts add column if not exists prod_monthly jsonb not null default '{}'::jsonb;
-alter table public.fh_contacts add column if not exists neunwochen_erledigt boolean not null default false;
-alter table public.fh_contacts add column if not exists beitragsfrei_yearly jsonb not null default '{}'::jsonb;
--- Akquisestaffeln: lebenslang-kumulative Punkte (nicht jährlich zurückgesetzt)
--- und je der 7 fixen Stufen (20/50/100/150/200/250/300) das Erreichungsdatum
--- als "MM/JJ"-String (null = noch nicht erreicht). Wird per Admin-Import aus
--- der monatlichen Akquisestaffeln-Datei komplett überschrieben (Snapshot).
-alter table public.fh_contacts add column if not exists akq_punkte numeric;
-alter table public.fh_contacts add column if not exists akq_staffeln jsonb not null default '[]'::jsonb;
--- Mitarbeiter-Zuordnung laut Akquisestaffel-Datei selbst (Spalte "GL
--- aktuell", in der Praxis Spalte H) - Quelle der Wahrheit für "AKQ ohne
--- Zuordnung" (siehe renderObs in index.html), unabhängig von der
--- GL-Zuordnung aus der täglichen FH_Liste-Auswertung.
-alter table public.fh_contacts add column if not exists akq_gl text;
--- Firmenname laut Akquisestaffel-Datei (Spalte "FH Bez (ohne Nr)") - Fallback
--- für "AKQ ohne Zuordnung" (siehe renderObs in index.html), falls der
--- Händler in der aktuellen täglichen FH_Liste-Auswertung keine Zeile hat
--- (z.B. keine Tagesproduktion) und dort daher kein Name verfügbar ist.
-alter table public.fh_contacts add column if not exists akq_name text;
--- Manueller Namens-Fallback (FH-PopUp, Nutzervorgabe 25.08.2026): fuer
--- Haendler, die WEDER in der taeglichen FH_Liste-Einspielung, NOCH als
--- AKP-Kontakt mit Firma, NOCH in der Akquisestaffeln-Datei (akq_name) einen
--- Namen haben, zeigten Miete-PopUp/FH-PopUp bis dahin nur die rohe FH-Nr.
--- an, da nirgends in der DB ein Firmenname hinterlegt war. Rein manuelles
--- Feld (ueberschreibt NICHT die automatischen Quellen, greift nur, wenn alle
--- anderen fehlen) - siehe fhFallbackFromAkp() in index.html.
-alter table public.fh_contacts add column if not exists name text;
--- Miete-Report (Club Weiß, MSK_Report-Datei, Admin-Import): club_weiss_mitglied
--- wird beim Import IMMER auf true gesetzt (jeder FH in der Datei ist Mitglied),
--- aber nie automatisch wieder zurückgesetzt (siehe fh_sync_miete) - manuelles
--- Zurücksetzen bleibt im FH-PopUp weiterhin möglich. miete_monthly ("YYYY-MM"
--- -> Vertragsanzahl) und miete_sortiment ("Jahr" -> Sortiment-Name -> Anzahl,
--- Nutzervorgabe 30.08.2026: "Verkauftes Sortiment" bezieht sich nur aufs
--- aktuelle Jahr, davor ein flaches Sortiment-Name -> Anzahl ohne Jahresebene)
--- werden per JSONB-Merge aktualisiert, ältere Monate/Jahre bleiben bei einem
--- neuen Import erhalten, auch wenn die neue Datei sie nicht mehr enthält.
-alter table public.fh_contacts add column if not exists club_weiss_mitglied boolean not null default false;
-alter table public.fh_contacts add column if not exists club_weiss_mitgliedsnummer text;
-alter table public.fh_contacts add column if not exists miete_monthly jsonb not null default '{}'::jsonb;
-alter table public.fh_contacts add column if not exists miete_sortiment jsonb not null default '{}'::jsonb;
--- Firmenname direkt aus dem Miete-Report (Freitagsreport, Spalte "FH Bez
--- (ohne Nr)", Nutzer-Bestaetigung 25.08.2026) - deckt Haendler ab, die in
--- keiner anderen Quelle (taegliche FH_Liste, AKP, Akquisestaffeln) einen
--- Namen haben, automatisch bei jedem Miete-Import statt manueller Eingabe.
--- Eigene Spalte (nicht die manuelle fh_contacts.name), damit ein Import den
--- manuell im FH-PopUp eingetragenen Namen nie stillschweigend ueberschreibt.
-alter table public.fh_contacts add column if not exists miete_name text;
-
--- Kooperation (Einkaufsverbindung) und Hauptzweig je Fachhändler (Nutzer-
--- vorgabe 23.08.2026). Kooperation ist bewusst freier Text (kein CHECK),
--- da künftige Kooperationslisten ohne Migration ergänzt werden können - die
--- feste Auswahl im Dropdown lebt im Client (index.html, KOOPERATION_OPTIONS).
--- Hauptzweig ist dagegen eine bewusst feste, kleine Liste.
-alter table public.fh_contacts add column if not exists kooperation text;
-alter table public.fh_contacts add column if not exists hauptzweig text;
--- "Weitere Zuordnung" (Nutzervorgabe 23.08.2026) - optionales, per Haken
--- aktivierbares Zusatzfeld. Bewusst freier Text ohne CHECK: der Client baut
--- das Dropdown aus den bereits verwendeten DISTINCT-Werten dieser Spalte
--- (+ dem fixen Basiswert "A1 Shop") - ein neuer Freitext-Wert wird dadurch
--- automatisch zur Dropdown-Option für alle anderen Händler.
-alter table public.fh_contacts add column if not exists weitere_zuordnung text;
--- "Filialbetriebe" (Nutzervorgabe 25.08.2026, umbenannt aus dem
--- ursprünglichen zweiten "Weitere Zuordnung"-Slot, live per "alter table ...
--- rename column" migriert): fasst FH zusammen, die zur selben
--- Filialkette/demselben Betrieb gehören. Eigener, unabhängiger Options-Pool
--- (NICHT der Weitere-Zuordnung-Pool), da der Wert hier direkt
--- Gruppenzugehörigkeit für den Filial-Umschalter + das Filialgruppen-PopUp
--- im FH-PopUp steuert (siehe loadFilialbetriebeOptions()/
--- renderFhFilialbetriebeSwitcher()/openFilialGruppeModal() im Client).
-alter table public.fh_contacts add column if not exists filialbetriebe text;
-
--- Jahres-Ziel/Plan je Fachhändler in Stk. (Nutzervorgabe 24.08.2026) - kommt
--- primär aus der täglichen FH_Liste (Spalte "Plan"), ist aber auch manuell in
--- den Stammdaten editierbar. Abweichungen zwischen Einspielung und
--- gespeichertem Wert werden NICHT automatisch übernommen, sondern wie bei
--- PLZ/Ort über den Stammdaten-Diff-Workflow bestätigt (siehe fhStammdatenDiff
--- im Client). Nur sichtbar, wenn im Admin-Panel freigeschaltet
--- (dashboard_kv-Key "fh_ziel_enabled") UND für den jeweiligen FH gesetzt.
-alter table public.fh_contacts add column if not exists ziel numeric;
-
-alter table public.fh_contacts drop constraint if exists fh_contacts_segmentierung_check;
-alter table public.fh_contacts add constraint fh_contacts_segmentierung_check
-  check (segmentierung is null or segmentierung in ('A+','A','B','C+','C','D'));
-
--- Vormonats-Trendpfeil für die Händlersegmentierung im FH-PopUp (Nutzervorgabe
--- 04.09.2026): zusätzlich zum aktuellen Wert (segmentierung) wird der zuletzt
--- bekannte Vormonatswert (segmentierung_prev) sowie der Monat, für den der
--- aktuelle Wert gilt (segmentierung_month, "YYYY-MM"), mitgeführt.
-alter table public.fh_contacts add column if not exists segmentierung_prev text;
-alter table public.fh_contacts add column if not exists segmentierung_month text;
-
-alter table public.fh_contacts drop constraint if exists fh_contacts_segmentierung_prev_check;
-alter table public.fh_contacts add constraint fh_contacts_segmentierung_prev_check
-  check (segmentierung_prev is null or segmentierung_prev in ('A+','A','B','C+','C','D'));
-
--- Schreibt die monatliche Händlersegmentierungs-Datei (Admin-Upload oder
--- automatischer Mail-Import, siehe parseFhSegmentierung/upsertFhSegmentierung)
--- je Fachhändler fest. Beim ERSTEN Import eines neuen Kalendermonats
--- (erkannt an segmentierung_month vs. dem aktuellen Monat, server-seitig via
--- now() statt Client-Uhrzeit) wird der bisherige Wert nach segmentierung_prev
--- verschoben - das ist die Basis für den Trendpfeil (fhSegmentTrend im
--- Client). Ein erneuter Import INNERHALB desselben Monats (z.B. eine
--- Korrektur) überschreibt segmentierung_prev NICHT nochmal, sonst würde der
--- "Vormonat" bei mehreren Importen im selben Monat verlorengehen.
-create or replace function public.fh_segmentierung_upsert(rows jsonb) returns void
-language plpgsql security definer set search_path = public as $$
-declare
-  r jsonb; fhnr text; newseg text; curmonth text;
-  oldseg text; oldmonth text; oldprev text; newprev text;
-begin
-  -- Haertung (DSGVO-Pruefung 05.09.2026), analog akp_sync_daily oben.
-  if auth.uid() is null then
-    raise exception 'Anmeldung erforderlich';
-  end if;
-  curmonth := to_char(now(), 'YYYY-MM');
-  for r in select * from jsonb_array_elements(rows) loop
-    fhnr := r->>'fh_nr';
-    if coalesce(fhnr,'') = '' then continue; end if;
-    newseg := nullif(r->>'segmentierung','');
-
-    select segmentierung, segmentierung_month, segmentierung_prev
-      into oldseg, oldmonth, oldprev
-      from public.fh_contacts where fh_nr = fhnr;
-
-    if oldmonth is distinct from curmonth then
-      newprev := oldseg;
-    else
-      newprev := oldprev;
-    end if;
-
-    insert into public.fh_contacts (fh_nr, segmentierung, segmentierung_prev, segmentierung_month)
-    values (fhnr, newseg, newprev, curmonth)
-    on conflict (fh_nr) do update set
-      segmentierung = excluded.segmentierung,
-      segmentierung_prev = excluded.segmentierung_prev,
-      segmentierung_month = excluded.segmentierung_month,
-      updated_at = now();
-  end loop;
-end;
-$$;
-
-revoke execute on function public.fh_segmentierung_upsert(jsonb) from public;
-grant execute on function public.fh_segmentierung_upsert(jsonb) to authenticated;
-
-alter table public.fh_contacts drop constraint if exists fh_contacts_hauptzweig_check;
-alter table public.fh_contacts add constraint fh_contacts_hauptzweig_check
-  check (hauptzweig is null or hauptzweig in (
-    'Vollsortiment','Mobilfunk','IT','Kundendienst','Industrie','Akustik',
-    'Optik','Küchenhandel','Uhrenhandel','Grüne Ware','Makler','Projekt','Sonstiges'
-  ));
-
-alter table public.fh_contacts enable row level security;
-
--- Team-Arbeitswerkzeug wie akp_contacts: jede Rolle darf lesen und pflegen.
-create policy "Authenticated read fh_contacts"
-  on public.fh_contacts for select
-  to authenticated
-  using (true);
-
-create policy "Authenticated insert fh_contacts"
-  on public.fh_contacts for insert
-  to authenticated
-  with check (true);
-
-create policy "Authenticated update fh_contacts"
-  on public.fh_contacts for update
-  to authenticated
-  using (true)
-  with check (true);
-
--- Für FH, die aus einer Kooperationsliste bekannt sind, aber noch keine
--- fh_contacts-Zeile haben (siehe Kooperations-Bulk-Import 23.08.2026) -
--- sobald der Händler über die tägliche Einspielung (fh_sync_daily) zum
--- ersten Mal angelegt wird, bekommt er die hinterlegte Kooperation
--- automatisch mit. Einmalig "konsumiert" (Zeile wird danach gelöscht).
-create table if not exists public.fh_kooperation_pending (
-  fh_nr        text primary key,
-  kooperation  text not null,
-  created_at   timestamptz not null default now()
-);
-
-alter table public.fh_kooperation_pending enable row level security;
-
-create policy "Authenticated read fh_kooperation_pending"
-  on public.fh_kooperation_pending for select
-  to authenticated
-  using (true);
-
-create policy "Authenticated insert fh_kooperation_pending"
-  on public.fh_kooperation_pending for insert
-  to authenticated
-  with check (true);
-
-create policy "Authenticated delete fh_kooperation_pending"
-  on public.fh_kooperation_pending for delete
-  to authenticated
-  using (true);
-
--- Hält fh_contacts.prod_monthly bei jeder täglichen Einspielung aktuell
--- (analog zu akp_sync_daily) - schreibt den laufenden Monat mit dem
--- kumulierten Monatswert aus der FH-Liste fest. Erkennt außerdem, ob eine
--- Zeile NEU angelegt wird (statt eines Updates auf einen bereits bekannten
--- Händler) und übernimmt in dem Fall eine vorgemerkte Kooperation aus
--- fh_kooperation_pending, falls vorhanden.
-create or replace function public.fh_sync_daily(rows jsonb) returns void
-language plpgsql security definer set search_path = public as $$
-declare
-  r jsonb; mval int; mkey text; monthjson jsonb; fhnr text;
-  is_new boolean; pending_koop text;
-begin
-  -- Haertung (DSGVO-Pruefung 05.09.2026), analog akp_sync_daily oben.
-  if auth.uid() is null then
-    raise exception 'Anmeldung erforderlich';
-  end if;
-  for r in select * from jsonb_array_elements(rows) loop
-    fhnr := r->>'nr';
-    if coalesce(fhnr,'') = '' then continue; end if;
-    mkey := r->>'mk';
-    mval := coalesce((r->>'mv')::int, 0);
-    -- Bugfix 04.09.2026: siehe gleichnamiger Kommentar in akp_sync_daily -
-    -- vormals "and mval <> 0" verhinderte, dass ein korrigierter echter
-    -- 0-Wert einen stehengebliebenen alten Monatswert überschreiben konnte.
-    monthjson := case when mkey is not null then jsonb_build_object(mkey, mval) else '{}'::jsonb end;
-
-    is_new := not exists (select 1 from public.fh_contacts where fh_nr = fhnr);
-
-    insert into public.fh_contacts (fh_nr, prod_monthly)
-    values (fhnr, monthjson)
-    on conflict (fh_nr) do update set
-      prod_monthly = coalesce(fh_contacts.prod_monthly,'{}'::jsonb) || excluded.prod_monthly,
-      updated_at = now();
-
-    if is_new then
-      select kooperation into pending_koop from public.fh_kooperation_pending where fh_nr = fhnr;
-      if pending_koop is not null then
-        update public.fh_contacts set kooperation = pending_koop where fh_nr = fhnr;
-        delete from public.fh_kooperation_pending where fh_nr = fhnr;
-      end if;
-    end if;
-  end loop;
-end;
-$$;
-
-revoke execute on function public.fh_sync_daily(jsonb) from public;
-grant execute on function public.fh_sync_daily(jsonb) to authenticated;
-
--- Schreibt Miete-Report-Daten (Club Weiß) je Fachhändler: monatliche
--- Vertragsanzahl und Sortiments-Aufstellung werden per JSONB-Merge auf den
--- bestehenden Stand aufgesetzt (analog fh_sync_daily) - ein erneuter Import
--- überschreibt nur die im neuen Report enthaltenen Monate/Sortimente, ältere
--- bleiben erhalten. club_weiss_mitglied wird beim Import IMMER auf true
--- gesetzt (jeder FH in der Datei ist Mitglied), aber nie automatisch wieder
--- auf false zurückgesetzt - ein manuelles Zurücksetzen bleibt im FH-PopUp
--- weiterhin möglich (Stammdaten-Bearbeiten-Formular).
-create or replace function public.fh_sync_miete(rows jsonb) returns void
-language plpgsql security definer set search_path = public as $$
-declare
-  r jsonb; monthlyj jsonb; sortimentj jsonb; clubnr text; mietename text;
-begin
-  -- Haertung (DSGVO-Pruefung 05.09.2026), analog akp_sync_daily oben.
-  if auth.uid() is null then
-    raise exception 'Anmeldung erforderlich';
-  end if;
-  for r in select * from jsonb_array_elements(rows) loop
-    if coalesce(r->>'fh_nr','') = '' then continue; end if;
-    monthlyj := coalesce(r->'monthly','{}'::jsonb);
-    sortimentj := coalesce(r->'sortiment','{}'::jsonb);
-    clubnr := r->>'club_nr';
-    mietename := nullif(r->>'name','');
-
-    insert into public.fh_contacts (fh_nr, miete_monthly, miete_sortiment, club_weiss_mitglied, club_weiss_mitgliedsnummer, miete_name)
-    values (r->>'fh_nr', monthlyj, sortimentj, true, clubnr, mietename)
-    on conflict (fh_nr) do update set
-      miete_monthly = coalesce(fh_contacts.miete_monthly,'{}'::jsonb) || excluded.miete_monthly,
-      miete_sortiment = coalesce(fh_contacts.miete_sortiment,'{}'::jsonb) || excluded.miete_sortiment,
-      club_weiss_mitglied = true,
-      club_weiss_mitgliedsnummer = coalesce(excluded.club_weiss_mitgliedsnummer, fh_contacts.club_weiss_mitgliedsnummer),
-      miete_name = coalesce(excluded.miete_name, fh_contacts.miete_name),
-      updated_at = now();
-  end loop;
-end;
-$$;
-
-revoke execute on function public.fh_sync_miete(jsonb) from public;
-grant execute on function public.fh_sync_miete(jsonb) to authenticated;
-
--- Pro-Nutzer-Einstellungen (Passwort-Bereich separat über auth.updateUser,
--- hier nur Benachrichtigungs-Präferenzen). Anders als alle bisherigen
--- Tabellen NICHT team-weit lesbar - jeder Nutzer sieht/ändert nur seine
--- eigene Zeile (auth.uid() = user_id).
-create table if not exists public.user_settings (
-  user_id uuid primary key references auth.users(id) on delete cascade,
-  notif_akp_enabled boolean not null default false,
-  notif_akp_days integer not null default 30,
-  notif_fh_enabled boolean not null default false,
-  notif_fh_days integer not null default 30,
-  notif_scope text not null default 'own',
-  updated_at timestamptz not null default now()
-);
-
--- "own" (eigener, zuordenbarer Mitarbeiterbereich), "all" (Österreich
--- gesamt) oder - v.a. für Admins ohne eigenen Vertriebsbereich - ein
--- konkreter Mitarbeitername (frei wählbar im Einstellungen-PopUp).
-alter table public.user_settings drop constraint if exists user_settings_scope_check;
-alter table public.user_settings add constraint user_settings_scope_check
-  check (notif_scope in ('own','all','Klaus Witting','Florian Hasibeder','Dominik Szendi','Helmut Otto','Peter Peißer','Thomas Eitzinger'));
-
-alter table public.user_settings drop constraint if exists user_settings_akp_days_check;
-alter table public.user_settings add constraint user_settings_akp_days_check
-  check (notif_akp_days in (30,60,90));
-
-alter table public.user_settings drop constraint if exists user_settings_fh_days_check;
-alter table public.user_settings add constraint user_settings_fh_days_check
-  check (notif_fh_days in (30,60,90));
-
-alter table public.user_settings enable row level security;
-
-drop policy if exists "Users read own settings" on public.user_settings;
-create policy "Users read own settings"
-  on public.user_settings for select
-  to authenticated
-  using (auth.uid() = user_id);
-
-drop policy if exists "Users insert own settings" on public.user_settings;
-create policy "Users insert own settings"
-  on public.user_settings for insert
-  to authenticated
-  with check (auth.uid() = user_id);
-
-drop policy if exists "Users update own settings" on public.user_settings;
-create policy "Users update own settings"
-  on public.user_settings for update
-  to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
-
--- Trainerbetreuung: pro Mitarbeiter einstellbare Häufigkeit der
--- automatischen Wochenmail (Nutzervorgabe 11.09.2026: "nie, wöchentlich,
--- monatlich", Standard "wöchentlich"). Betrifft NUR die periodische
--- Fortschritts-Mail (trainerbetreuung-weekly-mail) - der einmalige
--- Endbericht 4 Wochen nach einem Trainerbesuch bleibt davon unberührt und
--- geht weiterhin immer an Mitarbeiter + Admin.
-alter table public.user_settings add column if not exists notif_trainerbetreuung_frequency text not null default 'weekly';
-
-alter table public.user_settings drop constraint if exists user_settings_tb_freq_check;
-alter table public.user_settings add constraint user_settings_tb_freq_check
-  check (notif_trainerbetreuung_frequency in ('never','weekly','monthly'));
-
--- Automatischer Excel-Mail-Import (input@wgaustria.at, siehe README) - die
--- Edge Function dashboard-mail-poller legt hier pro gefundenem Excel-Anhang
--- eine Zeile an; das Parsen selbst passiert weiterhin clientseitig
--- (processPendingImports in index.html, wiederverwendet parseAuswertung).
-create table if not exists public.pending_imports (
-  id uuid primary key default gen_random_uuid(),
-  filename text not null,
-  storage_path text not null,
-  status text not null default 'pending',
-  source_subject text,
-  source_from text,
-  received_at timestamptz not null default now(),
-  processed_at timestamptz,
-  error text
-);
-
--- "processing" ist der kurze Zwischenstatus, den processPendingImports()
--- beim optimistischen "Claimen" einer Zeile setzt (verhindert doppelte
--- Verarbeitung durch zwei gleichzeitig offene Tabs) - fehlte ursprünglich in
--- der Constraint, wodurch jeder Import-Versuch mit HTTP 400 fehlschlug.
-alter table public.pending_imports drop constraint if exists pending_imports_status_check;
-alter table public.pending_imports add constraint pending_imports_status_check
-  check (status in ('pending','processing','processed','failed'));
-
-alter table public.pending_imports enable row level security;
-
-drop policy if exists "Authenticated read pending_imports" on public.pending_imports;
-create policy "Authenticated read pending_imports"
-  on public.pending_imports for select
-  to authenticated
-  using (true);
-
-drop policy if exists "Authenticated update pending_imports" on public.pending_imports;
-create policy "Authenticated update pending_imports"
-  on public.pending_imports for update
-  to authenticated
-  using (true)
-  with check (true);
-
-insert into storage.buckets (id, name, public)
-values ('mail-imports', 'mail-imports', false)
-on conflict (id) do nothing;
-
-drop policy if exists "Authenticated read mail-imports" on storage.objects;
-create policy "Authenticated read mail-imports"
-  on storage.objects for select
-  to authenticated
-  using (bucket_id = 'mail-imports');
-
--- pg_cron-Job: ruft die Edge Function dashboard-mail-poller alle 15 Minuten
--- auf. <CRON_SECRET> durch denselben Wert ersetzen, der auch als
--- Edge-Function-Secret CRON_SECRET hinterlegt ist (siehe README).
--- timeout_milliseconds bewusst hoch (der pg_net-Default von 5s reicht nicht -
--- IMAP-Abruf + Literal-Transfer eines echten Anhangs dauert real eher
--- 10-20s, siehe Testlauf 14.08.2026).
-create extension if not exists pg_cron;
-create extension if not exists pg_net;
-
-select cron.schedule(
-  'dashboard-mail-poll',
-  '*/15 * * * *',
-  $$
-  select net.http_post(
-    url := '<SUPABASE_PROJECT_URL>/functions/v1/dashboard-mail-poller',
-    headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'),
-    body := jsonb_build_object('trigger','cron'),
-    timeout_milliseconds := 55000
-  );
-  $$
-);
-
--- ---------- Performance Dialog (monatlicher Zielgespräch-Bericht je Mitarbeiter) ----------
-
--- Monatlicher Performance-Dialog je Mitarbeiter: ein Bericht pro
--- Mitarbeiter/Jahr/Monat (Monat = der berichtete Vormonat, nicht der
--- Einreichungsmonat). "goals" speichert je zutreffendem Ziel sowohl den
--- Auswertungs-Snapshot (Zahlen zum Zeitpunkt der Abgabe - bewusst
--- eingefroren, damit der Bericht ein fixer historischer Datensatz bleibt
--- und sich nicht rückwirkend ändert, wenn sich die Statistik später
--- weiterentwickelt) als auch die vier Freitextantworten.
--- is_draft=true + submitted_at=null: Zwischenstand, den der Mitarbeiter noch
--- nicht abgeschickt hat (Autosave nach jedem Wizard-Schritt) - wird NICHT
--- als PDF versendet und zaehlt in Admin-Uebersicht/Erinnerungsmails/
--- Jahresbericht nicht als abgegeben. Erst der finale "Abschliessen und
--- absenden"-Klick setzt is_draft=false + submitted_at.
-create table if not exists public.performance_dialog_reports (
-  id           uuid primary key default gen_random_uuid(),
-  employee     text not null,
-  year         int not null,
-  month        int not null check (month between 1 and 12),
-  goals        jsonb not null default '[]'::jsonb,
-  is_draft     boolean not null default false,
-  submitted_at timestamptz,
-  submitted_by uuid references auth.users(id),
-  created_at   timestamptz not null default now(),
-  updated_at   timestamptz not null default now(),
-  unique (employee, year, month)
-);
-
-alter table public.performance_dialog_reports enable row level security;
-
--- Persönliche Reflexionsantworten (u.a. "Wo brauche ich Unterstützung") sind
--- sensibler als reine Produktionszahlen - anders als bei den team-weit
--- lesbaren Tabellen (fh_contacts, akp_contacts) darf hier jeder Mitarbeiter
--- nur seinen eigenen Bericht sehen/schreiben, Admin sieht/schreibt alle
--- (für die Admin-Übersicht + Sammel-PDF). Trainer hat KEINEN Sonderzugriff
--- (steuert der Client über das Fehlen des Performance-Dialog-Buttons, aber
--- RLS blockt zusätzlich serverseitig).
-create policy "Own or admin read performance_dialog_reports"
-  on public.performance_dialog_reports for select
-  to authenticated
-  using (
-    public.is_admin()
-    or employee = (select name from public.profiles where id = auth.uid())
-  );
-
-create policy "Own or admin insert performance_dialog_reports"
-  on public.performance_dialog_reports for insert
-  to authenticated
-  with check (
-    public.is_admin()
-    or employee = (select name from public.profiles where id = auth.uid())
-  );
-
-create policy "Own or admin update performance_dialog_reports"
-  on public.performance_dialog_reports for update
-  to authenticated
-  using (
-    public.is_admin()
-    or employee = (select name from public.profiles where id = auth.uid())
-  )
-  with check (
-    public.is_admin()
-    or employee = (select name from public.profiles where id = auth.uid())
-  );
-
--- Nur Admin darf Berichte löschen (Performance Dialog – ADMIN PopUp,
--- "Zurücksetzen"-Button je Mitarbeiter) - ein Mitarbeiter darf seinen
--- eigenen abgegebenen Bericht nicht selbst wieder entfernen.
-create policy "Admin delete performance_dialog_reports"
-  on public.performance_dialog_reports for delete
-  to authenticated
-  using (public.is_admin());
-
-create index if not exists performance_dialog_reports_employee_idx
-  on public.performance_dialog_reports (employee, year, month);
-
--- pg_cron-Job: ruft die Edge Function performance-dialog-reminder täglich um
--- 07:00 Uhr auf (UTC - Deno.env-getriebene Datumslogik in der Function
--- selbst entscheidet Freitag/15. anhand der Europe/Vienna-Zeitzone).
--- <CRON_SECRET> durch denselben Wert wie oben ersetzen.
-select cron.schedule(
-  'performance-dialog-reminder-daily',
-  '0 6 * * *',
-  $$
-  select net.http_post(
-    url := '<SUPABASE_PROJECT_URL>/functions/v1/performance-dialog-reminder',
-    headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'),
-    body := jsonb_build_object('trigger','cron'),
-    timeout_milliseconds := 55000
-  );
-  $$
-);
-
--- ==========================================================================
--- Mitarbeiterstammdaten (Punkt 10, 01.09.2026): ersetzt die frueher
--- hartcodierten Konstanten EMPLOYEES/PERS_JAHRESZIELE/PERS_MIETEZIELE/
--- AKQ_STAFFEL_ZIEL/PERF_GOALS_BY_EMPLOYEE im Client. Neue Mitarbeiter
--- (inkl. Zielwerten) werden ab jetzt ueber das Admin-Panel angelegt statt
--- per Code-Deployment. Wird einmalig pro Session via loadEmployees() im
--- Client geladen, vor dem ersten Rendern.
-create table if not exists public.employees (
-  id uuid primary key default gen_random_uuid(),
-  name text not null unique,
-  pers_jahresziel numeric not null default 0,
-  miete_jahresziel numeric,
-  akq_staffel_ziel numeric not null default 0,
-  perf_goal_ids jsonb not null default '[1,2,3]'::jsonb,
-  match_aliases text[] not null default '{}',
-  admin_only boolean not null default false,
-  active boolean not null default true,
-  sort_order int not null default 0,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-comment on column public.employees.name is
-  'Kanonischer Anzeigename. Wird auch als Matching-Ziel in EMP_NORM registriert (siehe matchEmployee() im Client) - der Tagesreport-Rohtext muss exakt oder ueber match_aliases hierauf normalisieren.';
-comment on column public.employees.match_aliases is
-  'Alternative/rohe Schreibweisen aus dem Tagesreport fuer matchEmployee()-Matching. Wird u.a. genutzt, um die admin-only Analyse-Eintraege ("Technischer GL", "ohne Zuordnung") auf ihre rohen GL-Label-Texte im Tagesreport zu matchen, sodass Region_nach_GL/FH_Liste/Sparten/AKQ-Parsing diese automatisch unter dem virtuellen Mitarbeiternamen ablegen - keine Sonderbehandlung an anderer Stelle im Code noetig.';
-comment on column public.employees.admin_only is
-  'true = nur im Admin-Dropdown waehlbar (virtuelle Analyse-Mitarbeiter wie "Technischer GL"/"ohne Zuordnung"), nicht Teil der normalen EMPLOYEES-Liste/Benachrichtigungen/Ranking.';
-comment on column public.employees.active is
-  'Soft-Delete-Flag. Historische Daten (snap.gl/snap.fh/state.dailyGL) haengen am Namen - deshalb bewusst kein Hard-Delete im Standardfall.';
-comment on column public.employees.perf_goal_ids is
-  'Welche der 6 Performance-Dialog-Ziele gelten (siehe PERF_GOALS_BY_EMPLOYEE/PERF_GOAL_TITLES im Client). Ziele 4/5 (PO-Quote Telekom, Gebrauchtgeraete-Quote) sind aktuell Dominik-Szendi-spezifische Sondervertriebs-Snapshot-Berechnungen - ein neuer Mitarbeiter mit diesen Zielen braucht weiterhin Code-Anpassung. Ziel 6 (Vorhaben des Monats, Nutzervorgabe 08.09.2026) ist reiner Freitext ohne Sondervertriebs-Logik.';
-
-alter table public.employees enable row level security;
-
--- Jeder eingeloggte Nutzer braucht die Liste (Dropdown, Ranking, Ziel-
--- Kacheln, Matching) - analog profiles. Schreiben nur Admin, bewusst NICHT
--- wie fh_contacts/akp_contacts (dort duerfen alle pflegen): Mitarbeiter-
--- Zielwerte sind sensibler und laut Nutzervorgabe exklusiv ueber das
--- Admin-UI zu verwalten.
-create policy "Authenticated read employees" on public.employees
-  for select to authenticated using (true);
-create policy "Admins can insert employees" on public.employees
-  for insert to authenticated with check (public.is_admin());
-create policy "Admins can update employees" on public.employees
-  for update to authenticated using (public.is_admin()) with check (public.is_admin());
-create policy "Admins can delete employees" on public.employees
-  for delete to authenticated using (public.is_admin());
-
-create index if not exists employees_active_idx on public.employees (active, sort_order);
-
--- Seed: bestehende 6 Mitarbeiter 1:1 aus den bisherigen Code-Konstanten.
-insert into public.employees (name, pers_jahresziel, miete_jahresziel, akq_staffel_ziel, perf_goal_ids, sort_order) values
-  ('Klaus Witting',20000,750,30,'[1,2,3]','1'),
-  ('Florian Hasibeder',15000,750,30,'[1,2,3]','2'),
-  ('Dominik Szendi',55000,null,0,'[1,4,5]','3'),
-  ('Helmut Otto',7000,750,30,'[1,2,3]','4'),
-  ('Peter Peißer',7000,750,30,'[1,2,3]','5'),
-  ('Thomas Eitzinger',15000,null,0,'[1]','6')
-on conflict (name) do nothing;
-
--- Punkt 9: virtuelle, admin-only Analyse-Eintraege. match_aliases = exakter
--- GL-Rohtext aus dem Tagesreport, damit matchEmployee() sie automatisch auf
--- diesen Mitarbeiternamen matcht.
-insert into public.employees (name, admin_only, match_aliases, sort_order) values
-  ('Technischer GL', true, '{"Technischer GL CE DE"}', 100),
-  ('ohne Zuordnung', true, '{}', 101)
-on conflict (name) do nothing;
-
--- Nutzervorgabe 08.09.2026: neues Ziel 6 "Vorhaben des Monats" fuer ALLE
--- Bestandsmitarbeiter ergaenzen (idempotent - fuegt nur hinzu, falls noch
--- nicht enthalten).
-update public.employees set perf_goal_ids = perf_goal_ids || '[6]'::jsonb
-  where not (perf_goal_ids @> '[6]'::jsonb)
-    and name in ('Klaus Witting','Florian Hasibeder','Peter Peißer','Helmut Otto','Dominik Szendi','Thomas Eitzinger');
-
--- Sergej Eigenseer (Rolle "Trainer", profiles.name identisch, siehe
--- s.eigenseer@wertgarantie.com): admin_only wie "Technischer GL" oben - kein
--- Eintrag im Tagesproduktions-Dropdown, aber via PERF_GOALS_BY_EMPLOYEE
--- trotzdem Performance-Dialog-Zugang (siehe loadEmployees() im Client, das
--- ist der einzige Unterschied zu den beiden admin_only-Zeilen oben, die
--- KEINEN Dialog-Zugang haben sollen). Ziel 1 verwendet bei ihm bewusst
--- "Oesterreich gesamt" statt persoenlicher Zahlen (PERF_GOAL1_SCOPE_OVERRIDE
--- im Client) - pers_jahresziel/akq_staffel_ziel bleiben deshalb 0.
-insert into public.employees (name, admin_only, perf_goal_ids, pers_jahresziel, akq_staffel_ziel, match_aliases, sort_order) values
-  ('Sergej Eigenseer', true, '[1,6]'::jsonb, 0, 0, '{}', 200)
-on conflict (name) do nothing;
-
--- ==========================================================================
--- Deckungsgrad-Auswertung (01.09.2026): absolut vertrauliche Finanzdaten je
--- Fachhaendler aus einer separaten Excel-Datei ("DG2_Bericht_AT.xlsx",
--- Spalten u.a. FH Nr/Bestand/Provision/Schaeden/DB1/DG1/DB2/DG2 je LJ/VJ).
--- Bestand/Provision/Schaeden duerfen als Zahl angezeigt werden, DG1/DG2/DB1/
--- DB2 NIEMALS im Klartext - auch nicht an Admins (Nutzervorgabe). Deshalb
--- bewusst KEINE select-Policy auf der Rohdatentabelle - der einzige
--- Lesezugriff laeuft ueber die security-definer-Funktion
--- fh_deckungsgrad_for() weiter unten, die ausschliesslich abgeleitete
--- Ampel-/Tendenz-Werte und die unkritischen Felder zurueckgibt. Kein KI-/
--- Anthropic-Bezug irgendwo in dieser Kette (Nutzervorgabe: diese Daten
--- duerfen nie ueber "das Internet/KI" verteilt werden). Trend (besser/
--- schlechter/gleich zum Vorjahr) kommt direkt aus den VJ-Spalten derselben
--- Einspielung - keine eigene Zeithistorie noetig, die Quelldatei liefert LJ
--- und VJ bereits nebeneinander.
-create table if not exists public.fh_deckungsgrad (
-  fh_nr text primary key,
-  bestand numeric,
-  provision_lj numeric,
-  schaeden_lj integer,
-  schadenbetrag_lj numeric,
-  db1_lj numeric,
-  dg1_lj numeric,
-  db2_lj numeric,
-  dg2_lj numeric,
-  db1_vj numeric,
-  dg1_vj numeric,
-  db2_vj numeric,
-  dg2_vj numeric,
-  imported_at timestamptz not null default now(),
-  imported_by uuid references auth.users(id)
-);
-
-alter table public.fh_deckungsgrad enable row level security;
-
--- Schreiben (Import) nur durch Admin. Bewusst KEINE select-Policy fuer
--- irgendeine Rolle -> RLS verweigert jeden direkten Lesezugriff, auch fuer
--- Admin. Der einzige Weg an die Daten ist die untenstehende Funktion.
-create policy "Admins can insert fh_deckungsgrad" on public.fh_deckungsgrad
-  for insert to authenticated with check (public.is_admin());
-create policy "Admins can update fh_deckungsgrad" on public.fh_deckungsgrad
-  for update to authenticated using (public.is_admin()) with check (public.is_admin());
-
--- DG-Ampel: rot bis 10 %, gelb bis 30 %, gruen ab 30 % (identische Schwellen
--- fuer DG1 und DG2, Nutzervorgabe). DB-Ampel (absolute Euro-Betraege,
--- Haendlergroessen extrem unterschiedlich): Perzentil-Rang unter allen
--- Haendlern dieser Einspielung - rot = unteres Drittel, gelb = mittleres
--- Drittel, gruen = oberes Drittel. Tendenz DG: Differenz LJ-VJ in
--- Prozentpunkten, +/-0,5pp Totzone als "gleich". Tendenz DB: relative
--- Veraenderung LJ-VJ, +/-5% Totzone.
-create or replace function public.fh_deckungsgrad_for(p_fh_nr text)
-returns table (
-  fh_nr text,
-  bestand numeric,
-  provision_lj numeric,
-  schaeden_lj integer,
-  schadenbetrag_lj numeric,
-  dg1_ampel text,
-  dg1_trend text,
-  dg2_ampel text,
-  dg2_trend text,
-  db1_ampel text,
-  db1_trend text,
-  db2_ampel text,
-  db2_trend text,
-  imported_at timestamptz
-)
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  -- Haertung (DSGVO-Pruefung 05.09.2026), analog akp_sync_daily oben - vorher
-  -- war diese Lesefunktion trotz der bewusst fehlenden select-Policy auf
-  -- fh_deckungsgrad selbst (siehe Tabellenkommentar) ohne eigene
-  -- Sitzungspruefung ausfuehrbar, also der einzige tatsaechliche Schutz nur
-  -- "Funktionsname/Format unbekannt" statt einer echten Zugriffskontrolle.
   if auth.uid() is null then
     raise exception 'Anmeldung erforderlich';
   end if;
@@ -1142,32 +762,15 @@ begin
   from ranked r
   where r.fh_nr = p_fh_nr;
 end;
-$$;
+$function$
+;
 
-revoke execute on function public.fh_deckungsgrad_for(text) from public;
-grant execute on function public.fh_deckungsgrad_for(text) to authenticated;
-
--- Root Cause (02.09.2026, real-world reproduziert): fh_deckungsgrad hat
--- bewusst KEINE select-Policy fuer irgendeine Rolle (siehe Tabellenkommentar
--- oben - selbst Admins duerfen die Rohwerte nie im Klartext sehen). Ein
--- direkter Client-seitiger .upsert() ueber PostgREST verlangt aber implizit
--- eine RETURNING-Klausel (representation), was OHNE Select-Policy IMMER mit
--- "new row violates row-level security policy" fehlschlaegt - bestaetigt per
--- SQL-Test: dieselbe INSERT-Anweisung MIT "returning" schlaegt fehl, OHNE
--- "returning" gelingt sie, mit exakt derselben Fehlermeldung wie in den
--- echten Supabase-Logs (POST 403) - unabhaengig davon, ob der aufrufende
--- Account tatsaechlich Admin ist (is_admin() wurde separat verifiziert: true).
---
--- Fix nach demselben Muster wie fh_sync_daily/fh_sync_miete/akp_sync_daily:
--- security-definer RPC-Funktion, die serverseitig upsert't und dabei NIE
--- Daten zurueckgibt (returns void) - dadurch wird die RETURNING-Klausel nie
--- ausgeloest und die fehlende Select-Policy bleibt unangetastet (weiterhin
--- niemand kann die Rohwerte lesen). Da dieser Import (anders als die anderen
--- sync-Funktionen) admin-only sein soll, wird is_admin() explizit im
--- Funktionskoerper geprueft (grant execute geht an alle authenticated, da
--- Postgres EXECUTE nicht rollenspezifisch feiner granular ist).
-create or replace function public.fh_deckungsgrad_upsert(rows jsonb) returns void
-language plpgsql security definer set search_path = public as $$
+CREATE OR REPLACE FUNCTION public.fh_deckungsgrad_upsert(rows jsonb)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
 declare
   r jsonb;
 begin
@@ -1204,57 +807,15 @@ begin
       imported_by = excluded.imported_by, imported_at = excluded.imported_at;
   end loop;
 end;
-$$;
+$function$
+;
 
-revoke execute on function public.fh_deckungsgrad_upsert(jsonb) from public;
-grant execute on function public.fh_deckungsgrad_upsert(jsonb) to authenticated;
-
--- ---------- FH-Duplikate zusammenführen (04.09.2026) ----------
--- Manche Fachhändler stehen unter zwei FH-Nr in den Quelldateien (Bug-Report
--- "Elektrotechnik Vallant KG" - zweifach mit unterschiedlicher FH-Nr, gleicher
--- Telefonnummer-Kern, vermutlich eine bei Wertgarantie intern vergebene neue
--- Kundennummer statt Weiterverwendung der bestehenden). Ein Admin kann hier
--- zwei FH-Nr als denselben realen Betrieb markieren - der Client löst
--- alias_fh_nr dann ÜBERALL, wo eine FH-Nr aus einer Quelle gelesen wird
--- (parseAuswertung/buildFhContactsIndices/loadAkpContactsIndex, siehe
--- resolveFhDup() in index.html), auf canonical_fh_nr auf. Alias-Nr
--- verschwindet dadurch als eigener Eintrag, Kennzahlen werden addiert.
-create table if not exists public.fh_duplicate_merges (
-  alias_fh_nr     text primary key,
-  canonical_fh_nr text not null,
-  note            text,
-  created_by      uuid references auth.users(id),
-  created_at      timestamptz not null default now(),
-  constraint fh_duplicate_merges_not_self check (alias_fh_nr <> canonical_fh_nr)
-);
-
-alter table public.fh_duplicate_merges enable row level security;
-
-create policy "Authenticated read fh_duplicate_merges"
-  on public.fh_duplicate_merges for select
-  to authenticated
-  using (true);
-
-create policy "Admins can insert fh_duplicate_merges"
-  on public.fh_duplicate_merges for insert
-  to authenticated
-  with check (public.is_admin());
-
-create policy "Admins can delete fh_duplicate_merges"
-  on public.fh_duplicate_merges for delete
-  to authenticated
-  using (public.is_admin());
-
--- Verhindert Ketten (Alias, der selbst schon kanonisch fuer andere Aliase
--- ist, oder ein Alias, der schon einer anderen Kanonisch-Nr zugeordnet ist) -
--- resolveFhDup() im Client bleibt dadurch ein einfacher, nicht rekursiver
--- Map-Lookup ohne Ketten-Aufloesung.
-create or replace function public.fh_duplicate_merges_guard()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
+CREATE OR REPLACE FUNCTION public.fh_duplicate_merges_guard()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
 begin
   if exists (select 1 from public.fh_duplicate_merges where canonical_fh_nr = new.alias_fh_nr) then
     raise exception 'FH-Nr % ist bereits kanonische Nummer fuer andere Aliase - keine Ketten erlaubt', new.alias_fh_nr;
@@ -1264,404 +825,278 @@ begin
   end if;
   return new;
 end;
-$$;
+$function$
+;
 
-drop trigger if exists fh_duplicate_merges_guard_trg on public.fh_duplicate_merges;
-create trigger fh_duplicate_merges_guard_trg
-  before insert or update on public.fh_duplicate_merges
-  for each row execute function public.fh_duplicate_merges_guard();
+CREATE OR REPLACE FUNCTION public.fh_segmentierung_upsert(rows jsonb)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  r jsonb; fhnr text; newseg text; curmonth text;
+  oldseg text; oldmonth text; oldprev text; newprev text;
+begin
+  if auth.uid() is null then
+    raise exception 'Anmeldung erforderlich';
+  end if;
+  curmonth := to_char(now(), 'YYYY-MM');
+  for r in select * from jsonb_array_elements(rows) loop
+    fhnr := r->>'fh_nr';
+    if coalesce(fhnr,'') = '' then continue; end if;
+    newseg := nullif(r->>'segmentierung','');
 
-create index if not exists fh_duplicate_merges_canonical_idx on public.fh_duplicate_merges (canonical_fh_nr);
+    select segmentierung, segmentierung_month, segmentierung_prev
+      into oldseg, oldmonth, oldprev
+      from public.fh_contacts where fh_nr = fhnr;
 
--- Logbuch aller Datei-Einspielungen (Nutzervorgabe 08.09.2026: "ein Logbuch,
--- in dem alle Einspielungen mit Datum und Uhrzeit verzeichnet werden - das
--- sollen alle Rollen sehen"). Append-only, jede Zeile ein erfolgreich
--- verarbeiteter Import (egal ob manueller Admin-Panel-Upload oder
--- automatischer Mail-Import über input@wgaustria.at, siehe
--- processPendingImports()/handleFiles() u.a. in index.html).
-create table if not exists public.import_log (
-  id uuid primary key default gen_random_uuid(),
-  imported_at timestamptz,              -- null = Zeitpunkt nicht bekannt (Backfill vor 14.08.2026)
-  type text not null,                   -- 'auswertung'|'segmentierung'|'deckungsgrad'|'stornoquoten'|'profitraining'|'miete'|'akqstaffel'|'sonstiges'
-  filename text,
-  vortag date,                          -- Geschäftsdatum lt. Report (nur bei type='auswertung' gesetzt)
-  source text not null default 'upload' check (source in ('upload','mail','backfill')),
-  imported_by text,                     -- Name/E-Mail (Admin-Panel) bzw. Absenderadresse (Mail-Import)
-  created_at timestamptz not null default now()
-);
+    if oldmonth is distinct from curmonth then
+      newprev := oldseg;
+    else
+      newprev := oldprev;
+    end if;
 
-alter table public.import_log enable row level security;
+    insert into public.fh_contacts (fh_nr, segmentierung, segmentierung_prev, segmentierung_month)
+    values (fhnr, newseg, newprev, curmonth)
+    on conflict (fh_nr) do update set
+      segmentierung = excluded.segmentierung,
+      segmentierung_prev = excluded.segmentierung_prev,
+      segmentierung_month = excluded.segmentierung_month,
+      updated_at = now();
+  end loop;
+end;
+$function$
+;
 
--- Alle eingeloggten Nutzer (jede Rolle) dürfen das Logbuch sehen.
-drop policy if exists "Authenticated read import_log" on public.import_log;
-create policy "Authenticated read import_log"
-  on public.import_log for select
-  to authenticated
-  using (true);
+CREATE OR REPLACE FUNCTION public.fh_sync_daily(rows jsonb)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  r jsonb; mval int; mkey text; monthjson jsonb; fhnr text;
+  is_new boolean; pending_koop text;
+begin
+  if auth.uid() is null then
+    raise exception 'Anmeldung erforderlich';
+  end if;
+  for r in select * from jsonb_array_elements(rows) loop
+    fhnr := r->>'nr';
+    if coalesce(fhnr,'') = '' then continue; end if;
+    mkey := r->>'mk';
+    mval := coalesce((r->>'mv')::int, 0);
+    monthjson := case when mkey is not null then jsonb_build_object(mkey, mval) else '{}'::jsonb end;
 
--- Jeder eingeloggte Nutzer kann eine Einspielung protokollieren (Uploads sind
--- nicht auf eine Rolle beschränkt, siehe handleFiles()/handleMieteFile() etc.
--- - dieselbe "nur eingeloggt"-Prüfung wie bei den Import-Handlern selbst).
-drop policy if exists "Authenticated insert import_log" on public.import_log;
-create policy "Authenticated insert import_log"
-  on public.import_log for insert
-  to authenticated
-  with check (true);
+    is_new := not exists (select 1 from public.fh_contacts where fh_nr = fhnr);
 
-create index if not exists import_log_imported_at_idx on public.import_log (imported_at desc nulls last);
+    insert into public.fh_contacts (fh_nr, prod_monthly)
+    values (fhnr, monthjson)
+    on conflict (fh_nr) do update set
+      prod_monthly = coalesce(fh_contacts.prod_monthly,'{}'::jsonb) || excluded.prod_monthly,
+      updated_at = now();
 
--- Trainerbetreuung: Trainerbesuche bei Fachhändlern dokumentieren
--- (Nutzervorgabe 10.09.2026). Ein FH kann über die Zeit mehrere
--- Trainerbesuche bekommen - jeder Besuch ist ein eigener, historisierter
--- Datensatz. "aktiv" vs. "abgeschlossen" wird immer aus besuch_datum
--- abgeleitet (heute - besuch_datum >= 28 Tage), kein eigenes Status-Feld
--- nötig (vermeidet Sync-Bugs). Kein Storage-Bucket für den Endbericht -
--- der wird clientseitig aus den gespeicherten Feldern jederzeit neu
--- gerendert (wie alle anderen PDFs dieser App).
-create table if not exists public.trainerbesuche (
-  id uuid primary key default gen_random_uuid(),
-  fh_nr text not null,
-  trainer_name text not null,           -- employees.name, wie akq_gl/emp an anderen Stellen
-  besuch_datum date not null,
-  taetigkeiten text,                    -- Freifeld "durchgeführte Tätigkeiten", keine Längenbeschränkung
-  akp_teilnehmer jsonb not null default '[]'::jsonb,  -- Array von AKP-Nr (Strings)
-  baseline_avg numeric,                 -- Tagesschnitt Produktion, 3 Monate vor besuch_datum (aus prod_monthly)
-  nachher_avg numeric,                  -- Tagesschnitt Produktion, 4 Wochen NACH besuch_datum - erst befüllt sobald besuch_datum+28 Tage vorbei ist
-  endbericht_sent_at timestamptz,       -- Guard: Endbericht-Mail nur 1x
-  created_by uuid references auth.users(id),
-  updated_by uuid references auth.users(id),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+    if is_new then
+      select kooperation into pending_koop from public.fh_kooperation_pending where fh_nr = fhnr;
+      if pending_koop is not null then
+        update public.fh_contacts set kooperation = pending_koop where fh_nr = fhnr;
+        delete from public.fh_kooperation_pending where fh_nr = fhnr;
+      end if;
+    end if;
+  end loop;
+end;
+$function$
+;
 
-alter table public.trainerbesuche enable row level security;
+CREATE OR REPLACE FUNCTION public.fh_sync_miete(rows jsonb)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  r jsonb; monthlyj jsonb; sortimentj jsonb; clubnr text; mietename text;
+begin
+  if auth.uid() is null then
+    raise exception 'Anmeldung erforderlich';
+  end if;
+  for r in select * from jsonb_array_elements(rows) loop
+    if coalesce(r->>'fh_nr','') = '' then continue; end if;
+    monthlyj := coalesce(r->'monthly','{}'::jsonb);
+    sortimentj := coalesce(r->'sortiment','{}'::jsonb);
+    clubnr := r->>'club_nr';
+    mietename := nullif(r->>'name','');
 
-drop policy if exists "Authenticated all trainerbesuche" on public.trainerbesuche;
-create policy "Authenticated all trainerbesuche"
-  on public.trainerbesuche for all
-  to authenticated
-  using (true)
-  with check (true);
+    insert into public.fh_contacts (fh_nr, miete_monthly, miete_sortiment, club_weiss_mitglied, club_weiss_mitgliedsnummer, miete_name)
+    values (r->>'fh_nr', monthlyj, sortimentj, true, clubnr, mietename)
+    on conflict (fh_nr) do update set
+      miete_monthly = coalesce(fh_contacts.miete_monthly,'{}'::jsonb) || excluded.miete_monthly,
+      miete_sortiment = coalesce(fh_contacts.miete_sortiment,'{}'::jsonb) || excluded.miete_sortiment,
+      club_weiss_mitglied = true,
+      club_weiss_mitgliedsnummer = coalesce(excluded.club_weiss_mitgliedsnummer, fh_contacts.club_weiss_mitgliedsnummer),
+      miete_name = coalesce(excluded.miete_name, fh_contacts.miete_name),
+      updated_at = now();
+  end loop;
+end;
+$function$
+;
 
-create index if not exists trainerbesuche_fh_nr_idx on public.trainerbesuche (fh_nr, besuch_datum desc);
-create index if not exists trainerbesuche_trainer_idx on public.trainerbesuche (trainer_name, besuch_datum desc);
-create index if not exists trainerbesuche_endbericht_pending_idx on public.trainerbesuche (besuch_datum) where endbericht_sent_at is null;
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+begin
+  insert into public.profiles (id, email, name, role)
+  values (new.id, new.email, new.raw_user_meta_data->>'name', 'aussendienst');
+  return new;
+end;
+$function$
+;
 
--- Nutzervorgabe 23.09.2026: 3 ankreuzbare Trainingsarten je Trainerbesuch
--- ("Flächentraining mit Unterstützung im Verkauf", "Coaching ohne
--- Unterstützung im Verkauf", "Profi-Training") - Array von Strings, analog
--- akp_teilnehmer.
-alter table public.trainerbesuche add column if not exists trainingsart jsonb not null default '[]'::jsonb;
-
--- pg_cron-Job: ruft die Edge Function trainerbetreuung-weekly-mail stündlich
--- auf; die Function selbst prüft per Wiener Ortszeit (analog
--- performance-dialog-reminder), ob gerade Montag 08:00 ist, und verschickt
--- nur dann. <CRON_SECRET> durch denselben Wert ersetzen, der auch als
--- Edge-Function-Secret CRON_SECRET hinterlegt ist.
-select cron.schedule(
-  'trainerbetreuung-weekly-mail-hourly',
-  '0 * * * *',
-  $$
-  select net.http_post(
-    url := '<SUPABASE_PROJECT_URL>/functions/v1/trainerbetreuung-weekly-mail',
-    headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'),
-    body := jsonb_build_object('trigger','cron'),
-    timeout_milliseconds := 55000
-  );
-  $$
-);
-
--- Bug-Report 19.09.2026 ("manchmal hat der automatische Mailimport nicht
--- funktioniert, musste es 2x mailen"): processPendingImports() (index.html)
--- setzte eine Zeile beim "Claimen" bisher direkt auf status="processing",
--- ohne Zeitstempel - wurde der verarbeitende Tab/Browser genau in diesem
--- Fenster geschlossen (bestätigt: Zeile vom 18.09.2026 05:15 blieb ohne
--- Fehler und ohne processed_at dauerhaft auf "processing" stehen), gab es
--- keine Möglichkeit mehr, diese Zeile jemals wiederzuerkennen und erneut zu
--- versuchen - der Auswahl-Query holt nur status="pending". claimed_at hält
--- fest, WANN der Claim gesetzt wurde, damit processPendingImports() einen
--- "processing"-Claim, der länger als STALE_PROCESSING_MINUTES zurückliegt,
--- als abgebrochen erkennen und die Zeile zurück auf "pending" setzen kann.
-alter table public.pending_imports add column if not exists claimed_at timestamptz;
-
--- Performance-Fix (Supabase-Advisor "auth_rls_initplan", Nutzeranfrage
--- 19.09.2026 "die RLS auch gleich aufräumen"): auth.uid() wurde in mehreren
--- RLS-Policies bisher pro ZEILE neu ausgewertet statt einmal pro Query -
--- Supabase-Empfehlung: auth.<fn>() durch (select auth.<fn>()) ersetzen,
--- damit der Planner das Ergebnis einmal pro Statement cachen kann, statt es
--- für jede Zeile neu aufzurufen. is_admin() zusätzlich als STABLE markiert
--- (war bisher implizit VOLATILE, wurde dadurch selbst innerhalb EINER Query
--- wiederholt neu ausgewertet, obwohl sich das Ergebnis nie ändert - betrifft
--- alle Tabellen, deren Policies is_admin() nutzen).
-create or replace function public.is_admin()
-returns boolean
-language sql
-security definer
-stable
-set search_path = public
-as $$
+CREATE OR REPLACE FUNCTION public.is_admin()
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
   select exists (select 1 from public.profiles where id = auth.uid() and role = 'admin');
-$$;
+$function$
+;
 
-drop policy if exists "Users read own settings" on public.user_settings;
-create policy "Users read own settings"
-  on public.user_settings for select
-  to authenticated
-  using ((select auth.uid()) = user_id);
+CREATE OR REPLACE FUNCTION public.mark_password_changed()
+ RETURNS void
+ LANGUAGE sql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  update public.profiles set must_change_password = false where id = auth.uid();
+$function$
+;
 
-drop policy if exists "Users insert own settings" on public.user_settings;
-create policy "Users insert own settings"
-  on public.user_settings for insert
-  to authenticated
-  with check ((select auth.uid()) = user_id);
+CREATE OR REPLACE FUNCTION public.protect_gesperrt_row()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+begin
+  if old.gesperrt_am is not null then
+    if new.gesperrt_am is null then
+      -- Entsperren: nur Admin darf das.
+      if not public.is_admin() then
+        raise exception 'Nur Admins dürfen einen gesperrten Datensatz entsperren.';
+      end if;
+      return new;
+    else
+      -- Datensatz bleibt gesperrt - jeder andere Schreibversuch wird
+      -- stillschweigend verworfen (kein Fehler, damit z.B. ein Bulk-Import
+      -- über viele Zeilen hinweg nicht an einem gesperrten FH abbricht).
+      return old;
+    end if;
+  end if;
+  return new;
+end;
+$function$
+;
 
-drop policy if exists "Users update own settings" on public.user_settings;
-create policy "Users update own settings"
-  on public.user_settings for update
-  to authenticated
-  using ((select auth.uid()) = user_id)
-  with check ((select auth.uid()) = user_id);
+-- ============================================================
+-- SECTION 6: TRIGGER
+-- ============================================================
 
-drop policy if exists "Own or admin read performance_dialog_reports" on public.performance_dialog_reports;
-create policy "Own or admin read performance_dialog_reports"
-  on public.performance_dialog_reports for select
-  to authenticated
-  using (is_admin() or employee = (select profiles.name from public.profiles where profiles.id = (select auth.uid())));
+CREATE TRIGGER trg_protect_akp_gesperrt BEFORE UPDATE ON public.akp_contacts FOR EACH ROW EXECUTE FUNCTION protect_gesperrt_row();
+CREATE TRIGGER trg_protect_fh_gesperrt BEFORE UPDATE ON public.fh_contacts FOR EACH ROW EXECUTE FUNCTION protect_gesperrt_row();
+CREATE TRIGGER fh_duplicate_merges_guard_trg BEFORE INSERT OR UPDATE ON public.fh_duplicate_merges FOR EACH ROW EXECUTE FUNCTION fh_duplicate_merges_guard();
 
-drop policy if exists "Own or admin insert performance_dialog_reports" on public.performance_dialog_reports;
-create policy "Own or admin insert performance_dialog_reports"
-  on public.performance_dialog_reports for insert
-  to authenticated
-  with check (is_admin() or employee = (select profiles.name from public.profiles where profiles.id = (select auth.uid())));
+-- Zusätzlich (nicht per SQL hier re-erstellbar, da auf auth.users liegt -
+-- im Supabase Dashboard unter Database > Triggers oder per separater
+-- Migration auf schema "auth" anzulegen):
+--   CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users
+--     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
-drop policy if exists "Own or admin update performance_dialog_reports" on public.performance_dialog_reports;
-create policy "Own or admin update performance_dialog_reports"
-  on public.performance_dialog_reports for update
-  to authenticated
-  using (is_admin() or employee = (select profiles.name from public.profiles where profiles.id = (select auth.uid())))
-  with check (is_admin() or employee = (select profiles.name from public.profiles where profiles.id = (select auth.uid())));
+-- ============================================================
+-- SECTION 7: EXTENSIONS
+-- ============================================================
 
--- Nutzervorgabe 22.09.2026: der periodische Trainerbetreuung-Fortschritts-
--- bericht (bisher HTML-Text direkt in der Mail) soll als PDF-Anhang
--- verschickt werden, UND im Admin-Tool als nach Datum sortierte, herunter-
--- ladbare Liste aller je versendeten Berichte verfügbar sein (nicht nur der
--- zuletzt versendete - "genau der Bericht, der am 21.09. verschickt wurde").
--- Das erfordert eine echte Ablage des tatsächlich versendeten PDFs (nicht
--- bloß Neuberechnung aus dem aktuellen Live-Stand, der sich seither ändern
--- kann) - Storage-Bucket + Log-Tabelle, analog dem bereits vorhandenen
--- Mail-Import-Muster (mail-imports-Bucket + pending_imports-Tabelle).
-create table if not exists public.trainerbetreuung_weekly_reports (
-  id uuid primary key default gen_random_uuid(),
-  trainer_name text not null,
-  sent_at timestamptz not null default now(),
-  period_reference date not null,        -- Bezugsdatum der Berechnung (i.d.R. Versand-Tag) - für die rückwirkende Korrektur eines konkreten Berichts wichtig.
-  storage_path text not null,
-  filename text not null,
-  visit_count int not null default 0,
-  trainer_email_sent boolean not null default false,
-  admin_email_sent boolean not null default false,
-  created_at timestamptz not null default now()
-);
-alter table public.trainerbetreuung_weekly_reports enable row level security;
-drop policy if exists "Authenticated all trainerbetreuung_weekly_reports" on public.trainerbetreuung_weekly_reports;
-create policy "Authenticated all trainerbetreuung_weekly_reports"
-  on public.trainerbetreuung_weekly_reports for all
-  to authenticated
-  using (true)
-  with check (true);
-create index if not exists trainerbetreuung_weekly_reports_sent_at_idx on public.trainerbetreuung_weekly_reports (sent_at desc);
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+CREATE EXTENSION IF NOT EXISTS pg_net;
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements WITH SCHEMA extensions;
+CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA extensions;
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;
+-- supabase_vault + plpgsql sind in jedem Supabase-Projekt bereits vorhanden.
 
-insert into storage.buckets (id, name, public)
-values ('trainerberichte', 'trainerberichte', false)
-on conflict (id) do nothing;
+-- ============================================================
+-- SECTION 8: STORAGE BUCKETS
+-- ============================================================
 
-drop policy if exists "Authenticated read trainerberichte" on storage.objects;
-create policy "Authenticated read trainerberichte"
-  on storage.objects for select
-  to authenticated
-  using (bucket_id = 'trainerberichte');
+insert into storage.buckets (id, name, public) values ('auswertung-berichte', 'auswertung-berichte', false) on conflict (id) do nothing;
+insert into storage.buckets (id, name, public) values ('event-photos', 'event-photos', true) on conflict (id) do nothing;
+insert into storage.buckets (id, name, public) values ('mail-imports', 'mail-imports', false) on conflict (id) do nothing;
+insert into storage.buckets (id, name, public) values ('trainerberichte', 'trainerberichte', false) on conflict (id) do nothing;
+-- Storage-RLS-Policies für diese Buckets: siehe SECTION 4 oben
+-- ("storage.objects (Storage-RLS, pro Bucket)").
 
--- ==========================================================================
--- Automatische wiederkehrende "Auswertungen" (Nutzervorgabe 24.09.2026):
--- jede einzelne Auswertung (Kooperation/Weitere Zuordnung/Filialbetriebe/
--- Fachhändler/AKP) kann beim Einrichten als wiederkehrender Mailversand an
--- eine Kunden-Adresse abonniert werden - Intervall (täglich/wöchentlich/
--- monatlich/Quartal/jährlich) ODER zusätzlich ein fixer Zeitraum (erzwingt
--- am Ende einen einmaligen "Endstand"-Abschlussbericht). Kein Status-Feld
--- für "aktiv/fällig" - wird von der Edge Function auswertung-scheduled-mail
--- anhand von interval/fixed_range_enabled/range_end/endstand_sent_at und dem
--- Sende-Log (auswertung_subscription_sends) täglich neu bestimmt, analog dem
--- besuch_datum-Ableitungsprinzip bei trainerbesuche.
-create table if not exists public.auswertung_subscriptions (
-  id uuid primary key default gen_random_uuid(),
-  auswertung_typ text not null check (auswertung_typ in
-    ('kooperation','weitere_zuordnung','filialbetriebe','fachhaendler','akp')),
-  entity_key text not null,          -- Aggregat-Wert (Kooperation/Zuordnung/Filialkette) ODER genau 1 FH-Nr/AKP-Nr
-  recipient_email text not null,     -- Kunden-Zieladresse
-  interval text not null check (interval in ('daily','weekly','monthly','quarterly','yearly')),
-  fixed_range_enabled boolean not null default false,
-  range_start date,
-  range_end date,
-  include_vj boolean not null default false,   -- Vorjahresvergleich mit anführen
-  include_vvj boolean not null default false,  -- Vorvorjahresvergleich mit anführen
-  show_akp boolean not null default false,     -- Übernahme der bestehenden "AKP mit anzeigen"-Option
-  active boolean not null default true,
-  endstand_sent_at timestamptz,       -- Guard: Endstand-Mail nur 1x, nur relevant bei fixed_range_enabled
-  created_by uuid references auth.users(id),
-  created_by_name text,                -- Snapshot (analog trainerbesuche.trainer_name)
-  created_by_email text not null,      -- Ziel der Mitarbeiter-Kopie bei automatischen Sendungen
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint auswertung_subscriptions_range_chk check (
-    not fixed_range_enabled or (range_start is not null and range_end is not null and range_end >= range_start)
-  )
-);
-alter table public.auswertung_subscriptions enable row level security;
-drop policy if exists "Authenticated all auswertung_subscriptions" on public.auswertung_subscriptions;
-create policy "Authenticated all auswertung_subscriptions" on public.auswertung_subscriptions
-  for all to authenticated using (true) with check (true);
-create index if not exists auswertung_subscriptions_active_idx on public.auswertung_subscriptions (active) where active;
-create index if not exists auswertung_subscriptions_entity_idx on public.auswertung_subscriptions (auswertung_typ, entity_key);
+-- ============================================================
+-- SECTION 9: PG_CRON JOBS
+-- ============================================================
+-- WICHTIG: x-cron-secret-Werte unten sind PLATZHALTER, NICHT die echten
+-- Secrets (die echten Werte NIE ins Repo committen). Beim Wiederaufbau:
+-- 1. CRON_SECRET (und ggf. einen eigenen Wert für event-mailer) in den
+--    Edge-Function-Secrets setzen (beliebiger neuer, zufälliger Wert ist
+--    ausreichend - muss nur mit dem hier eingesetzten Wert übereinstimmen).
+-- 2. <PROJECT_REF> durch die neue Supabase-Projekt-Referenz ersetzen.
 
--- Nutzervorgabe 24.09.2026 (Ergänzung): mehrere Empfänger-Mailadressen
--- auswählbar/eingebbar statt nur einer einzelnen (z.B. Zentralmailadresse
--- UND mehrere Ansprechpartner einer Filialgruppe gleichzeitig).
-alter table public.auswertung_subscriptions add column if not exists recipient_emails text[] not null default '{}';
-update public.auswertung_subscriptions set recipient_emails=array[recipient_email] where recipient_emails='{}' and recipient_email is not null;
-alter table public.auswertung_subscriptions drop column if exists recipient_email;
-alter table public.auswertung_subscriptions add constraint auswertung_subscriptions_recipients_chk check (array_length(recipient_emails,1) > 0);
-
--- Nutzervorgabe 24.09.2026 (Ergänzung 2): automatische Auswertung soll auch
--- OHNE externen Empfänger einrichtbar sein - nur als interner Bericht an
--- den erstellenden Mitarbeiter selbst (kein Versand an Kunde/Ansprechpartner/
--- Zentralmailadresse). employee_only=true erlaubt daher recipient_emails='{}'.
--- (Direkt im selben Sitzungsschritt wieder abgelöst, siehe Block darunter -
--- 0 Bestandsdatensätze zum Zeitpunkt der Ablösung, daher hier nur der
--- Vollständigkeit halber dokumentiert.)
-alter table public.auswertung_subscriptions add column if not exists employee_only boolean not null default false;
-alter table public.auswertung_subscriptions drop constraint if exists auswertung_subscriptions_recipients_chk;
-alter table public.auswertung_subscriptions add constraint auswertung_subscriptions_recipients_chk check (employee_only or array_length(recipient_emails,1) > 0);
-
--- Nutzervorgabe 24.09.2026 (Ergänzung 3): "employee_only" (nur EIN
--- Entweder-Oder-Schalter, nur bei Einrichtung setzbar) ersetzt durch ZWEI
--- unabhängige, auch nachträglich im Admin-Tool umschaltbare Flags - Versand
--- an Mitarbeiter UND Versand an Externe je für sich aktivier-/deaktivierbar
--- (z.B. weiterhin an den Kunden senden, aber die eigene Kopie abschalten,
--- oder umgekehrt). send_to_external=false erlaubt weiterhin leere
--- recipient_emails (Einrichtung als reiner interner Bericht).
-alter table public.auswertung_subscriptions add column if not exists send_to_employee boolean not null default true;
-alter table public.auswertung_subscriptions add column if not exists send_to_external boolean not null default true;
-update public.auswertung_subscriptions set send_to_external=false, send_to_employee=true where employee_only=true;
-alter table public.auswertung_subscriptions drop constraint if exists auswertung_subscriptions_recipients_chk;
-alter table public.auswertung_subscriptions drop column if exists employee_only;
-alter table public.auswertung_subscriptions add constraint auswertung_subscriptions_recipients_chk check (not send_to_external or array_length(recipient_emails,1) > 0);
-
--- Nutzervorgabe 24.09.2026 (Ergänzung 4): die beiden Versandarten
--- send_to_employee/send_to_external (oben) sollen für normale Mitarbeiter
--- bei der EINRICHTUNG global vom Admin freischaltbar sein - ist z.B. nur
--- "Versand an Externe" freigegeben, sieht die Einrichtungs-Oberfläche gar
--- nicht erst die Option "Nur an mich selbst senden" (index.html,
--- auswertungAutoSectionReset()). Zwei generische dashboard_kv-Flags
--- (analog "auswertung_enabled", Funktionen-Panel), KEINE neue Tabelle
--- nötig. Abweichend von der sonstigen Konvention ("Standard aus, bis ein
--- Admin den Schalter das erste Mal setzt") werden beide hier explizit auf
--- "1" (= beide Optionen weiterhin verfügbar) vorbelegt, damit die gerade
--- erst ausgelieferte Automatisierung nicht unbeabsichtigt für alle
--- Mitarbeiter verschwindet, bis ein Admin das Funktionen-Panel einmal
--- besucht hat.
-insert into public.dashboard_kv (key, value) values
-  ('auswertung_send_employee_allowed', '1'),
-  ('auswertung_send_external_allowed', '1')
-on conflict (key) do nothing;
-
--- Log jedes tatsächlich versendeten automatischen Berichts - Quelle der
--- Wahrheit für Idempotenz (Unique-Index verhindert Doppel-Versand derselben
--- Periode selbst bei überlappenden Cron-Läufen) UND Admin-Downloadliste,
--- analog trainerbetreuung_weekly_reports.
-create table if not exists public.auswertung_subscription_sends (
-  id uuid primary key default gen_random_uuid(),
-  subscription_id uuid not null references public.auswertung_subscriptions(id) on delete cascade,
-  period_start date not null,
-  period_end date not null,
-  is_endstand boolean not null default false,
-  sent_at timestamptz not null default now(),
-  storage_path text not null,
-  filename text not null,
-  customer_email_sent boolean not null default false,
-  employee_email_sent boolean not null default false,
-  created_at timestamptz not null default now()
-);
-alter table public.auswertung_subscription_sends enable row level security;
-drop policy if exists "Authenticated all auswertung_subscription_sends" on public.auswertung_subscription_sends;
-create policy "Authenticated all auswertung_subscription_sends" on public.auswertung_subscription_sends
-  for all to authenticated using (true) with check (true);
-create index if not exists auswertung_subscription_sends_sub_idx
-  on public.auswertung_subscription_sends (subscription_id, period_end desc);
-create unique index if not exists auswertung_subscription_sends_unique_period
-  on public.auswertung_subscription_sends (subscription_id, period_end, is_endstand);
-
-insert into storage.buckets (id, name, public)
-values ('auswertung-berichte', 'auswertung-berichte', false)
-on conflict (id) do nothing;
-drop policy if exists "Authenticated read auswertung-berichte" on storage.objects;
-create policy "Authenticated read auswertung-berichte" on storage.objects
-  for select to authenticated using (bucket_id = 'auswertung-berichte');
-
--- pg_cron: täglich 06:00 UTC (identisch performance-dialog-reminder-daily,
--- gleiche bekannte Einschränkung ohne Sommerzeit-Anpassung). Alle 5
--- Intervalle sind tagesgenau prüfbar (die Function selbst entscheidet anhand
--- von Wochentag/Monatstag, ob heute für eine Subscription fällig ist), daher
--- reicht ein täglicher statt ein stündlicher Cron. <CRON_SECRET> durch
--- denselben Wert wie bei den übrigen Cron-Jobs ersetzen.
-select cron.schedule(
-  'auswertung-scheduled-mail-daily',
-  '0 6 * * *',
-  $$
+select cron.schedule('event-mailer-daily', '0 6 * * *', $$
   select net.http_post(
-    url := '<SUPABASE_PROJECT_URL>/functions/v1/auswertung-scheduled-mail',
+    url := 'https://<PROJECT_REF>.supabase.co/functions/v1/event-mailer',
+    headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET_EVENT_MAILER>'),
+    body := jsonb_build_object('type','report','frequency','daily')
+  );
+$$);
+
+select cron.schedule('event-mailer-weekly', '0 6 * * 1', $$
+  select net.http_post(
+    url := 'https://<PROJECT_REF>.supabase.co/functions/v1/event-mailer',
+    headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET_EVENT_MAILER>'),
+    body := jsonb_build_object('type','report','frequency','weekly')
+  );
+$$);
+
+select cron.schedule('dashboard-mail-poll', '*/15 * * * *', $$
+  select net.http_post(
+    url := 'https://<PROJECT_REF>.supabase.co/functions/v1/dashboard-mail-poller',
     headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'),
     body := jsonb_build_object('trigger','cron'),
     timeout_milliseconds := 55000
   );
-  $$
-);
+$$);
 
--- Nutzervorgabe 24.09.2026: eine Filialgruppe (fh_contacts.filialbetriebe-
--- Wert) hat keine eigene FH-Nummer und damit keine natürliche fh_contacts-
--- Zeile für einen zentralen Ansprechpartner - separate, kleine Tabelle
--- analog fh_contacts' Kontaktfeldern, aber auf Gruppenebene (Primärschlüssel
--- ist der filialbetriebe-Wert selbst). Wird u.a. als Empfänger-Vorschlag
--- für die automatische Auswertung (Typ "filialbetriebe") genutzt.
-create table if not exists public.filialgruppen_contacts (
-  filialbetriebe text primary key,
-  ansprechpartner text,
-  ansprechpartner_email text,
-  telefon text,
-  email text,
-  updated_by uuid references auth.users(id),
-  updated_at timestamptz not null default now()
-);
-alter table public.filialgruppen_contacts enable row level security;
-drop policy if exists "Authenticated all filialgruppen_contacts" on public.filialgruppen_contacts;
-create policy "Authenticated all filialgruppen_contacts" on public.filialgruppen_contacts
-  for all to authenticated using (true) with check (true);
+select cron.schedule('performance-dialog-reminder-daily', '0 6 * * *', $$
+  select net.http_post(
+    url := 'https://<PROJECT_REF>.supabase.co/functions/v1/performance-dialog-reminder',
+    headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'),
+    body := jsonb_build_object('trigger','cron'),
+    timeout_milliseconds := 55000
+  );
+$$);
 
--- Nutzervorgabe 24.09.2026 (Ergänzung, direkt im Anschluss): statt nur
--- einem einzelnen Ansprechpartner sollen für die Filialgruppe MEHRERE
--- Ansprechpartner mit Rolle (Geschäftsführer/Vertriebsleiter/Inhaber/
--- Sonstige, per Haken auswählbar) erfassbar sein, dazu eine allgemeine
--- Zentraladresse und Zentralmailadresse (nicht an eine Person gebunden).
-alter table public.filialgruppen_contacts add column if not exists strasse text;
-alter table public.filialgruppen_contacts add column if not exists plz text;
-alter table public.filialgruppen_contacts add column if not exists ort text;
-alter table public.filialgruppen_contacts rename column email to zentral_email;
-alter table public.filialgruppen_contacts rename column telefon to zentral_telefon;
--- Array von {rolle,name,email,telefon}.
-alter table public.filialgruppen_contacts add column if not exists ansprechpartner_liste jsonb not null default '[]'::jsonb;
-update public.filialgruppen_contacts
-set ansprechpartner_liste = jsonb_build_array(
-  jsonb_build_object('rolle','Ansprechpartner','name',ansprechpartner,'email',ansprechpartner_email,'telefon',null)
-)
-where ansprechpartner is not null and ansprechpartner_liste = '[]'::jsonb;
-alter table public.filialgruppen_contacts drop column if exists ansprechpartner;
-alter table public.filialgruppen_contacts drop column if exists ansprechpartner_email;
+select cron.schedule('trainerbetreuung-weekly-mail-hourly', '0 * * * *', $$
+  select net.http_post(
+    url := 'https://<PROJECT_REF>.supabase.co/functions/v1/trainerbetreuung-weekly-mail',
+    headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'),
+    body := jsonb_build_object('trigger','cron'),
+    timeout_milliseconds := 55000
+  );
+$$);
+
+select cron.schedule('auswertung-scheduled-mail-daily', '0 6 * * *', $$
+  select net.http_post(
+    url := 'https://<PROJECT_REF>.supabase.co/functions/v1/auswertung-scheduled-mail',
+    headers := jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'),
+    body := jsonb_build_object('trigger','cron'),
+    timeout_milliseconds := 55000
+  );
+$$);
