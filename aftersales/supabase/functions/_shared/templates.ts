@@ -107,7 +107,9 @@ ${priceRow}
 }
 
 // ---------- Bestätigung ----------
-export function confirmationRows(r: Rec): [string, string][] {
+// fullIban: Fachhändler-Version (Mail + PDF) mit vollständiger IBAN zur
+// Weiterverarbeitung; die Kunden-Version zeigt sie nur maskiert.
+export function confirmationRows(r: Rec, fullIban = false): [string, string][] {
   const c = r.completed_data || {};
   return [
     ["Referenz", reference(r.id)],
@@ -126,17 +128,16 @@ export function confirmationRows(r: Rec): [string, string][] {
       ["Zahlungsart", PAYMENT_LABELS[r.zahlungsart] || r.zahlungsart],
       ["Zahlbetrag", `${eur(r.zahlbetrag)} ${paymentPeriod(r.zahlungsart)}`],
     ] as [string, string][] : []),
-    // IBAN in Mail/PDF nur maskiert (vollständig nur in der Datenbank/im Tool).
     ...(r.zahlungsart === "sepa_monatlich" ? [
       ["Kontoinhaber", r.kontoinhaber || "–"],
-      ["IBAN", maskIban(r.iban)],
+      ["IBAN", fullIban ? String(r.iban || "").replace(/(.{4})/g, "$1 ").trim() : maskIban(r.iban)],
     ] as [string, string][] : []),
     ["Fachhändler-Nr.", r.fh_nr],
   ].map(([k, v]) => [k, String(v ?? "–")]);
 }
 
 export function confirmationMail(r: Rec, forDealer: boolean, dealer: Dealer | null) {
-  const rows = confirmationRows(r).map(([k, v]) =>
+  const rows = confirmationRows(r, forDealer).map(([k, v]) =>
     `<tr><td style="padding:7px 0;color:${MUTED};font-size:13.5px;width:44%;border-bottom:1px solid ${LINE}">${escapeHtml(k)}</td><td style="padding:7px 0;font-size:13.5px;font-weight:600;border-bottom:1px solid ${LINE}">${escapeHtml(v)}</td></tr>`
   ).join("");
   const dn = dealer?.name ? escapeHtml(dealer.name) : "";
@@ -172,7 +173,7 @@ async function embedImage(pdf: any, url: string) {
   }
 }
 
-export async function confirmationPdf(r: Rec, dealer: Dealer | null): Promise<Uint8Array> {
+export async function confirmationPdf(r: Rec, dealer: Dealer | null, fullIban = false): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   const H = 841.89;
   const page = pdf.addPage([595.28, H]); // A4
@@ -209,7 +210,7 @@ export async function confirmationPdf(r: Rec, dealer: Dealer | null): Promise<Ui
   });
   y -= 32;
 
-  for (const [k, v] of confirmationRows(r)) {
+  for (const [k, v] of confirmationRows(r, fullIban)) {
     page.drawText(k, { x: 50, y, size: 10, font, color: muted });
     page.drawText(safe(v, bold, 10, 300), { x: 245, y, size: 10, font: bold, color: navy });
     y -= 6;

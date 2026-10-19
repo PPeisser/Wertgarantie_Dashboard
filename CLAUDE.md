@@ -42,7 +42,10 @@ Events. Repo: `PPeisser/Wertgarantie_Dashboard`.
   (Zugangsverwaltung, nur via Dashboard `admin-users` action `aftersales`,
   x-sync-secret), `aftersales-auth` (Passwort vergessen), `aftersales-public`
   (Landingpage, Pixel, Abschluss + Bestätigung/PDF), `aftersales-mailer`
-  (Einladungsversand). Preislogik steht 3× (pricing.ts, index.html, k.html)
+  (Einladungsversand), `aftersales-dealer-lookup` (Händlerdaten/-suche aus
+  dem FH-Datenstand via `lookup-akp` im Dashboard-Projekt; Händlernamen nur
+  im Snapshot, RPCs `aftersales_fh_lookup`/`aftersales_fh_search`).
+  Preislogik steht 3× (pricing.ts, index.html, k.html)
   und muss identisch bleiben.
 - Startpasswort neuer Zugänge: `WG_AfterSales_2027`.
 - Händlerdaten + Logo in `as_dealers` (Storage-Bucket `as-logos`, Ordner =

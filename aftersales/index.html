@@ -167,6 +167,7 @@
         <span class="small muted" id="selInfo">0 ausgewählt</span>
         <button class="btn btn-sm" id="sendSelBtn" disabled>✉ Ausgewählte versenden</button>
         <button class="btn btn-red btn-sm" id="cancelSelBtn" disabled>Stornieren</button>
+        <button class="btn btn-red btn-sm" id="deleteSelBtn" disabled>🗑 Löschen</button>
       </div>
       <div class="tbl-wrap" style="max-height:62vh">
         <table>
@@ -184,9 +185,14 @@
     <div class="card hidden" id="tab-dealer">
       <h2>Händlerdaten &amp; Logo</h2>
       <p class="small muted" style="margin:-6px 0 14px">Diese Angaben stehen in jeder Angebots- und Bestätigungsmail sowie auf der Landingpage Ihrer Kunden. Antworten der Kunden gehen an die hier hinterlegte E-Mail-Adresse.</p>
-      <div class="row" style="margin-bottom:14px" id="dlFhRow">
-        <div><label for="dlFh">FH-Nummer</label><input id="dlFh" list="dlFhList" style="width:180px" placeholder="z.B. 12345"><datalist id="dlFhList"></datalist></div>
-        <button class="btn btn-ghost btn-sm" id="dlLoadBtn" style="align-self:flex-end">Laden</button>
+      <div class="row" style="margin-bottom:14px;align-items:flex-end" id="dlFhRow">
+        <div style="position:relative;flex:1;min-width:260px;max-width:520px" id="dlSearchWrap">
+          <label for="dlSearch">Fachhändler suchen (FH-Nummer, Name oder Ort)</label>
+          <input id="dlSearch" style="width:100%" placeholder="z.B. 84853 oder Telekom Shop" autocomplete="off">
+          <div id="dlResults" class="hidden" style="position:absolute;left:0;right:0;top:100%;z-index:5;background:#fff;border:2px solid var(--line);border-radius:10px;margin-top:4px;max-height:280px;overflow:auto;box-shadow:var(--shadow)"></div>
+        </div>
+        <div><label for="dlFh">FH-Nummer</label><input id="dlFh" style="width:140px" readonly></div>
+        <button class="btn btn-ghost btn-sm" id="dlPullBtn" title="Adresse, E-Mail Geschäft, Telefon, Homepage und Name aus unserem FH-Datenstand übernehmen">↻ Aus FH-Datenstand übernehmen</button>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;max-width:820px">
         <div style="grid-column:1/-1"><label for="dlName">Händlername</label><input id="dlName" style="width:100%"></div>
@@ -480,13 +486,13 @@ function renderImports(){
     const rs=records.filter(r=>r.import_id===im.id);
     return `<tr><td>${fmtDT(im.created_at)}</td><td>${esc(im.file_name||"–")}</td><td>${esc(im.fh_nr)}</td><td class="small">${esc(im.created_by_email||"")}</td>
       <td class="num">${rs.length}</td><td class="num">${rs.filter(r=>r.sent_at).length}</td><td class="num">${rs.filter(r=>r.clicked_at).length}</td><td class="num">${rs.filter(r=>r.status==="abgeschlossen").length}</td>
-      <td><button class="btn btn-ghost btn-sm" data-imp="${im.id}">Anzeigen</button></td></tr>`;
+      <td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" data-imp="${im.id}">Anzeigen</button> <button class="btn btn-red btn-sm" data-imp-del="${im.id}" title="Import mit allen Datensätzen löschen">🗑</button></td></tr>`;
   }).join("") || `<tr><td colspan="9" class="muted" style="padding:18px">Noch keine Importe.</td></tr>`;
 }
 
 function updateSel(){
   $("selInfo").textContent = selected.size+" ausgewählt";
-  $("sendSelBtn").disabled = !selected.size; $("cancelSelBtn").disabled = !selected.size;
+  $("sendSelBtn").disabled = !selected.size; $("cancelSelBtn").disabled = !selected.size; $("deleteSelBtn").disabled = !selected.size;
   const vis=filtered(); $("selAll").checked = vis.length>0 && vis.every(r=>selected.has(r.id));
 }
 
@@ -517,6 +523,41 @@ async function cancelRecords(ids){
   await loadAll();
 }
 
+/* Löschen (Nutzervorgabe 19.10.2026): Fachhändler und Admins. Abgeschlossene
+   Datensätze darf nur ein Admin löschen (zusätzlich per DB-Trigger
+   as_records_delete_guard abgesichert). Verlauf (as_events) wird mitgelöscht. */
+async function deleteRecords(ids){
+  const isAdmin=me.role==="admin";
+  const list=ids.map(id=>records.find(x=>x.id===id)).filter(Boolean);
+  const blocked=isAdmin?[]:list.filter(r=>r.status==="abgeschlossen");
+  const del=list.filter(r=>!blocked.includes(r));
+  if(!del.length){ toast("Abgeschlossene Datensätze kann nur ein Admin löschen."); return; }
+  const done=del.filter(r=>r.status==="abgeschlossen").length;
+  let msg=`${del.length} Datensatz/Datensätze endgültig löschen? Die Kundenlinks werden damit ungültig.`;
+  if(done) msg+=`\n\nAchtung: ${done} davon ${done===1?"ist":"sind"} bereits ABGESCHLOSSEN.`;
+  if(blocked.length) msg+=`\n\n${blocked.length} abgeschlossene(r) Datensatz/Datensätze bleiben bestehen (nur Admins).`;
+  if(!confirm(msg)) return;
+  const { error } = await sb.from("as_records").delete().in("id", del.map(r=>r.id));
+  if(error){ toast("Löschen fehlgeschlagen: "+error.message, 6000); return; }
+  del.forEach(r=>selected.delete(r.id));
+  toast(del.length+" Datensatz/Datensätze gelöscht");
+  await loadAll();
+}
+async function deleteImport(importId){
+  const im=imports.find(x=>x.id===importId); if(!im) return;
+  const rs=records.filter(r=>r.import_id===importId);
+  const done=rs.filter(r=>r.status==="abgeschlossen").length;
+  if(done && me.role!=="admin"){ toast(`Dieser Import enthält ${done} abgeschlossene(n) Datensatz/Datensätze – nur ein Admin kann ihn löschen. Offene Datensätze können einzeln gelöscht werden.`, 7000); return; }
+  let msg=`Import „${im.file_name||""}“ vom ${fmtDT(im.created_at)} mit ${rs.length} Datensatz/Datensätzen endgültig löschen?`;
+  if(done) msg+=`\n\nAchtung: ${done} davon ${done===1?"ist":"sind"} bereits ABGESCHLOSSEN.`;
+  if(!confirm(msg)) return;
+  const { error } = await sb.from("as_imports").delete().eq("id", importId);
+  if(error){ toast("Löschen fehlgeschlagen: "+error.message, 6000); return; }
+  toast("Import gelöscht");
+  if($("fImport").value===importId) $("fImport").value="";
+  await loadAll();
+}
+
 /* ---------- Detail ---------- */
 async function showDetail(id){
   const r=records.find(x=>x.id===id); if(!r) return;
@@ -524,10 +565,11 @@ async function showDetail(id){
   const EV={sent:"Mail versendet",send_failed:"Versand fehlgeschlagen",opened:"Mail geöffnet (Pixel)",clicked:"Link aufgerufen",completed:"Abgeschlossen",confirmation_sent:"Bestätigungen versendet",confirmation_failed:"Bestätigungsmail fehlgeschlagen"};
   const rows=[["Referenz",ref(r.id)],["Status",stBadge(r.status)],["Name",esc([r.vorname,r.nachname].filter(Boolean).join(" "))],["Adresse",esc([r.strasse,[r.plz,r.ort].filter(Boolean).join(" ")].filter(Boolean).join(", "))],["E-Mail",esc(r.email)],["Telefon",esc(r.telefon||"–")],["Gerät",esc(r.geraet)],["Typ",esc(r.typ)],["IMEI",esc(r.imei||"–")],["Kaufdatum",fmtD(r.kaufdatum)],["Kaufpreis",eur(r.kaufpreis)],["Produkt",esc(r.produkt)],["Premium",r.premium==null?"–":(r.premium?"ja":"nein")],["Prämie",eur(estPremium(r))+" monatlich"],["Zahlungsart",esc(PAY[r.zahlungsart]||"–")],["Zahlbetrag",r.zahlbetrag!=null?eur(r.zahlbetrag)+(r.zahlungsart==="ueberweisung_jaehrlich"?" jährlich":" monatlich"):"–"],["Kontoinhaber",esc(r.kontoinhaber||"–")],["IBAN",esc(r.iban?r.iban.replace(/(.{4})/g,"$1 ").trim():"–")],["FH-Nr.",esc(r.fh_nr)],["Link gültig bis",fmtDT(r.expires_at)]];
   $("detailBody").innerHTML = `<table>${rows.map(([k,v])=>`<tr><td class="muted" style="width:38%">${k}</td><td><b>${v}</b></td></tr>`).join("")}</table>
-    <div class="row" style="margin:12px 0"><input readonly value="${esc(customerLink(r.token))}" style="flex:1;font-size:12px" id="detailLink"><button class="btn btn-ghost btn-sm" id="detailCopy">Kopieren</button><a class="btn btn-ghost btn-sm" href="${esc(customerLink(r.token))}" target="_blank" style="text-decoration:none">Öffnen</a></div>
+    <div class="row" style="margin:12px 0"><input readonly value="${esc(customerLink(r.token))}" style="flex:1;font-size:12px" id="detailLink"><button class="btn btn-ghost btn-sm" id="detailCopy">Kopieren</button><a class="btn btn-ghost btn-sm" href="${esc(customerLink(r.token))}" target="_blank" style="text-decoration:none">Öffnen</a>${r.status!=="abgeschlossen"||me.role==="admin"?'<button class="btn btn-red btn-sm" id="detailDelete">🗑 Löschen</button>':""}</div>
     <h4 style="margin:14px 0 6px">Verlauf</h4>
     <table>${(ev||[]).map(e=>`<tr><td class="small" style="width:38%">${fmtDT(e.created_at)}</td><td class="small">${esc(EV[e.type]||e.type)}${e.meta&&e.meta.error?` – <span class="bad">${esc(e.meta.error)}</span>`:""}</td></tr>`).join("")||'<tr><td class="muted small">Noch keine Ereignisse.</td></tr>'}</table>`;
   $("detailCopy").onclick=()=>copy(customerLink(r.token));
+  if($("detailDelete")) $("detailDelete").onclick=async()=>{ $("detailModal").classList.add("hidden"); await deleteRecords([r.id]); };
   $("detailModal").classList.remove("hidden");
 }
 async function copy(t){ try{ await navigator.clipboard.writeText(t); toast("Link kopiert ✓"); }catch(_e){ prompt("Link kopieren:",t); } }
@@ -702,29 +744,62 @@ async function checkDealerWarn(){
   const { data } = await sb.from("as_dealers").select("name,email,telefon").eq("fh_nr",me.fh_nr).maybeSingle();
   $("dealerWarn").classList.toggle("hidden", !!(data && data.name && (data.email||data.telefon)));
 }
+/* Händlerdaten aus unserem FH-Datenstand (Dashboard) über aftersales-dealer-
+   lookup: Admins suchen/laden jede FH, Fachhändler nur die eigene. */
+async function dealerLookup(payload){
+  const { data:{ session } } = await sb.auth.getSession();
+  const res = await fetch(FN+"/aftersales-dealer-lookup",{ method:"POST", headers:{"Content-Type":"application/json","Authorization":"Bearer "+session.access_token, apikey:SUPABASE_ANON_KEY}, body:JSON.stringify(payload) });
+  const j = await res.json().catch(()=>({error:"Ungültige Antwort"}));
+  if(!res.ok || j.error) throw new Error(j.error||("HTTP "+res.status));
+  return j;
+}
 async function openDealerTab(){
   const isAdmin=me.role==="admin";
-  $("dlFh").disabled=!isAdmin; $("dlLoadBtn").classList.toggle("hidden",!isAdmin);
-  if(isAdmin){
-    const { data } = await sb.from("as_dealers").select("fh_nr,name").order("fh_nr");
-    const fhs=new Map((data||[]).map(d=>[d.fh_nr,d.name]));
-    records.forEach(r=>{ if(!fhs.has(r.fh_nr)) fhs.set(r.fh_nr,""); });
-    $("dlFhList").innerHTML=[...fhs].map(([f,n])=>`<option value="${esc(f)}">${esc(n||"")}</option>`).join("");
-  }
+  $("dlSearchWrap").classList.toggle("hidden",!isAdmin);
   const fh = isAdmin ? ($("dlFh").value.trim() || $("importFh").value.trim()) : me.fh_nr;
   $("dlFh").value=fh||"";
   await loadDealerForm(fh);
+}
+let dlSearchT=null;
+function dlSearchInput(){
+  clearTimeout(dlSearchT);
+  const q=$("dlSearch").value.trim();
+  if(q.length<2){ $("dlResults").classList.add("hidden"); return; }
+  dlSearchT=setTimeout(async()=>{
+    try{
+      const j=await dealerLookup({search:q});
+      const list=j.results||[];
+      $("dlResults").innerHTML = list.length ? list.map(f=>`<div class="dl-hit" data-nr="${esc(f.fh_nr)}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--line);font-size:13px"><b>${esc(f.name||"–")}</b> <span class="muted">· FH ${esc(f.fh_nr)}${f.ort?" · "+esc([f.plz,f.ort].filter(Boolean).join(" ")):""}</span></div>`).join("")
+        : '<div style="padding:10px 12px" class="small muted">Kein Fachhändler gefunden.</div>';
+      $("dlResults").classList.remove("hidden");
+    }catch(e){ $("dlResults").innerHTML=`<div style="padding:10px 12px" class="small bad">${esc(e.message)}</div>`; $("dlResults").classList.remove("hidden"); }
+  },250);
 }
 async function loadDealerForm(fh){
   $("dlErr").textContent=""; $("dlInfo").textContent="";
   dealerFh=fh||null;
   for(const id of Object.values(DL_FIELDS)) $(id).value="";
   setLogoPreview(null);
-  if(!fh){ $("dlInfo").textContent="Bitte FH-Nummer wählen."; return; }
+  $("dlPullBtn").disabled=!fh;
+  if(!fh){ $("dlInfo").textContent = me.role==="admin" ? "Bitte Fachhändler über die Suche auswählen." : "Ihrem Zugang ist keine FH-Nummer zugeordnet."; return; }
   const { data, error } = await sb.from("as_dealers").select("*").eq("fh_nr",fh).maybeSingle();
   if(error){ $("dlErr").textContent="Fehler: "+error.message; return; }
   if(data){ for(const [k,id] of Object.entries(DL_FIELDS)) $(id).value=data[k]||""; setLogoPreview(data.logo_url); $("dlInfo").textContent="Zuletzt geändert: "+fmtDT(data.updated_at); }
-  else $("dlInfo").textContent="Noch keine Händlerdaten für FH "+fh+" hinterlegt.";
+  // Leere Felder (oder noch gar keine Händlerdaten) aus dem FH-Datenstand vorbefüllen.
+  const empty=Object.values(DL_FIELDS).some(id=>!$(id).value.trim());
+  if(empty) await pullDealer(false);
+}
+async function pullDealer(overwrite){
+  if(!dealerFh) return;
+  try{
+    const { dealer } = await dealerLookup({ fh_nr:dealerFh });
+    if(!dealer){ $("dlInfo").textContent="FH "+dealerFh+" ist in unserem FH-Datenstand nicht vorhanden – bitte Daten manuell erfassen."; return; }
+    let n=0;
+    for(const [k,id] of Object.entries(DL_FIELDS)){
+      if(dealer[k] && (overwrite || !$(id).value.trim())){ $(id).value=dealer[k]; n++; }
+    }
+    $("dlInfo").innerHTML = n ? `<span class="ok">${n} Feld(er) aus dem FH-Datenstand übernommen – bitte prüfen und <b>Speichern</b>.</span>` : "Alle Felder sind bereits befüllt.";
+  }catch(e){ $("dlErr").textContent="FH-Datenstand: "+e.message; }
 }
 function setLogoPreview(url){
   dealerLogoUrl=url||null;
@@ -804,16 +879,20 @@ $("recBody").addEventListener("click",e=>{
 });
 $("sendSelBtn").onclick=()=>{ const n=selected.size; if(confirm(`Mail an ${n} ausgewählte Kunden senden?`)) sendRecords([...selected]); };
 $("cancelSelBtn").onclick=()=>cancelRecords([...selected]);
+$("deleteSelBtn").onclick=()=>deleteRecords([...selected]);
 $("detailClose").onclick=()=>$("detailModal").classList.add("hidden");
-$("impBody").addEventListener("click",e=>{ const id=e.target.dataset.imp; if(!id) return; $("fImport").value=id; document.querySelector('.tab[data-tab="records"]').click(); renderRecords(); });
+$("impBody").addEventListener("click",e=>{ if(e.target.dataset.impDel){ deleteImport(e.target.dataset.impDel); return; } const id=e.target.dataset.imp; if(!id) return; $("fImport").value=id; document.querySelector('.tab[data-tab="records"]').click(); renderRecords(); });
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
   document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x===t));
   for(const k of ["records","imports","dealer"]) $("tab-"+k).classList.toggle("hidden",t.dataset.tab!==k);
   if(t.dataset.tab==="dealer") openDealerTab();
 });
 $("dealerWarnBtn").onclick=()=>document.querySelector('.tab[data-tab="dealer"]').click();
-$("dlLoadBtn").onclick=()=>loadDealerForm($("dlFh").value.trim());
-$("dlFh").addEventListener("change",()=>loadDealerForm($("dlFh").value.trim()));
+$("dlSearch").addEventListener("input",dlSearchInput);
+$("dlSearch").addEventListener("blur",()=>setTimeout(()=>$("dlResults").classList.add("hidden"),150));
+$("dlResults").addEventListener("mousedown",e=>{ const h=e.target.closest(".dl-hit"); if(!h) return; e.preventDefault(); $("dlResults").classList.add("hidden"); $("dlSearch").value=""; $("dlFh").value=h.dataset.nr; loadDealerForm(h.dataset.nr); });
+$("dlSearch").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); const h=$("dlResults").querySelector(".dl-hit"); if(h){ $("dlResults").classList.add("hidden"); $("dlSearch").value=""; $("dlFh").value=h.dataset.nr; loadDealerForm(h.dataset.nr); } } });
+$("dlPullBtn").onclick=()=>{ if(confirm("Name, Adresse, E-Mail Geschäft, Telefon und Homepage aus unserem FH-Datenstand übernehmen? Bereits eingetragene Werte werden überschrieben (Logo bleibt).")) pullDealer(true); };
 $("dlSaveBtn").onclick=saveDealer;
 $("dlLogoBtn").onclick=()=>$("dlLogoInput").click();
 $("dlLogoInput").onchange=e=>{ uploadLogo(e.target.files[0]); e.target.value=""; };

@@ -92,3 +92,17 @@ alter table public.profiles drop constraint profiles_role_check;
 alter table public.profiles add constraint profiles_role_check check (role in ('admin','fachhaendler'));
 -- Dashboard-Projekt: public.aftersales_fh_lookup(fh_nr) liest Name/Ort aus
 -- dashboard_kv 'wg-state' -> latest.fh (nur service_role).
+
+-- Nachtrag 19.10.2026: Löschschutz – abgeschlossene Datensätze nur durch Admins
+create or replace function public.as_records_delete_guard() returns trigger language plpgsql set search_path = public as $$
+begin
+  if auth.role() = 'authenticated' and old.status = 'abgeschlossen' and not public.is_admin() then
+    raise exception 'Abgeschlossene Datensätze können nur von Admins gelöscht werden';
+  end if;
+  return old;
+end; $$;
+create trigger as_records_delete_guard before delete on public.as_records for each row execute function public.as_records_delete_guard();
+-- Storage as-logos: zusätzlich SELECT-Policy (nötig für upload mit upsert:true)
+create policy "AS logos read" on storage.objects for select to authenticated
+  using (bucket_id = 'as-logos' and public.is_aftersales_user()
+         and (public.is_admin() or (storage.foldername(name))[1] = public.my_fh_nr()));

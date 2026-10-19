@@ -179,8 +179,11 @@ Deno.serve(async (req) => {
     try {
       const dealer = await loadDealer(admin, updated.fh_nr);
       const fromName = dealer?.name ? `${dealer.name} | Wertgarantie` : undefined;
-      const pdfB64 = bytesToBase64(await confirmationPdf(updated, dealer));
-      const att = [{ filename: `Bestaetigung_${reference(updated.id)}.pdf`, content: pdfB64, contentType: "application/pdf" }];
+      // Zwei PDFs: Kunde mit maskierter IBAN, Fachhändler mit vollständiger
+      // IBAN (braucht er zur Weiterverarbeitung).
+      const pdfName = `Bestaetigung_${reference(updated.id)}.pdf`;
+      const att = [{ filename: pdfName, content: bytesToBase64(await confirmationPdf(updated, dealer, false)), contentType: "application/pdf" }];
+      const attDealer = [{ filename: pdfName, content: bytesToBase64(await confirmationPdf(updated, dealer, true)), contentType: "application/pdf" }];
       const s = new SmtpSession();
       await s.open();
       try {
@@ -189,7 +192,7 @@ Deno.serve(async (req) => {
         const dealers = await dealerEmails(updated);
         if (dealers.length) {
           const fh = confirmationMail(updated, true, dealer);
-          await s.send({ to: dealers, subject: fh.subject, html: fh.html, attachments: att, replyTo: updated.email });
+          await s.send({ to: dealers, subject: fh.subject, html: fh.html, attachments: attDealer, replyTo: updated.email });
         }
       } finally { await s.close(); }
       await logEvent(rec.id, "confirmation_sent");

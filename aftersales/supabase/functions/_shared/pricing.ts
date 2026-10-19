@@ -69,8 +69,10 @@ export function paymentPeriod(zahlungsart: string | null | undefined): string {
 }
 
 // IBAN: Länderformat grob + Prüfziffer (ISO 7064 mod 97).
+// Tolerant: Leerzeichen, Bindestriche, Punkte und ein vorangestelltes "IBAN"
+// (z.B. beim Einfügen aus dem Online-Banking) werden entfernt.
 export function normalizeIban(v: string | null | undefined): string {
-  return String(v || "").replace(/\s+/g, "").toUpperCase();
+  return String(v || "").toUpperCase().replace(/^\s*IBAN[:\s]*/, "").replace(/[^A-Z0-9]/g, "");
 }
 export function isValidIban(v: string | null | undefined): boolean {
   const s = normalizeIban(v);

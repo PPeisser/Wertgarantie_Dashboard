@@ -159,7 +159,7 @@
         <div class="sepa-box" id="sepaFields">
           <div class="grid">
             <div class="f"><label for="kontoinhaber">Kontoinhaber</label><input id="kontoinhaber" readonly tabindex="-1"><div class="hint">Wird automatisch aus Vorname und Name übernommen.</div></div>
-            <div class="f"><label for="iban">IBAN <span class="req">*</span></label><input id="iban" autocomplete="off" inputmode="text" placeholder="AT00 0000 0000 0000 0000" maxlength="42"></div>
+            <div class="f"><label for="iban">IBAN <span class="req">*</span></label><input id="iban" autocomplete="off" inputmode="text" placeholder="AT00 0000 0000 0000 0000" maxlength="50"><div class="hint" id="ibanHint"></div></div>
           </div>
           <label class="consent" style="margin:12px 0 0"><input type="checkbox" id="acceptSepa">
             <span>Ich erteile ein <b>SEPA-Lastschriftmandat</b>: Ich ermächtige WERTGARANTIE, die Prämie von meinem Konto mittels Lastschrift einzuziehen, und weise mein Kreditinstitut an, diese Lastschriften einzulösen.</span></label>
@@ -202,8 +202,20 @@ function isValidImei(v){
   let sum=0; for(let i=0;i<15;i++){ let d=+s[i]; if(i%2===1){ d*=2; if(d>9) d-=9; } sum+=d; }
   return sum%10===0;
 }
+// Identisch zu normalizeIban() in _shared/pricing.ts.
+function normalizeIban(v){ return String(v||"").toUpperCase().replace(/^\s*IBAN[:\s]*/,"").replace(/[^A-Z0-9]/g,""); }
+// Liefert "" wenn gültig, sonst einen verständlichen Hinweis.
+function ibanProblem(v){
+  const s=normalizeIban(v);
+  if(!s) return "Bitte IBAN eingeben.";
+  if(!/^[A-Z]{2}\d{2}/.test(s)) return "Die IBAN beginnt mit dem Ländercode, z.B. AT…";
+  if(s.startsWith("AT")&&s.length!==20) return "Eine österreichische IBAN hat 20 Zeichen (Ihre Eingabe: "+s.length+").";
+  if(s.startsWith("DE")&&s.length!==22) return "Eine deutsche IBAN hat 22 Zeichen (Ihre Eingabe: "+s.length+").";
+  if(!isValidIban(s)) return "Die IBAN ist nicht korrekt (Prüfziffer stimmt nicht) – bitte Tippfehler prüfen.";
+  return "";
+}
 function isValidIban(v){
-  const s=String(v||"").replace(/\s+/g,"").toUpperCase();
+  const s=normalizeIban(v);
   if(!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(s)) return false;
   if(s.startsWith("AT")&&s.length!==20) return false;
   if(s.startsWith("DE")&&s.length!==22) return false;
@@ -350,7 +362,8 @@ function validate(){
   const za=zahlungsart();
   if(!za) errs.push("Zahlungsart");
   if(za==="sepa_monatlich"){
-    if(!isValidIban($("iban").value)){ errs.push("IBAN (ungültig)"); $("iban").classList.add("invalid"); }
+    const ip=ibanProblem($("iban").value);
+    if(ip){ errs.push("IBAN – "+ip); $("iban").classList.add("invalid"); showIbanHint(); }
     if(!$("acceptSepa").checked) errs.push("SEPA-Lastschriftmandat");
   }
   if(!$("accept").checked) errs.push("Zustimmung zu den Bedingungen");
@@ -372,7 +385,7 @@ async function submit(e){
     email:$("email").value, telefon:$("telefon").value, geraet:$("geraet").value, typ:$("typ").value,
     kaufdatum:$("kaufdatum").value, kaufpreis:parsePrice($("kaufpreis").value), imei:$("imei").value.replace(/\s|-/g,""),
     premium:$("premium").checked, accept_terms:$("accept").checked,
-    zahlungsart:zahlungsart(), iban:$("iban").value.replace(/\s+/g,"").toUpperCase(), accept_sepa:$("acceptSepa").checked,
+    zahlungsart:zahlungsart(), iban:normalizeIban($("iban").value), accept_sepa:$("acceptSepa").checked,
   };
   try{
     const res = await fetch(API,{ method:"POST", headers:{"Content-Type":"application/json", apikey:SUPABASE_ANON_KEY}, body:JSON.stringify({action:"submit", token, data}) });
@@ -398,7 +411,26 @@ document.querySelectorAll('input[name="zahlungsart"]').forEach(r=>r.addEventList
   recalc();
 }));
 ["vorname","nachname"].forEach(id=>$(id).addEventListener("input",syncHolder));
-$("iban").addEventListener("input",e=>{ const p=e.target.selectionStart===e.target.value.length; const v=e.target.value.replace(/\s+/g,"").toUpperCase().replace(/(.{4})/g,"$1 ").trim(); e.target.value=v; if(p) e.target.selectionStart=e.target.selectionEnd=v.length; e.target.classList.remove("invalid"); });
+function showIbanHint(){
+  const v=$("iban").value, h=$("ibanHint");
+  if(!normalizeIban(v)){ h.textContent=""; return; }
+  const p=ibanProblem(v);
+  h.textContent = p ? "⚠ "+p : "✓ IBAN gültig";
+  h.style.color = p ? "var(--bad)" : "var(--good)";
+}
+$("iban").addEventListener("input",e=>{
+  const atEnd=e.target.selectionStart===e.target.value.length;
+  const v=normalizeIban(e.target.value).replace(/(.{4})/g,"$1 ").trim();
+  e.target.value=v; if(atEnd) e.target.selectionStart=e.target.selectionEnd=v.length;
+  e.target.classList.remove("invalid"); $("err").classList.add("hidden");
+  // Erst ab voller Länge bewerten, damit beim Tippen nicht sofort "falsch" erscheint.
+  const n=normalizeIban(v).length;
+  if(n>=20 || (n>=4 && !/^[A-Z]{2}\d{2}/.test(normalizeIban(v)))) showIbanHint(); else $("ibanHint").textContent="";
+});
+$("iban").addEventListener("blur",showIbanHint);
+// Alte Fehlermeldung ausblenden, sobald der Kunde etwas korrigiert.
+$("form").addEventListener("input",()=>$("err").classList.add("hidden"));
+$("form").addEventListener("change",()=>$("err").classList.add("hidden"));
 $("form").addEventListener("submit",submit);
 init();
 </script>
