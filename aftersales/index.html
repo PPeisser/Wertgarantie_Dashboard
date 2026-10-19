@@ -132,7 +132,7 @@
       <div class="row" style="margin-bottom:12px" id="fhPickRow">
         <div>
           <label for="importFh">FH-Nummer für diesen Import</label>
-          <input id="importFh" placeholder="z.B. 12345" style="width:180px">
+          <input id="importFh" placeholder="z.B. 12345" style="width:180px"> <span class="small" id="importFhName"></span>
         </div>
         <div class="small muted" style="max-width:520px;align-self:flex-end" id="fhPickHint">Als Admin bitte die FH-Nummer angeben, der die Kunden zugeordnet werden (Bestätigungen gehen an deren Login-Adressen). Enthält die Excel eine Spalte „FH-Nr“, gilt diese pro Zeile.</div>
       </div>
@@ -414,6 +414,35 @@ async function initAuth(){
 /* ---------- Daten ---------- */
 let records=[], imports=[], selected=new Set();
 
+/* FH-Anzeige für Admins (Nutzervorgabe 19.10.2026): überall "FH-Nr Name, Ort".
+   Quelle: as_dealers (gepflegte Händlerdaten), fehlende Namen einmalig aus
+   unserem FH-Datenstand (aftersales-dealer-lookup) nachladen und cachen. */
+const fhNames=new Map(); // fh_nr -> {name, ort} | null
+const fhPending=new Set();
+function fhText(fh){
+  const d=fhNames.get(fh);
+  return d&&d.name ? `${fh} ${d.name}${d.ort?", "+d.ort:""}` : String(fh||"–");
+}
+function fhHtml(fh){
+  const d=fhNames.get(fh);
+  return d&&d.name ? `<b>${esc(fh)}</b> ${esc(d.name)}${d.ort?`<span class="muted">, ${esc(d.ort)}</span>`:""}` : esc(fh||"–");
+}
+async function loadFhNames(fhs){
+  if(!me || me.role!=="admin") return;
+  const want=[...new Set(fhs.filter(Boolean))].filter(f=>!fhNames.has(f)&&!fhPending.has(f));
+  if(!want.length) return;
+  const { data } = await sb.from("as_dealers").select("fh_nr,name,ort").in("fh_nr",want);
+  for(const d of data||[]) if(d.name) fhNames.set(d.fh_nr,{name:d.name,ort:d.ort});
+  const rest=want.filter(f=>!fhNames.has(f));
+  rest.forEach(f=>fhPending.add(f));
+  await Promise.all(rest.slice(0,40).map(async f=>{
+    try{ const { dealer }=await dealerLookup({fh_nr:f}); fhNames.set(f, dealer&&dealer.name?{name:dealer.name,ort:dealer.ort}:null); }
+    catch(_e){ /* beim nächsten Laden erneut versuchen */ }
+    finally{ fhPending.delete(f); }
+  }));
+  fillFilters(); renderRecords(); renderImports();
+}
+
 async function loadAll(){
   const [r,i] = await Promise.all([
     sb.from("as_records").select("*").order("created_at",{ascending:false}).limit(5000),
@@ -423,6 +452,7 @@ async function loadAll(){
   records=r.data||[]; imports=i.data||[];
   const ids=new Set(records.map(x=>x.id)); for(const s of [...selected]) if(!ids.has(s)) selected.delete(s);
   fillFilters(); renderRecords(); renderImports();
+  loadFhNames([...records.map(x=>x.fh_nr), ...imports.map(x=>x.fh_nr)]);
 }
 
 function fillFilters(){
@@ -431,7 +461,7 @@ function fillFilters(){
   fs.innerHTML='<option value="">Alle Status</option>'+Object.entries(STATUS).map(([k,v])=>`<option value="${k}">${v}</option>`).join("");
   fi.innerHTML='<option value="">Alle Importe</option>'+imports.map(x=>`<option value="${x.id}">${fmtDT(x.created_at)} · ${esc(x.file_name||"")} (${x.row_count})</option>`).join("");
   const fhs=[...new Set(records.map(x=>x.fh_nr))].sort();
-  ff.innerHTML='<option value="">Alle FH</option>'+fhs.map(f=>`<option>${esc(f)}</option>`).join("");
+  ff.innerHTML='<option value="">Alle FH</option>'+fhs.map(f=>`<option value="${esc(f)}">${esc(fhText(f))}</option>`).join("");
   [fs.value,fi.value,ff.value]=keep;
 }
 
@@ -441,7 +471,7 @@ function filtered(){
     if(st && r.status!==st) return false;
     if(im && r.import_id!==im) return false;
     if(fh && r.fh_nr!==fh) return false;
-    if(q){ const hay=[r.vorname,r.nachname,r.email,r.geraet,r.typ,r.ort,r.imei,ref(r.id)].join(" ").toLowerCase(); if(!hay.includes(q)) return false; }
+    if(q){ const hay=[r.vorname,r.nachname,r.email,r.geraet,r.typ,r.ort,r.imei,ref(r.id),fhText(r.fh_nr)].join(" ").toLowerCase(); if(!hay.includes(q)) return false; }
     return true;
   });
 }
@@ -471,7 +501,7 @@ function renderRecords(){
       <td class="small">${fmtDT(r.opened_at)}</td>
       <td class="small">${fmtDT(r.clicked_at)}</td>
       <td class="small">${fmtDT(r.completed_at)}</td>
-      <td class="small ${isAdmin?"":"hidden"}">${esc(r.fh_nr)}</td>
+      <td class="small ${isAdmin?"":"hidden"}" style="min-width:160px;max-width:240px">${fhHtml(r.fh_nr)}</td>
       <td style="white-space:nowrap">
         ${sendable?`<button class="btn btn-sm act-send">${r.sent_at?"Erneut senden":"Senden"}</button>`:""}
         <button class="btn btn-ghost btn-sm act-link" title="Kundenlink kopieren">🔗</button>
@@ -484,7 +514,7 @@ function renderRecords(){
 function renderImports(){
   $("impBody").innerHTML = imports.map(im=>{
     const rs=records.filter(r=>r.import_id===im.id);
-    return `<tr><td>${fmtDT(im.created_at)}</td><td>${esc(im.file_name||"–")}</td><td>${esc(im.fh_nr)}</td><td class="small">${esc(im.created_by_email||"")}</td>
+    return `<tr><td>${fmtDT(im.created_at)}</td><td>${esc(im.file_name||"–")}</td><td class="small" style="max-width:260px">${fhHtml(im.fh_nr)}</td><td class="small">${esc(im.created_by_email||"")}</td>
       <td class="num">${rs.length}</td><td class="num">${rs.filter(r=>r.sent_at).length}</td><td class="num">${rs.filter(r=>r.clicked_at).length}</td><td class="num">${rs.filter(r=>r.status==="abgeschlossen").length}</td>
       <td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" data-imp="${im.id}">Anzeigen</button> <button class="btn btn-red btn-sm" data-imp-del="${im.id}" title="Import mit allen Datensätzen löschen">🗑</button></td></tr>`;
   }).join("") || `<tr><td colspan="9" class="muted" style="padding:18px">Noch keine Importe.</td></tr>`;
@@ -665,6 +695,7 @@ async function handleFile(file){
     + (missing.length?`<br><span class="bad">Spalten nicht gefunden: ${missing.join(", ")}</span>`:"")
     + `<br>Bitte prüfen: Nach dem Bestätigen werden die Datensätze gespeichert; mit „alle versenden“ geht sofort jedem Kunden seine persönliche Mail mit Link zu.`;
   renderPreview();
+  loadFhNames(pvRows.map(r=>r.fh_nr)).then(()=>{ if(!$("previewModal").classList.contains("hidden")) renderPreview(); });
   $("pvErr").textContent="";
   $("previewModal").classList.remove("hidden");
 }
@@ -682,7 +713,7 @@ function renderPreview(){
       <td class="small">${fmtD(r.kaufdatum)}</td>
       <td class="num">${eur(r.kaufpreis)}</td>
       <td class="num">${eur(prem)}${isMobileDevice(r.geraet)&&prem?'<div class="small muted">inkl. Premium</div>':""}</td>
-      <td class="small">${esc(r.fh_nr||"–")}</td>
+      <td class="small" style="max-width:220px">${fhHtml(r.fh_nr)}</td>
       <td>${r._err.map(e=>`<div class="bad">✕ ${esc(e)}</div>`).join("")}${r._warn.map(w=>`<div class="warn">⚠ ${esc(w)}</div>`).join("")||(!r._err.length?'<span class="ok small">✓</span>':"")}</td></tr>`;
   }).join("");
   const n=pvRows.filter(r=>r._include).length;
@@ -856,6 +887,16 @@ $("pwChangeBtn").onclick=()=>openPw("change");
 $("pwSave").onclick=savePw;
 $("pw2").addEventListener("keydown",e=>{ if(e.key==="Enter") savePw(); });
 $("pwCancel").onclick=()=>{ $("pwModal").classList.add("hidden"); pwMode=null; };
+async function showImportFhName(){
+  const fh=$("importFh").value.trim(), el=$("importFhName");
+  if(!fh || me.role!=="admin"){ el.innerHTML=""; return; }
+  el.innerHTML='<span class="muted">…</span>';
+  await loadFhNames([fh]);
+  if($("importFh").value.trim()!==fh) return;
+  const d=fhNames.get(fh);
+  el.innerHTML = d&&d.name ? `<span class="ok">✓ ${esc(d.name)}${d.ort?", "+esc(d.ort):""}</span>` : (fhNames.has(fh)?'<span class="bad">FH-Nummer nicht im Datenstand</span>':"");
+}
+$("importFh").addEventListener("change",showImportFhName);
 $("drop").onclick=()=>$("fileInput").click();
 $("fileInput").onchange=e=>{ handleFile(e.target.files[0]); e.target.value=""; };
 $("drop").addEventListener("dragover",e=>{ e.preventDefault(); $("drop").classList.add("over"); });
