@@ -1688,6 +1688,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <button class="btn btn-blue" id="adminFunctionsBtn">⚙ Funktionen</button>
       <button class="btn btn-blue hidden" id="adminTrainerberichteBtn">🎓 Trainerbetreuung</button>
       <button class="btn btn-blue hidden" id="adminAuswertungAutoBtn">🔁 Automatische Auswertungen</button>
+      <button class="btn btn-blue" id="adminAftersalesBtn">🛒 After-Sales-Zugänge</button>
     </div>
     <input type="file" id="akqFileInput" accept=".xlsx,.xls" class="hidden">
     <input type="file" id="fhSegmentFileInput" accept=".xlsx,.xls" class="hidden">
@@ -1718,6 +1719,41 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Nutzerübersicht</h4>
     <div id="adUserList" style="max-height:340px;overflow:auto"></div>
+  </div>
+</div>
+
+<!-- Admin: PopUp "After-Sales-Zugänge" (Nutzervorgabe 19.10.2026): Logins
+     fürs After-Sales-Tool der Fachhändler (eigene App unter aftersales/,
+     Daten im Event-Projekt). Alle Dashboard-Nutzer sind dort automatisch
+     Admin (Spiegelung über sync-user); hier werden zusätzlich Zugänge mit
+     FH-Nummer angelegt (Standardpasswort WG_AfterSales_2027). Aufrufe laufen
+     über admin-users (action "aftersales") → aftersales-users im Event-
+     Projekt. -->
+<div class="modal-bg hidden" id="adminAftersalesModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
+      <h3 style="margin:0">After-Sales-Tool – Zugänge</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <a class="btn btn-ghost" id="adminAftersalesOpen" href="https://wertgarantie-aftersales.vercel.app" target="_blank" rel="noopener" style="padding:7px 12px;text-decoration:none">↗ Tool öffnen</a>
+        <button class="btn btn-ghost" id="adminAftersalesClose" style="padding:7px 12px">✕ Schließen</button>
+      </div>
+    </div>
+    <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px">Alle Dashboard-Logins sind im After-Sales-Tool automatisch Admin (sehen und verwalten alles). Neue Zugänge werden immer mit einer FH-Nummer verknüpft; Benutzername ist die E-Mail-Adresse.</p>
+    <h4 style="margin:8px 0;color:var(--wg-navy);font-size:14px">Neuen Zugang anlegen</h4>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input type="text" id="asName" placeholder="Name" autocomplete="off" style="flex:1;min-width:150px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <input type="email" id="asEmail" placeholder="E-Mail (= Benutzername)" autocomplete="off" style="flex:1;min-width:190px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <input type="text" id="asFh" placeholder="FH-Nummer" autocomplete="off" style="width:130px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <select id="asRole" style="border:2px solid var(--line);border-radius:10px;padding:9px 12px;font:inherit">
+        <option value="fachhaendler">Fachhändler</option>
+        <option value="admin">Admin</option>
+      </select>
+      <button class="btn btn-blue" id="asCreateBtn">Anlegen</button>
+    </div>
+    <div class="hint">Standardpasswort: <b>WG_AfterSales_2027</b> - muss beim ersten Login geändert werden</div>
+    <div class="error" id="asCreateHint"></div>
+    <h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:14px">Zugänge</h4>
+    <div id="asUserList" style="max-height:420px;overflow:auto"></div>
   </div>
 </div>
 
@@ -2827,6 +2863,74 @@ async function createAdminUser(){
   $("adName").value=""; $("adEmail").value="";
   toast("Nutzer angelegt: "+email+" (Erstpasswort: WertGARANTIE)");
   loadAdminUsers();
+}
+// After-Sales-Zugänge (19.10.2026): gleiche Bauweise wie loadAdminUsers(),
+// aber die Nutzer leben im Event-Projekt - alle Operationen laufen über
+// admin-users (action "aftersales", payload.op) → aftersales-users.
+// Gespiegelte Dashboard-Nutzer (as_managed=false) sind dort Admin und
+// werden weiterhin nur hier im Dashboard angelegt/gelöscht.
+async function callAftersalesFn(op, extra){
+  return callAdminFn("aftersales",{ payload:{ op, ...(extra||{}) } });
+}
+async function loadAftersalesUsers(){
+  const box=$("asUserList");
+  box.innerHTML="<p style='color:var(--muted)'>Lädt …</p>";
+  const res=await callAftersalesFn("list");
+  if(!res || res.error || !res.users){ box.innerHTML="<p style='color:var(--neg)'>Fehler beim Laden: "+escapeHtml((res&&res.error)||"unbekannt")+"</p>"; return; }
+  const users=res.users;
+  box.innerHTML = users.map(u=>{
+    const managed=u.as_managed;
+    return `<div data-id="${u.id}" data-email="${escapeHtml(u.email)}" style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
+      ${managed
+        ? `<input class="as-name" value="${escapeHtml(u.name)}" placeholder="Name" style="flex:1;min-width:130px;font-weight:700;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">`
+        : `<span style="flex:1;min-width:130px;font-weight:700">${escapeHtml(u.name||"–")} <span style="font-size:11px;color:var(--muted);font-weight:600">(Dashboard-Login)</span></span>`}
+      <span style="flex:1;min-width:170px;color:var(--muted);font-size:12.5px">${escapeHtml(u.email)||"–"}${u.must_change_password&&managed?' <span style="color:var(--warn,#C27C00)">· Startpasswort</span>':""}</span>
+      <input class="as-fh" value="${escapeHtml(u.fh_nr||"")}" placeholder="FH-Nr" title="FH-Nummer" style="width:100px;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
+      ${managed
+        ? `<select class="as-role" style="border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
+            <option value="fachhaendler" ${u.role==="fachhaendler"?"selected":""}>Fachhändler</option>
+            <option value="admin" ${u.role==="admin"?"selected":""}>Admin</option></select>`
+        : `<span style="font-size:12px;width:96px">Admin</span>`}
+      <label style="display:flex;align-items:center;gap:4px;font-size:12px" title="Zugang zum After-Sales-Tool"><input type="checkbox" class="as-access" ${u.aftersales_access?"checked":""} style="width:16px;height:16px"> aktiv</label>
+      ${managed?`<button class="btn btn-ghost as-reset" style="padding:6px 10px;font-size:12px">Passwort zurücksetzen</button>
+      <button class="btn btn-ghost as-delete" style="padding:6px 10px;font-size:12px;color:var(--neg)">Löschen</button>`:""}
+    </div>`;
+  }).join("") || "<p style='color:var(--muted)'>Keine Zugänge.</p>";
+  const upd=async(el,patch,msg)=>{
+    const row=el.closest("[data-id]");
+    const r=await callAftersalesFn("update",{ userId:row.dataset.id, ...patch });
+    toast(r.error?("Fehler: "+r.error):msg);
+    if(r.error) loadAftersalesUsers();
+  };
+  box.querySelectorAll(".as-name").forEach(i=>i.onchange=e=>upd(e.target,{name:e.target.value.trim()},"Name aktualisiert"));
+  box.querySelectorAll(".as-fh").forEach(i=>i.onchange=e=>upd(e.target,{fh_nr:e.target.value.trim()},"FH-Nummer aktualisiert"));
+  box.querySelectorAll(".as-role").forEach(i=>i.onchange=e=>upd(e.target,{role:e.target.value},"Rolle aktualisiert"));
+  box.querySelectorAll(".as-access").forEach(i=>i.onchange=e=>upd(e.target,{aftersales_access:e.target.checked},e.target.checked?"Zugang aktiviert":"Zugang deaktiviert"));
+  box.querySelectorAll(".as-reset").forEach(b=>b.onclick=async e=>{
+    const row=e.target.closest("[data-id]");
+    if(!confirm("Passwort von "+row.dataset.email+" auf das Standardpasswort WG_AfterSales_2027 zurücksetzen?")) return;
+    const r=await callAftersalesFn("reset_password",{ userId:row.dataset.id });
+    toast(r.error?("Fehler: "+r.error):"Passwort zurückgesetzt (WG_AfterSales_2027)");
+    if(!r.error) loadAftersalesUsers();
+  });
+  box.querySelectorAll(".as-delete").forEach(b=>b.onclick=async e=>{
+    const row=e.target.closest("[data-id]");
+    if(!confirm("Zugang "+row.dataset.email+" wirklich löschen?")) return;
+    const r=await callAftersalesFn("delete",{ userId:row.dataset.id });
+    if(r.error) toast("Fehler: "+r.error); else { toast("Zugang gelöscht"); loadAftersalesUsers(); }
+  });
+}
+async function createAftersalesUser(){
+  const name=$("asName").value.trim(), email=$("asEmail").value.trim(), fh_nr=$("asFh").value.trim(), role=$("asRole").value;
+  if(!name||!email||!fh_nr){ $("asCreateHint").textContent="Bitte Name, E-Mail und FH-Nummer eingeben."; return; }
+  $("asCreateBtn").disabled=true;
+  const res=await callAftersalesFn("create",{ name, email, fh_nr, role });
+  $("asCreateBtn").disabled=false;
+  if(res.error){ $("asCreateHint").textContent=res.error; return; }
+  $("asCreateHint").textContent="";
+  $("asName").value=""; $("asEmail").value=""; $("asFh").value="";
+  toast("Zugang angelegt: "+email+" (Startpasswort: WG_AfterSales_2027)");
+  loadAftersalesUsers();
 }
 // Mitarbeiterverwaltung (Punkt 10, 01.09.2026): CRUD-Vorbild 1:1 aus
 // loadAdminUsers()/createAdminUser() oben übernommen, aber OHNE Edge
@@ -14381,6 +14485,9 @@ $("adminTrainerberichteBtn").onclick=()=>{ $("adminTrainerberichteModal").classL
 $("adminTrainerberichteClose").onclick=()=>$("adminTrainerberichteModal").classList.add("hidden");
 $("adminAuswertungAutoBtn").onclick=()=>{ $("adminAuswertungAutoModal").classList.remove("hidden"); renderAdminAuswertungAutoList(); };
 $("adminAuswertungAutoClose").onclick=()=>$("adminAuswertungAutoModal").classList.add("hidden");
+$("adminAftersalesBtn").onclick=()=>{ $("adminAftersalesModal").classList.remove("hidden"); loadAftersalesUsers(); };
+$("adminAftersalesClose").onclick=()=>$("adminAftersalesModal").classList.add("hidden");
+$("asCreateBtn").onclick=createAftersalesUser;
 $("adminEmployeesClose").onclick=()=>$("adminEmployeesModal").classList.add("hidden");
 $("adCreateBtn").onclick=createAdminUser;
 $("empCreateBtn").onclick=createEmployee;

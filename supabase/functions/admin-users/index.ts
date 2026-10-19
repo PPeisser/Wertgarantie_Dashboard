@@ -132,5 +132,26 @@ Deno.serve(async (req) => {
     return json({ ok: true, eventsSync });
   }
 
+  // After-Sales-Tool (Zugänge für Fachhändler): läuft im Event-Projekt
+  // (aftersales-users Edge Function) - gleiche URL-Basis + gleiches Secret
+  // wie der Events-Sync, daher keine zusätzlichen Secrets nötig.
+  if (action === "aftersales") {
+    const syncUrl = Deno.env.get("EVENTS_SYNC_URL");
+    const secret = Deno.env.get("EVENTS_SYNC_SECRET");
+    if (!syncUrl || !secret) return json({ error: "After-Sales-Verbindung nicht konfiguriert (EVENTS_SYNC_URL/SECRET fehlen)" }, 500);
+    const url = syncUrl.replace(/sync-user\/?$/, "aftersales-users");
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-sync-secret": secret },
+        body: JSON.stringify(body.payload || {}),
+      });
+      const j = await res.json().catch(() => ({ error: "Ungültige Antwort vom After-Sales-Tool" }));
+      return json(j, res.ok ? 200 : res.status);
+    } catch (e) {
+      return json({ error: "After-Sales-Tool nicht erreichbar: " + String(e) }, 502);
+    }
+  }
+
   return json({ error: "Unbekannte Aktion" }, 400);
 });

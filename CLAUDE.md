@@ -28,6 +28,24 @@ Events. Repo: `PPeisser/Wertgarantie_Dashboard`.
   per Supabase-MCP-Tool (`apply_migration`) live ins Projekt.
   `supabase/schema.sql` ist nur eine lose Referenz, nicht zwingend aktuell.
 
+## After-Sales-Tool (`aftersales/`, seit 19.10.2026)
+
+- Eigene statische App für Fachhändler: `aftersales/index.html` (Login,
+  Excel-Import mit Kontroll-PopUp, Versand, Status), `aftersales/k.html`
+  (Kunden-Landingpage, Link `/k/<token>`), Vercel-Projekt mit Root `aftersales`.
+- Läuft im **Event-Supabase-Projekt** `jtgoytbcqkqopdpjlozq` (Free-Plan-Limit:
+  kein drittes Projekt). Tabellen `as_imports`/`as_records`/`as_events`,
+  Rollen in `profiles.role` (`admin` = gespiegelte Dashboard-Nutzer,
+  `fachhaendler` mit `fh_nr`). RLS: Admin alles, FH nur eigene `fh_nr`.
+- Edge Functions unter `aftersales/supabase/functions/` (gemeinsamer Code in
+  `_shared/`, beim Deploy als `../_shared/*.ts` mitgeben): `aftersales-users`
+  (Zugangsverwaltung, nur via Dashboard `admin-users` action `aftersales`,
+  x-sync-secret), `aftersales-auth` (Passwort vergessen), `aftersales-public`
+  (Landingpage, Pixel, Abschluss + Bestätigung/PDF), `aftersales-mailer`
+  (Einladungsversand). Preislogik steht 3× (pricing.ts, index.html, k.html)
+  und muss identisch bleiben.
+- Startpasswort neuer Zugänge: `WG_AfterSales_2027`.
+
 ## Git-Workflow (verbindlich)
 
 - Entwicklungsbranch: `claude/wertgarantie-migration-edge-deploy-a172du`.
