@@ -45,6 +45,15 @@ Events. Repo: `PPeisser/Wertgarantie_Dashboard`.
   (Einladungsversand). Preislogik steht 3× (pricing.ts, index.html, k.html)
   und muss identisch bleiben.
 - Startpasswort neuer Zugänge: `WG_AfterSales_2027`.
+- Händlerdaten + Logo in `as_dealers` (Storage-Bucket `as-logos`, Ordner =
+  FH-Nr); beim Anlegen eines Zugangs aus `fh_contacts` des Dashboards
+  vorbefüllt. Mails gehen mit Absendername "<Händler> | Wertgarantie" und
+  Reply-To = E-Mail Geschäft des Händlers.
+- Dashboard: Admin-Panel → Funktionen → Schalter `aftersales_enabled`;
+  Zugangsverwaltung liegt in den Einstellungen (jede Rolle, Admin-Zugänge im
+  Tool nur durch Dashboard-Admins).
+- Zahlung auf der Landingpage: SEPA monatlich (IBAN, Kontoinhaber = Kunde,
+  nicht änderbar) oder Überweisung jährlich (12 × Monatsprämie).
 
 ## Git-Workflow (verbindlich)
 

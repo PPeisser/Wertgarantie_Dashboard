@@ -6,7 +6,8 @@
 // POST {action:"send", recordIds:[...]}  (max. 50 pro Aufruf - der Browser teilt größere Mengen auf)
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { CORS_HEADERS, json } from "../_shared/common.ts";
+import { CORS_HEADERS, json, loadDealer } from "../_shared/common.ts";
+import type { Dealer } from "../_shared/templates.ts";
 import { inviteMail } from "../_shared/templates.ts";
 import { SmtpSession } from "../_shared/smtp.ts";
 
@@ -37,13 +38,10 @@ Deno.serve(async (req) => {
   const { data: recs, error } = await q;
   if (error) return json({ error: error.message }, 500);
 
-  const dealerNames = new Map<string, string>();
-  async function dealerName(fh: string) {
-    if (!dealerNames.has(fh)) {
-      const { data } = await admin.from("profiles").select("name").eq("fh_nr", fh).eq("role", "fachhaendler").limit(1);
-      dealerNames.set(fh, data?.[0]?.name || "");
-    }
-    return dealerNames.get(fh)!;
+  const dealers = new Map<string, Dealer | null>();
+  async function dealerFor(fh: string) {
+    if (!dealers.has(fh)) dealers.set(fh, await loadDealer(admin, fh));
+    return dealers.get(fh)!;
   }
 
   const results: { id: string; ok: boolean; error?: string }[] = [];
@@ -66,9 +64,15 @@ Deno.serve(async (req) => {
     try {
       for (const r of sendable) {
         try {
-          const m = inviteMail(r, await dealerName(r.fh_nr));
+          const dealer = await dealerFor(r.fh_nr);
+          const m = inviteMail(r, dealer);
+          // Antworten des Kunden gehen direkt an den Händler (E-Mail Geschäft).
+          const messageId = await s.send({
+            to: [r.email], subject: m.subject, html: m.html,
+            fromName: dealer?.name ? `${dealer.name} | Wertgarantie` : undefined,
+            replyTo: dealer?.email || undefined,
+          });
           // Link soll ab Versand wieder volle 30 Tage gelten.
-          const messageId = await s.send({ to: [r.email], subject: m.subject, html: m.html });
           const now = new Date();
           await admin.from("as_records").update({
             status: ["importiert", "fehler", "bounce"].includes(r.status) ? "versendet" : r.status,

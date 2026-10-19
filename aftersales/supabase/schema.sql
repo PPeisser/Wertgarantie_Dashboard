@@ -68,3 +68,21 @@ create policy "AS read events of visible records" on public.as_events for select
 -- Spalten nicht selbst setzen (nur service_role in den Edge Functions);
 -- Status nur auf 'importiert'/'storniert', abgeschlossene Datensätze gesperrt.
 -- (Volltext siehe Live-DB: public.as_records_guard())
+
+-- Nachtrag 19.10.2026: Händlerdaten/Logo + Zahlung
+create table public.as_dealers (
+  fh_nr text primary key, name text, strasse text, plz text, ort text,
+  email text, telefon text, homepage text, logo_url text,
+  updated_at timestamptz not null default now(),
+  updated_by uuid references auth.users(id) on delete set null);
+alter table public.as_dealers enable row level security;
+create policy "AS admin or own fh dealer" on public.as_dealers for all to authenticated
+  using (public.is_aftersales_user() and (public.is_admin() or fh_nr = public.my_fh_nr()))
+  with check (public.is_aftersales_user() and (public.is_admin() or fh_nr = public.my_fh_nr()));
+-- Storage-Bucket as-logos (public, PNG/JPG, max 1 MB); Schreibrechte nur im
+-- Ordner der eigenen FH-Nr bzw. für Admins.
+alter table public.as_records
+  add column zahlungsart text check (zahlungsart in ('sepa_monatlich','ueberweisung_jaehrlich')),
+  add column iban text, add column kontoinhaber text, add column zahlbetrag numeric(10,2);
+-- as_records_guard setzt zusätzlich zahlungsart/iban/kontoinhaber/zahlbetrag
+-- für authentifizierte Nutzer zurück (nur service_role schreibt diese).

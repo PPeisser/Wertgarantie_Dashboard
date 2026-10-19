@@ -1,6 +1,6 @@
 // After-Sales: Zugangsverwaltung. Wird NUR serverseitig von der admin-users
-// Edge Function des Dashboard-Projekts aufgerufen (Einstellungen → Admin-
-// Panel → After-Sales-Zugänge), geschützt über x-sync-secret (== SYNC_SECRET
+// Edge Function des Dashboard-Projekts aufgerufen (Einstellungen → After-
+// Sales-Tool → Zugänge verwalten), geschützt über x-sync-secret (== SYNC_SECRET
 // hier == EVENTS_SYNC_SECRET im Dashboard-Projekt, gleiches Secret wie
 // sync-user).
 //
@@ -9,6 +9,11 @@
 // as_managed=true markiert Zugänge, die HIER angelegt wurden - nur die dürfen
 // hier gelöscht/umbenannt werden; gespiegelte Dashboard-Nutzer verwaltet
 // weiterhin das Dashboard.
+//
+// Seit 19.10.2026 dürfen alle Dashboard-Rollen Zugänge verwalten (Einstellungen
+// im Dashboard). admin-users schickt caller_is_admin mit: Nicht-Admins dürfen
+// nur Fachhändler-Zugänge anlegen/ändern, keine Admin-Zugänge.
+// payload.dealer (aus fh_contacts des Dashboards) befüllt as_dealers vor.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { CORS_HEADERS, json } from "../_shared/common.ts";
@@ -26,13 +31,38 @@ Deno.serve(async (req) => {
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return json({ error: "Ungültiger Body" }, 400); }
   const op = String(body.op || "");
+  const callerIsAdmin = body.caller_is_admin === true;
+
+  // Händlerdaten aus der Dashboard-FH-Datenbank übernehmen. overwrite=false:
+  // nur anlegen, wenn es noch keine Händlerdaten gibt (nichts überschreiben,
+  // was der Händler selbst gepflegt hat); Logo bleibt immer erhalten.
+  async function applyDealer(fhNr: string, overwrite: boolean) {
+    const d = body.dealer as Record<string, string | null> | undefined;
+    if (!d || !fhNr) return "no_data";
+    const row = {
+      fh_nr: fhNr, name: d.name || null, strasse: d.strasse || null, plz: d.plz || null, ort: d.ort || null,
+      email: d.email || null, telefon: d.telefon || null, homepage: d.homepage || null, updated_at: new Date().toISOString(),
+    };
+    const { error } = overwrite
+      ? await admin.from("as_dealers").upsert(row, { onConflict: "fh_nr" })
+      : await admin.from("as_dealers").upsert(row, { onConflict: "fh_nr", ignoreDuplicates: true });
+    return error ? "failed" : "ok";
+  }
+
+  if (op === "dealer_sync") {
+    const fhNr = String(body.fh_nr || "").trim();
+    if (!fhNr) return json({ error: "FH-Nummer fehlt" }, 400);
+    if (!body.dealer) return json({ error: "Keine Stammdaten zu FH " + fhNr + " in der FH-Datenbank gefunden" }, 404);
+    return json({ ok: true, dealer: await applyDealer(fhNr, true) });
+  }
 
   if (op === "list") {
     const { data, error } = await admin.from("profiles")
       .select("id,email,name,role,fh_nr,as_managed,aftersales_access,must_change_password,created_at")
       .order("as_managed", { ascending: false }).order("fh_nr").order("email");
     if (error) return json({ error: error.message }, 500);
-    return json({ ok: true, users: data, defaultPassword: DEFAULT_PASSWORD });
+    const { data: dealers } = await admin.from("as_dealers").select("fh_nr,name,logo_url");
+    return json({ ok: true, users: data, dealers: dealers || [], defaultPassword: DEFAULT_PASSWORD });
   }
 
   if (op === "create") {
@@ -41,6 +71,7 @@ Deno.serve(async (req) => {
     const fhNr = String(body.fh_nr || "").trim();
     const role = ROLES.includes(String(body.role)) ? String(body.role) : "fachhaendler";
     if (!name || !email || !fhNr) return json({ error: "Name, E-Mail und FH-Nummer sind Pflicht" }, 400);
+    if (role === "admin" && !callerIsAdmin) return json({ error: "Admin-Zugänge dürfen nur Dashboard-Admins anlegen" }, 403);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ error: "Ungültige E-Mail-Adresse" }, 400);
     const { data, error } = await admin.auth.admin.createUser({
       email, password: DEFAULT_PASSWORD, email_confirm: true,
@@ -53,13 +84,17 @@ Deno.serve(async (req) => {
     await admin.from("profiles").update({
       name, role, fh_nr: fhNr, as_managed: true, aftersales_access: true, must_change_password: true,
     }).eq("id", data.user.id);
-    return json({ ok: true, id: data.user.id, defaultPassword: DEFAULT_PASSWORD });
+    const dealer = await applyDealer(fhNr, false);
+    return json({ ok: true, id: data.user.id, defaultPassword: DEFAULT_PASSWORD, dealer });
   }
 
   const userId = String(body.userId || "");
   if (!userId) return json({ error: "userId erforderlich" }, 400);
   const { data: target } = await admin.from("profiles").select("id,email,as_managed,role").eq("id", userId).maybeSingle();
   if (!target) return json({ error: "Nutzer nicht gefunden" }, 404);
+  if (!callerIsAdmin && (target.role === "admin" || body.role === "admin")) {
+    return json({ error: "Admin-Zugänge dürfen nur Dashboard-Admins ändern" }, 403);
+  }
 
   if (op === "update") {
     const upd: Record<string, unknown> = {};

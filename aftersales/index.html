@@ -147,6 +147,10 @@
     <div class="tabs">
       <button class="tab active" data-tab="records">Datensätze &amp; Status</button>
       <button class="tab" data-tab="imports">Importe</button>
+      <button class="tab" data-tab="dealer">Händlerdaten &amp; Logo</button>
+    </div>
+    <div class="card hidden" id="dealerWarn" style="background:#FFF7E6;border:2px solid #F5D9A0;padding:14px 18px">
+      <b>Bitte Händlerdaten ergänzen:</b> Name, Adresse, E-Mail, Telefon und Logo erscheinen in den Mails und auf der Landingpage Ihrer Kunden. <button class="btn btn-sm" id="dealerWarnBtn" style="margin-left:8px">Jetzt ergänzen</button>
     </div>
 
     <div class="card" id="tab-records">
@@ -177,6 +181,36 @@
       <div class="small muted" style="margin-top:8px">* Prämie laut Import (Kaufpreis/Gerät); bei Abschluss gilt die vom Kunden bestätigte Prämie. „Geöffnet“ basiert auf einem Zählpixel und ist nicht immer zuverlässig (Bildblocker, Apple-Mail-Vorabladen) – „Link aufgerufen“ ist eindeutig.</div>
     </div>
 
+    <div class="card hidden" id="tab-dealer">
+      <h2>Händlerdaten &amp; Logo</h2>
+      <p class="small muted" style="margin:-6px 0 14px">Diese Angaben stehen in jeder Angebots- und Bestätigungsmail sowie auf der Landingpage Ihrer Kunden. Antworten der Kunden gehen an die hier hinterlegte E-Mail-Adresse.</p>
+      <div class="row" style="margin-bottom:14px" id="dlFhRow">
+        <div><label for="dlFh">FH-Nummer</label><input id="dlFh" list="dlFhList" style="width:180px" placeholder="z.B. 12345"><datalist id="dlFhList"></datalist></div>
+        <button class="btn btn-ghost btn-sm" id="dlLoadBtn" style="align-self:flex-end">Laden</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;max-width:820px">
+        <div style="grid-column:1/-1"><label for="dlName">Händlername</label><input id="dlName" style="width:100%"></div>
+        <div style="grid-column:1/-1"><label for="dlStrasse">Adresse (Straße, Hausnummer)</label><input id="dlStrasse" style="width:100%"></div>
+        <div><label for="dlPlz">PLZ</label><input id="dlPlz" style="width:100%"></div>
+        <div><label for="dlOrt">Ort</label><input id="dlOrt" style="width:100%"></div>
+        <div><label for="dlEmail">E-Mail Geschäft</label><input id="dlEmail" type="email" style="width:100%"></div>
+        <div><label for="dlTel">Telefonnummer</label><input id="dlTel" type="tel" style="width:100%"></div>
+        <div style="grid-column:1/-1"><label for="dlWeb">Homepage</label><input id="dlWeb" placeholder="www.ihr-geschaeft.at" style="width:100%"></div>
+      </div>
+      <div style="margin:18px 0 6px"><label>Logo</label></div>
+      <div class="row" style="align-items:center">
+        <div id="dlLogoBox" style="width:220px;height:84px;border:2px dashed var(--line);border-radius:14px;display:flex;align-items:center;justify-content:center;background:#F8FAFC;overflow:hidden"><span class="small muted">Kein Logo</span></div>
+        <div>
+          <button class="btn btn-ghost btn-sm" id="dlLogoBtn">Logo hochladen</button>
+          <button class="btn btn-red btn-sm hidden" id="dlLogoDel">Logo entfernen</button>
+          <div class="small muted" style="margin-top:6px">PNG oder JPG, max. 1 MB – am besten quer, mit transparentem oder weißem Hintergrund.</div>
+        </div>
+        <input type="file" id="dlLogoInput" accept="image/png,image/jpeg" class="hidden">
+      </div>
+      <div class="row" style="margin-top:18px"><button class="btn" id="dlSaveBtn">Speichern</button><span class="small muted" id="dlInfo"></span></div>
+      <div class="err" id="dlErr"></div>
+    </div>
+
     <div class="card hidden" id="tab-imports">
       <div class="tbl-wrap">
         <table>
@@ -187,6 +221,7 @@
     </div>
   </main>
 </div>
+
 
 <!-- ============ Kontrollübersicht (Import-Vorschau) ============ -->
 <div class="modal-bg hidden" id="previewModal">
@@ -266,6 +301,7 @@ const STATUS = {
   importiert:"Importiert", versendet:"Versendet", geoeffnet:"Mail geöffnet", aufgerufen:"Link aufgerufen",
   abgeschlossen:"Abgeschlossen", fehler:"Fehler", bounce:"Unzustellbar", storniert:"Storniert"
 };
+const PAY = { sepa_monatlich:"SEPA-Lastschrift (monatlich)", ueberweisung_jaehrlich:"Überweisung (jährlich)" };
 function stBadge(s){ return `<span class="st st-${esc(s)}">${esc(STATUS[s]||s)}</span>`; }
 function appBase(){ return location.origin; }
 function customerLink(token){ return appBase()+"/k/"+token; }
@@ -303,6 +339,7 @@ async function afterLogin(user){
   document.querySelectorAll(".fhcol").forEach(e=>e.classList.toggle("hidden",!isAdmin));
   if(p.must_change_password && pwMode!=="reset") openPw("force");
   await loadAll();
+  checkDealerWarn();
 }
 async function doLogout(){ await sb.auth.signOut(); location.href = location.pathname; }
 
@@ -485,7 +522,7 @@ async function showDetail(id){
   const r=records.find(x=>x.id===id); if(!r) return;
   const { data: ev } = await sb.from("as_events").select("*").eq("record_id",id).order("created_at");
   const EV={sent:"Mail versendet",send_failed:"Versand fehlgeschlagen",opened:"Mail geöffnet (Pixel)",clicked:"Link aufgerufen",completed:"Abgeschlossen",confirmation_sent:"Bestätigungen versendet",confirmation_failed:"Bestätigungsmail fehlgeschlagen"};
-  const rows=[["Referenz",ref(r.id)],["Status",stBadge(r.status)],["Name",esc([r.vorname,r.nachname].filter(Boolean).join(" "))],["Adresse",esc([r.strasse,[r.plz,r.ort].filter(Boolean).join(" ")].filter(Boolean).join(", "))],["E-Mail",esc(r.email)],["Telefon",esc(r.telefon||"–")],["Gerät",esc(r.geraet)],["Typ",esc(r.typ)],["IMEI",esc(r.imei||"–")],["Kaufdatum",fmtD(r.kaufdatum)],["Kaufpreis",eur(r.kaufpreis)],["Produkt",esc(r.produkt)],["Premium",r.premium==null?"–":(r.premium?"ja":"nein")],["Prämie",eur(estPremium(r))],["FH-Nr.",esc(r.fh_nr)],["Link gültig bis",fmtDT(r.expires_at)]];
+  const rows=[["Referenz",ref(r.id)],["Status",stBadge(r.status)],["Name",esc([r.vorname,r.nachname].filter(Boolean).join(" "))],["Adresse",esc([r.strasse,[r.plz,r.ort].filter(Boolean).join(" ")].filter(Boolean).join(", "))],["E-Mail",esc(r.email)],["Telefon",esc(r.telefon||"–")],["Gerät",esc(r.geraet)],["Typ",esc(r.typ)],["IMEI",esc(r.imei||"–")],["Kaufdatum",fmtD(r.kaufdatum)],["Kaufpreis",eur(r.kaufpreis)],["Produkt",esc(r.produkt)],["Premium",r.premium==null?"–":(r.premium?"ja":"nein")],["Prämie",eur(estPremium(r))+" monatlich"],["Zahlungsart",esc(PAY[r.zahlungsart]||"–")],["Zahlbetrag",r.zahlbetrag!=null?eur(r.zahlbetrag)+(r.zahlungsart==="ueberweisung_jaehrlich"?" jährlich":" monatlich"):"–"],["Kontoinhaber",esc(r.kontoinhaber||"–")],["IBAN",esc(r.iban?r.iban.replace(/(.{4})/g,"$1 ").trim():"–")],["FH-Nr.",esc(r.fh_nr)],["Link gültig bis",fmtDT(r.expires_at)]];
   $("detailBody").innerHTML = `<table>${rows.map(([k,v])=>`<tr><td class="muted" style="width:38%">${k}</td><td><b>${v}</b></td></tr>`).join("")}</table>
     <div class="row" style="margin:12px 0"><input readonly value="${esc(customerLink(r.token))}" style="flex:1;font-size:12px" id="detailLink"><button class="btn btn-ghost btn-sm" id="detailCopy">Kopieren</button><a class="btn btn-ghost btn-sm" href="${esc(customerLink(r.token))}" target="_blank" style="text-decoration:none">Öffnen</a></div>
     <h4 style="margin:14px 0 6px">Verlauf</h4>
@@ -648,12 +685,89 @@ function exportXlsx(){
   const rows = filtered().map(r=>({
     Referenz:ref(r.id), Status:STATUS[r.status]||r.status, Vorname:r.vorname, Name:r.nachname, "Straße":r.strasse, PLZ:r.plz, Ort:r.ort,
     "E-Mail":r.email, Telefon:r.telefon, "Gerät":r.geraet, Typ:r.typ, IMEI:r.imei, Kaufdatum:r.kaufdatum, Kaufpreis:r.kaufpreis==null?null:+r.kaufpreis,
-    Produkt:r.produkt, Premium:r.premium==null?"":(r.premium?"ja":"nein"), "Prämie":estPremium(r), "FH-Nr":r.fh_nr,
+    Produkt:r.produkt, Premium:r.premium==null?"":(r.premium?"ja":"nein"), "Prämie (monatlich)":estPremium(r),
+    Zahlungsart:PAY[r.zahlungsart]||"", Zahlbetrag:r.zahlbetrag==null?null:+r.zahlbetrag, Kontoinhaber:r.kontoinhaber||"", IBAN:r.iban||"", "FH-Nr":r.fh_nr,
     Versendet:r.sent_at?fmtDT(r.sent_at):"", "Geöffnet":r.opened_at?fmtDT(r.opened_at):"", "Link aufgerufen":r.clicked_at?fmtDT(r.clicked_at):"",
     Abgeschlossen:r.completed_at?fmtDT(r.completed_at):"", Link:customerLink(r.token),
   }));
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "AfterSales");
   XLSX.writeFile(wb, "AfterSales_Export_"+new Date().toISOString().slice(0,10)+".xlsx");
+}
+
+/* ---------- Händlerdaten & Logo ---------- */
+let dealerFh=null, dealerLogoUrl=null;
+const DL_FIELDS={ name:"dlName", strasse:"dlStrasse", plz:"dlPlz", ort:"dlOrt", email:"dlEmail", telefon:"dlTel", homepage:"dlWeb" };
+async function checkDealerWarn(){
+  if(!me || me.role==="admin" || !me.fh_nr){ $("dealerWarn").classList.add("hidden"); return; }
+  const { data } = await sb.from("as_dealers").select("name,email,telefon").eq("fh_nr",me.fh_nr).maybeSingle();
+  $("dealerWarn").classList.toggle("hidden", !!(data && data.name && (data.email||data.telefon)));
+}
+async function openDealerTab(){
+  const isAdmin=me.role==="admin";
+  $("dlFh").disabled=!isAdmin; $("dlLoadBtn").classList.toggle("hidden",!isAdmin);
+  if(isAdmin){
+    const { data } = await sb.from("as_dealers").select("fh_nr,name").order("fh_nr");
+    const fhs=new Map((data||[]).map(d=>[d.fh_nr,d.name]));
+    records.forEach(r=>{ if(!fhs.has(r.fh_nr)) fhs.set(r.fh_nr,""); });
+    $("dlFhList").innerHTML=[...fhs].map(([f,n])=>`<option value="${esc(f)}">${esc(n||"")}</option>`).join("");
+  }
+  const fh = isAdmin ? ($("dlFh").value.trim() || $("importFh").value.trim()) : me.fh_nr;
+  $("dlFh").value=fh||"";
+  await loadDealerForm(fh);
+}
+async function loadDealerForm(fh){
+  $("dlErr").textContent=""; $("dlInfo").textContent="";
+  dealerFh=fh||null;
+  for(const id of Object.values(DL_FIELDS)) $(id).value="";
+  setLogoPreview(null);
+  if(!fh){ $("dlInfo").textContent="Bitte FH-Nummer wählen."; return; }
+  const { data, error } = await sb.from("as_dealers").select("*").eq("fh_nr",fh).maybeSingle();
+  if(error){ $("dlErr").textContent="Fehler: "+error.message; return; }
+  if(data){ for(const [k,id] of Object.entries(DL_FIELDS)) $(id).value=data[k]||""; setLogoPreview(data.logo_url); $("dlInfo").textContent="Zuletzt geändert: "+fmtDT(data.updated_at); }
+  else $("dlInfo").textContent="Noch keine Händlerdaten für FH "+fh+" hinterlegt.";
+}
+function setLogoPreview(url){
+  dealerLogoUrl=url||null;
+  $("dlLogoBox").innerHTML = url ? `<img src="${esc(url)}" alt="Logo" style="max-width:200px;max-height:72px;object-fit:contain">` : '<span class="small muted">Kein Logo</span>';
+  $("dlLogoDel").classList.toggle("hidden",!url);
+}
+async function saveDealer(extra){
+  if(!dealerFh){ $("dlErr").textContent="Bitte zuerst eine FH-Nummer wählen."; return false; }
+  const row={ fh_nr:dealerFh, updated_at:new Date().toISOString(), updated_by:me.id, logo_url:dealerLogoUrl };
+  for(const [k,id] of Object.entries(DL_FIELDS)) row[k]=$(id).value.trim()||null;
+  if(row.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)){ $("dlErr").textContent="E-Mail-Adresse ist ungültig."; return false; }
+  Object.assign(row, extra&&extra.logo_url!==undefined ? {logo_url:extra.logo_url} : {});
+  $("dlSaveBtn").disabled=true;
+  const { error } = await sb.from("as_dealers").upsert(row,{ onConflict:"fh_nr" });
+  $("dlSaveBtn").disabled=false;
+  if(error){ $("dlErr").textContent="Speichern fehlgeschlagen: "+error.message; return false; }
+  $("dlErr").textContent=""; $("dlInfo").textContent="Gespeichert ✓"; toast("Händlerdaten gespeichert ✓");
+  checkDealerWarn();
+  return true;
+}
+async function uploadLogo(file){
+  if(!file) return;
+  if(!dealerFh){ $("dlErr").textContent="Bitte zuerst eine FH-Nummer wählen."; return; }
+  if(!["image/png","image/jpeg"].includes(file.type)){ $("dlErr").textContent="Bitte eine PNG- oder JPG-Datei wählen."; return; }
+  if(file.size>1024*1024){ $("dlErr").textContent="Die Datei ist größer als 1 MB."; return; }
+  const path=`${dealerFh}/logo-${Date.now()}.${file.type==="image/png"?"png":"jpg"}`;
+  $("dlLogoBtn").disabled=true;
+  const { error } = await sb.storage.from("as-logos").upload(path, file, { contentType:file.type, upsert:true, cacheControl:"86400" });
+  $("dlLogoBtn").disabled=false;
+  if(error){ $("dlErr").textContent="Upload fehlgeschlagen: "+error.message; return; }
+  const old=dealerLogoUrl;
+  const url=sb.storage.from("as-logos").getPublicUrl(path).data.publicUrl;
+  setLogoPreview(url);
+  if(await saveDealer({logo_url:url})) removeStoredLogo(old);
+}
+async function removeLogo(){
+  if(!confirm("Logo entfernen?")) return;
+  const old=dealerLogoUrl; setLogoPreview(null);
+  if(await saveDealer({logo_url:null})) removeStoredLogo(old);
+}
+function removeStoredLogo(url){
+  const m=url && url.match(/\/as-logos\/(.+)$/);
+  if(m) sb.storage.from("as-logos").remove([decodeURIComponent(m[1])]).catch(()=>{});
 }
 
 /* ---------- Events ---------- */
@@ -694,9 +808,16 @@ $("detailClose").onclick=()=>$("detailModal").classList.add("hidden");
 $("impBody").addEventListener("click",e=>{ const id=e.target.dataset.imp; if(!id) return; $("fImport").value=id; document.querySelector('.tab[data-tab="records"]').click(); renderRecords(); });
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
   document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x===t));
-  $("tab-records").classList.toggle("hidden",t.dataset.tab!=="records");
-  $("tab-imports").classList.toggle("hidden",t.dataset.tab!=="imports");
+  for(const k of ["records","imports","dealer"]) $("tab-"+k).classList.toggle("hidden",t.dataset.tab!==k);
+  if(t.dataset.tab==="dealer") openDealerTab();
 });
+$("dealerWarnBtn").onclick=()=>document.querySelector('.tab[data-tab="dealer"]').click();
+$("dlLoadBtn").onclick=()=>loadDealerForm($("dlFh").value.trim());
+$("dlFh").addEventListener("change",()=>loadDealerForm($("dlFh").value.trim()));
+$("dlSaveBtn").onclick=saveDealer;
+$("dlLogoBtn").onclick=()=>$("dlLogoInput").click();
+$("dlLogoInput").onchange=e=>{ uploadLogo(e.target.files[0]); e.target.value=""; };
+$("dlLogoDel").onclick=removeLogo;
 // Status (geöffnet/aufgerufen/abgeschlossen) ändert sich durch Kunden - alle 60 s nachladen.
 setInterval(()=>{ if(me && !document.hidden && $("previewModal").classList.contains("hidden")) loadAll(); }, 60000);
 

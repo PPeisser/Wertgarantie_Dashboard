@@ -14,6 +14,7 @@ export type Mail = {
   html: string;
   text?: string;
   replyTo?: string;
+  fromName?: string;
   attachments?: Attachment[];
 };
 
@@ -82,7 +83,8 @@ export class SmtpSession {
 
   async send(mail: Mail): Promise<string> {
     const fromEmail = env("SMTP_FROM_EMAIL")!;
-    const fromName = env("SMTP_FROM_NAME") || "Wertgarantie After-Sales";
+    // Header-Injection verhindern: Anzeigename ohne Zeilenumbrüche/Anführungszeichen.
+    const fromName = (mail.fromName || env("SMTP_FROM_NAME") || "Wertgarantie After-Sales").replace(/[\r\n"<>]/g, " ").trim();
     const rcpts = [...new Set(mail.to.map((t) => t.trim()).filter(Boolean))];
     if (!rcpts.length) throw new Error("Kein Empfänger");
     await this.cmd(`MAIL FROM:<${fromEmail}>`, ["250"]);
@@ -96,7 +98,7 @@ export class SmtpSession {
     let msg =
       `From: ${encodeHeader(fromName)} <${fromEmail}>\r\n` +
       `To: ${rcpts.join(", ")}\r\n` +
-      (mail.replyTo ? `Reply-To: ${mail.replyTo}\r\n` : "") +
+      (mail.replyTo && /^[^\s@<>,;"]+@[^\s@<>,;"]+$/.test(mail.replyTo) ? `Reply-To: ${mail.replyTo}\r\n` : "") +
       `Subject: ${encodeHeader(mail.subject)}\r\n` +
       `Date: ${new Date().toUTCString().replace("GMT", "+0000")}\r\n` +
       `Message-ID: ${messageId}\r\n` +

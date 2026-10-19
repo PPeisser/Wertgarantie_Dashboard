@@ -1002,6 +1002,15 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     </div>
     <div class="error" id="setPwHint"></div>
 
+    <div id="setAftersalesSection" class="hidden">
+      <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">After-Sales-Tool</h4>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-blue" id="setAftersalesBtn">🛒 Zugänge verwalten</button>
+        <a class="btn btn-ghost" href="https://wertgarantie-aftersales.vercel.app" target="_blank" rel="noopener" style="text-decoration:none">↗ Tool öffnen</a>
+      </div>
+      <div class="hint">Fachhändler-Zugänge (immer mit FH-Nummer) fürs After-Sales-Tool anlegen, Passwort zurücksetzen oder deaktivieren. Mit Ihrem Dashboard-Login sind Sie im Tool selbst Admin.</div>
+    </div>
+
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Benachrichtigungen</h4>
     <div style="display:flex;flex-direction:column;gap:13px">
       <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;flex-wrap:wrap">
@@ -1688,7 +1697,6 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <button class="btn btn-blue" id="adminFunctionsBtn">⚙ Funktionen</button>
       <button class="btn btn-blue hidden" id="adminTrainerberichteBtn">🎓 Trainerbetreuung</button>
       <button class="btn btn-blue hidden" id="adminAuswertungAutoBtn">🔁 Automatische Auswertungen</button>
-      <button class="btn btn-blue" id="adminAftersalesBtn">🛒 After-Sales-Zugänge</button>
     </div>
     <input type="file" id="akqFileInput" accept=".xlsx,.xls" class="hidden">
     <input type="file" id="fhSegmentFileInput" accept=".xlsx,.xls" class="hidden">
@@ -1722,7 +1730,8 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
   </div>
 </div>
 
-<!-- Admin: PopUp "After-Sales-Zugänge" (Nutzervorgabe 19.10.2026): Logins
+<!-- PopUp "After-Sales-Zugänge" (Nutzervorgabe 19.10.2026; geöffnet aus den
+     Einstellungen, für jede Rolle, sobald aftersalesEnabled): Logins
      fürs After-Sales-Tool der Fachhändler (eigene App unter aftersales/,
      Daten im Event-Projekt). Alle Dashboard-Nutzer sind dort automatisch
      Admin (Spiegelung über sync-user); hier werden zusätzlich Zugänge mit
@@ -1746,11 +1755,11 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <input type="text" id="asFh" placeholder="FH-Nummer" autocomplete="off" style="width:130px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
       <select id="asRole" style="border:2px solid var(--line);border-radius:10px;padding:9px 12px;font:inherit">
         <option value="fachhaendler">Fachhändler</option>
-        <option value="admin">Admin</option>
+        <option value="admin" class="as-admin-only">Admin</option>
       </select>
       <button class="btn btn-blue" id="asCreateBtn">Anlegen</button>
     </div>
-    <div class="hint">Standardpasswort: <b>WG_AfterSales_2027</b> - muss beim ersten Login geändert werden</div>
+    <div class="hint">Standardpasswort: <b>WG_AfterSales_2027</b> - muss beim ersten Login geändert werden. Händlerdaten (Name, Adresse, E-Mail Geschäft, Telefon, Homepage) werden aus der FH-Kontaktdatenbank übernommen und können im Tool ergänzt werden (inkl. Logo).</div>
     <div class="error" id="asCreateHint"></div>
     <h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:14px">Zugänge</h4>
     <div id="asUserList" style="max-height:420px;overflow:auto"></div>
@@ -1847,6 +1856,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
         <input type="checkbox" id="stornoquotenEnabledChk" style="width:17px;height:17px;flex-shrink:0">
         Stornoquoten (AKP-PopUp)
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+        <input type="checkbox" id="aftersalesEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+        After-Sales-Tool (Zugangsverwaltung in den Einstellungen für alle Rollen)
       </label>
       <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
         <input type="checkbox" id="akqImportNotifyEnabledChk" style="width:17px;height:17px;flex-shrink:0">
@@ -2444,6 +2457,10 @@ let trainerbetreuungEnabled = false;
 // dashboard_kv prüft - hier nur für die Checkbox-Anzeige im Admin-Panel).
 // Default true, da die Benachrichtigung sofort aktiv sein soll.
 let akqImportNotifyEnabled = true;
+// After-Sales-Tool (19.10.2026) - Admin-Freischalter (Funktionen). Nur wenn
+// aktiv, erscheint "After-Sales-Tool" in den Einstellungen (für jede Rolle);
+// admin-users prüft denselben dashboard_kv-Key serverseitig für Nicht-Admins.
+let aftersalesEnabled = false;
 // Zeitpunkt der letzten Miete-Report-Einspielung (dashboard_kv-Key
 // "miete_last_import", von upsertMieteData() bei jedem Import gesetzt -
 // deckt sowohl den Admin-Panel-Upload als auch den automatischen
@@ -2878,20 +2895,28 @@ async function loadAftersalesUsers(){
   const res=await callAftersalesFn("list");
   if(!res || res.error || !res.users){ box.innerHTML="<p style='color:var(--neg)'>Fehler beim Laden: "+escapeHtml((res&&res.error)||"unbekannt")+"</p>"; return; }
   const users=res.users;
+  const isAdm=myRole==="admin";
+  document.querySelectorAll("#asRole .as-admin-only").forEach(o=>{ o.hidden=!isAdm; o.disabled=!isAdm; });
+  if(!isAdm) $("asRole").value="fachhaendler";
+  const dealerBy=new Map((res.dealers||[]).map(d=>[d.fh_nr,d]));
   box.innerHTML = users.map(u=>{
-    const managed=u.as_managed;
+    // Nicht-Admins dürfen Admin-Zugänge nur sehen, nicht ändern (Server prüft das ebenfalls).
+    const managed=u.as_managed && (isAdm || u.role!=="admin");
+    const locked=!isAdm && u.role==="admin";
+    const dl=u.fh_nr?dealerBy.get(u.fh_nr):null;
     return `<div data-id="${u.id}" data-email="${escapeHtml(u.email)}" style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
       ${managed
         ? `<input class="as-name" value="${escapeHtml(u.name)}" placeholder="Name" style="flex:1;min-width:130px;font-weight:700;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">`
         : `<span style="flex:1;min-width:130px;font-weight:700">${escapeHtml(u.name||"–")} <span style="font-size:11px;color:var(--muted);font-weight:600">(Dashboard-Login)</span></span>`}
       <span style="flex:1;min-width:170px;color:var(--muted);font-size:12.5px">${escapeHtml(u.email)||"–"}${u.must_change_password&&managed?' <span style="color:var(--warn,#C27C00)">· Startpasswort</span>':""}</span>
-      <input class="as-fh" value="${escapeHtml(u.fh_nr||"")}" placeholder="FH-Nr" title="FH-Nummer" style="width:100px;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
+      <input class="as-fh" value="${escapeHtml(u.fh_nr||"")}" placeholder="FH-Nr" title="FH-Nummer${dl&&dl.name?": "+escapeHtml(dl.name):""}" ${locked?"disabled":""} style="width:100px;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
       ${managed
         ? `<select class="as-role" style="border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
             <option value="fachhaendler" ${u.role==="fachhaendler"?"selected":""}>Fachhändler</option>
             <option value="admin" ${u.role==="admin"?"selected":""}>Admin</option></select>`
         : `<span style="font-size:12px;width:96px">Admin</span>`}
-      <label style="display:flex;align-items:center;gap:4px;font-size:12px" title="Zugang zum After-Sales-Tool"><input type="checkbox" class="as-access" ${u.aftersales_access?"checked":""} style="width:16px;height:16px"> aktiv</label>
+      <label style="display:flex;align-items:center;gap:4px;font-size:12px" title="Zugang zum After-Sales-Tool"><input type="checkbox" class="as-access" ${u.aftersales_access?"checked":""} ${locked?"disabled":""} style="width:16px;height:16px"> aktiv</label>
+      ${u.fh_nr&&!locked?`<button class="btn btn-ghost as-dealer" data-fh="${escapeHtml(u.fh_nr)}" title="Händlerdaten (Name, Adresse, E-Mail Geschäft, Telefon, Homepage) aus der FH-Kontaktdatenbank ins After-Sales-Tool übernehmen" style="padding:6px 10px;font-size:12px">↻ Händlerdaten${dl&&dl.name?"":" ⚠"}</button>`:""}
       ${managed?`<button class="btn btn-ghost as-reset" style="padding:6px 10px;font-size:12px">Passwort zurücksetzen</button>
       <button class="btn btn-ghost as-delete" style="padding:6px 10px;font-size:12px;color:var(--neg)">Löschen</button>`:""}
     </div>`;
@@ -2906,6 +2931,13 @@ async function loadAftersalesUsers(){
   box.querySelectorAll(".as-fh").forEach(i=>i.onchange=e=>upd(e.target,{fh_nr:e.target.value.trim()},"FH-Nummer aktualisiert"));
   box.querySelectorAll(".as-role").forEach(i=>i.onchange=e=>upd(e.target,{role:e.target.value},"Rolle aktualisiert"));
   box.querySelectorAll(".as-access").forEach(i=>i.onchange=e=>upd(e.target,{aftersales_access:e.target.checked},e.target.checked?"Zugang aktiviert":"Zugang deaktiviert"));
+  box.querySelectorAll(".as-dealer").forEach(b=>b.onclick=async e=>{
+    const fh=e.target.dataset.fh;
+    if(!confirm("Händlerdaten für FH "+fh+" aus der FH-Kontaktdatenbank übernehmen? Bereits im Tool gepflegte Angaben werden überschrieben (das Logo bleibt erhalten).")) return;
+    const r=await callAftersalesFn("dealer_sync",{ fh_nr:fh });
+    toast(r.error?("Fehler: "+r.error):"Händlerdaten übernommen ✓");
+    if(!r.error) loadAftersalesUsers();
+  });
   box.querySelectorAll(".as-reset").forEach(b=>b.onclick=async e=>{
     const row=e.target.closest("[data-id]");
     if(!confirm("Passwort von "+row.dataset.email+" auf das Standardpasswort WG_AfterSales_2027 zurücksetzen?")) return;
@@ -2929,7 +2961,7 @@ async function createAftersalesUser(){
   if(res.error){ $("asCreateHint").textContent=res.error; return; }
   $("asCreateHint").textContent="";
   $("asName").value=""; $("asEmail").value=""; $("asFh").value="";
-  toast("Zugang angelegt: "+email+" (Startpasswort: WG_AfterSales_2027)");
+  toast("Zugang angelegt: "+email+" (Startpasswort: WG_AfterSales_2027)"+(res.dealer==="ok"?" · Händlerdaten übernommen":""));
   loadAftersalesUsers();
 }
 // Mitarbeiterverwaltung (Punkt 10, 01.09.2026): CRUD-Vorbild 1:1 aus
@@ -3036,6 +3068,7 @@ function openAdminModal(){
   $("empRankingEnabledChk").checked=empRankingEnabled;
   $("stornoquotenEnabledChk").checked=stornoquotenEnabled;
   $("akqImportNotifyEnabledChk").checked=akqImportNotifyEnabled;
+  $("aftersalesEnabledChk").checked=aftersalesEnabled;
   $("akquisequoteAtEnabledChk").checked=akquisequoteAtEnabled;
   $("neunWochenAllEnabledChk").checked=neunWochenAllEnabled;
   $("trainerbetreuungEnabledChk").checked=trainerbetreuungEnabled;
@@ -3521,6 +3554,16 @@ async function toggleStornoquotenEnabled(){
     toast("Speichern fehlgeschlagen: "+(e.message||e));
   }
 }
+async function toggleAftersalesEnabled(){
+  const on=$("aftersalesEnabledChk").checked;
+  aftersalesEnabled=on;
+  try{
+    await stSet("aftersales_enabled",on?"1":"0");
+    toast(on?"After-Sales-Tool aktiviert ✓":"After-Sales-Tool deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
 async function toggleAkqImportNotifyEnabled(){
   const on=$("akqImportNotifyEnabledChk").checked;
   akqImportNotifyEnabled=on;
@@ -3633,6 +3676,7 @@ function showSettingsModal(){
   $("setFhEnabled").checked=!!userSettings.notif_fh_enabled;
   $("setFhDays").value=String(userSettings.notif_fh_days||30);
   $("setTbFreq").value=userSettings.notif_trainerbetreuung_frequency||"weekly";
+  $("setAftersalesSection").classList.toggle("hidden",!aftersalesEnabled);
   $("settingsModal").classList.remove("hidden");
   renderImportLog();
 }
@@ -7852,6 +7896,7 @@ async function loadAll(){
   try{ const dgv=kv["deckungsgrad_visible_metrics"]; if(dgv) dgVisibleMetrics=JSON.parse(dgv); }catch(e){}
   { const erv=kv["emp_ranking_enabled"]; empRankingEnabled = erv==null ? true : erv==="1"; }
   stornoquotenEnabled=kv["stornoquoten_enabled"]==="1";
+  aftersalesEnabled=kv["aftersales_enabled"]==="1";
   { const ainv=kv["akq_import_notify_enabled"]; akqImportNotifyEnabled = ainv==null ? true : ainv==="1"; }
   { const pev=kv["perf_ergaenzungen_enabled"]; perfErgaenzungenEnabled = pev==null ? true : pev==="1"; }
   akquisequoteAtEnabled=kv["akquisequote_at_enabled"]==="1";
@@ -14322,6 +14367,7 @@ $("dgVisSave").onclick=saveDeckungsgradVisibility;
 $("empRankingEnabledChk").onchange=toggleEmpRankingEnabled;
 $("stornoquotenEnabledChk").onchange=toggleStornoquotenEnabled;
 $("akqImportNotifyEnabledChk").onchange=toggleAkqImportNotifyEnabled;
+$("aftersalesEnabledChk").onchange=toggleAftersalesEnabled;
 $("akquisequoteAtEnabledChk").onchange=toggleAkquisequoteAtEnabled;
 $("neunWochenAllEnabledChk").onchange=toggleNeunWochenAllEnabled;
 $("trainerbetreuungEnabledChk").onchange=toggleTrainerbetreuungEnabled;
@@ -14485,7 +14531,7 @@ $("adminTrainerberichteBtn").onclick=()=>{ $("adminTrainerberichteModal").classL
 $("adminTrainerberichteClose").onclick=()=>$("adminTrainerberichteModal").classList.add("hidden");
 $("adminAuswertungAutoBtn").onclick=()=>{ $("adminAuswertungAutoModal").classList.remove("hidden"); renderAdminAuswertungAutoList(); };
 $("adminAuswertungAutoClose").onclick=()=>$("adminAuswertungAutoModal").classList.add("hidden");
-$("adminAftersalesBtn").onclick=()=>{ $("adminAftersalesModal").classList.remove("hidden"); loadAftersalesUsers(); };
+$("setAftersalesBtn").onclick=()=>{ $("adminAftersalesModal").classList.remove("hidden"); loadAftersalesUsers(); };
 $("adminAftersalesClose").onclick=()=>$("adminAftersalesModal").classList.add("hidden");
 $("asCreateBtn").onclick=createAftersalesUser;
 $("adminEmployeesClose").onclick=()=>$("adminEmployeesModal").classList.add("hidden");

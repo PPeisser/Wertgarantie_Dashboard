@@ -10,8 +10,8 @@
 //        an den Kunden und an die Login-Adresse(n) des Fachhändlers.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { CORS_HEADERS, bytesToBase64, json, reference } from "../_shared/common.ts";
-import { calcPrice, isMobileDevice, isValidImei, PRODUCT_NAME, PRICE_PERIOD } from "../_shared/pricing.ts";
+import { CORS_HEADERS, bytesToBase64, json, loadDealer, reference } from "../_shared/common.ts";
+import { calcPrice, isMobileDevice, isValidIban, isValidImei, normalizeIban, paymentAmount, PRODUCT_NAME, PRICE_PERIOD } from "../_shared/pricing.ts";
 import { confirmationMail, confirmationPdf } from "../_shared/templates.ts";
 import { SmtpSession } from "../_shared/smtp.ts";
 
@@ -33,12 +33,6 @@ async function byToken(token: string) {
   return data;
 }
 
-async function dealerName(fhNr: string): Promise<string> {
-  const { data } = await admin.from("profiles").select("name")
-    .eq("fh_nr", fhNr).eq("role", "fachhaendler").limit(1);
-  return data?.[0]?.name || "";
-}
-
 async function dealerEmails(rec: Record<string, unknown>): Promise<string[]> {
   const { data } = await admin.from("profiles").select("email")
     .eq("fh_nr", rec.fh_nr as string).eq("aftersales_access", true);
@@ -48,6 +42,14 @@ async function dealerEmails(rec: Record<string, unknown>): Promise<string[]> {
     if (creator?.email) out.push(creator.email);
   }
   return [...new Set(out.map((e) => e.toLowerCase()))];
+}
+
+// Nur die für Kunden bestimmten Händlerfelder herausgeben.
+async function publicDealer(fhNr: string) {
+  const d = await loadDealer(admin, fhNr);
+  if (!d) return null;
+  const { name, strasse, plz, ort, email, telefon, homepage, logo_url } = d;
+  return { name, strasse, plz, ort, email, telefon, homepage, logo_url };
 }
 
 const str = (v: unknown, max = 200) => String(v ?? "").trim().slice(0, max);
@@ -92,7 +94,7 @@ Deno.serve(async (req) => {
       ok: true,
       state: rec.status === "abgeschlossen" ? "completed" : (expired ? "expired" : "open"),
       reference: reference(rec.id),
-      dealer: await dealerName(rec.fh_nr),
+      dealer: await publicDealer(rec.fh_nr),
       completed_at: rec.completed_at,
       record: {
         anrede: rec.anrede, vorname: rec.vorname, nachname: rec.nachname, email: rec.email, telefon: rec.telefon,
@@ -116,7 +118,9 @@ Deno.serve(async (req) => {
     const typ = rec.typ || str(d.typ, 160);
     const kaufdatum = rec.kaufdatum || str(d.kaufdatum, 10);
     const kaufpreis = rec.kaufpreis != null ? +rec.kaufpreis : +String(d.kaufpreis ?? "").replace(",", ".");
+    const anrede = ["Frau", "Herr", "Divers"].includes(str(d.anrede, 10)) ? str(d.anrede, 10) : (rec.anrede || null);
     const fields = {
+      anrede,
       vorname: str(d.vorname, 80), nachname: str(d.nachname, 80),
       strasse: str(d.strasse, 160), plz: str(d.plz, 10), ort: str(d.ort, 80),
       email: str(d.email, 160).toLowerCase(), telefon: str(d.telefon, 40),
@@ -133,6 +137,19 @@ Deno.serve(async (req) => {
     const mobile = isMobileDevice(geraet);
     const imei = mobile ? str(d.imei || rec.imei, 20).replace(/\s|-/g, "") : null;
     if (mobile && !isValidImei(imei)) errors.push("IMEI (15-stellig, gültig)");
+    // Zahlung: SEPA-Lastschrift monatlich (IBAN + Kontoinhaber + Mandat) oder
+    // Überweisung jährlich.
+    const zahlungsart = str(d.zahlungsart, 30);
+    const sepa = zahlungsart === "sepa_monatlich";
+    const iban = sepa ? normalizeIban(str(d.iban, 50)) : null;
+    // Kontoinhaber = Kunde (Vorname + Name), nicht frei änderbar.
+    const kontoinhaber = sepa ? [fields.vorname, fields.nachname].filter(Boolean).join(" ") : null;
+    if (!["sepa_monatlich", "ueberweisung_jaehrlich"].includes(zahlungsart)) errors.push("Zahlungsart");
+    else if (sepa) {
+      if (!isValidIban(iban)) errors.push("IBAN (ungültig)");
+      if (!kontoinhaber) errors.push("Kontoinhaber");
+      if (d.accept_sepa !== true) errors.push("SEPA-Lastschriftmandat");
+    }
     if (d.accept_terms !== true) errors.push("Zustimmung zu den Bedingungen");
     if (errors.length) return json({ error: "Bitte prüfen: " + errors.join(", ") }, 400);
 
@@ -143,12 +160,13 @@ Deno.serve(async (req) => {
     const completedData = {
       ip: clientIp(req), ua: req.headers.get("user-agent"),
       base: price.base, surcharge: price.surcharge, premium_included: price.premiumIncluded,
-      accept_terms: true, accepted_at: completedAt,
+      accept_terms: true, accept_sepa: sepa ? true : undefined, accepted_at: completedAt,
     };
     // Atomar nur einmal abschließen (status != abgeschlossen im Filter).
     const { data: updated, error } = await admin.from("as_records").update({
       ...fields, geraet, typ, kaufdatum, kaufpreis, imei,
       produkt: PRODUCT_NAME, premium: price.premium, praemie: price.total,
+      zahlungsart, iban, kontoinhaber, zahlbetrag: paymentAmount(price.total, zahlungsart),
       status: "abgeschlossen", completed_at: completedAt, completed_data: completedData,
     }).eq("id", rec.id).neq("status", "abgeschlossen").select("*").maybeSingle();
     if (error) return json({ error: "Speichern fehlgeschlagen: " + error.message }, 500);
@@ -159,16 +177,18 @@ Deno.serve(async (req) => {
     // werden aber protokolliert und im Tool sichtbar.
     let mailStatus = "ok";
     try {
-      const pdfB64 = bytesToBase64(await confirmationPdf(updated));
+      const dealer = await loadDealer(admin, updated.fh_nr);
+      const fromName = dealer?.name ? `${dealer.name} | Wertgarantie` : undefined;
+      const pdfB64 = bytesToBase64(await confirmationPdf(updated, dealer));
       const att = [{ filename: `Bestaetigung_${reference(updated.id)}.pdf`, content: pdfB64, contentType: "application/pdf" }];
       const s = new SmtpSession();
       await s.open();
       try {
-        const cust = confirmationMail(updated, false);
-        await s.send({ to: [updated.email], subject: cust.subject, html: cust.html, attachments: att });
+        const cust = confirmationMail(updated, false, dealer);
+        await s.send({ to: [updated.email], subject: cust.subject, html: cust.html, attachments: att, fromName, replyTo: dealer?.email || undefined });
         const dealers = await dealerEmails(updated);
         if (dealers.length) {
-          const fh = confirmationMail(updated, true);
+          const fh = confirmationMail(updated, true, dealer);
           await s.send({ to: dealers, subject: fh.subject, html: fh.html, attachments: att, replyTo: updated.email });
         }
       } finally { await s.close(); }
@@ -178,7 +198,7 @@ Deno.serve(async (req) => {
       await logEvent(rec.id, "confirmation_failed", { error: String(e) });
       await admin.from("as_records").update({ send_error: "Bestätigungsmail: " + String(e).slice(0, 300) }).eq("id", rec.id);
     }
-    return json({ ok: true, reference: reference(updated.id), total: price.total, mail: mailStatus });
+    return json({ ok: true, reference: reference(updated.id), total: price.total, zahlbetrag: updated.zahlbetrag, zahlungsart, mail: mailStatus });
   }
 
   return json({ error: "Unbekannte Aktion" }, 400);

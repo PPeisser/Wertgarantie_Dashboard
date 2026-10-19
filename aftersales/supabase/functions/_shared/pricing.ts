@@ -53,3 +53,37 @@ export function eur(n: number | null | undefined): string {
   if (n === null || n === undefined || isNaN(+n)) return "–";
   return "€ " + (+n).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+
+// ---------- Zahlung (seit 19.10.2026) ----------
+// SEPA-Lastschrift monatlich (Monatsprämie) oder Überweisung jährlich
+// (= 12 × Monatsprämie, kein Rabatt). MUSS identisch zu k.html bleiben.
+export const PAYMENT_LABELS: Record<string, string> = {
+  sepa_monatlich: "SEPA-Lastschrift (monatlich)",
+  ueberweisung_jaehrlich: "Überweisung (jährlich)",
+};
+export function paymentAmount(monthly: number, zahlungsart: string): number {
+  return zahlungsart === "ueberweisung_jaehrlich" ? Math.round(monthly * 12 * 100) / 100 : monthly;
+}
+export function paymentPeriod(zahlungsart: string | null | undefined): string {
+  return zahlungsart === "ueberweisung_jaehrlich" ? "jährlich" : "monatlich";
+}
+
+// IBAN: Länderformat grob + Prüfziffer (ISO 7064 mod 97).
+export function normalizeIban(v: string | null | undefined): string {
+  return String(v || "").replace(/\s+/g, "").toUpperCase();
+}
+export function isValidIban(v: string | null | undefined): boolean {
+  const s = normalizeIban(v);
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(s)) return false;
+  if (s.startsWith("AT") && s.length !== 20) return false;
+  if (s.startsWith("DE") && s.length !== 22) return false;
+  const re = (s.slice(4) + s.slice(0, 4)).replace(/[A-Z]/g, (c) => String(c.charCodeAt(0) - 55));
+  let rem = 0;
+  for (const ch of re) rem = (rem * 10 + +ch) % 97;
+  return rem === 1;
+}
+export function maskIban(v: string | null | undefined): string {
+  const s = normalizeIban(v);
+  if (s.length < 8) return s;
+  return (s.slice(0, 4) + "*".repeat(s.length - 8) + s.slice(-4)).replace(/(.{4})/g, "$1 ").trim();
+}

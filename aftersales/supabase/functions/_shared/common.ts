@@ -51,3 +51,14 @@ export function bytesToBase64(bytes: Uint8Array): string {
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(bin);
 }
+
+// Händlerdaten (as_dealers) zur FH-Nummer; Fallback: Name aus dem Profil
+// eines Fachhändler-Zugangs, damit Mails nie ganz ohne Händlernamen sind.
+// deno-lint-ignore no-explicit-any
+export async function loadDealer(admin: any, fhNr: string) {
+  const { data } = await admin.from("as_dealers").select("*").eq("fh_nr", fhNr).maybeSingle();
+  if (data?.name) return data;
+  const { data: p } = await admin.from("profiles").select("name").eq("fh_nr", fhNr).eq("role", "fachhaendler").limit(1);
+  const name = p?.[0]?.name || data?.name || null;
+  return name || data ? { ...(data || {}), fh_nr: fhNr, name } : null;
+}
