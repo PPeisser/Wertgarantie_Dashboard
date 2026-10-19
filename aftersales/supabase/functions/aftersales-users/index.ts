@@ -33,19 +33,20 @@ Deno.serve(async (req) => {
   const op = String(body.op || "");
   const callerIsAdmin = body.caller_is_admin === true;
 
-  // Händlerdaten aus der Dashboard-FH-Datenbank übernehmen. overwrite=false:
-  // nur anlegen, wenn es noch keine Händlerdaten gibt (nichts überschreiben,
-  // was der Händler selbst gepflegt hat); Logo bleibt immer erhalten.
+  // Händlerdaten aus dem Dashboard-Datenstand übernehmen. overwrite=false:
+  // nur leere Felder ergänzen (nichts überschreiben, was der Händler selbst
+  // gepflegt hat); das Logo bleibt in jedem Fall erhalten.
+  const DEALER_FIELDS = ["name", "strasse", "plz", "ort", "email", "telefon", "homepage"] as const;
   async function applyDealer(fhNr: string, overwrite: boolean) {
     const d = body.dealer as Record<string, string | null> | undefined;
     if (!d || !fhNr) return "no_data";
-    const row = {
-      fh_nr: fhNr, name: d.name || null, strasse: d.strasse || null, plz: d.plz || null, ort: d.ort || null,
-      email: d.email || null, telefon: d.telefon || null, homepage: d.homepage || null, updated_at: new Date().toISOString(),
-    };
-    const { error } = overwrite
-      ? await admin.from("as_dealers").upsert(row, { onConflict: "fh_nr" })
-      : await admin.from("as_dealers").upsert(row, { onConflict: "fh_nr", ignoreDuplicates: true });
+    const { data: existing } = await admin.from("as_dealers").select("*").eq("fh_nr", fhNr).maybeSingle();
+    const row: Record<string, unknown> = { fh_nr: fhNr, updated_at: new Date().toISOString() };
+    for (const k of DEALER_FIELDS) {
+      const incoming = d[k] || null;
+      row[k] = overwrite ? (incoming ?? existing?.[k] ?? null) : (existing?.[k] || incoming);
+    }
+    const { error } = await admin.from("as_dealers").upsert(row, { onConflict: "fh_nr" });
     return error ? "failed" : "ok";
   }
 
@@ -81,9 +82,18 @@ Deno.serve(async (req) => {
       const msg = /already|registered|exists/i.test(error.message) ? "Diese E-Mail-Adresse hat bereits einen Zugang" : error.message;
       return json({ error: msg }, 400);
     }
-    await admin.from("profiles").update({
+    // Der Auth-Trigger legt das Profil zunächst mit Rolle 'admin' an (Default
+    // für gespiegelte Dashboard-Nutzer). Schlägt das Umstellen fehl, darf der
+    // Zugang auf keinen Fall als Admin bestehen bleiben → wieder löschen.
+    // (Bug-Report 19.10.2026: profiles_role_check erlaubte nur 'admin', der
+    // neue Fachhändler blieb als Admin ohne FH-Nummer stehen.)
+    const { error: profErr } = await admin.from("profiles").update({
       name, role, fh_nr: fhNr, as_managed: true, aftersales_access: true, must_change_password: true,
     }).eq("id", data.user.id);
+    if (profErr) {
+      await admin.auth.admin.deleteUser(data.user.id);
+      return json({ error: "Zugang konnte nicht angelegt werden: " + profErr.message }, 500);
+    }
     const dealer = await applyDealer(fhNr, false);
     return json({ ok: true, id: data.user.id, defaultPassword: DEFAULT_PASSWORD, dealer });
   }

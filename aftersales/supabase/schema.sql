@@ -86,3 +86,9 @@ alter table public.as_records
   add column iban text, add column kontoinhaber text, add column zahlbetrag numeric(10,2);
 -- as_records_guard setzt zusätzlich zahlungsart/iban/kontoinhaber/zahlbetrag
 -- für authentifizierte Nutzer zurück (nur service_role schreibt diese).
+
+-- Nachtrag 19.10.2026 (Bug-Report): profiles_role_check erlaubte nur 'admin'
+alter table public.profiles drop constraint profiles_role_check;
+alter table public.profiles add constraint profiles_role_check check (role in ('admin','fachhaendler'));
+-- Dashboard-Projekt: public.aftersales_fh_lookup(fh_nr) liest Name/Ort aus
+-- dashboard_kv 'wg-state' -> latest.fh (nur service_role).

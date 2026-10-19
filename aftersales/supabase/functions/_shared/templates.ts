@@ -141,8 +141,8 @@ export function confirmationMail(r: Rec, forDealer: boolean, dealer: Dealer | nu
   ).join("");
   const dn = dealer?.name ? escapeHtml(dealer.name) : "";
   const intro = forDealer
-    ? `<p style="margin:0 0 14px">Ihr Kunde <b>${escapeHtml([r.vorname, r.nachname].filter(Boolean).join(" "))}</b> hat den Komplettschutz soeben online abgeschlossen. Alle Daten finden Sie unten sowie im angehängten PDF.</p>`
-    : `<p style="margin:0 0 14px">${salutation(r)}</p><p style="margin:0 0 14px">herzlichen Dank für Ihr Vertrauen! Hiermit bestätigen wir Ihnen den Abschluss Ihres <b>Wertgarantie ${escapeHtml(r.produkt)}</b>. Alle Angaben finden Sie unten sowie im angehängten PDF.</p>`;
+    ? `<p style="margin:0 0 14px">Ihr Kunde <b>${escapeHtml([r.vorname, r.nachname].filter(Boolean).join(" "))}</b> hat den Komplettschutz soeben online abgeschlossen. Alle Daten finden Sie unten sowie im angehängten PDF. Die Originalpolizze erhält der Kunde gesondert per E-Mail.</p>`
+    : `<p style="margin:0 0 14px">${salutation(r)}</p><p style="margin:0 0 14px">herzlichen Dank für Ihr Vertrauen! Hiermit bestätigen wir Ihnen den Abschluss Ihres <b>Wertgarantie ${escapeHtml(r.produkt)}</b>. Alle Angaben finden Sie unten sowie im angehängten PDF.</p><p style="margin:0 0 14px"><b>Ihre Originalpolizze folgt in Kürze gesondert per E-Mail.</b></p>`;
   const inner = `${intro}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#E8F7EE;border-radius:12px;margin:0 0 16px"><tr><td style="padding:12px 16px;font-size:14px;color:#0B6B34"><b>✓ Abschluss bestätigt</b> am ${escapeHtml(fmtDateTime(r.completed_at || new Date()))}</td></tr></table>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>
@@ -235,7 +235,8 @@ export async function confirmationPdf(r: Rec, dealer: Dealer | null): Promise<Ui
 
   const c = r.completed_data || {};
   const note = `Der Abschluss wurde online über den persönlichen Link bestätigt` + (c.ip ? ` (IP ${c.ip})` : "") + ".";
-  page.drawText(safe(note, font, 8.5, 495), { x: 50, y: Math.max(y - 4, 58), size: 8.5, font, color: muted });
+  page.drawText(safe(note, font, 8.5, 495), { x: 50, y: Math.max(y - 4, 70), size: 8.5, font, color: muted });
+  page.drawText("Die Originalpolizze folgt gesondert per E-Mail.", { x: 50, y: Math.max(y - 16, 58), size: 9, font: bold, color: navy });
   page.drawText("Komplettschutz von WERTGARANTIE · Einfach. Gut. Geschützt.", { x: 50, y: 36, size: 8.5, font, color: muted });
   return await pdf.save();
 }

@@ -1749,10 +1749,15 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     </div>
     <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px">Alle Dashboard-Logins sind im After-Sales-Tool automatisch Admin (sehen und verwalten alles). Neue Zugänge werden immer mit einer FH-Nummer verknüpft; Benutzername ist die E-Mail-Adresse.</p>
     <h4 style="margin:8px 0;color:var(--wg-navy);font-size:14px">Neuen Zugang anlegen</h4>
+    <div style="position:relative;margin-bottom:8px">
+      <input type="text" id="asFhSearch" placeholder="🔎 Fachhändler suchen (FH-Nummer, Name oder Ort) …" autocomplete="off" style="width:100%;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <div id="asFhResults" class="hidden" style="position:absolute;left:0;right:0;top:100%;z-index:5;background:#fff;border:2px solid var(--line);border-radius:10px;margin-top:4px;max-height:280px;overflow:auto;box-shadow:0 10px 24px rgba(6,42,63,.15)"></div>
+    </div>
+    <div id="asFhInfo" class="hidden" style="font-size:12.5px;border-radius:10px;padding:9px 12px;margin-bottom:8px"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <input type="text" id="asName" placeholder="Name" autocomplete="off" style="flex:1;min-width:150px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
       <input type="email" id="asEmail" placeholder="E-Mail (= Benutzername)" autocomplete="off" style="flex:1;min-width:190px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
-      <input type="text" id="asFh" placeholder="FH-Nummer" autocomplete="off" style="width:130px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <input type="text" id="asFh" placeholder="FH-Nummer" autocomplete="off" readonly title="Über die Suche oben auswählen" style="width:130px;background:var(--panel-2,#F3F7FA);font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
       <select id="asRole" style="border:2px solid var(--line);border-radius:10px;padding:9px 12px;font:inherit">
         <option value="fachhaendler">Fachhändler</option>
         <option value="admin" class="as-admin-only">Admin</option>
@@ -2908,7 +2913,7 @@ async function loadAftersalesUsers(){
       ${managed
         ? `<input class="as-name" value="${escapeHtml(u.name)}" placeholder="Name" style="flex:1;min-width:130px;font-weight:700;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">`
         : `<span style="flex:1;min-width:130px;font-weight:700">${escapeHtml(u.name||"–")} <span style="font-size:11px;color:var(--muted);font-weight:600">(Dashboard-Login)</span></span>`}
-      <span style="flex:1;min-width:170px;color:var(--muted);font-size:12.5px">${escapeHtml(u.email)||"–"}${u.must_change_password&&managed?' <span style="color:var(--warn,#C27C00)">· Startpasswort</span>':""}</span>
+      <span style="flex:1;min-width:170px;color:var(--muted);font-size:12.5px">${escapeHtml(u.email)||"–"}${u.must_change_password&&managed?' <span style="color:var(--warn,#C27C00)">· Startpasswort</span>':""}${u.fh_nr?`<br><span style="color:var(--ink)">${escapeHtml((dl&&dl.name)||fhResolveNameOrt(u.fh_nr).name)}</span>`:""}</span>
       <input class="as-fh" value="${escapeHtml(u.fh_nr||"")}" placeholder="FH-Nr" title="FH-Nummer${dl&&dl.name?": "+escapeHtml(dl.name):""}" ${locked?"disabled":""} style="width:100px;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
       ${managed
         ? `<select class="as-role" style="border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
@@ -2952,15 +2957,60 @@ async function loadAftersalesUsers(){
     if(r.error) toast("Fehler: "+r.error); else { toast("Zugang gelöscht"); loadAftersalesUsers(); }
   });
 }
+// Händlersuche (Nutzervorgabe 19.10.2026): FH-Nummer, Name oder Ort gegen
+// unseren Datenstand (state.latest.fh, Namen wie fhResolveNameOrt()). Die
+// Auswahl setzt die FH-Nummer und befüllt Name/E-Mail aus dem Ansprech-
+// partner der FH-Kontaktdatenbank vor; admin-users übernimmt die Händlerdaten
+// beim Anlegen serverseitig und lehnt unbekannte FH-Nummern ab.
+function asFhCandidates(q){
+  const fh=(state.latest&&state.latest.fh)||{};
+  const n=q.trim().toLowerCase();
+  if(n.length<2) return [];
+  const out=[];
+  for(const [nr,f] of Object.entries(fh)){
+    const name=(f&&f.name)||"", ort=(f&&f.ort)||"";
+    const hay=(nr+" "+name+" "+ort).toLowerCase();
+    if(nr.startsWith(n) || hay.includes(n)) out.push({nr,name:name||fhResolveNameOrt(nr).name,ort,plz:(f&&f.plz)||""});
+    if(out.length>=30) break;
+  }
+  return out.sort((a,b)=>(a.nr.startsWith(n)?0:1)-(b.nr.startsWith(n)?0:1)||a.name.localeCompare(b.name)).slice(0,10);
+}
+function renderAsFhResults(){
+  const list=asFhCandidates($("asFhSearch").value);
+  const box=$("asFhResults");
+  if(!list.length){ box.innerHTML=$("asFhSearch").value.trim().length>=2?'<div style="padding:10px 12px;color:var(--muted);font-size:13px">Kein Fachhändler gefunden.</div>':""; box.classList.toggle("hidden",$("asFhSearch").value.trim().length<2); return; }
+  box.innerHTML=list.map(f=>`<div class="as-fh-hit" data-nr="${escapeHtml(f.nr)}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--line);font-size:13px"><b>${escapeHtml(f.name)}</b> <span style="color:var(--muted)">· FH ${escapeHtml(f.nr)}${f.ort?" · "+escapeHtml([f.plz,f.ort].filter(Boolean).join(" ")):""}</span></div>`).join("");
+  box.classList.remove("hidden");
+}
+async function selectAsFh(nr){
+  $("asFhResults").classList.add("hidden");
+  const r=fhResolveNameOrt(nr);
+  $("asFh").value=nr;
+  $("asFhSearch").value=r.name+" (FH "+nr+")";
+  const info=$("asFhInfo");
+  info.style.background="#E8F7EE"; info.style.color="#0B6B34";
+  info.innerHTML=`✓ <b>${escapeHtml(r.name)}</b> · FH ${escapeHtml(nr)}${r.ort?" · "+escapeHtml(r.ort):""} – Händlerdaten werden beim Anlegen übernommen.`;
+  info.classList.remove("hidden");
+  try{
+    const { data:c } = await sb.from("fh_contacts").select("ansprechpartner,ansprechpartner_email,email,telefon,strasse,plz,ort").eq("fh_nr",nr).maybeSingle();
+    if(c){
+      if(!$("asName").value.trim() && c.ansprechpartner) $("asName").value=c.ansprechpartner;
+      if(!$("asEmail").value.trim() && (c.ansprechpartner_email||c.email)) $("asEmail").value=c.ansprechpartner_email||c.email;
+      const addr=[c.strasse,[c.plz,c.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+      info.innerHTML+=`<br><span style="color:var(--muted)">${escapeHtml([addr,c.telefon,c.email].filter(Boolean).join(" · "))}</span>`;
+    }
+  }catch(e){}
+}
 async function createAftersalesUser(){
   const name=$("asName").value.trim(), email=$("asEmail").value.trim(), fh_nr=$("asFh").value.trim(), role=$("asRole").value;
-  if(!name||!email||!fh_nr){ $("asCreateHint").textContent="Bitte Name, E-Mail und FH-Nummer eingeben."; return; }
+  if(!fh_nr){ $("asCreateHint").textContent="Bitte zuerst den Fachhändler über die Suche auswählen."; return; }
+  if(!name||!email){ $("asCreateHint").textContent="Bitte Name und E-Mail eingeben."; return; }
   $("asCreateBtn").disabled=true;
   const res=await callAftersalesFn("create",{ name, email, fh_nr, role });
   $("asCreateBtn").disabled=false;
   if(res.error){ $("asCreateHint").textContent=res.error; return; }
   $("asCreateHint").textContent="";
-  $("asName").value=""; $("asEmail").value=""; $("asFh").value="";
+  $("asName").value=""; $("asEmail").value=""; $("asFh").value=""; $("asFhSearch").value=""; $("asFhInfo").classList.add("hidden");
   toast("Zugang angelegt: "+email+" (Startpasswort: WG_AfterSales_2027)"+(res.dealer==="ok"?" · Händlerdaten übernommen":""));
   loadAftersalesUsers();
 }
@@ -14534,6 +14584,10 @@ $("adminAuswertungAutoClose").onclick=()=>$("adminAuswertungAutoModal").classLis
 $("setAftersalesBtn").onclick=()=>{ $("adminAftersalesModal").classList.remove("hidden"); loadAftersalesUsers(); };
 $("adminAftersalesClose").onclick=()=>$("adminAftersalesModal").classList.add("hidden");
 $("asCreateBtn").onclick=createAftersalesUser;
+$("asFhSearch").addEventListener("input",()=>{ $("asFh").value=""; $("asFhInfo").classList.add("hidden"); renderAsFhResults(); });
+$("asFhSearch").addEventListener("keydown",e=>{ if(e.key==="Enter"){ const hit=$("asFhResults").querySelector(".as-fh-hit"); if(hit){ e.preventDefault(); selectAsFh(hit.dataset.nr); } } });
+$("asFhResults").addEventListener("mousedown",e=>{ const hit=e.target.closest(".as-fh-hit"); if(hit){ e.preventDefault(); selectAsFh(hit.dataset.nr); } });
+$("asFhSearch").addEventListener("blur",()=>setTimeout(()=>$("asFhResults").classList.add("hidden"),150));
 $("adminEmployeesClose").onclick=()=>$("adminEmployeesModal").classList.add("hidden");
 $("adCreateBtn").onclick=createAdminUser;
 $("empCreateBtn").onclick=createEmployee;

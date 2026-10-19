@@ -165,7 +165,7 @@
             <span>Ich erteile ein <b>SEPA-Lastschriftmandat</b>: Ich ermächtige WERTGARANTIE, die Prämie von meinem Konto mittels Lastschrift einzuziehen, und weise mein Kreditinstitut an, diese Lastschriften einzulösen.</span></label>
           <p class="mandate">Hinweis: Ich kann innerhalb von acht Wochen, beginnend mit dem Belastungsdatum, die Erstattung des belasteten Betrages verlangen. Es gelten dabei die mit meinem Kreditinstitut vereinbarten Bedingungen.</p>
         </div>
-        <div class="sepa-box hidden" id="yearInfo"><p style="margin:0;font-size:13.5px;line-height:1.6">Die Jahresprämie von <b id="yearInfoAmt">–</b> überweisen Sie einmal jährlich. Die Zahlungsdetails erhalten Sie mit Ihrer Bestätigung.</p></div>
+        <div class="sepa-box hidden" id="yearInfo"><p style="margin:0;font-size:13.5px;line-height:1.6">Die Jahresprämie von <b id="yearInfoAmt">–</b> überweisen Sie einmal jährlich. Die Zahlungsdetails erhalten Sie gemeinsam mit Ihrer Originalpolizze per E-Mail.</p></div>
       </div>
 
       <label class="consent"><input type="checkbox" id="accept">
@@ -381,6 +381,7 @@ async function submit(e){
     showState("ok","Vielen Dank – Ihr Komplettschutz ist abgeschlossen!",
       `Referenz <b>${esc(j.reference)}</b> · ${j.zahlungsart==="ueberweisung_jaehrlich" ? esc(eur(j.zahlbetrag))+" jährlich per Überweisung" : esc(eur(j.total))+" monatlich per SEPA-Lastschrift"}<br><br>`+
       (j.mail==="ok" ? `Die Bestätigung mit allen Daten wurde an <b>${esc(data.email)}</b> gesendet.` : `Ihr Abschluss ist gespeichert. Die Bestätigungsmail wird in Kürze nachgereicht.`)+
+      `<br>Ihre Originalpolizze folgt in Kürze gesondert per E-Mail.`+
       `<br><br>${contactSentence()}`);
   }catch(err){
     $("err").textContent=err.message; $("err").classList.remove("hidden");

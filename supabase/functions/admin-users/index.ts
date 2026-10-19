@@ -101,14 +101,31 @@ Deno.serve(async (req) => {
     const syncUrl = Deno.env.get("EVENTS_SYNC_URL");
     const secret = Deno.env.get("EVENTS_SYNC_SECRET");
     if (!syncUrl || !secret) return json({ error: "After-Sales-Verbindung nicht konfiguriert (EVENTS_SYNC_URL/SECRET fehlen)" }, 500);
-    const payload = { ...((body.payload || {}) as Record<string, unknown>), caller_is_admin: isAdmin, caller_email: user.email };
-    // Händlerdaten (Name, Adresse, E-Mail Geschäft, Telefon, Homepage) aus der
-    // FH-Kontaktdatenbank mitschicken - fürs Vorbefüllen im After-Sales-Tool.
+    const payload: Record<string, unknown> = { ...((body.payload || {}) as Record<string, unknown>), caller_is_admin: isAdmin, caller_email: user.email };
+    // Händlerdaten fürs Vorbefüllen im After-Sales-Tool: Adresse, E-Mail
+    // Geschäft, Telefon, Homepage aus fh_contacts; der Händlername steht dort
+    // nicht (Spalte leer), sondern nur im Tages-Snapshot (wg-state ->
+    // latest.fh, wie fhResolveNameOrt() im Dashboard) - daher zusätzlich per
+    // aftersales_fh_lookup(). Unbekannte FH-Nummern werden beim Anlegen
+    // abgelehnt, damit Zugänge immer zu unserem Datenstand passen.
     if ((payload.op === "create" || payload.op === "dealer_sync") && payload.fh_nr) {
-      const { data: fh } = await admin.from("fh_contacts")
-        .select("name,strasse,plz,ort,email,telefon,homepage")
-        .eq("fh_nr", String(payload.fh_nr).trim()).maybeSingle();
-      if (fh) payload.dealer = fh;
+      const fhNr = String(payload.fh_nr).trim();
+      const [{ data: fh }, { data: snap }] = await Promise.all([
+        admin.from("fh_contacts").select("strasse,plz,ort,email,telefon,homepage").eq("fh_nr", fhNr).maybeSingle(),
+        admin.rpc("aftersales_fh_lookup", { p_fh_nr: fhNr }),
+      ]);
+      if (!fh && !snap) {
+        return json({ error: `FH-Nummer ${fhNr} ist in unserem Datenstand nicht bekannt` }, 400);
+      }
+      payload.dealer = {
+        name: snap?.name || null,
+        strasse: fh?.strasse || null,
+        plz: fh?.plz || snap?.plz || null,
+        ort: fh?.ort || snap?.ort || null,
+        email: fh?.email || null,
+        telefon: fh?.telefon || null,
+        homepage: fh?.homepage || null,
+      };
     }
     const url = syncUrl.replace(/sync-user\/?$/, "aftersales-users");
     try {
