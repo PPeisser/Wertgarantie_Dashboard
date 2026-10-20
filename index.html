@@ -1032,6 +1032,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <button class="btn btn-ghost hidden" id="chefgespraechBtn" title="Chefgespräch-Unterlagen für einen Fachhändler zusammenstellen">🤝 Chefgespräch</button>
       <button class="btn btn-ghost hidden" id="kooperationsgespraechBtn" title="Kooperationsgesprächsunterlagen für eine Einkaufskooperation zusammenstellen">🏢 Kooperationsgespräch</button>
       <button class="btn btn-ghost hidden" id="auswertungBtn" title="Produktionsauswertung nach Kooperation, Weiterer Zuordnung, Fachhändler oder AKP erfassen">📊 Auswertung erfassen</button>
+      <button class="btn btn-ghost hidden" id="akquisetoolBtn" title="Akquisetool öffnen: Akquisen und bestehende Händler im GPS-Umkreis">🎯 Akquisetool</button>
      </div>
     </div>
    </div>
@@ -2071,7 +2072,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       </label>
       <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
         <input type="checkbox" id="akquisetoolEnabledChk" style="width:17px;height:17px;flex-shrink:0">
-        Akquisetool (für alle Nutzer freigeben)
+        Akquisetool (Button im Dashboard für alle Nutzer)
       </label>
     </div>
   </div>
@@ -2750,6 +2751,9 @@ function showRoleBadge(){
   // Fachhändlersuche im Header: für ALLE Rollen (keine Rolleneinschränkung),
   // nur ob überhaupt eingeloggt UND im ADMIN-Panel freigeschaltet.
   $("fhSearchBox").classList.toggle("hidden", !fhSearchEnabled||!supaUser);
+  // Akquisetool (eigene Seite akquise.html): für ALLE Rollen, sobald im
+  // ADMIN-Panel freigeschaltet (Nutzervorgabe 20.10.2026).
+  $("akquisetoolBtn").classList.toggle("hidden", !akquisetoolEnabled||!supaUser);
   const w=$("welcomeMsg");
   if(myName){
     const roleBadge=(myRole&&ROLE_LABEL[myRole])
@@ -2823,7 +2827,7 @@ async function doLogin(){
   const p = await fetchProfile(); myRole = p && p.role; myName = p && p.name; showRoleBadge();
   if(p && p.must_change_password) showForcePasswordModal();
   await loadUserSettings();
-  await loadAll(); render();
+  await loadAll(); showRoleBadge(); render();
   maybeAutoShowNotifications();
 }
 async function doLogout(){
@@ -2885,7 +2889,7 @@ async function doSetNewPassword(){
     $("logoutBtn").classList.remove("hidden");
     const p = await fetchProfile(); myRole = p && p.role; myName = p && p.name; showRoleBadge();
     await loadUserSettings();
-    await loadAll(); render();
+    await loadAll(); showRoleBadge(); render();
     maybeAutoShowNotifications();
   }
 }
@@ -3864,6 +3868,7 @@ async function toggleTrainerbetreuungEnabled(){
 async function toggleAkquisetoolEnabled(){
   const on=$("akquisetoolEnabledChk").checked;
   akquisetoolEnabled=on;
+  showRoleBadge();
   try{
     await stSet("akquisetool_enabled",on?"1":"0");
     toast(on?"Akquisetool für alle Nutzer freigegeben ✓":"Akquisetool deaktiviert (nur noch für Admins)");
@@ -14688,6 +14693,7 @@ $("akquisequoteAtEnabledChk").onchange=toggleAkquisequoteAtEnabled;
 $("neunWochenAllEnabledChk").onchange=toggleNeunWochenAllEnabled;
 $("trainerbetreuungEnabledChk").onchange=toggleTrainerbetreuungEnabled;
 $("akquisetoolEnabledChk").onchange=toggleAkquisetoolEnabled;
+$("akquisetoolBtn").onclick=()=>{ location.href="akquise.html"; };
 $("nwAllBtn").onclick=openNeunWochenAllModal;
 $("nwAllClose").onclick=()=>$("neunWochenAllModal").classList.add("hidden");
 $("perfDialogAdminEnabledChk").onchange=togglePerfDialogAdminEnabled;
