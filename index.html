@@ -1451,7 +1451,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 <div class="modal-bg hidden" id="trainerbesuchModal">
   <div class="modal wide">
     <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
-      <h3 style="margin:0">Trainerbesuch anlegen</h3>
+      <h3 style="margin:0" id="trainerbesuchModalTitle">Trainerbesuch anlegen</h3>
       <button class="btn btn-ghost" id="trainerbesuchClose" style="padding:7px 12px">✕ Schließen</button>
     </div>
     <div class="ac-grid" style="grid-template-columns:220px">
@@ -4224,6 +4224,13 @@ werden. Die Alias-Nr verschwindet dadurch überall als eigener Eintrag;
 Kennzahlen (Produktion etc.) werden an den drei Konstruktionsstellen addiert. */
 let FH_DUP_MAP={}; // alias_fh_nr -> canonical_fh_nr
 let FH_DUP_ALIASES={}; // canonical_fh_nr -> [alias_fh_nr,...] (Kehrwert von FH_DUP_MAP, für Deckungsgrad-Fallback)
+// Markiert einen tatsächlich ABGESCHLOSSENEN (nicht zwingend fehlerfreien
+// Versuch würde reichen, aber hier: erfolgreichen) Ladeversuch - anders als
+// Object.keys(FH_DUP_MAP).length, das bei aktuell 0 bekannten FH-Duplikaten
+// (ein völlig normaler, häufiger Zustand) fälschlich wie "noch nicht
+// geladen" aussähe. Siehe processPendingImports()-Guard (Bug-Report
+// 29.09.2026, gleiche Fehlerklasse wie beim EMPLOYEES-Leerbleiben).
+let fhDupMergesLoaded=false;
 async function loadFhDuplicateMerges(){
   if(!sb){ FH_DUP_MAP={}; FH_DUP_ALIASES={}; return; }
   // Retry wie bei loadEmployees() oben (gleiches Muster: einmaliger
@@ -4235,6 +4242,7 @@ async function loadFhDuplicateMerges(){
     FH_DUP_MAP[r.alias_fh_nr]=r.canonical_fh_nr;
     (FH_DUP_ALIASES[r.canonical_fh_nr]||(FH_DUP_ALIASES[r.canonical_fh_nr]=[])).push(r.alias_fh_nr);
   }
+  fhDupMergesLoaded=true;
 }
 function resolveFhDup(nr){
   return (nr&&FH_DUP_MAP[nr])||nr;
@@ -5608,8 +5616,24 @@ async function processPendingImports(){
   // Vorfall 29.09.2026: heutige Tagesauswertung landete komplett unter
   // "x_"-Schlüsseln). Harte Absicherung direkt hier, unabhängig vom
   // Aufrufer: ist EMPLOYEES gerade leer, zuerst (erneut) laden, bevor
-  // überhaupt eine Excel-Datei geparst/gemergt wird.
+  // überhaupt eine Excel-Datei geparst/gemergt wird. Bleibt EMPLOYEES
+  // TROTZDEM leer (z.B. anhaltender Netzwerkausfall), lieber diesen
+  // gesamten Durchlauf abbrechen (Zeilen bleiben "pending" und werden beim
+  // nächsten Aufruf erneut versucht) als mit garantiert falscher
+  // Namenszuordnung zu mergen - das war exakt der Fehler vom 29.09.2026.
   if(!EMPLOYEES.length) await loadEmployees();
+  if(!EMPLOYEES.length){
+    console.error("processPendingImports abgebrochen: EMPLOYEES konnte nicht geladen werden.");
+    return;
+  }
+  // Gleiche Bug-Klasse, gleiche Absicherung: parseAuswertung() löst FH-
+  // Nummern über resolveFhDup()/FH_DUP_MAP auf (siehe Kommentar dort) -
+  // ohne bereits geladenes FH_DUP_MAP würde ein zusammengeführtes FH-
+  // Duplikat-Paar beim Merge fälschlich wieder als zwei getrennte Fachhändler
+  // auftauchen. fhDupMergesLoaded (statt Object.keys(FH_DUP_MAP).length, das
+  // bei 0 aktuell bekannten Duplikaten fälschlich "nicht geladen" bedeuten
+  // würde) markiert einen tatsächlich abgeschlossenen Ladeversuch.
+  if(!fhDupMergesLoaded) await loadFhDuplicateMerges();
   try{
     // Reclaim-Fix (Bug-Report 19.09.2026: "musste 2x mailen, damit es
     // übernommen wurde"): eine Zeile wird VOR der eigentlichen Verarbeitung
@@ -12378,10 +12402,16 @@ let trainerbesuchSelectedAkp=new Set();
 // Nutzervorgabe 23.09.2026: 3 ankreuzbare Trainingsarten je Trainerbesuch.
 const TRAINERBESUCH_ARTEN=["Flächentraining mit Unterstützung im Verkauf","Coaching ohne Unterstützung im Verkauf","Profi-Training"];
 let trainerbesuchSelectedArten=new Set();
+// Nutzervorgabe 06.10.2026: Trainerbesuche sollen von ihrem Ersteller
+// (jede Rolle) UND von admin (auch fremde) bearbeitbar sein, nicht nur
+// angelegt/gelöscht werden können - trainerbesuchEditId!=null schaltet
+// openTrainerbesuchModal()/saveTrainerbesuch() von "anlegen" auf
+// "bearbeiten" (UPDATE statt INSERT der bestehenden Zeile) um.
+let trainerbesuchEditId=null;
 function renderTrainerbesuchArtenList(){
   const box=$("trainerbesuchArtenList");
   box.innerHTML=TRAINERBESUCH_ARTEN.map(a=>`<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px">
-      <input type="checkbox" class="tb-art-chk" value="${escapeHtml(a)}" style="width:16px;height:16px;flex-shrink:0">
+      <input type="checkbox" class="tb-art-chk" value="${escapeHtml(a)}" style="width:16px;height:16px;flex-shrink:0" ${trainerbesuchSelectedArten.has(a)?"checked":""}>
       ${escapeHtml(a)}
     </label>`).join("");
   box.querySelectorAll(".tb-art-chk").forEach(chk=>{
@@ -12424,6 +12454,7 @@ async function renderFhTrainerbesucheSection(){
           <span style="font-weight:800;color:var(--wg-navy)">${fmtDate(r.besuch_datum)} · ${escapeHtml(r.trainer_name)}</span>
           <span style="display:flex;align-items:center;gap:6px">
             <span style="font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;background:${abgeschlossen?"#E8F6EE":"#FFF4DC"};color:${abgeschlossen?"#1B7A43":"#8A6100"}">${abgeschlossen?"Abgeschlossen":"Aktiv"}</span>
+            ${(myRole==="admin"||r.created_by===(supaUser&&supaUser.id))?`<button type="button" class="tb-edit-btn" data-id="${escapeHtml(r.id)}" title="Trainerbesuch bearbeiten" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;font-weight:800;padding:0 2px;line-height:1">✎</button>`:""}
             ${myRole==="admin"?`<button type="button" class="tb-delete-btn" data-id="${escapeHtml(r.id)}" title="Trainerbesuch löschen" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:15px;font-weight:800;padding:0 2px;line-height:1">✕</button>`:""}
           </span>
         </div>
@@ -12437,13 +12468,19 @@ async function renderFhTrainerbesucheSection(){
     }).join("");
     const addBtn=canEdit?`<button class="btn btn-blue" id="trainerbesuchAddBtn" style="margin-top:6px">+ Trainerbesuch</button>`:"";
     box.innerHTML=`<h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:13px">Trainerbetreuung</h4>${rowsHtml}${addBtn}`;
-    if(canEdit) $("trainerbesuchAddBtn").onclick=openTrainerbesuchModal;
+    if(canEdit) $("trainerbesuchAddBtn").onclick=()=>openTrainerbesuchModal();
     box.querySelectorAll(".tb-download-btn").forEach(btn=>{
       // Nutzervorgabe 11.09.2026: dieselbe Drucken/Versenden-Logik wie bei
       // allen anderen PDF-Exporten dieser App (Ziel-Auswahl inkl. FH-
       // Geschäft/Ansprechpartner, vorbefülltes Freitext-Mail), statt eines
       // reinen Direkt-Downloads.
       btn.onclick=()=>openPdfTargetChoice(()=>exportTrainerbericht(btn.dataset.id),fhPdfSendExtra());
+    });
+    box.querySelectorAll(".tb-edit-btn").forEach(btn=>{
+      btn.onclick=()=>{
+        const row=rows.find(x=>x.id===btn.dataset.id);
+        if(row) openTrainerbesuchModal(row);
+      };
     });
     box.querySelectorAll(".tb-delete-btn").forEach(btn=>{
       btn.onclick=()=>deleteTrainerbesuch(btn.dataset.id);
@@ -12454,15 +12491,23 @@ async function renderFhTrainerbesucheSection(){
     box.innerHTML="";
   }
 }
-function openTrainerbesuchModal(){
+// Ohne editRow: "Trainerbesuch anlegen" (bisheriges Verhalten). Mit
+// editRow (eine Zeile aus renderFhTrainerbesucheSection()): "Trainerbesuch
+// bearbeiten" - Formular wird mit den bestehenden Werten vorbefüllt,
+// saveTrainerbesuch() aktualisiert dann die bestehende Zeile per UPDATE
+// statt eine neue anzulegen (siehe trainerbesuchEditId).
+function openTrainerbesuchModal(editRow){
   if(!fhModalCurrent) return;
-  $("trainerbesuchDatum").value=iso(new Date());
-  $("trainerbesuchTaetigkeiten").value="";
+  trainerbesuchEditId=editRow?editRow.id:null;
+  $("trainerbesuchModalTitle").textContent=editRow?"Trainerbesuch bearbeiten":"Trainerbesuch anlegen";
+  $("trainerbesuchDatum").value=editRow?editRow.besuch_datum:iso(new Date());
+  $("trainerbesuchTaetigkeiten").value=editRow?(editRow.taetigkeiten||""):"";
   $("trainerbesuchSaveHint").textContent="";
-  trainerbesuchSelectedAkp=new Set();
-  trainerbesuchSelectedArten=new Set();
+  trainerbesuchSelectedAkp=new Set(editRow?(editRow.akp_teilnehmer||[]):[]);
+  trainerbesuchSelectedArten=new Set(editRow?(editRow.trainingsart||[]):[]);
   renderTrainerbesuchArtenList();
   renderTrainerbesuchAkpList();
+  $("trainerbesuchAkpCount").textContent=trainerbesuchSelectedAkp.size?trainerbesuchSelectedAkp.size+" ausgewählt":"";
   $("trainerbesuchModal").classList.remove("hidden");
 }
 function renderTrainerbesuchAkpList(){
@@ -12470,7 +12515,7 @@ function renderTrainerbesuchAkpList(){
   const rows=akpFullList(state.latest).filter(a=>a.fhNr===fhModalCurrent)
     .sort((a,b)=>(a.name||"").localeCompare(b.name||""));
   box.innerHTML=rows.length?rows.map(a=>`<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px">
-      <input type="checkbox" class="tb-akp-chk" value="${escapeHtml(a.nr)}" style="width:16px;height:16px;flex-shrink:0">
+      <input type="checkbox" class="tb-akp-chk" value="${escapeHtml(a.nr)}" style="width:16px;height:16px;flex-shrink:0" ${trainerbesuchSelectedAkp.has(a.nr)?"checked":""}>
       ${escapeHtml(a.name||a.nr)}${a.firma?" · "+escapeHtml(a.firma):""}
     </label>`).join(""):`<div class="empty-note">Keine Ansprechpartner für diesen Fachhändler gefunden.</div>`;
   box.querySelectorAll(".tb-akp-chk").forEach(chk=>{
@@ -12489,12 +12534,24 @@ async function saveTrainerbesuch(){
     const baselineRange=trainerbesuchBaselineRange(besuchDatum);
     const prodMonthly=(fhContactCurrent&&fhContactCurrent.prod_monthly)||{};
     const baselineAvg=fhAvgDailyProdInRange(prodMonthly,baselineRange.fromISO,baselineRange.toISO);
-    const { error } = await sb.from("trainerbesuche").insert({
-      fh_nr:fhNr, trainer_name:myName, besuch_datum:besuchDatum,
-      taetigkeiten:$("trainerbesuchTaetigkeiten").value.trim()||null,
-      akp_teilnehmer:[...trainerbesuchSelectedAkp], trainingsart:[...trainerbesuchSelectedArten], baseline_avg:baselineAvg,
-      created_by:(supaUser&&supaUser.id)||null, updated_by:(supaUser&&supaUser.id)||null,
-    });
+    // Beim Bearbeiten (trainerbesuchEditId gesetzt) bleibt trainer_name/
+    // created_by bewusst UNVERÄNDERT - sonst würde ein Admin, der den
+    // Trainerbesuch eines anderen Mitarbeiters bearbeitet, dort fälschlich
+    // als "der Trainer" erscheinen. Nur die Inhalte + updated_by/updated_at
+    // werden aktualisiert.
+    const { error } = trainerbesuchEditId
+      ? await sb.from("trainerbesuche").update({
+          besuch_datum:besuchDatum,
+          taetigkeiten:$("trainerbesuchTaetigkeiten").value.trim()||null,
+          akp_teilnehmer:[...trainerbesuchSelectedAkp], trainingsart:[...trainerbesuchSelectedArten], baseline_avg:baselineAvg,
+          updated_by:(supaUser&&supaUser.id)||null, updated_at:new Date().toISOString(),
+        }).eq("id",trainerbesuchEditId)
+      : await sb.from("trainerbesuche").insert({
+          fh_nr:fhNr, trainer_name:myName, besuch_datum:besuchDatum,
+          taetigkeiten:$("trainerbesuchTaetigkeiten").value.trim()||null,
+          akp_teilnehmer:[...trainerbesuchSelectedAkp], trainingsart:[...trainerbesuchSelectedArten], baseline_avg:baselineAvg,
+          created_by:(supaUser&&supaUser.id)||null, updated_by:(supaUser&&supaUser.id)||null,
+        });
     if(error) throw error;
     $("trainerbesuchModal").classList.add("hidden");
     toast("Trainerbesuch gespeichert ✓");
@@ -12561,7 +12618,8 @@ function buildTrainerberichtPdfDoc(besuch){
         <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:6px">Produktionsentwicklung</div>
         <div style="font-size:13px">Produktion am Einsatztag (${fmtDate(besuch.besuch_datum)}): <b>${fmt(trainerbesuchTagesproduktion(besuch.fh_nr,besuch.besuch_datum))}</b> Stk.<br>
         Tagesschnitt vorher (3 Monate vor Besuch): <b>${fmtAvg1(besuch.baseline_avg)}</b> Stk./Tag<br>
-        Tagesschnitt nachher (4 Wochen nach Besuch): <b>${fmtAvg1(besuch.nachher_avg)}</b> Stk./Tag${diff!=null?`<br>Veränderung: <b style="color:${diff>=0?"#1B7A43":"#B3324A"}">${diff>=0?"+":""}${fmtAvg1(diff)}</b> Stk./Tag`:""}</div>
+        Tagesschnitt nachher (4 Wochen nach Besuch): <b>${fmtAvg1(besuch.nachher_avg)}</b> Stk./Tag${diff!=null?`<br>Veränderung: <b style="color:${diff>=0?"#1B7A43":"#B3324A"}">${diff>=0?"+":""}${fmtAvg1(diff)}</b> Stk./Tag`:""}
+        ${besuch.nachher_avg!=null?`<br>Gesamtproduktion Beobachtungszeitraum (4 Wochen nach Besuch): <b>${fmt(Math.round(besuch.nachher_avg*28))}</b> Stk.`:""}</div>
       </div>
     `;
     document.body.appendChild(box);
