@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wertgarantie Komplettschutz</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="/logo.png">
+<style>
+  :root{
+    --wg-blue:#009FE3; --wg-blue-deep:#0077AC; --wg-navy:#10202C; --wg-deep:#062A3F;
+    --paper:#EEF3F7; --line:#E1EAF1; --ink:#10202C; --muted:#5D7284; --good:#12A150; --bad:#E0234E;
+    --shadow:0 1px 2px rgba(6,42,63,.04),0 16px 40px -12px rgba(6,42,63,.16);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  .hidden{display:none!important}
+  .hero{background:radial-gradient(1100px 500px at 85% -10%,rgba(0,159,227,.35),transparent 60%),linear-gradient(160deg,var(--wg-deep) 0%,var(--wg-navy) 60%,#0b3550 100%);color:#fff}
+  .hero-inner{max-width:880px;margin:0 auto;padding:30px 20px 84px}
+  .logo-badge{display:inline-flex;background:#fff;border-radius:14px;padding:10px 18px;margin-bottom:26px;box-shadow:0 10px 24px rgba(0,0,0,.22)}
+  .logo-badge img{height:34px;display:block}
+  .logo-badge{gap:16px;align-items:center}
+  .logo-badge img.dlogo{height:46px;max-width:200px;object-fit:contain}
+  .logo-badge .sep{width:1px;align-self:stretch;background:#E1EAF1}
+  .dealer{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  .dealer img{max-height:64px;max-width:180px;object-fit:contain}
+  .dealer .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:700}
+  .dealer .n{font-size:17px;font-weight:800;color:var(--wg-navy);margin:2px 0 4px}
+  .dealer .a{font-size:14px;color:var(--ink);line-height:1.6}
+  .dealer a{color:var(--wg-blue);font-weight:700;text-decoration:none}
+  .contact-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+  .pay h3{font-size:15px;margin:22px 0 10px;color:var(--wg-navy)}
+  .payopt{display:flex;gap:12px;align-items:center;padding:13px 16px;border:2px solid var(--line);border-radius:16px;cursor:pointer;margin-bottom:10px;flex-wrap:wrap}
+  .payopt.on{border-color:var(--wg-blue);background:#F4FBFE}
+  .payopt input{width:20px;height:20px;accent-color:var(--wg-blue);flex:none;margin:0}
+  .payopt .t{font-weight:700;font-size:14.5px;flex:1;min-width:180px}
+  .payopt .t small{display:block;font-weight:500;color:var(--muted);font-size:12.5px;margin-top:2px}
+  .payopt .amt{font-weight:800;font-size:18px;color:var(--wg-blue-deep);white-space:nowrap}
+  .payopt .amt small{font-size:12px;color:var(--muted);font-weight:600}
+  .sepa-box{background:#F8FAFC;border:2px solid var(--line);border-radius:16px;padding:16px;margin:4px 0 6px}
+  .mandate{font-size:12px;color:var(--muted);line-height:1.55;margin:10px 0 0}
+  #introText a{color:var(--wg-blue);font-weight:700;text-decoration:none}
+  .contact-row a{display:inline-flex;align-items:center;gap:6px;background:var(--paper);border-radius:99px;padding:7px 13px;font-size:13px}
+  .hero h1{font-size:clamp(26px,4vw,40px);font-weight:800;margin:0 0 12px;line-height:1.15}
+  .hero p{font-size:16px;color:#CFE4EF;max-width:620px;line-height:1.6;margin:0}
+  main{max-width:880px;margin:-56px auto 0;padding:0 16px 40px;position:relative}
+  .card{background:#fff;border-radius:22px;box-shadow:var(--shadow);padding:28px 30px;margin-bottom:18px}
+  .card h2{font-size:18px;margin:0 0 4px;color:var(--wg-navy)}
+  .card .sub{color:var(--muted);font-size:13.5px;margin:0 0 18px}
+  .grid{display:grid;grid-template-columns:repeat(6,1fr);gap:14px 14px}
+  .f{grid-column:span 3} .f.s2{grid-column:span 2} .f.s4{grid-column:span 4} .f.s6{grid-column:span 6}
+  label{display:block;font-size:12.5px;font-weight:700;color:var(--wg-navy);margin-bottom:6px}
+  label .req{color:var(--bad)}
+  input,select{width:100%;border:2px solid var(--line);border-radius:12px;padding:11px 13px;font-size:15px;font-family:inherit;color:var(--ink);background:#F8FAFC;outline:none}
+  input:focus,select:focus{border-color:var(--wg-blue);background:#fff;box-shadow:0 0 0 4px rgba(0,159,227,.12)}
+  input[readonly]{background:#EEF3F7;color:#3B4D5C;border-color:#E6EDF2}
+  input.invalid{border-color:var(--bad);background:#FFF6F8}
+  .hint{font-size:12px;color:var(--muted);margin-top:5px}
+  .price-box{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;background:linear-gradient(135deg,#E6F6FD,#F4FBFE);border:2px solid #BFE3F7;border-radius:18px;padding:18px 20px}
+  .price-box .prod{font-size:13px;color:var(--muted);font-weight:600}
+  .price-box .prod b{display:block;font-size:20px;color:var(--wg-navy)}
+  .price-box .price{text-align:right}
+  .price-box .price .amt{font-size:34px;font-weight:800;color:var(--wg-blue-deep);line-height:1}
+  .price-box .price .per{font-size:13px;color:var(--muted);font-weight:600}
+  .premium{display:flex;gap:12px;align-items:flex-start;margin-top:14px;padding:14px 16px;border:2px solid var(--line);border-radius:16px;cursor:pointer}
+  .premium.on{border-color:var(--wg-blue);background:#F4FBFE}
+  .premium.locked{cursor:default}
+  .premium input{width:20px;height:20px;margin-top:2px;accent-color:var(--wg-blue);flex:none}
+  .premium .t{font-weight:700;font-size:14.5px}
+  .premium .d{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .consent{display:flex;gap:12px;align-items:flex-start;margin:18px 0 6px;font-size:13.5px;color:var(--muted);line-height:1.55}
+  .consent input{width:20px;height:20px;margin-top:1px;accent-color:var(--wg-blue);flex:none}
+  .consent a{color:var(--wg-blue);font-weight:700}
+  .btn{display:block;width:100%;border:none;border-radius:999px;background:linear-gradient(135deg,var(--wg-blue),var(--wg-blue-deep));color:#fff;padding:16px 28px;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;margin-top:14px;box-shadow:0 8px 20px -8px rgba(0,159,227,.7)}
+  .btn:disabled{opacity:.6;cursor:not-allowed}
+  .msg{border-radius:12px;padding:13px 16px;font-size:14px;font-weight:600;margin-top:14px}
+  .msg.err{background:#FDECEF;color:#B3123A}
+  .na{background:#FDECEF;color:#B3123A;border-radius:14px;padding:12px 14px;font-size:13.5px;font-weight:600;margin-top:12px}
+  .state{text-align:center;padding:44px 26px}
+  .state .ico{width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;font-size:34px}
+  .state h2{font-size:22px;margin:0 0 10px}
+  .state p{color:var(--muted);font-size:15px;line-height:1.6;max-width:480px;margin:0 auto}
+  footer{text-align:center;color:var(--muted);font-size:12px;padding:10px 20px 36px}
+  @media (max-width:640px){ .card{padding:22px 18px} .f,.f.s2,.f.s4{grid-column:span 6} .f.half{grid-column:span 3} .price-box .price{text-align:left} }
+</style>
+</head>
+<body>
+<div class="hero"><div class="hero-inner">
+  <div class="logo-badge"><img class="dlogo hidden" id="dealerLogo" alt=""><span class="sep hidden" id="logoSep"></span><img src="/logo.png" alt="Wertgarantie – Einfach. Gut. Geschützt."></div>
+  <h1 id="heroTitle">Ihr Gerät. Rundum geschützt.</h1>
+  <p id="heroText">Sichern Sie Ihr neues Gerät mit dem Wertgarantie Komplettschutz ab – Ihre Daten sind bereits vorausgefüllt.</p>
+</div></div>
+
+<main>
+  <div class="card state" id="loading"><p>Wird geladen …</p></div>
+
+  <div class="card state hidden" id="stateMsg"></div>
+
+  <form id="form" class="hidden" novalidate>
+    <div class="card hidden" id="introCard">
+      <p id="introText" style="margin:0;font-size:15.5px;line-height:1.7"></p>
+    </div>
+    <div class="card">
+      <h2>Ihre Daten</h2>
+      <p class="sub">Bitte prüfen und ergänzen Sie Ihre Angaben.</p>
+      <div class="grid">
+        <div class="f s2"><label for="anrede">Anrede</label><select id="anrede"><option value="">–</option><option>Frau</option><option>Herr</option><option>Divers</option></select></div>
+        <div class="f s4"></div>
+        <div class="f"><label for="vorname">Vorname <span class="req">*</span></label><input id="vorname" autocomplete="given-name" required></div>
+        <div class="f"><label for="nachname">Name <span class="req">*</span></label><input id="nachname" autocomplete="family-name" required></div>
+        <div class="f s6"><label for="strasse">Adresse (Straße, Hausnummer) <span class="req">*</span></label><input id="strasse" autocomplete="street-address" required></div>
+        <div class="f s2 half"><label for="plz">PLZ <span class="req">*</span></label><input id="plz" inputmode="numeric" autocomplete="postal-code" required></div>
+        <div class="f s4 half"><label for="ort">Ort <span class="req">*</span></label><input id="ort" autocomplete="address-level2" required></div>
+        <div class="f"><label for="email">E-Mail-Adresse <span class="req">*</span></label><input id="email" type="email" autocomplete="email" required><div class="hint">An diese Adresse senden wir Ihre Bestätigung.</div></div>
+        <div class="f"><label for="telefon">Telefon (optional)</label><input id="telefon" type="tel" autocomplete="tel"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Ihr Gerät</h2>
+      <p class="sub">Diese Angaben stammen von Ihrem Fachhändler.</p>
+      <div class="grid">
+        <div class="f"><label for="geraet">Gerät <span class="req">*</span></label>
+          <select id="geraet" required>
+            <option value="">Bitte wählen …</option>
+            <option>Mobiltelefon</option><option>Tablet</option><option>Notebook / PC</option><option>TV / Heimkino</option>
+            <option>Foto / Kamera</option><option>Haushaltsgroßgerät</option><option>Haushaltskleingerät</option><option>Sonstiges</option>
+          </select></div>
+        <div class="f"><label for="typ">Typ <span class="req">*</span></label><input id="typ" required></div>
+        <div class="f"><label for="kaufdatum">Kaufdatum <span class="req">*</span></label><input id="kaufdatum" type="date" required></div>
+        <div class="f"><label for="kaufpreis">Kaufpreis in € <span class="req">*</span></label><input id="kaufpreis" inputmode="decimal" required></div>
+        <div class="f s6 hidden" id="imeiWrap"><label for="imei">IMEI <span class="req">*</span></label><input id="imei" inputmode="numeric" maxlength="17" placeholder="15-stellige IMEI">
+          <div class="hint">Die IMEI finden Sie auf der Verpackung oder durch Eingabe von <b>*#06#</b> am Telefon.</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Ihr Schutz</h2>
+      <p class="sub">Der Preis wird automatisch anhand von Gerät und Kaufpreis berechnet.</p>
+      <div class="price-box">
+        <div class="prod">Produkt<b id="prodName">Komplettschutz27</b><span id="priceDetail"></span></div>
+        <div class="price"><div class="amt" id="priceAmt">–</div><div class="per" id="pricePer"></div></div>
+      </div>
+      <label class="premium" id="premiumBox">
+        <input type="checkbox" id="premium">
+        <div><div class="t" id="premiumTitle">Premium-Option (+ € 2,00)</div><div class="d" id="premiumDesc">Optional zubuchbar.</div></div>
+      </label>
+      <div class="na hidden" id="notAvail"></div>
+
+      <div class="pay" id="payBox">
+        <h3>Zahlung</h3>
+        <label class="payopt on" id="payOptSepa"><input type="radio" name="zahlungsart" value="sepa_monatlich" checked>
+          <span class="t">SEPA-Lastschrift – monatlich<small>Bequem per Bankeinzug von Ihrem Konto</small></span>
+          <span class="amt" id="paySepaAmt">–</span></label>
+        <label class="payopt" id="payOptYear"><input type="radio" name="zahlungsart" value="ueberweisung_jaehrlich">
+          <span class="t">Überweisung – jährlich<small>Einmal pro Jahr (12 Monatsprämien)</small></span>
+          <span class="amt" id="payYearAmt">–</span></label>
+        <div class="sepa-box" id="sepaFields">
+          <div class="grid">
+            <div class="f"><label for="kontoinhaber">Kontoinhaber</label><input id="kontoinhaber" readonly tabindex="-1"><div class="hint">Wird automatisch aus Vorname und Name übernommen.</div></div>
+            <div class="f"><label for="iban">IBAN <span class="req">*</span></label><input id="iban" autocomplete="off" inputmode="text" placeholder="AT00 0000 0000 0000 0000" maxlength="50"><div class="hint" id="ibanHint"></div></div>
+          </div>
+          <label class="consent" style="margin:12px 0 0"><input type="checkbox" id="acceptSepa">
+            <span>Ich erteile ein <b>SEPA-Lastschriftmandat</b>: Ich ermächtige WERTGARANTIE, die Prämie von meinem Konto mittels Lastschrift einzuziehen, und weise mein Kreditinstitut an, diese Lastschriften einzulösen.</span></label>
+          <p class="mandate">Hinweis: Ich kann innerhalb von acht Wochen, beginnend mit dem Belastungsdatum, die Erstattung des belasteten Betrages verlangen. Es gelten dabei die mit meinem Kreditinstitut vereinbarten Bedingungen.</p>
+        </div>
+        <div class="sepa-box hidden" id="yearInfo"><p style="margin:0;font-size:13.5px;line-height:1.6">Die Jahresprämie von <b id="yearInfoAmt">–</b> überweisen Sie einmal jährlich. Die Zahlungsdetails erhalten Sie gemeinsam mit Ihrer Originalpolizze per E-Mail.</p></div>
+      </div>
+
+      <label class="consent"><input type="checkbox" id="accept">
+        <span id="consentText">Ich habe die Versicherungsbedingungen, die Produktinformationen und die Datenschutzinformationen gelesen und schließe den Wertgarantie Komplettschutz verbindlich ab.</span></label>
+      <button class="btn" id="submitBtn" type="submit">Jetzt verbindlich abschließen</button>
+      <div class="msg err hidden" id="err"></div>
+    </div>
+  </form>
+
+  <div class="card hidden" id="dealerCard"></div>
+</main>
+<footer>WERTGARANTIE Austria · Einfach. Gut. Geschützt.</footer>
+
+<script>
+const SUPABASE_URL = "https://jtgoytbcqkqopdpjlozq.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_ic_T8F0q2Ogc1-8jaf3SIg_UTKtLXqe";
+const API = SUPABASE_URL + "/functions/v1/aftersales-public";
+// Links zu Bedingungen/Datenschutz - sobald die finalen Dokumente vorliegen hier eintragen.
+const LEGAL = { avb:null, info:null, datenschutz:null };
+const $ = id => document.getElementById(id);
+
+/* Preislogik - identisch zu supabase/functions/_shared/pricing.ts */
+const PREMIUM_SURCHARGE = 2;
+function isMobileDevice(g){ return /handy|smartphone|mobiltelefon|mobil-telefon|iphone|mobile phone|^mobil/.test(String(g||"").toLowerCase()); }
+function basePrice(p, mobile){
+  if(!(p>0)) return null;
+  const tiers = mobile ? [[500,7],[4000,10]] : [[500,4],[2000,6],[10000,8],[15000,12]];
+  for(const [max,price] of tiers) if(p<=max) return price;
+  return null;
+}
+function isValidImei(v){
+  const s=String(v||"").replace(/\s|-/g,"");
+  if(!/^\d{15}$/.test(s)) return false;
+  let sum=0; for(let i=0;i<15;i++){ let d=+s[i]; if(i%2===1){ d*=2; if(d>9) d-=9; } sum+=d; }
+  return sum%10===0;
+}
+// Identisch zu normalizeIban() in _shared/pricing.ts.
+function normalizeIban(v){ return String(v||"").toUpperCase().replace(/^\s*IBAN[:\s]*/,"").replace(/[^A-Z0-9]/g,""); }
+// Liefert "" wenn gültig, sonst einen verständlichen Hinweis.
+function ibanProblem(v){
+  const s=normalizeIban(v);
+  if(!s) return "Bitte IBAN eingeben.";
+  if(!/^[A-Z]{2}\d{2}/.test(s)) return "Die IBAN beginnt mit dem Ländercode, z.B. AT…";
+  if(s.startsWith("AT")&&s.length!==20) return "Eine österreichische IBAN hat 20 Zeichen (Ihre Eingabe: "+s.length+").";
+  if(s.startsWith("DE")&&s.length!==22) return "Eine deutsche IBAN hat 22 Zeichen (Ihre Eingabe: "+s.length+").";
+  if(!isValidIban(s)) return "Die IBAN ist nicht korrekt (Prüfziffer stimmt nicht) – bitte Tippfehler prüfen.";
+  return "";
+}
+function isValidIban(v){
+  const s=normalizeIban(v);
+  if(!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(s)) return false;
+  if(s.startsWith("AT")&&s.length!==20) return false;
+  if(s.startsWith("DE")&&s.length!==22) return false;
+  const re=(s.slice(4)+s.slice(0,4)).replace(/[A-Z]/g,c=>String(c.charCodeAt(0)-55));
+  let rem=0; for(const ch of re) rem=(rem*10+ +ch)%97;
+  return rem===1;
+}
+function zahlungsart(){ const r=document.querySelector('input[name="zahlungsart"]:checked'); return r?r.value:""; }
+function syncHolder(){ $("kontoinhaber").value=[$("vorname").value.trim(),$("nachname").value.trim()].filter(Boolean).join(" "); }
+function eur(n){ return "€ "+(+n).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function esc(s){ return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function parsePrice(v){ let s=String(v||"").replace(/[€\s]/g,""); if(/,\d{1,2}$/.test(s)) s=s.replace(/\./g,"").replace(",","."); else s=s.replace(/,/g,""); const n=parseFloat(s); return isNaN(n)?0:n; }
+
+const token = (location.pathname.match(/\/k\/([a-f0-9]{32,64})/)||[])[1] || new URLSearchParams(location.search).get("t") || "";
+let period = "monatlich";
+
+function showState(kind, title, text){
+  $("loading").classList.add("hidden"); $("form").classList.add("hidden");
+  const ico = kind==="ok" ? ['#E3F6EA','#12A150','✓'] : kind==="info" ? ['#E3F3FC','#0077AC','ℹ'] : ['#FDECEF','#E0234E','!'];
+  $("stateMsg").innerHTML = `<div class="ico" style="background:${ico[0]};color:${ico[1]}">${ico[2]}</div><h2>${title}</h2><p>${text}</p>`;
+  $("stateMsg").classList.remove("hidden");
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+
+function recalc(){
+  const g=$("geraet").value, mobile=isMobileDevice(g), p=parsePrice($("kaufpreis").value);
+  $("imeiWrap").classList.toggle("hidden", !mobile);
+  const pb=$("premium"), box=$("premiumBox");
+  if(mobile){
+    pb.checked=true; pb.disabled=true; box.classList.add("locked","on");
+    $("premiumTitle").textContent="Premium-Option – inklusive";
+    $("premiumDesc").textContent="Bei Mobiltelefonen ist die Premium-Option immer im Preis enthalten.";
+  }else{
+    pb.disabled=false; box.classList.remove("locked"); box.classList.toggle("on",pb.checked);
+    $("premiumTitle").textContent="Premium-Option (+ "+eur(PREMIUM_SURCHARGE)+")";
+    $("premiumDesc").textContent="Optional zubuchbar.";
+  }
+  const base = basePrice(p, mobile);
+  if(!g || !(p>0)){ $("priceAmt").textContent="–"; $("pricePer").textContent=""; $("priceDetail").textContent="Bitte Gerät und Kaufpreis angeben"; $("notAvail").classList.add("hidden"); $("submitBtn").disabled=false; return null; }
+  if(base===null){
+    $("priceAmt").textContent="–"; $("pricePer").textContent="";
+    $("priceDetail").textContent="";
+    $("notAvail").textContent = "Für einen Kaufpreis über "+(mobile?"€ 4.000":"€ 15.000")+" ist der Komplettschutz online leider nicht verfügbar. Bitte wenden Sie sich an Ihren Fachhändler.";
+    $("notAvail").classList.remove("hidden"); $("submitBtn").disabled=true; return null;
+  }
+  $("notAvail").classList.add("hidden"); $("submitBtn").disabled=false;
+  const surcharge = !mobile && pb.checked ? PREMIUM_SURCHARGE : 0;
+  const total = base+surcharge;
+  $("priceAmt").textContent = eur(total);
+  $("pricePer").textContent = period;
+  $("priceDetail").textContent = mobile ? `inkl. Premium-Option` : (surcharge ? `${eur(base)} + Premium ${eur(surcharge)}` : "");
+  const yearly=Math.round(total*12*100)/100, za=zahlungsart();
+  $("paySepaAmt").innerHTML=`${eur(total)} <small>/ Monat</small>`;
+  $("payYearAmt").innerHTML=`${eur(yearly)} <small>/ Jahr</small>`;
+  $("yearInfoAmt").textContent=eur(yearly);
+  $("submitBtn").textContent = "Jetzt verbindlich abschließen – "+(za==="ueberweisung_jaehrlich" ? eur(yearly)+" jährlich" : eur(total)+" monatlich");
+  return total;
+}
+
+function lockIfFilled(id, v){
+  const el=$(id);
+  if(v===null||v===undefined||v==="") return;
+  if(el.tagName==="SELECT"){
+    if(![...el.options].some(o=>o.value===v)){ const o=document.createElement("option"); o.textContent=v; el.insertBefore(o, el.options[1]); }
+    el.value=v; el.disabled=true;
+  }else{ el.value=v; el.readOnly=true; }
+}
+
+let dealer=null;
+function homepageUrl(h){ return /^https?:\/\//i.test(h)?h:"https://"+h; }
+function salutation(r){
+  const an=String(r.anrede||"").toLowerCase(), nn=r.nachname||"";
+  if(an.startsWith("frau")&&nn) return "Liebe Frau "+nn+",";
+  if(an.startsWith("herr")&&nn) return "Lieber Herr "+nn+",";
+  const full=[r.vorname,r.nachname].filter(Boolean).join(" ");
+  return full ? "Guten Tag "+full+"," : "Liebe Kundin, lieber Kunde,";
+}
+function contactSentence(){
+  const d=dealer||{};
+  const parts=[];
+  if(d.telefon) parts.push(`telefonisch unter <a href="tel:${esc(String(d.telefon).replace(/[^\d+]/g,""))}"><b>${esc(d.telefon)}</b></a>`);
+  if(d.email) parts.push(`per E-Mail an <a href="mailto:${esc(d.email)}">${esc(d.email)}</a>`);
+  return "Bei Fragen stehen wir Ihnen natürlich gerne"+(parts.length?" "+parts.join(" oder "):"")+" zur Verfügung.";
+}
+function renderDealer(){
+  const d=dealer;
+  if(!d||!d.name) return;
+  if(d.logo_url){ $("dealerLogo").src=d.logo_url; $("dealerLogo").alt=d.name; $("dealerLogo").classList.remove("hidden"); $("logoSep").classList.remove("hidden"); }
+  const addr=[d.strasse,[d.plz,d.ort].filter(Boolean).join(" ")].filter(Boolean).map(esc).join("<br>");
+  const links=[];
+  if(d.telefon) links.push(`<a href="tel:${esc(String(d.telefon).replace(/[^\d+]/g,""))}">📞 ${esc(d.telefon)}</a>`);
+  if(d.email) links.push(`<a href="mailto:${esc(d.email)}">✉ ${esc(d.email)}</a>`);
+  if(d.homepage) links.push(`<a href="${esc(homepageUrl(d.homepage))}" target="_blank" rel="noopener">🌐 ${esc(String(d.homepage).replace(/^https?:\/\//i,"").replace(/\/$/,""))}</a>`);
+  $("dealerCard").innerHTML=`<div class="dealer">${d.logo_url?`<img src="${esc(d.logo_url)}" alt="${esc(d.name)}">`:""}<div><div class="k">Ihr Fachhändler</div><div class="n">${esc(d.name)}</div><div class="a">${addr}</div></div></div>${links.length?`<div class="contact-row">${links.join("")}</div>`:""}`;
+  $("dealerCard").classList.remove("hidden");
+}
+
+function legalLink(text, url){ return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${text}</a>` : text; }
+
+async function init(){
+  $("consentText").innerHTML = `Ich habe die ${legalLink("Versicherungsbedingungen",LEGAL.avb)}, die ${legalLink("Produktinformationen",LEGAL.info)} und die ${legalLink("Datenschutzinformationen",LEGAL.datenschutz)} gelesen und schließe den Wertgarantie Komplettschutz verbindlich ab.`;
+  if(!token){ showState("bad","Link ungültig","Bitte verwenden Sie den vollständigen Link aus Ihrer E-Mail."); return; }
+  let j;
+  try{
+    const res = await fetch(API,{ method:"POST", headers:{"Content-Type":"application/json", apikey:SUPABASE_ANON_KEY}, body:JSON.stringify({action:"get", token}) });
+    j = await res.json();
+    if(!res.ok) { showState("bad","Link ungültig", esc(j.error||"Dieser Link ist leider nicht (mehr) gültig.")); return; }
+  }catch(e){ showState("bad","Verbindungsfehler","Bitte versuchen Sie es in einem Moment erneut."); return; }
+  period = j.period || period;
+  dealer = j.dealer && typeof j.dealer==="object" ? j.dealer : null;
+  renderDealer();
+  if(j.state==="completed"){ showState("ok","Bereits abgeschlossen",`Ihr Komplettschutz wurde bereits abgeschlossen (Referenz ${esc(j.reference)}). Die Bestätigung haben Sie per E-Mail erhalten.`); return; }
+  if(j.state==="expired"){ showState("bad","Link abgelaufen","Dieser Link ist leider nicht mehr gültig. Bitte wenden Sie sich an Ihren Fachhändler."); return; }
+  const r=j.record||{};
+  $("heroTitle").textContent = "Ihr persönliches Angebot";
+  $("heroText").textContent = "Wertgarantie Komplettschutz für Ihr "+([r.geraet,r.typ].filter(Boolean).join(" – ")||"neues Gerät");
+  const dn = dealer&&dealer.name ? ` bei <b>${esc(dealer.name)}</b>` : "";
+  $("introText").innerHTML = `${esc(salutation(r))}<br><br>vielen Dank für Ihren Einkauf${dn}! Gerne übermitteln wir Ihnen ein Angebot für den Komplettschutz Ihres Gerätes. Ihre Daten haben wir bereits vorausgefüllt – bitte prüfen und ergänzen Sie sie, und schließen Sie den Komplettschutz anschließend mit einem Klick ab.<br><br>${contactSentence()}<br><br>Freundliche Grüße<br><b>${dealer&&dealer.name?esc(dealer.name):"Ihr WERTGARANTIE Team"}</b>`;
+  $("introCard").classList.remove("hidden");
+  if(r.anrede) $("anrede").value = ["Frau","Herr","Divers"].find(a=>a.toLowerCase()===String(r.anrede).toLowerCase())||"";
+  for(const k of ["vorname","nachname","strasse","plz","ort","email","telefon"]) if(r[k]) $(k).value=r[k];
+  lockIfFilled("geraet", r.geraet);
+  lockIfFilled("typ", r.typ);
+  lockIfFilled("kaufdatum", r.kaufdatum);
+  if(r.kaufpreis!=null) lockIfFilled("kaufpreis", (+r.kaufpreis).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2}));
+  if(r.imei) $("imei").value=r.imei;
+  syncHolder();
+  $("kaufdatum").max = new Date().toISOString().slice(0,10);
+  $("prodName").textContent = r.produkt || "Komplettschutz27";
+  if(r.premium===true && !isMobileDevice(r.geraet)) $("premium").checked=true;
+  recalc();
+  $("loading").classList.add("hidden"); $("form").classList.remove("hidden");
+}
+
+function validate(){
+  const errs=[]; document.querySelectorAll(".invalid").forEach(e=>e.classList.remove("invalid"));
+  const need=[["vorname","Vorname"],["nachname","Name"],["strasse","Adresse"],["plz","PLZ"],["ort","Ort"],["email","E-Mail"],["typ","Typ"],["kaufdatum","Kaufdatum"]];
+  for(const [id,l] of need) if(!$(id).value.trim()){ errs.push(l); $(id).classList.add("invalid"); }
+  if(!$("geraet").value){ errs.push("Gerät"); $("geraet").classList.add("invalid"); }
+  if($("email").value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test($("email").value.trim())){ errs.push("E-Mail (ungültig)"); $("email").classList.add("invalid"); }
+  if(!(parsePrice($("kaufpreis").value)>0)){ errs.push("Kaufpreis"); $("kaufpreis").classList.add("invalid"); }
+  if($("kaufdatum").value && $("kaufdatum").value > new Date().toISOString().slice(0,10)){ errs.push("Kaufdatum (liegt in der Zukunft)"); $("kaufdatum").classList.add("invalid"); }
+  if(isMobileDevice($("geraet").value) && !isValidImei($("imei").value)){ errs.push("IMEI (15-stellig, gültig)"); $("imei").classList.add("invalid"); }
+  const za=zahlungsart();
+  if(!za) errs.push("Zahlungsart");
+  if(za==="sepa_monatlich"){
+    const ip=ibanProblem($("iban").value);
+    if(ip){ errs.push("IBAN – "+ip); $("iban").classList.add("invalid"); showIbanHint(); }
+    if(!$("acceptSepa").checked) errs.push("SEPA-Lastschriftmandat");
+  }
+  if(!$("accept").checked) errs.push("Zustimmung zu den Bedingungen");
+  return errs;
+}
+
+async function submit(e){
+  e.preventDefault();
+  $("err").classList.add("hidden");
+  const errs=validate();
+  const total=recalc();
+  if(errs.length || total===null){
+    $("err").textContent = errs.length ? "Bitte prüfen: "+errs.join(", ") : "Bitte Gerät und Kaufpreis angeben.";
+    $("err").classList.remove("hidden"); return;
+  }
+  $("submitBtn").disabled=true; $("submitBtn").textContent="Wird abgeschlossen …";
+  const data={
+    anrede:$("anrede").value, vorname:$("vorname").value, nachname:$("nachname").value, strasse:$("strasse").value, plz:$("plz").value, ort:$("ort").value,
+    email:$("email").value, telefon:$("telefon").value, geraet:$("geraet").value, typ:$("typ").value,
+    kaufdatum:$("kaufdatum").value, kaufpreis:parsePrice($("kaufpreis").value), imei:$("imei").value.replace(/\s|-/g,""),
+    premium:$("premium").checked, accept_terms:$("accept").checked,
+    zahlungsart:zahlungsart(), iban:normalizeIban($("iban").value), accept_sepa:$("acceptSepa").checked,
+  };
+  try{
+    const res = await fetch(API,{ method:"POST", headers:{"Content-Type":"application/json", apikey:SUPABASE_ANON_KEY}, body:JSON.stringify({action:"submit", token, data}) });
+    const j = await res.json();
+    if(!res.ok || !j.ok) throw new Error(j.error||"Abschluss fehlgeschlagen");
+    showState("ok","Vielen Dank – Ihr Komplettschutz ist abgeschlossen!",
+      `Referenz <b>${esc(j.reference)}</b> · ${j.zahlungsart==="ueberweisung_jaehrlich" ? esc(eur(j.zahlbetrag))+" jährlich per Überweisung" : esc(eur(j.total))+" monatlich per SEPA-Lastschrift"}<br><br>`+
+      (j.mail==="ok" ? `Die Bestätigung mit allen Daten wurde an <b>${esc(data.email)}</b> gesendet.` : `Ihr Abschluss ist gespeichert. Die Bestätigungsmail wird in Kürze nachgereicht.`)+
+      `<br>Ihre Originalpolizze folgt in Kürze gesondert per E-Mail.`+
+      `<br><br>${contactSentence()}`);
+  }catch(err){
+    $("err").textContent=err.message; $("err").classList.remove("hidden");
+    $("submitBtn").disabled=false; recalc();
+  }
+}
+
+["geraet","kaufpreis","premium"].forEach(id=>$(id).addEventListener("input",recalc));
+$("premium").addEventListener("change",recalc);
+document.querySelectorAll('input[name="zahlungsart"]').forEach(r=>r.addEventListener("change",()=>{
+  const sepa=zahlungsart()==="sepa_monatlich";
+  $("payOptSepa").classList.toggle("on",sepa); $("payOptYear").classList.toggle("on",!sepa);
+  $("sepaFields").classList.toggle("hidden",!sepa); $("yearInfo").classList.toggle("hidden",sepa);
+  recalc();
+}));
+["vorname","nachname"].forEach(id=>$(id).addEventListener("input",syncHolder));
+function showIbanHint(){
+  const v=$("iban").value, h=$("ibanHint");
+  if(!normalizeIban(v)){ h.textContent=""; return; }
+  const p=ibanProblem(v);
+  h.textContent = p ? "⚠ "+p : "✓ IBAN gültig";
+  h.style.color = p ? "var(--bad)" : "var(--good)";
+}
+$("iban").addEventListener("input",e=>{
+  const atEnd=e.target.selectionStart===e.target.value.length;
+  const v=normalizeIban(e.target.value).replace(/(.{4})/g,"$1 ").trim();
+  e.target.value=v; if(atEnd) e.target.selectionStart=e.target.selectionEnd=v.length;
+  e.target.classList.remove("invalid"); $("err").classList.add("hidden");
+  // Erst ab voller Länge bewerten, damit beim Tippen nicht sofort "falsch" erscheint.
+  const n=normalizeIban(v).length;
+  if(n>=20 || (n>=4 && !/^[A-Z]{2}\d{2}/.test(normalizeIban(v)))) showIbanHint(); else $("ibanHint").textContent="";
+});
+$("iban").addEventListener("blur",showIbanHint);
+// Alte Fehlermeldung ausblenden, sobald der Kunde etwas korrigiert.
+$("form").addEventListener("input",()=>$("err").classList.add("hidden"));
+$("form").addEventListener("change",()=>$("err").classList.add("hidden"));
+$("form").addEventListener("submit",submit);
+init();
+</script>
+</body>
+</html>

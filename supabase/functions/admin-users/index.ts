@@ -81,6 +81,66 @@ Deno.serve(async (req) => {
 
   const { data: profile, error: profErr } = await admin
     .from("profiles").select("role").eq("id", user.id).maybeSingle();
+
+  // After-Sales-Tool (Zugänge für Fachhändler, Einstellungen → After-Sales-
+  // Zugänge): darf JEDE Dashboard-Rolle, sobald ein Admin das Tool unter
+  // Admin-Panel → Funktionen freigeschaltet hat (dashboard_kv
+  // "aftersales_enabled"). Admin-Zugänge im Tool anlegen/ändern dürfen nur
+  // Dashboard-Admins (caller_is_admin, geprüft in aftersales-users).
+  // Die Nutzer leben im Event-Projekt (aftersales-users Edge Function) -
+  // gleiche URL-Basis + gleiches Secret wie der Events-Sync.
+  if (action === "aftersales") {
+    if (profErr || !profile || !["admin", "aussendienst", "trainer"].includes(profile.role)) {
+      return json({ error: "Kein Zugriff" }, 403);
+    }
+    const isAdmin = profile.role === "admin";
+    if (!isAdmin) {
+      const { data: kv } = await admin.from("dashboard_kv").select("value").eq("key", "aftersales_enabled").maybeSingle();
+      if (kv?.value !== "1") return json({ error: "Das After-Sales-Tool ist derzeit nicht freigeschaltet" }, 403);
+    }
+    const syncUrl = Deno.env.get("EVENTS_SYNC_URL");
+    const secret = Deno.env.get("EVENTS_SYNC_SECRET");
+    if (!syncUrl || !secret) return json({ error: "After-Sales-Verbindung nicht konfiguriert (EVENTS_SYNC_URL/SECRET fehlen)" }, 500);
+    const payload: Record<string, unknown> = { ...((body.payload || {}) as Record<string, unknown>), caller_is_admin: isAdmin, caller_email: user.email };
+    // Händlerdaten fürs Vorbefüllen im After-Sales-Tool: Adresse, E-Mail
+    // Geschäft, Telefon, Homepage aus fh_contacts; der Händlername steht dort
+    // nicht (Spalte leer), sondern nur im Tages-Snapshot (wg-state ->
+    // latest.fh, wie fhResolveNameOrt() im Dashboard) - daher zusätzlich per
+    // aftersales_fh_lookup(). Unbekannte FH-Nummern werden beim Anlegen
+    // abgelehnt, damit Zugänge immer zu unserem Datenstand passen.
+    if ((payload.op === "create" || payload.op === "dealer_sync") && payload.fh_nr) {
+      const fhNr = String(payload.fh_nr).trim();
+      const [{ data: fh }, { data: snap }] = await Promise.all([
+        admin.from("fh_contacts").select("strasse,plz,ort,email,telefon,homepage").eq("fh_nr", fhNr).maybeSingle(),
+        admin.rpc("aftersales_fh_lookup", { p_fh_nr: fhNr }),
+      ]);
+      if (!fh && !snap) {
+        return json({ error: `FH-Nummer ${fhNr} ist in unserem Datenstand nicht bekannt` }, 400);
+      }
+      payload.dealer = {
+        name: snap?.name || null,
+        strasse: fh?.strasse || null,
+        plz: fh?.plz || snap?.plz || null,
+        ort: fh?.ort || snap?.ort || null,
+        email: fh?.email || null,
+        telefon: fh?.telefon || null,
+        homepage: fh?.homepage || null,
+      };
+    }
+    const url = syncUrl.replace(/sync-user\/?$/, "aftersales-users");
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-sync-secret": secret },
+        body: JSON.stringify(payload),
+      });
+      const j = await res.json().catch(() => ({ error: "Ungültige Antwort vom After-Sales-Tool" }));
+      return json(j, res.ok ? 200 : res.status);
+    } catch (e) {
+      return json({ error: "After-Sales-Tool nicht erreichbar: " + String(e) }, 502);
+    }
+  }
+
   if (profErr || !profile || profile.role !== "admin") {
     return json({ error: "Nur Admins dürfen Nutzer verwalten" }, 403);
   }

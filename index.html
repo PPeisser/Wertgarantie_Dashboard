@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Wertgarantie Performance Dashboard Österreich</title>
 <!-- App-Symbol beim Hinzufügen zum Homebildschirm (iPhone/iPad) - blauer
      Wertgarantie-Pfeil auf weißem Grund. iOS rundet die Ecken selbst ab,
@@ -13,10 +13,84 @@
 <link rel="apple-touch-icon" sizes="120x120" href="icons/apple-touch-icon-120x120.png">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
 <meta name="apple-mobile-web-app-title" content="WG Dashboard">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<!-- Home-Bildschirm-App (PWA): Vollbild ohne Safari-Leiste, Statusleiste in
+     der Seitenfarbe, Startbildschirm mit Logo statt weißem Aufblitzen.
+     Startbilder je Gerätegröße (iOS wählt per media-Query genau eines). -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#EEF4F8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-startup-image" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1320x2868.png">
+<link rel="apple-touch-startup-image" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2868x1320.png">
+<link rel="apple-touch-startup-image" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1206x2622.png">
+<link rel="apple-touch-startup-image" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2622x1206.png">
+<link rel="apple-touch-startup-image" media="(device-width: 420px) and (device-height: 912px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1260x2736.png">
+<link rel="apple-touch-startup-image" media="(device-width: 420px) and (device-height: 912px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2736x1260.png">
+<link rel="apple-touch-startup-image" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1290x2796.png">
+<link rel="apple-touch-startup-image" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2796x1290.png">
+<link rel="apple-touch-startup-image" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1179x2556.png">
+<link rel="apple-touch-startup-image" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2556x1179.png">
+<link rel="apple-touch-startup-image" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1284x2778.png">
+<link rel="apple-touch-startup-image" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2778x1284.png">
+<link rel="apple-touch-startup-image" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1170x2532.png">
+<link rel="apple-touch-startup-image" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2532x1170.png">
+<link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1125x2436.png">
+<link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2436x1125.png">
+<link rel="apple-touch-startup-image" media="(device-width: 360px) and (device-height: 780px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1080x2340.png">
+<link rel="apple-touch-startup-image" media="(device-width: 360px) and (device-height: 780px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2340x1080.png">
+<link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1242x2688.png">
+<link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2688x1242.png">
+<link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-828x1792.png">
+<link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-1792x828.png">
+<link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1242x2208.png">
+<link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" href="icons/splash/splash-2208x1242.png">
+<link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-750x1334.png">
+<link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-1334x750.png">
+<link rel="apple-touch-startup-image" media="(device-width: 1032px) and (device-height: 1376px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-2064x2752.png">
+<link rel="apple-touch-startup-image" media="(device-width: 1032px) and (device-height: 1376px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-2752x2064.png">
+<link rel="apple-touch-startup-image" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-2048x2732.png">
+<link rel="apple-touch-startup-image" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-2732x2048.png">
+<link rel="apple-touch-startup-image" media="(device-width: 834px) and (device-height: 1210px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-1668x2420.png">
+<link rel="apple-touch-startup-image" media="(device-width: 834px) and (device-height: 1210px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-2420x1668.png">
+<link rel="apple-touch-startup-image" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-1668x2388.png">
+<link rel="apple-touch-startup-image" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-2388x1668.png">
+<link rel="apple-touch-startup-image" media="(device-width: 820px) and (device-height: 1180px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-1640x2360.png">
+<link rel="apple-touch-startup-image" media="(device-width: 820px) and (device-height: 1180px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-2360x1640.png">
+<link rel="apple-touch-startup-image" media="(device-width: 834px) and (device-height: 1112px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-1668x2224.png">
+<link rel="apple-touch-startup-image" media="(device-width: 834px) and (device-height: 1112px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-2224x1668.png">
+<link rel="apple-touch-startup-image" media="(device-width: 810px) and (device-height: 1080px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-1620x2160.png">
+<link rel="apple-touch-startup-image" media="(device-width: 810px) and (device-height: 1080px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-2160x1620.png">
+<link rel="apple-touch-startup-image" media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-1536x2048.png">
+<link rel="apple-touch-startup-image" media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-2048x1536.png">
+<link rel="apple-touch-startup-image" media="(device-width: 744px) and (device-height: 1133px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="icons/splash/splash-1488x2266.png">
+<link rel="apple-touch-startup-image" media="(device-width: 744px) and (device-height: 1133px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="icons/splash/splash-2266x1488.png">
+<script>
+// IS_STANDALONE_APP: true, wenn das Dashboard als App vom Home-Bildschirm
+// gestartet wurde (kein Safari-Rahmen, kein Zurück-Button). Dort dürfen PDFs
+// nicht in neuen Fenstern aufgehen (man käme nicht mehr zurück) - sie laufen
+// stattdessen über das iOS-Teilen-Menü (siehe deliverFileInApp()).
+var IS_STANDALONE_APP=!!(window.navigator.standalone||(window.matchMedia&&window.matchMedia("(display-mode: standalone)").matches));
+// html.is-app: CSS-Haken für App-spezifische Darstellung (z.B. die
+// hochkant gedrehte Monatsproduktion, siehe .mt-tall).
+if(IS_STANDALONE_APP) document.documentElement.classList.add("is-app");
+// iPhone/iPad: Safari zoomt beim Antippen eines Eingabefelds mit Schrift
+// < 16px automatisch hinein und bleibt dann vergrößert. maximum-scale=1
+// verhindert nur dieses Auto-Zoomen - Zoomen mit zwei Fingern bleibt auf iOS
+// trotzdem möglich. Bewusst NUR auf iOS gesetzt (Android würde damit das
+// Zoomen ganz sperren). iPadOS meldet sich als "MacIntel" mit Touch.
+(function(){
+  var ua=navigator.userAgent||"";
+  var isIOS=/iPhone|iPad|iPod/.test(ua)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+  if(!isIOS) return;
+  var vp=document.querySelector('meta[name="viewport"]');
+  if(vp&&vp.content.indexOf("maximum-scale")<0) vp.content+=", maximum-scale=1";
+})();
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" crossorigin="anonymous"></script>
 <style>
 :root{
   --wg-blue:#009FE3;
@@ -37,7 +111,7 @@
   --shadow:0 2px 10px rgba(6,42,63,.08);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html{-webkit-text-size-adjust:100%}
+html{-webkit-text-size-adjust:100%;background:var(--paper)}
 body{
   font-family:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
   background:var(--paper);
@@ -46,6 +120,10 @@ body{
   line-height:1.4;
 }
 .wrap{max-width:1440px;margin:0 auto;padding:16px 20px 40px}
+/* iPhone mit Notch/Dynamic Island bzw. Home-Indikator (viewport-fit=cover):
+   Inhalt nie unter Statusleiste, Kamera-Aussparung oder Home-Balken legen.
+   env() ist 0 auf Geräten ohne solche Bereiche - dort ändert sich nichts. */
+body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 
 /* Bug-Report 26.08.2026 (iPad Safari): Seite springt beim Scrollen
    selbstständig nach oben. Ursache: viele Listen (Beobachtungen, AKQ,
@@ -246,7 +324,7 @@ h2.sec small{font-weight:600;text-transform:none;color:var(--muted);letter-spaci
 .sp-row{display:flex;justify-content:space-between;align-items:center;padding:8px 4px;border-bottom:1px solid #ECF2F6;font-size:13px}
 .sp-row:last-of-type{border-bottom:none}
 .sp-row b{font-size:16px;font-weight:900;color:var(--wg-navy)}
-.modal.wide{max-width:760px;max-height:85vh;overflow:auto;overscroll-behavior:contain}
+.modal.wide{max-width:760px;max-height:85vh;max-height:85dvh;overflow:auto;overscroll-behavior:contain}
 .akp-h:first-child{margin-top:2px}
 .tabs.mini{padding:3px;border-radius:10px}
 .tabs.mini button{padding:4px 10px;font-size:11px;border-radius:7px}
@@ -445,6 +523,7 @@ td .betr{font-size:11px;color:var(--muted)}
 .modal-bg{
   position:fixed;inset:0;background:rgba(6,42,63,.55);
   display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;
+  padding:max(20px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));
 }
 /* FH- und AKP-Detail-PopUps werden von .fh-name-link/.akp-name-link aus
    praktisch JEDER Listen-/Übersichts-Kachel heraus geöffnet (Akquiseliste,
@@ -501,6 +580,9 @@ td .betr{font-size:11px;color:var(--muted)}
      eigentlicher Grund für die zeitweisen Fälle bislang nicht reproduzierbar,
      das hier ist eine defensive Absicherung dagegen, kein bestätigter Fix. */
   max-height:85vh;overflow:auto;overscroll-behavior:contain;
+  /* dvh = tatsächlich sichtbare Höhe (ohne ein-/ausfahrende Safari-Leisten);
+     ältere Browser ignorieren die Zeile und nehmen die vh-Angabe darüber. */
+  max-height:85dvh;
 }
 .modal h3{font-size:18px;color:var(--wg-navy);margin-bottom:4px}
 .modal p{font-size:13px;color:var(--muted);margin-bottom:14px}
@@ -567,6 +649,24 @@ td .betr{font-size:11px;color:var(--muted)}
 .ac-month-table td{text-align:right;padding:3px 6px;border-top:1px solid #ECF2F6}
 .ac-month-table td.empty{color:var(--muted)}
 .ac-month-table td.other-fh{color:var(--amber);font-weight:800}
+/* Monatsproduktion im FH-/AKP-PopUp gibt es in zwei Ausrichtungen:
+   .mt-wide = Jahre als Zeilen, Monate als Spalten (Desktop/Tablet + PDF),
+   .mt-tall = Monate als Zeilen, Jahre als Spalten (nur Handy-App, d.h.
+   html.is-app + schmaler Bildschirm; Browser unverändert). 14 Spalten passen
+   auf keinen Handy-Bildschirm und mussten seitlich gescrollt werden
+   (Nutzer-Feedback 04.10.2026) - hochkant gedreht passen mehrere Jahre ohne
+   Scrollen nebeneinander, und der Vorjahresvergleich je Monat steht direkt
+   in einer Zeile. Umschalten nur INNERHALB von #fhMonthly/#acMonthly/
+   #filialGruppeBody ("Alle Filialen"-Übersicht)/#fhMieteSection (Miete), damit
+   die PDFs (kopieren dieses HTML in ein eigenes Element) immer die breite
+   Variante zeigen, auch wenn sie am Handy erstellt werden. */
+.ac-month-table.mt-tall{display:none}
+.ac-month-table.mt-tall th,.ac-month-table.mt-tall td{padding:5px 8px;font-size:12.5px}
+.ac-month-table.mt-tall th{font-size:11.5px}
+.ac-month-table.mt-tall tr.cur td{background:#F2F8FC}
+.ac-month-table.mt-tall tr.sum td{border-top:2px solid var(--line);font-weight:800}
+.ac-month-table.mt-tall td.yoy-up{color:var(--pos);font-weight:700}
+.ac-month-table.mt-tall td.yoy-down{color:var(--neg);font-weight:700}
 .ac-month-note{font-size:11px;color:var(--muted);margin-top:8px;display:flex;align-items:center;gap:6px}
 .ac-month-note .dot-amber{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--amber);flex:none}
 .ac-yearly-table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
@@ -576,7 +676,7 @@ td .betr{font-size:11px;color:var(--muted)}
 
 /* ---------- Toast ---------- */
 #toast{
-  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  position:fixed;bottom:24px;bottom:calc(24px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
   background:var(--wg-navy);color:#fff;font-weight:700;font-size:13px;
   padding:12px 20px;border-radius:99px;box-shadow:var(--shadow);z-index:60;
   opacity:0;transition:opacity .3s;pointer-events:none;max-width:90vw;text-align:center;
@@ -780,6 +880,93 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
      nur die Jahr-Spalte fixieren, es gibt hier keine separate Namensspalte. */
   #fhMonthly td:first-child,#fhMonthly th:first-child,
   #acMonthly td:first-child,#acMonthly th:first-child{position:sticky;left:0;background:#fff;z-index:1;box-shadow:6px 0 8px -6px rgba(6,42,63,.35)}
+  /* Handy-App (Home-Bildschirm): hochkant gedrehte Tabelle statt der breiten
+     (siehe .mt-tall). Im normalen Browser bleibt die gewohnte Ansicht. */
+  html.is-app :is(#fhMonthly,#acMonthly,#filialGruppeBody,#fhMieteSection) .mt-wide{display:none}
+  html.is-app :is(#fhMonthly,#acMonthly,#filialGruppeBody,#fhMieteSection) .mt-tall{display:table}
+  /* Jahresvergleich (FH-/AKP-PopUp, "Alle Filialen"): eine Karte je Jahr -
+     Jahr als Überschrift, darunter Erfasst/Summe/vs. Vorjahr (FH zusätzlich
+     beitragsfrei + 3-für-2-Quote) mit kleiner Beschriftung (data-label). */
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt :is(tbody,tr,td){display:block}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt{display:block}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt thead{display:none}
+  /* neuestes Jahr oben - wie die hochkant gedrehte Monatstabelle (neuestes links) */
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt tbody{display:flex;flex-direction:column-reverse}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt tr{
+    display:flex;flex-wrap:wrap;gap:6px 10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:#fff;
+  }
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt td{border:0;padding:0;text-align:left;white-space:nowrap}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt td:first-child{flex-basis:100%;font-size:14px;color:var(--wg-navy)}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt td[data-label]{flex:1 1 26%;min-width:0;order:3}
+  /* Summe + Vorjahresvergleich zuerst (wichtigste Zahlen), Rest darunter */
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt td[data-label="Summe"]{order:1;flex-basis:30%}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt td[data-label="vs. Vorjahr"]{order:2;flex-basis:55%}
+  /* Kompakte Listen im Dashboard selbst (nur Handy-App): Top/Flop Händler,
+     Akquise ohne Produktion, 9-Wochen-Plan. Bewusst KEINE Karten (würde die
+     Startseite sehr lang machen), sondern eine dichte Zeile je Eintrag:
+     oben Rang/Symbol + Name (+ Nr/Ort) + Hauptwert rechts (c-main: Stück
+     bzw. Telefon bzw. Resttage), darunter die übrigen Werte klein in einer
+     Zeile mit Kurzbeschriftung (data-label). Nicht im Dashboard-PDF
+     (body.pdf-mode fotografiert die Seite selbst). */
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) :is(table,tbody,tr,td){display:block}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) thead{display:none}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody){overflow-x:hidden !important}
+  /* Akquise/9-Wochen haben eine feste Höhe (max-height inline) - innerhalb
+     dieser Box muss weiter senkrecht gescrollt werden können. */
+  html.is-app body:not(.pdf-mode) :is(#akqOpBody,#nwBody){overflow-y:auto !important;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) tr{display:flex;flex-wrap:wrap;align-items:center;column-gap:8px;row-gap:3px;padding:7px 2px;border-bottom:1px solid #ECF2F6}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) tr:last-child{border-bottom:0}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) tr::before{content:"";flex-basis:100%;height:0;order:4}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td{border:0;padding:0;text-align:left;white-space:nowrap;order:5;font-size:12px;max-width:none}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td.c-lead{order:1;flex:none}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td.c-name{order:2;flex:1 1 0;min-width:0}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td.c-name :is(.hname,b,.betr){max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td.c-main{order:3;flex:none;text-align:right;font-size:14px}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td.c-name br{display:none}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td.c-addr{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td[data-label="Termine"] .betr{font-size:10px}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) .c-yr{display:none}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td.c-addr .akqop-addr{height:auto;max-width:none;-webkit-line-clamp:unset;display:inline}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td[data-label]:not(.c-main)::before{content:attr(data-label) " ";font-size:10px;font-weight:700;color:var(--muted)}
+  html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td.c-main[data-label]::after{content:" " attr(data-label);display:block;font-size:9.5px;font-weight:700;color:var(--muted);text-align:right}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt td[data-label]::before{
+    content:attr(data-label);display:block;font-size:9.5px;font-weight:800;letter-spacing:.3px;
+    text-transform:uppercase;color:var(--muted);margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;
+  }
+  html.is-app #fhMonthly .mt-tall tr.cur td:first-child,html.is-app #acMonthly .mt-tall tr.cur td:first-child{background:#F2F8FC}
+  /* Kartenansicht (nur Handy-App, Nutzer-Feedback 04.10.2026): Akquisestaffeln
+     und Top & Flop Händler/AKP als eine Karte je Zeile statt einer breiten
+     Tabelle - oben Rang + Name, darunter die Kennzahlen mit kleiner
+     Beschriftung (data-label der Zelle). Kein seitliches Scrollen mehr;
+     hebt dafür die fixierten Spalten von oben wieder auf. Im Browser und
+     im PDF bleibt die Tabelle. */
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) :is(table,tbody,tr,td){display:block}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) thead{display:none}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody){overflow:visible !important}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) tr{
+    display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px 6px;
+    border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:#fff;
+  }
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td{
+    position:static !important;box-shadow:none !important;background:none !important;
+    border:0;padding:0;white-space:normal;text-align:left;
+  }
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td:first-child{flex:0 0 auto;padding-top:1px}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td:nth-child(2){flex:1 1 0;min-width:0}
+  /* Zeilenumbruch nach Rang + Name: ::before ist selbst ein Flex-Element
+     mit voller Breite und sitzt per order zwischen Kopf und Kennzahlen. */
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) tr::before{content:"";flex-basis:100%;height:0;order:2}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td{order:1}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td[data-label]{order:3}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td:nth-child(2) .hname{max-width:100%;white-space:normal;text-align:left}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td[data-label]{flex:1 1 0;min-width:0;font-size:13px;white-space:nowrap}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td[data-label].card-wide{flex-basis:100%}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td[data-label="VT"]{flex:0 0 34px;text-align:right}
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td[data-label]::before{
+    content:attr(data-label);display:block;font-size:9.5px;font-weight:800;letter-spacing:.3px;
+    text-transform:uppercase;color:var(--muted);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  html.is-app :is(#aqmBody,#ftfTopTable,#ftfFlopTable,#amBody) td[data-label=""]::before{content:"\00a0"}
 }
 @media (max-width:480px){
   .ac-grid{grid-template-columns:1fr}
@@ -1001,6 +1188,15 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <button class="btn btn-blue" id="setPwBtn">Ändern</button>
     </div>
     <div class="error" id="setPwHint"></div>
+
+    <div id="setAftersalesSection" class="hidden">
+      <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">After-Sales-Tool</h4>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-blue" id="setAftersalesBtn">🛒 Zugänge verwalten</button>
+        <a class="btn btn-ghost" href="https://wertgarantie-aftersales.vercel.app" target="_blank" rel="noopener" style="text-decoration:none">↗ Tool öffnen</a>
+      </div>
+      <div class="hint">Fachhändler-Zugänge (immer mit FH-Nummer) fürs After-Sales-Tool anlegen, Passwort zurücksetzen oder deaktivieren. Mit Ihrem Dashboard-Login sind Sie im Tool selbst Admin.</div>
+    </div>
 
     <h4 style="margin:20px 0 8px;color:var(--wg-navy);font-size:14px">Benachrichtigungen</h4>
     <div style="display:flex;flex-direction:column;gap:13px">
@@ -1264,7 +1460,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 <div class="modal-bg hidden" id="trainerbesuchModal">
   <div class="modal wide">
     <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
-      <h3 style="margin:0">Trainerbesuch anlegen</h3>
+      <h3 style="margin:0" id="trainerbesuchModalTitle">Trainerbesuch anlegen</h3>
       <button class="btn btn-ghost" id="trainerbesuchClose" style="padding:7px 12px">✕ Schließen</button>
     </div>
     <div class="ac-grid" style="grid-template-columns:220px">
@@ -1721,6 +1917,47 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
   </div>
 </div>
 
+<!-- PopUp "After-Sales-Zugänge" (Nutzervorgabe 19.10.2026; geöffnet aus den
+     Einstellungen, für jede Rolle, sobald aftersalesEnabled): Logins
+     fürs After-Sales-Tool der Fachhändler (eigene App unter aftersales/,
+     Daten im Event-Projekt). Alle Dashboard-Nutzer sind dort automatisch
+     Admin (Spiegelung über sync-user); hier werden zusätzlich Zugänge mit
+     FH-Nummer angelegt (Standardpasswort WG_AfterSales_2027). Aufrufe laufen
+     über admin-users (action "aftersales") → aftersales-users im Event-
+     Projekt. -->
+<div class="modal-bg hidden" id="adminAftersalesModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
+      <h3 style="margin:0">After-Sales-Tool – Zugänge</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <a class="btn btn-ghost" id="adminAftersalesOpen" href="https://wertgarantie-aftersales.vercel.app" target="_blank" rel="noopener" style="padding:7px 12px;text-decoration:none">↗ Tool öffnen</a>
+        <button class="btn btn-ghost" id="adminAftersalesClose" style="padding:7px 12px">✕ Schließen</button>
+      </div>
+    </div>
+    <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px">Alle Dashboard-Logins sind im After-Sales-Tool automatisch Admin (sehen und verwalten alles). Neue Zugänge werden immer mit einer FH-Nummer verknüpft; Benutzername ist die E-Mail-Adresse.</p>
+    <h4 style="margin:8px 0;color:var(--wg-navy);font-size:14px">Neuen Zugang anlegen</h4>
+    <div style="position:relative;margin-bottom:8px">
+      <input type="text" id="asFhSearch" placeholder="🔎 Fachhändler suchen (FH-Nummer, Name oder Ort) …" autocomplete="off" style="width:100%;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <div id="asFhResults" class="hidden" style="position:absolute;left:0;right:0;top:100%;z-index:5;background:#fff;border:2px solid var(--line);border-radius:10px;margin-top:4px;max-height:280px;overflow:auto;box-shadow:0 10px 24px rgba(6,42,63,.15)"></div>
+    </div>
+    <div id="asFhInfo" class="hidden" style="font-size:12.5px;border-radius:10px;padding:9px 12px;margin-bottom:8px"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input type="text" id="asName" placeholder="Name" autocomplete="off" style="flex:1;min-width:150px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <input type="email" id="asEmail" placeholder="E-Mail (= Benutzername)" autocomplete="off" style="flex:1;min-width:190px;font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <input type="text" id="asFh" placeholder="FH-Nummer" autocomplete="off" readonly title="Über die Suche oben auswählen" style="width:130px;background:var(--panel-2,#F3F7FA);font-size:14px;font-weight:600;text-align:left;text-transform:none;border:2px solid var(--line);border-radius:10px;padding:9px 12px">
+      <select id="asRole" style="border:2px solid var(--line);border-radius:10px;padding:9px 12px;font:inherit">
+        <option value="fachhaendler">Fachhändler</option>
+        <option value="admin" class="as-admin-only">Admin</option>
+      </select>
+      <button class="btn btn-blue" id="asCreateBtn">Anlegen</button>
+    </div>
+    <div class="hint">Standardpasswort: <b>WG_AfterSales_2027</b> - muss beim ersten Login geändert werden. Händlerdaten (Name, Adresse, E-Mail Geschäft, Telefon, Homepage) werden aus der FH-Kontaktdatenbank übernommen und können im Tool ergänzt werden (inkl. Logo).</div>
+    <div class="error" id="asCreateHint"></div>
+    <h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:14px">Zugänge</h4>
+    <div id="asUserList" style="max-height:420px;overflow:auto"></div>
+  </div>
+</div>
+
 <!-- Admin: PopUp "Trainerbetreuung" - Nutzervorgabe 22.09.2026: alle je
      versendeten periodischen Fortschrittsberichte (PDF, siehe
      trainerbetreuung-weekly-mail Edge Function), nach Datum sortiert, zum
@@ -1811,6 +2048,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
         <input type="checkbox" id="stornoquotenEnabledChk" style="width:17px;height:17px;flex-shrink:0">
         Stornoquoten (AKP-PopUp)
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
+        <input type="checkbox" id="aftersalesEnabledChk" style="width:17px;height:17px;flex-shrink:0">
+        After-Sales-Tool (Zugangsverwaltung in den Einstellungen für alle Rollen)
       </label>
       <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;background:var(--panel-2,#F3F7FA);border-radius:8px;padding:8px 12px;width:fit-content">
         <input type="checkbox" id="akqImportNotifyEnabledChk" style="width:17px;height:17px;flex-shrink:0">
@@ -2416,6 +2657,10 @@ let akquisetoolEnabled = false;
 // dashboard_kv prüft - hier nur für die Checkbox-Anzeige im Admin-Panel).
 // Default true, da die Benachrichtigung sofort aktiv sein soll.
 let akqImportNotifyEnabled = true;
+// After-Sales-Tool (19.10.2026) - Admin-Freischalter (Funktionen). Nur wenn
+// aktiv, erscheint "After-Sales-Tool" in den Einstellungen (für jede Rolle);
+// admin-users prüft denselben dashboard_kv-Key serverseitig für Nicht-Admins.
+let aftersalesEnabled = false;
 // Zeitpunkt der letzten Miete-Report-Einspielung (dashboard_kv-Key
 // "miete_last_import", von upsertMieteData() bei jedem Import gesetzt -
 // deckt sowohl den Admin-Panel-Upload als auch den automatischen
@@ -2738,6 +2983,13 @@ async function finalizePdf(pdf, filename, windowRef){
     else toast("Mailversand fehlgeschlagen: "+((res&&res.error)||"unbekannter Fehler"));
     return;
   }
+  // Home-Bildschirm-App: kein neues Fenster/kein Download-Link, sondern das
+  // iOS-Teilen-Menü (Sichern in Dateien, AirDrop, Mail, Drucken, ...).
+  if(IS_STANDALONE_APP){
+    if(windowRef){ try{ windowRef.close(); }catch(e){} }
+    deliverFileInApp(pdf.output("blob"),filename,"application/pdf");
+    return;
+  }
   if(windowRef!==undefined){
     const blobUrl=pdf.output("bloburl");
     if(windowRef) windowRef.location.href=blobUrl; else window.open(blobUrl,"_blank");
@@ -2835,6 +3087,134 @@ async function createAdminUser(){
   $("adName").value=""; $("adEmail").value="";
   toast("Nutzer angelegt: "+email+" (Erstpasswort: WertGARANTIE)");
   loadAdminUsers();
+}
+// After-Sales-Zugänge (19.10.2026): gleiche Bauweise wie loadAdminUsers(),
+// aber die Nutzer leben im Event-Projekt - alle Operationen laufen über
+// admin-users (action "aftersales", payload.op) → aftersales-users.
+// Gespiegelte Dashboard-Nutzer (as_managed=false) sind dort Admin und
+// werden weiterhin nur hier im Dashboard angelegt/gelöscht.
+async function callAftersalesFn(op, extra){
+  return callAdminFn("aftersales",{ payload:{ op, ...(extra||{}) } });
+}
+async function loadAftersalesUsers(){
+  const box=$("asUserList");
+  box.innerHTML="<p style='color:var(--muted)'>Lädt …</p>";
+  const res=await callAftersalesFn("list");
+  if(!res || res.error || !res.users){ box.innerHTML="<p style='color:var(--neg)'>Fehler beim Laden: "+escapeHtml((res&&res.error)||"unbekannt")+"</p>"; return; }
+  const users=res.users;
+  const isAdm=myRole==="admin";
+  document.querySelectorAll("#asRole .as-admin-only").forEach(o=>{ o.hidden=!isAdm; o.disabled=!isAdm; });
+  if(!isAdm) $("asRole").value="fachhaendler";
+  const dealerBy=new Map((res.dealers||[]).map(d=>[d.fh_nr,d]));
+  box.innerHTML = users.map(u=>{
+    // Nicht-Admins dürfen Admin-Zugänge nur sehen, nicht ändern (Server prüft das ebenfalls).
+    const managed=u.as_managed && (isAdm || u.role!=="admin");
+    const locked=!isAdm && u.role==="admin";
+    const dl=u.fh_nr?dealerBy.get(u.fh_nr):null;
+    return `<div data-id="${u.id}" data-email="${escapeHtml(u.email)}" style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
+      ${managed
+        ? `<input class="as-name" value="${escapeHtml(u.name)}" placeholder="Name" style="flex:1;min-width:130px;font-weight:700;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">`
+        : `<span style="flex:1;min-width:130px;font-weight:700">${escapeHtml(u.name||"–")} <span style="font-size:11px;color:var(--muted);font-weight:600">(Dashboard-Login)</span></span>`}
+      <span style="flex:1;min-width:170px;color:var(--muted);font-size:12.5px">${escapeHtml(u.email)||"–"}${u.must_change_password&&managed?' <span style="color:var(--warn,#C27C00)">· Startpasswort</span>':""}${u.fh_nr?`<br><span style="color:var(--ink)">${escapeHtml((dl&&dl.name)||fhResolveNameOrt(u.fh_nr).name)}</span>`:""}</span>
+      <input class="as-fh" value="${escapeHtml(u.fh_nr||"")}" placeholder="FH-Nr" title="FH-Nummer${dl&&dl.name?": "+escapeHtml(dl.name):""}" ${locked?"disabled":""} style="width:100px;border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
+      ${managed
+        ? `<select class="as-role" style="border:2px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit">
+            <option value="fachhaendler" ${u.role==="fachhaendler"?"selected":""}>Fachhändler</option>
+            <option value="admin" ${u.role==="admin"?"selected":""}>Admin</option></select>`
+        : `<span style="font-size:12px;width:96px">Admin</span>`}
+      <label style="display:flex;align-items:center;gap:4px;font-size:12px" title="Zugang zum After-Sales-Tool"><input type="checkbox" class="as-access" ${u.aftersales_access?"checked":""} ${locked?"disabled":""} style="width:16px;height:16px"> aktiv</label>
+      ${u.fh_nr&&!locked?`<button class="btn btn-ghost as-dealer" data-fh="${escapeHtml(u.fh_nr)}" title="Händlerdaten (Name, Adresse, E-Mail Geschäft, Telefon, Homepage) aus der FH-Kontaktdatenbank ins After-Sales-Tool übernehmen" style="padding:6px 10px;font-size:12px">↻ Händlerdaten${dl&&dl.name?"":" ⚠"}</button>`:""}
+      ${managed?`<button class="btn btn-ghost as-reset" style="padding:6px 10px;font-size:12px">Passwort zurücksetzen</button>
+      <button class="btn btn-ghost as-delete" style="padding:6px 10px;font-size:12px;color:var(--neg)">Löschen</button>`:""}
+    </div>`;
+  }).join("") || "<p style='color:var(--muted)'>Keine Zugänge.</p>";
+  const upd=async(el,patch,msg)=>{
+    const row=el.closest("[data-id]");
+    const r=await callAftersalesFn("update",{ userId:row.dataset.id, ...patch });
+    toast(r.error?("Fehler: "+r.error):msg);
+    if(r.error) loadAftersalesUsers();
+  };
+  box.querySelectorAll(".as-name").forEach(i=>i.onchange=e=>upd(e.target,{name:e.target.value.trim()},"Name aktualisiert"));
+  box.querySelectorAll(".as-fh").forEach(i=>i.onchange=e=>upd(e.target,{fh_nr:e.target.value.trim()},"FH-Nummer aktualisiert"));
+  box.querySelectorAll(".as-role").forEach(i=>i.onchange=e=>upd(e.target,{role:e.target.value},"Rolle aktualisiert"));
+  box.querySelectorAll(".as-access").forEach(i=>i.onchange=e=>upd(e.target,{aftersales_access:e.target.checked},e.target.checked?"Zugang aktiviert":"Zugang deaktiviert"));
+  box.querySelectorAll(".as-dealer").forEach(b=>b.onclick=async e=>{
+    const fh=e.target.dataset.fh;
+    if(!confirm("Händlerdaten für FH "+fh+" aus der FH-Kontaktdatenbank übernehmen? Bereits im Tool gepflegte Angaben werden überschrieben (das Logo bleibt erhalten).")) return;
+    const r=await callAftersalesFn("dealer_sync",{ fh_nr:fh });
+    toast(r.error?("Fehler: "+r.error):"Händlerdaten übernommen ✓");
+    if(!r.error) loadAftersalesUsers();
+  });
+  box.querySelectorAll(".as-reset").forEach(b=>b.onclick=async e=>{
+    const row=e.target.closest("[data-id]");
+    if(!confirm("Passwort von "+row.dataset.email+" auf das Standardpasswort WG_AfterSales_2027 zurücksetzen?")) return;
+    const r=await callAftersalesFn("reset_password",{ userId:row.dataset.id });
+    toast(r.error?("Fehler: "+r.error):"Passwort zurückgesetzt (WG_AfterSales_2027)");
+    if(!r.error) loadAftersalesUsers();
+  });
+  box.querySelectorAll(".as-delete").forEach(b=>b.onclick=async e=>{
+    const row=e.target.closest("[data-id]");
+    if(!confirm("Zugang "+row.dataset.email+" wirklich löschen?")) return;
+    const r=await callAftersalesFn("delete",{ userId:row.dataset.id });
+    if(r.error) toast("Fehler: "+r.error); else { toast("Zugang gelöscht"); loadAftersalesUsers(); }
+  });
+}
+// Händlersuche (Nutzervorgabe 19.10.2026): FH-Nummer, Name oder Ort gegen
+// unseren Datenstand (state.latest.fh, Namen wie fhResolveNameOrt()). Die
+// Auswahl setzt die FH-Nummer und befüllt Name/E-Mail aus dem Ansprech-
+// partner der FH-Kontaktdatenbank vor; admin-users übernimmt die Händlerdaten
+// beim Anlegen serverseitig und lehnt unbekannte FH-Nummern ab.
+function asFhCandidates(q){
+  const fh=(state.latest&&state.latest.fh)||{};
+  const n=q.trim().toLowerCase();
+  if(n.length<2) return [];
+  const out=[];
+  for(const [nr,f] of Object.entries(fh)){
+    const name=(f&&f.name)||"", ort=(f&&f.ort)||"";
+    const hay=(nr+" "+name+" "+ort).toLowerCase();
+    if(nr.startsWith(n) || hay.includes(n)) out.push({nr,name:name||fhResolveNameOrt(nr).name,ort,plz:(f&&f.plz)||""});
+    if(out.length>=30) break;
+  }
+  return out.sort((a,b)=>(a.nr.startsWith(n)?0:1)-(b.nr.startsWith(n)?0:1)||a.name.localeCompare(b.name)).slice(0,10);
+}
+function renderAsFhResults(){
+  const list=asFhCandidates($("asFhSearch").value);
+  const box=$("asFhResults");
+  if(!list.length){ box.innerHTML=$("asFhSearch").value.trim().length>=2?'<div style="padding:10px 12px;color:var(--muted);font-size:13px">Kein Fachhändler gefunden.</div>':""; box.classList.toggle("hidden",$("asFhSearch").value.trim().length<2); return; }
+  box.innerHTML=list.map(f=>`<div class="as-fh-hit" data-nr="${escapeHtml(f.nr)}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--line);font-size:13px"><b>${escapeHtml(f.name)}</b> <span style="color:var(--muted)">· FH ${escapeHtml(f.nr)}${f.ort?" · "+escapeHtml([f.plz,f.ort].filter(Boolean).join(" ")):""}</span></div>`).join("");
+  box.classList.remove("hidden");
+}
+async function selectAsFh(nr){
+  $("asFhResults").classList.add("hidden");
+  const r=fhResolveNameOrt(nr);
+  $("asFh").value=nr;
+  $("asFhSearch").value=r.name+" (FH "+nr+")";
+  const info=$("asFhInfo");
+  info.style.background="#E8F7EE"; info.style.color="#0B6B34";
+  info.innerHTML=`✓ <b>${escapeHtml(r.name)}</b> · FH ${escapeHtml(nr)}${r.ort?" · "+escapeHtml(r.ort):""} – Händlerdaten werden beim Anlegen übernommen.`;
+  info.classList.remove("hidden");
+  try{
+    const { data:c } = await sb.from("fh_contacts").select("ansprechpartner,ansprechpartner_email,email,telefon,strasse,plz,ort").eq("fh_nr",nr).maybeSingle();
+    if(c){
+      if(!$("asName").value.trim() && c.ansprechpartner) $("asName").value=c.ansprechpartner;
+      if(!$("asEmail").value.trim() && (c.ansprechpartner_email||c.email)) $("asEmail").value=c.ansprechpartner_email||c.email;
+      const addr=[c.strasse,[c.plz,c.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+      info.innerHTML+=`<br><span style="color:var(--muted)">${escapeHtml([addr,c.telefon,c.email].filter(Boolean).join(" · "))}</span>`;
+    }
+  }catch(e){}
+}
+async function createAftersalesUser(){
+  const name=$("asName").value.trim(), email=$("asEmail").value.trim(), fh_nr=$("asFh").value.trim(), role=$("asRole").value;
+  if(!fh_nr){ $("asCreateHint").textContent="Bitte zuerst den Fachhändler über die Suche auswählen."; return; }
+  if(!name||!email){ $("asCreateHint").textContent="Bitte Name und E-Mail eingeben."; return; }
+  $("asCreateBtn").disabled=true;
+  const res=await callAftersalesFn("create",{ name, email, fh_nr, role });
+  $("asCreateBtn").disabled=false;
+  if(res.error){ $("asCreateHint").textContent=res.error; return; }
+  $("asCreateHint").textContent="";
+  $("asName").value=""; $("asEmail").value=""; $("asFh").value=""; $("asFhSearch").value=""; $("asFhInfo").classList.add("hidden");
+  toast("Zugang angelegt: "+email+" (Startpasswort: WG_AfterSales_2027)"+(res.dealer==="ok"?" · Händlerdaten übernommen":""));
+  loadAftersalesUsers();
 }
 // Mitarbeiterverwaltung (Punkt 10, 01.09.2026): CRUD-Vorbild 1:1 aus
 // loadAdminUsers()/createAdminUser() oben übernommen, aber OHNE Edge
@@ -2940,6 +3320,7 @@ function openAdminModal(){
   $("empRankingEnabledChk").checked=empRankingEnabled;
   $("stornoquotenEnabledChk").checked=stornoquotenEnabled;
   $("akqImportNotifyEnabledChk").checked=akqImportNotifyEnabled;
+  $("aftersalesEnabledChk").checked=aftersalesEnabled;
   $("akquisequoteAtEnabledChk").checked=akquisequoteAtEnabled;
   $("neunWochenAllEnabledChk").checked=neunWochenAllEnabled;
   $("trainerbetreuungEnabledChk").checked=trainerbetreuungEnabled;
@@ -2949,6 +3330,7 @@ function openAdminModal(){
 // stößt den Browser-Download an - Muster wie pdf.save() bei jsPDF-Exporten,
 // aber hier für bereits fertige (nicht selbst gebaute) Dateien.
 function downloadBlob(blob,filename){
+  if(IS_STANDALONE_APP){ deliverFileInApp(blob,filename,blob.type||"application/pdf"); return; }
   const url=URL.createObjectURL(blob);
   const a=document.createElement("a");
   a.href=url; a.download=filename; document.body.appendChild(a); a.click();
@@ -3426,6 +3808,16 @@ async function toggleStornoquotenEnabled(){
     toast("Speichern fehlgeschlagen: "+(e.message||e));
   }
 }
+async function toggleAftersalesEnabled(){
+  const on=$("aftersalesEnabledChk").checked;
+  aftersalesEnabled=on;
+  try{
+    await stSet("aftersales_enabled",on?"1":"0");
+    toast(on?"After-Sales-Tool aktiviert ✓":"After-Sales-Tool deaktiviert");
+  }catch(e){
+    toast("Speichern fehlgeschlagen: "+(e.message||e));
+  }
+}
 async function toggleAkqImportNotifyEnabled(){
   const on=$("akqImportNotifyEnabledChk").checked;
   akqImportNotifyEnabled=on;
@@ -3548,6 +3940,7 @@ function showSettingsModal(){
   $("setFhEnabled").checked=!!userSettings.notif_fh_enabled;
   $("setFhDays").value=String(userSettings.notif_fh_days||30);
   $("setTbFreq").value=userSettings.notif_trainerbetreuung_frequency||"weekly";
+  $("setAftersalesSection").classList.toggle("hidden",!aftersalesEnabled);
   $("settingsModal").classList.remove("hidden");
   renderImportLog();
 }
@@ -4048,6 +4441,13 @@ werden. Die Alias-Nr verschwindet dadurch überall als eigener Eintrag;
 Kennzahlen (Produktion etc.) werden an den drei Konstruktionsstellen addiert. */
 let FH_DUP_MAP={}; // alias_fh_nr -> canonical_fh_nr
 let FH_DUP_ALIASES={}; // canonical_fh_nr -> [alias_fh_nr,...] (Kehrwert von FH_DUP_MAP, für Deckungsgrad-Fallback)
+// Markiert einen tatsächlich ABGESCHLOSSENEN (nicht zwingend fehlerfreien
+// Versuch würde reichen, aber hier: erfolgreichen) Ladeversuch - anders als
+// Object.keys(FH_DUP_MAP).length, das bei aktuell 0 bekannten FH-Duplikaten
+// (ein völlig normaler, häufiger Zustand) fälschlich wie "noch nicht
+// geladen" aussähe. Siehe processPendingImports()-Guard (Bug-Report
+// 29.09.2026, gleiche Fehlerklasse wie beim EMPLOYEES-Leerbleiben).
+let fhDupMergesLoaded=false;
 async function loadFhDuplicateMerges(){
   if(!sb){ FH_DUP_MAP={}; FH_DUP_ALIASES={}; return; }
   // Retry wie bei loadEmployees() oben (gleiches Muster: einmaliger
@@ -4059,6 +4459,7 @@ async function loadFhDuplicateMerges(){
     FH_DUP_MAP[r.alias_fh_nr]=r.canonical_fh_nr;
     (FH_DUP_ALIASES[r.canonical_fh_nr]||(FH_DUP_ALIASES[r.canonical_fh_nr]=[])).push(r.alias_fh_nr);
   }
+  fhDupMergesLoaded=true;
 }
 function resolveFhDup(nr){
   return (nr&&FH_DUP_MAP[nr])||nr;
@@ -5432,8 +5833,24 @@ async function processPendingImports(){
   // Vorfall 29.09.2026: heutige Tagesauswertung landete komplett unter
   // "x_"-Schlüsseln). Harte Absicherung direkt hier, unabhängig vom
   // Aufrufer: ist EMPLOYEES gerade leer, zuerst (erneut) laden, bevor
-  // überhaupt eine Excel-Datei geparst/gemergt wird.
+  // überhaupt eine Excel-Datei geparst/gemergt wird. Bleibt EMPLOYEES
+  // TROTZDEM leer (z.B. anhaltender Netzwerkausfall), lieber diesen
+  // gesamten Durchlauf abbrechen (Zeilen bleiben "pending" und werden beim
+  // nächsten Aufruf erneut versucht) als mit garantiert falscher
+  // Namenszuordnung zu mergen - das war exakt der Fehler vom 29.09.2026.
   if(!EMPLOYEES.length) await loadEmployees();
+  if(!EMPLOYEES.length){
+    console.error("processPendingImports abgebrochen: EMPLOYEES konnte nicht geladen werden.");
+    return;
+  }
+  // Gleiche Bug-Klasse, gleiche Absicherung: parseAuswertung() löst FH-
+  // Nummern über resolveFhDup()/FH_DUP_MAP auf (siehe Kommentar dort) -
+  // ohne bereits geladenes FH_DUP_MAP würde ein zusammengeführtes FH-
+  // Duplikat-Paar beim Merge fälschlich wieder als zwei getrennte Fachhändler
+  // auftauchen. fhDupMergesLoaded (statt Object.keys(FH_DUP_MAP).length, das
+  // bei 0 aktuell bekannten Duplikaten fälschlich "nicht geladen" bedeuten
+  // würde) markiert einen tatsächlich abgeschlossenen Ladeversuch.
+  if(!fhDupMergesLoaded) await loadFhDuplicateMerges();
   try{
     // Reclaim-Fix (Bug-Report 19.09.2026: "musste 2x mailen, damit es
     // übernommen wurde"): eine Zeile wird VOR der eigentlichen Verarbeitung
@@ -7744,6 +8161,7 @@ async function loadAll(){
   try{ const dgv=kv["deckungsgrad_visible_metrics"]; if(dgv) dgVisibleMetrics=JSON.parse(dgv); }catch(e){}
   { const erv=kv["emp_ranking_enabled"]; empRankingEnabled = erv==null ? true : erv==="1"; }
   stornoquotenEnabled=kv["stornoquoten_enabled"]==="1";
+  aftersalesEnabled=kv["aftersales_enabled"]==="1";
   { const ainv=kv["akq_import_notify_enabled"]; akqImportNotifyEnabled = ainv==null ? true : ainv==="1"; }
   { const pev=kv["perf_ergaenzungen_enabled"]; perfErgaenzungenEnabled = pev==null ? true : pev==="1"; }
   akquisequoteAtEnabled=kv["akquisequote_at_enabled"]==="1";
@@ -8472,9 +8890,9 @@ function openAkqStaffelnModal(){
     rows.map((r,i)=>`<tr>
       <td><span class="rank">${i+1}</span></td>
       <td><button type="button" class="hname fh-name-link" data-fh-nr="${escapeHtml(r.fhNr)}">${escapeHtml(r.name)}</button><br><span class="betr">${escapeHtml(r.fhNr)}${r.ort?" · "+escapeHtml(r.ort):""}${r.betreuer?" · "+escapeHtml(r.betreuer):""}</span></td>
-      <td class="r" style="font-weight:900">${r.punkte!=null?fmt(r.punkte):"–"}</td>
-      <td class="r"><span class="pill ${r.reachedCount>=7?"pos":"neu"}">${r.reachedCount}/7</span></td>
-      <td style="font-size:11.5px;color:var(--muted)">${r.next?`noch ${fmt(r.next.missing)} bis Staffel ${r.next.nextIdx+1} (${r.next.threshold})`:`<span class="pos-t">alle 7 erreicht 🏆</span>`}</td>
+      <td class="r" style="font-weight:900" data-label="Punkte">${r.punkte!=null?fmt(r.punkte):"–"}</td>
+      <td class="r" data-label="Staffeln"><span class="pill ${r.reachedCount>=7?"pos":"neu"}">${r.reachedCount}/7</span></td>
+      <td class="card-wide" style="font-size:11.5px;color:var(--muted)" data-label="Nächste Stufe">${r.next?`noch ${fmt(r.next.missing)} bis Staffel ${r.next.nextIdx+1} (${r.next.threshold})`:`<span class="pos-t">alle 7 erreicht 🏆</span>`}</td>
     </tr>`).join("")+`</tbody></table>`:`<div class="empty-note">Keine Akquisestaffel-Daten für diese Ansicht.</div>`;
   $("akqStaffelnModal").classList.remove("hidden");
 }
@@ -8600,6 +9018,9 @@ function tbl(rows,showGL,p,labels,kind){
   let head;
   if(flopNoHist) head=`<th class="r">Vortag</th><th class="r">Ø/Tag Monat</th><th class="r">Monat</th><th class="r"></th>`;
   else head=`<th class="r">${labels[p][0]}</th><th class="r">${labels[p][1]}</th><th class="r">+/− Stk.</th><th class="r">+/− %</th>`;
+  // data-label = Spaltenname je Zelle, für die Kartenansicht in der Handy-App
+  // (siehe "Kartenansicht" im CSS) - dort gibt es keinen Tabellenkopf.
+  const dl=(flopNoHist?["Vortag","Ø/Tag Monat","Monat",""]:[labels[p][0],labels[p][1],"+/− Stk.","+/− %"]).map(escapeHtml);
   return `<table><thead><tr><th></th><th>Händler</th>${head}<th class="r">VT</th></tr></thead><tbody>`+rows.map((r,i)=>{
     let c1,c2,c3,c4;
     if(flopNoHist){ c1=`<b>0</b>`; c2=r.avg.toFixed(1).replace(".",","); c3=fmt(r.monat); c4=`<span class="pill neg">gestern 0</span>`; }
@@ -8609,10 +9030,10 @@ function tbl(rows,showGL,p,labels,kind){
       c4=`<span class="pill ${r.diff>0?"pos":(r.diff<0?"neg":"neu")}">${fmtPct(r.pct)}</span>`;
     }
     return `<tr class="${i===0&&kind==="top"?"top1":""}">
-      <td><span class="rank">${i+1}</span></td>
-      <td><button type="button" class="hname fh-name-link" data-fh-nr="${escapeHtml(r.nr)}" title="${escapeHtml(r.name)} · ${escapeHtml(r.ort)} (FH ${escapeHtml(r.nr)}) – klicken für AKP dieses Händlers">${escapeHtml(r.name)}</button><br><span class="betr">${escapeHtml(r.nr)} · ${escapeHtml(r.ort)}${showGL?" · "+escapeHtml(r.emp||r.gl||"— ohne Betreuer —"):""}</span></td>
-      <td class="r">${c1}</td><td class="r" style="color:var(--muted)">${c2}</td><td class="r">${c3}</td><td class="r">${c4}</td>
-      <td class="r" style="color:var(--muted)">${fmt(r.vt)}</td>
+      <td class="c-lead"><span class="rank">${i+1}</span></td>
+      <td class="c-name"><button type="button" class="hname fh-name-link" data-fh-nr="${escapeHtml(r.nr)}" title="${escapeHtml(r.name)} · ${escapeHtml(r.ort)} (FH ${escapeHtml(r.nr)}) – klicken für AKP dieses Händlers">${escapeHtml(r.name)}</button><br><span class="betr">${escapeHtml(r.nr)} · ${escapeHtml(r.ort)}${showGL?" · "+escapeHtml(r.emp||r.gl||"— ohne Betreuer —"):""}</span></td>
+      <td class="r c-main" data-label="${dl[0]}">${c1}</td><td class="r" style="color:var(--muted)" data-label="${dl[1]}">${c2}</td><td class="r" data-label="${dl[2]}">${c3}</td><td class="r" data-label="${dl[3]}">${c4}</td>
+      <td class="r" style="color:var(--muted)" data-label="VT">${fmt(r.vt)}</td>
     </tr>`;}).join("")+`</tbody></table>`;
 }
 
@@ -8912,9 +9333,9 @@ function openAkpModal(){
       list.slice(0,akpN).map((r,i)=>`<tr>
         <td><span class="rank" style="${neg?"background:var(--neg-bg);color:var(--neg)":""}">${i+1}</span></td>
         <td><button type="button" class="hname akp-name-link" data-akp-nr="${escapeHtml(r.nr)}">${escapeHtml(r.name)}</button><br><span class="betr"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(r.fhNr||"")}">${escapeHtml(r.firma||"")}</button> · ${escapeHtml(r.ort||"")}${showGL&&r.emp?" · "+escapeHtml(r.emp):""}</span></td>
-        <td class="r" style="font-weight:900">${fmt(r.val)}</td>
-        <td class="r" style="color:var(--muted)">${fmt(r.vt)}</td>
-        <td class="r">${r.vjDiff==null?"–":`<span class="pill ${r.vjDiff>=0?"pos":"neg"}">${fmtSign(r.vjDiff)}</span>`}</td>
+        <td class="r" style="font-weight:900" data-label="${escapeHtml(unit)}">${fmt(r.val)}</td>
+        <td class="r" style="color:var(--muted)" data-label="VT">${fmt(r.vt)}</td>
+        <td class="r" data-label="vs. VJ">${r.vjDiff==null?"–":`<span class="pill ${r.vjDiff>=0?"pos":"neg"}">${fmtSign(r.vjDiff)}</span>`}</td>
       </tr>`).join("")+`</tbody></table>`;
     $("amBody").innerHTML=
       `<div class="akp-h pos-t">TOP ${akpN}</div>`+mkTbl(ranked.top,false)+
@@ -9550,7 +9971,7 @@ function filialGruppeCompute(members){
 function fhMonthlyTableHtml(merged){
   const years=[...new Set(Object.keys(merged).map(k=>k.slice(0,4)))].sort();
   if(!years.length) return `<div class="empty-note">Keine Monatsdaten vorhanden.</div>`;
-  return `<div style="overflow:auto"><table class="ac-month-table"><thead><tr><th>Jahr</th>${MONTH_LABELS.map(m=>`<th>${m}</th>`).join("")}<th>Summe</th></tr></thead><tbody>`+
+  return `<div style="overflow:auto"><table class="ac-month-table mt-wide"><thead><tr><th>Jahr</th>${MONTH_LABELS.map(m=>`<th>${m}</th>`).join("")}<th>Summe</th></tr></thead><tbody>`+
     years.map(y=>{
       let sum=0;
       const cells=MONTH_LABELS.map((_,i)=>{
@@ -9561,7 +9982,11 @@ function fhMonthlyTableHtml(merged){
         return `<td>${fmt(v)}</td>`;
       }).join("");
       return `<tr><td><b>${y}</b></td>${cells}<td><b>${fmt(sum)}</b></td></tr>`;
-    }).join("")+`</tbody></table></div>`;
+    }).join("")+`</tbody></table>`+
+    monthTallTableHtml(years,(y,i)=>{
+      const v=merged[y+"-"+String(i+1).padStart(2,"0")];
+      return v==null?null:{val:v};
+    })+`</div>`;
 }
 // Jahresvergleich - gleiches Prinzip wie renderFhYearlyTrend() im FH-PopUp,
 // aber nur die Kernspalten (kein beitragsfrei/3-für-2, das liegt nicht
@@ -9582,10 +10007,10 @@ function fhYearlyTrendTableHtml(merged){
     const diff=prevSum==null?null:sum-prevSum;
     const pct=prevSum==null?null:pctOf(sum,prevSum);
     prevSum=sum;
-    return `<tr><td><b>${y}</b></td><td>${months} ${months===1?"Monat":"Monate"}</td><td>${fmt(sum)}</td>
-      <td>${diff==null?"–":`<span class="pill ${diff>=0?"pos":"neg"}">${fmtSign(diff)} (${fmtPct(pct)})</span>`}</td></tr>`;
+    return `<tr><td><b>${y}</b></td><td data-label="Erfasst">${months} ${months===1?"Monat":"Monate"}</td><td data-label="Summe">${fmt(sum)}</td>
+      <td data-label="vs. Vorjahr">${diff==null?"–":`<span class="pill ${diff>=0?"pos":"neg"}">${fmtSign(diff)} (${fmtPct(pct)})</span>`}</td></tr>`;
   }).join("");
-  return `<div style="overflow:auto"><table class="ac-yearly-table"><thead><tr><th>Jahr</th><th>Erfasst</th><th>Summe</th><th>vs. Vorjahr</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  return `<div style="overflow:auto"><table class="ac-yearly-table yt"><thead><tr><th>Jahr</th><th>Erfasst</th><th>Summe</th><th>vs. Vorjahr</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 // Nutzervorgabe 24.09.2026: in "Alle Filialen"-Übersichten sollen je
 // Filiale dieselben Kontaktfelder wie im FH-PopUp sichtbar sein
@@ -9863,7 +10288,7 @@ async function exportFilialGruppePdf(){
   const value=filialGruppeCurrentValue, members=filialGruppeCurrentMembers;
   if(!value||!members.length) return;
   filialGruppePdfBusy=true;
-  const pdfWindow=pdfSendTarget?null:window.open("","_blank");
+  const pdfWindow=(pdfSendTarget||IS_STANDALONE_APP)?null:window.open("","_blank");
   if(pdfWindow) pdfWindow.document.write("<p style='font-family:sans-serif;padding:20px;color:#5D7284'>PDF wird erstellt …</p>");
   toast("PDF wird erstellt …");
   const box=document.createElement("div");
@@ -11922,11 +12347,39 @@ function fhMonthlyMerged(fhNr,contact){
   const bulk=(c&&c.prod_monthly)||{};
   return {...fromDaily,...bulk};
 }
+// Hochkant-Variante der Monatsproduktion fürs Handy (siehe .mt-tall im CSS):
+// Monate als Zeilen, Jahre als Spalten - neuestes Jahr links, damit der
+// Vergleich mit dem Vorjahr direkt nebeneinander steht. cellFn(y,i) liefert
+// {val,cls} für Jahr y / Monat i (0-11) bzw. null, wenn kein Wert vorliegt.
+// Werte über/unter dem Vorjahresmonat grün/rot - außer beim laufenden Monat
+// (noch nicht abgeschlossen, wäre sonst fast immer rot) und bei Zellen mit
+// eigener Markierung (cls, z.B. other-fh im AKP-PopUp).
+function monthTallTableHtml(years,cellFn){
+  const ys=[...years].reverse();
+  const now=new Date(), curM=now.getMonth(), curY=String(now.getFullYear());
+  const sums={};
+  const rows=MONTH_LABELS.map((m,i)=>{
+    const cells=ys.map(y=>{
+      const c=cellFn(y,i);
+      if(!c) return `<td class="empty">–</td>`;
+      sums[y]=(sums[y]||0)+c.val;
+      let cls=c.cls||"";
+      if(!cls&&!(y===curY&&i===curM)){
+        const prev=cellFn(String(+y-1),i);
+        if(prev&&c.val!==prev.val) cls=c.val>prev.val?"yoy-up":"yoy-down";
+      }
+      return `<td class="${cls}">${fmt(c.val)}</td>`;
+    }).join("");
+    return `<tr class="${i===curM?"cur":""}"><td><b>${m}</b></td>${cells}</tr>`;
+  }).join("");
+  return `<table class="ac-month-table mt-tall"><thead><tr><th>Monat</th>${ys.map(y=>`<th>${y}</th>`).join("")}</tr></thead><tbody>${rows}`+
+    `<tr class="sum"><td>Summe</td>${ys.map(y=>`<td>${fmt(sums[y]||0)}</td>`).join("")}</tr></tbody></table>`;
+}
 function renderFhMonthly(){
   const merged=fhMonthlyMerged(fhModalCurrent);
   const years=[...new Set(Object.keys(merged).map(k=>k.slice(0,4)))].sort();
   if(!years.length){ $("fhMonthly").innerHTML=`<div class="empty-note">Keine Monatsdaten vorhanden.</div>`; return; }
-  $("fhMonthly").innerHTML=`<div style="overflow:auto"><table class="ac-month-table"><thead><tr><th>Jahr</th>${MONTH_LABELS.map(m=>`<th>${m}</th>`).join("")}<th>Summe</th></tr></thead><tbody>`+
+  $("fhMonthly").innerHTML=`<div style="overflow:auto"><table class="ac-month-table mt-wide"><thead><tr><th>Jahr</th>${MONTH_LABELS.map(m=>`<th>${m}</th>`).join("")}<th>Summe</th></tr></thead><tbody>`+
     years.map(y=>{
       let sum=0;
       const cells=MONTH_LABELS.map((_,i)=>{
@@ -11937,7 +12390,11 @@ function renderFhMonthly(){
         return `<td>${fmt(v)}</td>`;
       }).join("");
       return `<tr><td><b>${y}</b></td>${cells}<td><b>${fmt(sum)}</b></td></tr>`;
-    }).join("")+`</tbody></table></div>`;
+    }).join("")+`</tbody></table>`+
+    monthTallTableHtml(years,(y,i)=>{
+      const v=merged[y+"-"+String(i+1).padStart(2,"0")];
+      return v==null?null:{val:v};
+    })+`</div>`;
 }
 // Nächste offene Akquisestaffel: "Punkte" aus der Staffeldatei ist das
 // laufende, am 1.1. zurückgesetzte Jahrespunktekonto (siehe Kommentar bei
@@ -12016,13 +12473,13 @@ function renderFhYearlyTrend(){
     // Jeder beitragsfreie Vertrag entspricht einer 3-für-2-Aktion - Quote =
     // beitragsfrei / Jahresproduktion.
     const quote=(bf!=null&&sum>0)?bf/sum*100:null;
-    return `<tr><td><b>${y}</b></td><td>${months} ${months===1?"Monat":"Monate"}</td><td>${fmt(sum)}</td>
-      <td>${diff==null?"–":`<span class="pill ${diff>=0?"pos":"neg"}">${fmtSign(diff)} (${fmtPct(pct)})</span>`}</td>
-      <td>${bf!=null?fmt(bf):"–"}</td>
-      <td>${quote!=null?quote.toFixed(1).replace(".",",")+" %":"–"}</td></tr>`;
+    return `<tr><td><b>${y}</b></td><td data-label="Erfasst">${months} ${months===1?"Monat":"Monate"}</td><td data-label="Summe">${fmt(sum)}</td>
+      <td data-label="vs. Vorjahr">${diff==null?"–":`<span class="pill ${diff>=0?"pos":"neg"}">${fmtSign(diff)} (${fmtPct(pct)})</span>`}</td>
+      <td data-label="Beitragsfrei">${bf!=null?fmt(bf):"–"}</td>
+      <td data-label="3für2-Quote">${quote!=null?quote.toFixed(1).replace(".",",")+" %":"–"}</td></tr>`;
   }).join("");
   $("fhYearlyTrend").innerHTML=`<h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:13px">Jahresvergleich</h4>
-    <table class="ac-yearly-table"><thead><tr><th>Jahr</th><th>Erfasst</th><th>Summe</th><th>vs. Vorjahr</th><th>davon beitragsfrei</th><th>3-für-2-Quote</th></tr></thead><tbody>${rows}</tbody></table>
+    <table class="ac-yearly-table yt"><thead><tr><th>Jahr</th><th>Erfasst</th><th>Summe</th><th>vs. Vorjahr</th><th>davon beitragsfrei</th><th>3-für-2-Quote</th></tr></thead><tbody>${rows}</tbody></table>
     <div class="ac-month-note">Jahre mit weniger als 12 erfassten Monaten sind noch nicht vollständig – der Vergleich ist dann nicht 1:1. Jeder beitragsfreie Vertrag entspricht einer 3-für-2-Aktion.</div>`;
 }
 // Miete-Produktionsübersicht (Club.Weiss) - nur sichtbar, wenn der Händler als
@@ -12042,7 +12499,7 @@ function renderFhMieteSection(){
   const sortiment=(c.miete_sortiment||{})[String(state.latest.jahr)]||{};
   const years=[...new Set(Object.keys(monthly).map(k=>k.slice(0,4)))].sort();
   const monthlyTbl=years.length
-    ?`<div style="overflow:auto"><table class="ac-month-table"><thead><tr><th>Jahr</th>${MONTH_LABELS.map(m=>`<th>${m}</th>`).join("")}<th>Summe</th></tr></thead><tbody>`+
+    ?`<div style="overflow:auto"><table class="ac-month-table mt-wide"><thead><tr><th>Jahr</th>${MONTH_LABELS.map(m=>`<th>${m}</th>`).join("")}<th>Summe</th></tr></thead><tbody>`+
       years.map(y=>{
         let sum=0;
         const cells=MONTH_LABELS.map((_,i)=>{
@@ -12053,7 +12510,11 @@ function renderFhMieteSection(){
           return `<td>${fmt(v)}</td>`;
         }).join("");
         return `<tr><td><b>${y}</b></td>${cells}<td><b>${fmt(sum)}</b></td></tr>`;
-      }).join("")+`</tbody></table></div>`
+      }).join("")+`</tbody></table>`+
+      monthTallTableHtml(years,(y,i)=>{
+        const v=monthly[y+"-"+String(i+1).padStart(2,"0")];
+        return v==null?null:{val:v};
+      })+`</div>`
     :`<div class="empty-note">Keine Miete-Monatsdaten vorhanden.</div>`;
   let yearlyTbl="";
   if(years.length>=2){
@@ -12064,11 +12525,11 @@ function renderFhMieteSection(){
       const diff=prevSum==null?null:sum-prevSum;
       const pct=prevSum==null?null:pctOf(sum,prevSum);
       prevSum=sum;
-      return `<tr><td><b>${y}</b></td><td>${fmt(sum)}</td>
-        <td>${diff==null?"–":`<span class="pill ${diff>=0?"pos":"neg"}">${fmtSign(diff)} (${fmtPct(pct)})</span>`}</td></tr>`;
+      return `<tr><td><b>${y}</b></td><td data-label="Summe">${fmt(sum)}</td>
+        <td data-label="vs. Vorjahr">${diff==null?"–":`<span class="pill ${diff>=0?"pos":"neg"}">${fmtSign(diff)} (${fmtPct(pct)})</span>`}</td></tr>`;
     }).join("");
     yearlyTbl=`<h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:13px">Jahresvergleich Miete</h4>
-      <table class="ac-yearly-table"><thead><tr><th>Jahr</th><th>Summe</th><th>vs. Vorjahr</th></tr></thead><tbody>${rows}</tbody></table>`;
+      <table class="ac-yearly-table yt"><thead><tr><th>Jahr</th><th>Summe</th><th>vs. Vorjahr</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
   // Sortiment-Spalte im Miete-Report enthaelt bei einzelnen Zeilen statt einer
   // Kategorie (z.B. "Weiße Ware") einen Auftrags-/Produktcode (z.B. "R260081") -
@@ -12161,10 +12622,16 @@ let trainerbesuchSelectedAkp=new Set();
 // Nutzervorgabe 23.09.2026: 3 ankreuzbare Trainingsarten je Trainerbesuch.
 const TRAINERBESUCH_ARTEN=["Flächentraining mit Unterstützung im Verkauf","Coaching ohne Unterstützung im Verkauf","Profi-Training"];
 let trainerbesuchSelectedArten=new Set();
+// Nutzervorgabe 06.10.2026: Trainerbesuche sollen von ihrem Ersteller
+// (jede Rolle) UND von admin (auch fremde) bearbeitbar sein, nicht nur
+// angelegt/gelöscht werden können - trainerbesuchEditId!=null schaltet
+// openTrainerbesuchModal()/saveTrainerbesuch() von "anlegen" auf
+// "bearbeiten" (UPDATE statt INSERT der bestehenden Zeile) um.
+let trainerbesuchEditId=null;
 function renderTrainerbesuchArtenList(){
   const box=$("trainerbesuchArtenList");
   box.innerHTML=TRAINERBESUCH_ARTEN.map(a=>`<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px">
-      <input type="checkbox" class="tb-art-chk" value="${escapeHtml(a)}" style="width:16px;height:16px;flex-shrink:0">
+      <input type="checkbox" class="tb-art-chk" value="${escapeHtml(a)}" style="width:16px;height:16px;flex-shrink:0" ${trainerbesuchSelectedArten.has(a)?"checked":""}>
       ${escapeHtml(a)}
     </label>`).join("");
   box.querySelectorAll(".tb-art-chk").forEach(chk=>{
@@ -12207,6 +12674,7 @@ async function renderFhTrainerbesucheSection(){
           <span style="font-weight:800;color:var(--wg-navy)">${fmtDate(r.besuch_datum)} · ${escapeHtml(r.trainer_name)}</span>
           <span style="display:flex;align-items:center;gap:6px">
             <span style="font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;background:${abgeschlossen?"#E8F6EE":"#FFF4DC"};color:${abgeschlossen?"#1B7A43":"#8A6100"}">${abgeschlossen?"Abgeschlossen":"Aktiv"}</span>
+            ${(myRole==="admin"||r.created_by===(supaUser&&supaUser.id))?`<button type="button" class="tb-edit-btn" data-id="${escapeHtml(r.id)}" title="Trainerbesuch bearbeiten" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;font-weight:800;padding:0 2px;line-height:1">✎</button>`:""}
             ${myRole==="admin"?`<button type="button" class="tb-delete-btn" data-id="${escapeHtml(r.id)}" title="Trainerbesuch löschen" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:15px;font-weight:800;padding:0 2px;line-height:1">✕</button>`:""}
           </span>
         </div>
@@ -12220,13 +12688,19 @@ async function renderFhTrainerbesucheSection(){
     }).join("");
     const addBtn=canEdit?`<button class="btn btn-blue" id="trainerbesuchAddBtn" style="margin-top:6px">+ Trainerbesuch</button>`:"";
     box.innerHTML=`<h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:13px">Trainerbetreuung</h4>${rowsHtml}${addBtn}`;
-    if(canEdit) $("trainerbesuchAddBtn").onclick=openTrainerbesuchModal;
+    if(canEdit) $("trainerbesuchAddBtn").onclick=()=>openTrainerbesuchModal();
     box.querySelectorAll(".tb-download-btn").forEach(btn=>{
       // Nutzervorgabe 11.09.2026: dieselbe Drucken/Versenden-Logik wie bei
       // allen anderen PDF-Exporten dieser App (Ziel-Auswahl inkl. FH-
       // Geschäft/Ansprechpartner, vorbefülltes Freitext-Mail), statt eines
       // reinen Direkt-Downloads.
       btn.onclick=()=>openPdfTargetChoice(()=>exportTrainerbericht(btn.dataset.id),fhPdfSendExtra());
+    });
+    box.querySelectorAll(".tb-edit-btn").forEach(btn=>{
+      btn.onclick=()=>{
+        const row=rows.find(x=>x.id===btn.dataset.id);
+        if(row) openTrainerbesuchModal(row);
+      };
     });
     box.querySelectorAll(".tb-delete-btn").forEach(btn=>{
       btn.onclick=()=>deleteTrainerbesuch(btn.dataset.id);
@@ -12237,15 +12711,23 @@ async function renderFhTrainerbesucheSection(){
     box.innerHTML="";
   }
 }
-function openTrainerbesuchModal(){
+// Ohne editRow: "Trainerbesuch anlegen" (bisheriges Verhalten). Mit
+// editRow (eine Zeile aus renderFhTrainerbesucheSection()): "Trainerbesuch
+// bearbeiten" - Formular wird mit den bestehenden Werten vorbefüllt,
+// saveTrainerbesuch() aktualisiert dann die bestehende Zeile per UPDATE
+// statt eine neue anzulegen (siehe trainerbesuchEditId).
+function openTrainerbesuchModal(editRow){
   if(!fhModalCurrent) return;
-  $("trainerbesuchDatum").value=iso(new Date());
-  $("trainerbesuchTaetigkeiten").value="";
+  trainerbesuchEditId=editRow?editRow.id:null;
+  $("trainerbesuchModalTitle").textContent=editRow?"Trainerbesuch bearbeiten":"Trainerbesuch anlegen";
+  $("trainerbesuchDatum").value=editRow?editRow.besuch_datum:iso(new Date());
+  $("trainerbesuchTaetigkeiten").value=editRow?(editRow.taetigkeiten||""):"";
   $("trainerbesuchSaveHint").textContent="";
-  trainerbesuchSelectedAkp=new Set();
-  trainerbesuchSelectedArten=new Set();
+  trainerbesuchSelectedAkp=new Set(editRow?(editRow.akp_teilnehmer||[]):[]);
+  trainerbesuchSelectedArten=new Set(editRow?(editRow.trainingsart||[]):[]);
   renderTrainerbesuchArtenList();
   renderTrainerbesuchAkpList();
+  $("trainerbesuchAkpCount").textContent=trainerbesuchSelectedAkp.size?trainerbesuchSelectedAkp.size+" ausgewählt":"";
   $("trainerbesuchModal").classList.remove("hidden");
 }
 function renderTrainerbesuchAkpList(){
@@ -12253,7 +12735,7 @@ function renderTrainerbesuchAkpList(){
   const rows=akpFullList(state.latest).filter(a=>a.fhNr===fhModalCurrent)
     .sort((a,b)=>(a.name||"").localeCompare(b.name||""));
   box.innerHTML=rows.length?rows.map(a=>`<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px">
-      <input type="checkbox" class="tb-akp-chk" value="${escapeHtml(a.nr)}" style="width:16px;height:16px;flex-shrink:0">
+      <input type="checkbox" class="tb-akp-chk" value="${escapeHtml(a.nr)}" style="width:16px;height:16px;flex-shrink:0" ${trainerbesuchSelectedAkp.has(a.nr)?"checked":""}>
       ${escapeHtml(a.name||a.nr)}${a.firma?" · "+escapeHtml(a.firma):""}
     </label>`).join(""):`<div class="empty-note">Keine Ansprechpartner für diesen Fachhändler gefunden.</div>`;
   box.querySelectorAll(".tb-akp-chk").forEach(chk=>{
@@ -12272,12 +12754,24 @@ async function saveTrainerbesuch(){
     const baselineRange=trainerbesuchBaselineRange(besuchDatum);
     const prodMonthly=(fhContactCurrent&&fhContactCurrent.prod_monthly)||{};
     const baselineAvg=fhAvgDailyProdInRange(prodMonthly,baselineRange.fromISO,baselineRange.toISO);
-    const { error } = await sb.from("trainerbesuche").insert({
-      fh_nr:fhNr, trainer_name:myName, besuch_datum:besuchDatum,
-      taetigkeiten:$("trainerbesuchTaetigkeiten").value.trim()||null,
-      akp_teilnehmer:[...trainerbesuchSelectedAkp], trainingsart:[...trainerbesuchSelectedArten], baseline_avg:baselineAvg,
-      created_by:(supaUser&&supaUser.id)||null, updated_by:(supaUser&&supaUser.id)||null,
-    });
+    // Beim Bearbeiten (trainerbesuchEditId gesetzt) bleibt trainer_name/
+    // created_by bewusst UNVERÄNDERT - sonst würde ein Admin, der den
+    // Trainerbesuch eines anderen Mitarbeiters bearbeitet, dort fälschlich
+    // als "der Trainer" erscheinen. Nur die Inhalte + updated_by/updated_at
+    // werden aktualisiert.
+    const { error } = trainerbesuchEditId
+      ? await sb.from("trainerbesuche").update({
+          besuch_datum:besuchDatum,
+          taetigkeiten:$("trainerbesuchTaetigkeiten").value.trim()||null,
+          akp_teilnehmer:[...trainerbesuchSelectedAkp], trainingsart:[...trainerbesuchSelectedArten], baseline_avg:baselineAvg,
+          updated_by:(supaUser&&supaUser.id)||null, updated_at:new Date().toISOString(),
+        }).eq("id",trainerbesuchEditId)
+      : await sb.from("trainerbesuche").insert({
+          fh_nr:fhNr, trainer_name:myName, besuch_datum:besuchDatum,
+          taetigkeiten:$("trainerbesuchTaetigkeiten").value.trim()||null,
+          akp_teilnehmer:[...trainerbesuchSelectedAkp], trainingsart:[...trainerbesuchSelectedArten], baseline_avg:baselineAvg,
+          created_by:(supaUser&&supaUser.id)||null, updated_by:(supaUser&&supaUser.id)||null,
+        });
     if(error) throw error;
     $("trainerbesuchModal").classList.add("hidden");
     toast("Trainerbesuch gespeichert ✓");
@@ -12344,7 +12838,8 @@ function buildTrainerberichtPdfDoc(besuch){
         <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:6px">Produktionsentwicklung</div>
         <div style="font-size:13px">Produktion am Einsatztag (${fmtDate(besuch.besuch_datum)}): <b>${fmt(trainerbesuchTagesproduktion(besuch.fh_nr,besuch.besuch_datum))}</b> Stk.<br>
         Tagesschnitt vorher (3 Monate vor Besuch): <b>${fmtAvg1(besuch.baseline_avg)}</b> Stk./Tag<br>
-        Tagesschnitt nachher (4 Wochen nach Besuch): <b>${fmtAvg1(besuch.nachher_avg)}</b> Stk./Tag${diff!=null?`<br>Veränderung: <b style="color:${diff>=0?"#1B7A43":"#B3324A"}">${diff>=0?"+":""}${fmtAvg1(diff)}</b> Stk./Tag`:""}</div>
+        Tagesschnitt nachher (4 Wochen nach Besuch): <b>${fmtAvg1(besuch.nachher_avg)}</b> Stk./Tag${diff!=null?`<br>Veränderung: <b style="color:${diff>=0?"#1B7A43":"#B3324A"}">${diff>=0?"+":""}${fmtAvg1(diff)}</b> Stk./Tag`:""}
+        ${besuch.nachher_avg!=null?`<br>Gesamtproduktion Beobachtungszeitraum (4 Wochen nach Besuch): <b>${fmt(Math.round(besuch.nachher_avg*28))}</b> Stk.`:""}</div>
       </div>
     `;
     document.body.appendChild(box);
@@ -12621,7 +13116,7 @@ async function exportFhPdf(includeAkp){
   // sonst werten Browser das spätere window.open() als Popup außerhalb einer
   // Nutzer-Interaktion und blockieren es stillschweigend. Beim Versenden per
   // Mail wird das PDF nicht angezeigt - kein Tab nötig.
-  const pdfWindow=pdfSendTarget?null:window.open("","_blank");
+  const pdfWindow=(pdfSendTarget||IS_STANDALONE_APP)?null:window.open("","_blank");
   if(pdfWindow) pdfWindow.document.write("<p style='font-family:sans-serif;padding:20px;color:#5D7284'>PDF wird erstellt …</p>");
   toast("PDF wird erstellt …");
   const box=document.createElement("div");
@@ -13134,7 +13629,7 @@ function renderAkpMonthly(){
   const years=[...new Set([...Object.keys(prod),...Object.keys(other)].map(k=>k.slice(0,4)))].sort();
   if(!years.length){ $("acMonthly").innerHTML=`<div class="empty-note">Keine Monatsdaten vorhanden.</div>`; return; }
   const hasOther=Object.keys(other).length>0;
-  $("acMonthly").innerHTML=`<div style="overflow:auto"><table class="ac-month-table"><thead><tr><th>Jahr</th>${MONTH_LABELS.map(m=>`<th>${m}</th>`).join("")}<th>Summe</th></tr></thead><tbody>`+
+  $("acMonthly").innerHTML=`<div style="overflow:auto"><table class="ac-month-table mt-wide"><thead><tr><th>Jahr</th>${MONTH_LABELS.map(m=>`<th>${m}</th>`).join("")}<th>Summe</th></tr></thead><tbody>`+
     years.map(y=>{
       let sum=0;
       const cells=MONTH_LABELS.map((_,i)=>{
@@ -13146,7 +13641,14 @@ function renderAkpMonthly(){
         return `<td class="${ov?"other-fh":""}">${fmt(total)}</td>`;
       }).join("");
       return `<tr><td><b>${y}</b></td>${cells}<td><b>${fmt(sum)}</b></td></tr>`;
-    }).join("")+`</tbody></table></div>`+
+    }).join("")+`</tbody></table>`+
+    monthTallTableHtml(years,(y,i)=>{
+      const k=y+"-"+String(i+1).padStart(2,"0");
+      const cv=prod[k], ov=other[k];
+      if(cv==null&&ov==null) return null;
+      const total=(cv||0)+(ov||0);
+      return {val:total,cls:ov?"other-fh":""};
+    })+`</div>`+
     (hasOther?`<div class="ac-month-note"><span class="dot-amber"></span>Zahlen in dieser Farbe wurden nicht beim aktuell hinterlegten Fachhändler produziert, sind aber in der Gesamtproduktion mit eingerechnet.</div>`:"");
 }
 // Mehrjahresvergleich (nicht nur ggü. dem unmittelbaren Vorjahr, sondern über
@@ -13171,11 +13673,11 @@ function renderAkpYearlyTrend(){
     const diff=prevSum==null?null:sum-prevSum;
     const pct=prevSum==null?null:pctOf(sum,prevSum);
     prevSum=sum;
-    return `<tr><td><b>${y}</b></td><td>${months} ${months===1?"Monat":"Monate"}</td><td>${fmt(sum)}</td>
-      <td>${diff==null?"–":`<span class="pill ${diff>=0?"pos":"neg"}">${fmtSign(diff)} (${fmtPct(pct)})</span>`}</td></tr>`;
+    return `<tr><td><b>${y}</b></td><td data-label="Erfasst">${months} ${months===1?"Monat":"Monate"}</td><td data-label="Summe">${fmt(sum)}</td>
+      <td data-label="vs. Vorjahr">${diff==null?"–":`<span class="pill ${diff>=0?"pos":"neg"}">${fmtSign(diff)} (${fmtPct(pct)})</span>`}</td></tr>`;
   }).join("");
   $("acYearlyTrend").innerHTML=`<h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:13px">Jahresvergleich</h4>
-    <table class="ac-yearly-table"><thead><tr><th>Jahr</th><th>Erfasst</th><th>Summe</th><th>vs. Vorjahr</th></tr></thead><tbody>${rows}</tbody></table>
+    <table class="ac-yearly-table yt"><thead><tr><th>Jahr</th><th>Erfasst</th><th>Summe</th><th>vs. Vorjahr</th></tr></thead><tbody>${rows}</tbody></table>
     <div class="ac-month-note">Jahre mit weniger als 12 erfassten Monaten sind noch nicht vollständig – der Vergleich ist dann nicht 1:1.</div>`;
 }
 // Profi-Training/Service-Training zu einem Feld zusammengeführt (Nutzer-
@@ -13257,7 +13759,7 @@ async function exportAkpTopFlopPdf(){
     return;
   }
   akpTopFlopPdfBusy=true;
-  const pdfWindow=pdfSendTarget?null:window.open("","_blank");
+  const pdfWindow=(pdfSendTarget||IS_STANDALONE_APP)?null:window.open("","_blank");
   if(pdfWindow) pdfWindow.document.write("<p style='font-family:sans-serif;padding:20px;color:#5D7284'>PDF wird erstellt …</p>");
   toast("PDF wird erstellt …");
   const box=document.createElement("div");
@@ -13349,7 +13851,7 @@ async function exportFhTopFlopPdf(){
     return;
   }
   fhTopFlopPdfBusy=true;
-  const pdfWindow=pdfSendTarget?null:window.open("","_blank");
+  const pdfWindow=(pdfSendTarget||IS_STANDALONE_APP)?null:window.open("","_blank");
   if(pdfWindow) pdfWindow.document.write("<p style='font-family:sans-serif;padding:20px;color:#5D7284'>PDF wird erstellt …</p>");
   toast("PDF wird erstellt …");
   const box=document.createElement("div");
@@ -13454,7 +13956,7 @@ async function exportAkqStaffelnPdf(){
   }
   const s=state.latest; if(!s) return;
   akqStaffelnPdfBusy=true;
-  const pdfWindow=pdfSendTarget?null:window.open("","_blank");
+  const pdfWindow=(pdfSendTarget||IS_STANDALONE_APP)?null:window.open("","_blank");
   if(pdfWindow) pdfWindow.document.write("<p style='font-family:sans-serif;padding:20px;color:#5D7284'>PDF wird erstellt …</p>");
   toast("PDF wird erstellt …");
   const box=document.createElement("div");
@@ -13777,10 +14279,10 @@ function renderAkqOhneProd(){
   if(!rows.length){ $("akqOpBody").innerHTML=`<div class="empty-note">Alle Akquisekunden dieser Ansicht haben ${s.jahr} bereits produziert. 🎉</div>`; return; }
   $("akqOpBody").innerHTML=`<table class="akqop-table"><thead><tr><th>Händler${showGL?" / Betreuer":""}</th><th>Adresse</th><th>Beginn</th><th>Telefon</th></tr></thead><tbody>`+
     rows.map(a=>`<tr>
-      <td class="akqop-name"><b title="${escapeHtml(a.name)}"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(a.nr||"")}">${escapeHtml(a.name)}</button></b><span class="betr">${escapeHtml(a.nr)}${showGL?" · "+escapeHtml(a.emp||a.glRaw||"–"):""}</span></td>
-      <td><span class="betr akqop-addr">${a.strasse||""}${a.strasse?", ":""}${a.plz} ${a.ort}</span></td>
-      <td>${a.beginn?fmtDate(a.beginn):"–"}</td>
-      <td>${a.tel?`<a href="tel:${a.tel.replace(/[^+\d]/g,"")}" style="color:var(--wg-blue);font-weight:700;text-decoration:none">${a.tel}</a>`:"–"}</td>
+      <td class="akqop-name c-name"><b title="${escapeHtml(a.name)}"><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(a.nr||"")}">${escapeHtml(a.name)}</button></b><span class="betr">${escapeHtml(a.nr)}${showGL?" · "+escapeHtml(a.emp||a.glRaw||"–"):""}</span></td>
+      <td class="c-addr"><span class="betr akqop-addr">${a.strasse||""}${a.strasse?", ":""}${a.plz} ${a.ort}</span></td>
+      <td data-label="Beginn">${a.beginn?fmtDate(a.beginn):"–"}</td>
+      <td class="c-main">${a.tel?`<a href="tel:${a.tel.replace(/[^+\d]/g,"")}" style="color:var(--wg-blue);font-weight:700;text-decoration:none">${a.tel}</a>`:"–"}</td>
     </tr>`).join("")+`</tbody></table>`;
 }
 
@@ -13814,12 +14316,12 @@ function renderNeunWochen(){
   if(!visibleRows.length){ $("nwBody").innerHTML=`<div class="empty-note">Keine Händler mit Beginn der Zusammenarbeit in den letzten 9 Wochen.</div>`; return; }
   $("nwBody").innerHTML=`<table><thead><tr><th></th><th>Händler${showGL?" / Betreuer":""}</th><th class="r">Resttage</th><th>Beginn</th><th class="r">Termine</th><th class="r">Prod. ${s.jahr}</th></tr></thead><tbody>`+
     visibleRows.map(a=>`<tr>
-      <td>${a.warn?"⚠️":"✅"}</td>
-      <td><b><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(a.nr||"")}">${escapeHtml(a.name)}</button></b><br><span class="betr">${escapeHtml(a.nr)} · ${escapeHtml(a.ort)}${showGL?" · "+escapeHtml(a.emp||a.glRaw||"–"):""}</span></td>
-      <td class="r" style="font-weight:800;${a.resttage<=14?"color:var(--neg)":""}">${a.resttage}</td>
-      <td>${fmtDate(a.beginn)}</td>
-      <td class="r" style="font-weight:800;${a.termine<5?"color:var(--neg)":""}">${fmt(a.termine)} <span class="betr">(${fmt(a.besP)} p. / ${fmt(a.besT)} t. / ${fmt(a.besG)} g.)</span></td>
-      <td class="r" style="font-weight:800;${(a.p2026||0)<20?"color:var(--neg)":""}">${fmt(a.p2026)}</td>
+      <td class="c-lead">${a.warn?"⚠️":"✅"}</td>
+      <td class="c-name"><b><button type="button" class="fh-name-link" data-fh-nr="${escapeHtml(a.nr||"")}">${escapeHtml(a.name)}</button></b><br><span class="betr">${escapeHtml(a.nr)} · ${escapeHtml(a.ort)}${showGL?" · "+escapeHtml(a.emp||a.glRaw||"–"):""}</span></td>
+      <td class="r c-main" data-label="Resttage" style="font-weight:800;${a.resttage<=14?"color:var(--neg)":""}">${a.resttage}</td>
+      <td data-label="Beginn">${fmtDate(a.beginn).slice(0,6)}<span class="c-yr">${fmtDate(a.beginn).slice(6)}</span></td>
+      <td class="r" data-label="Termine" style="font-weight:800;${a.termine<5?"color:var(--neg)":""}">${fmt(a.termine)} <span class="betr">(${fmt(a.besP)} p. / ${fmt(a.besT)} t. / ${fmt(a.besG)} g.)</span></td>
+      <td class="r" data-label="Prod." style="font-weight:800;${(a.p2026||0)<20?"color:var(--neg)":""}">${fmt(a.p2026)}</td>
     </tr>`).join("")+`</tbody></table>
     <div class="mix-sub" style="margin-top:6px">Resttage = 63 minus Tage seit Beginn · ⚠️ = weniger als 5 Termine (persönlich + telefonisch) UND weniger als 20 Verträge</div>`;
 }
@@ -14181,6 +14683,7 @@ $("dgVisSave").onclick=saveDeckungsgradVisibility;
 $("empRankingEnabledChk").onchange=toggleEmpRankingEnabled;
 $("stornoquotenEnabledChk").onchange=toggleStornoquotenEnabled;
 $("akqImportNotifyEnabledChk").onchange=toggleAkqImportNotifyEnabled;
+$("aftersalesEnabledChk").onchange=toggleAftersalesEnabled;
 $("akquisequoteAtEnabledChk").onchange=toggleAkquisequoteAtEnabled;
 $("neunWochenAllEnabledChk").onchange=toggleNeunWochenAllEnabled;
 $("trainerbetreuungEnabledChk").onchange=toggleTrainerbetreuungEnabled;
@@ -14345,6 +14848,13 @@ $("adminTrainerberichteBtn").onclick=()=>{ $("adminTrainerberichteModal").classL
 $("adminTrainerberichteClose").onclick=()=>$("adminTrainerberichteModal").classList.add("hidden");
 $("adminAuswertungAutoBtn").onclick=()=>{ $("adminAuswertungAutoModal").classList.remove("hidden"); renderAdminAuswertungAutoList(); };
 $("adminAuswertungAutoClose").onclick=()=>$("adminAuswertungAutoModal").classList.add("hidden");
+$("setAftersalesBtn").onclick=()=>{ $("adminAftersalesModal").classList.remove("hidden"); loadAftersalesUsers(); };
+$("adminAftersalesClose").onclick=()=>$("adminAftersalesModal").classList.add("hidden");
+$("asCreateBtn").onclick=createAftersalesUser;
+$("asFhSearch").addEventListener("input",()=>{ $("asFh").value=""; $("asFhInfo").classList.add("hidden"); renderAsFhResults(); });
+$("asFhSearch").addEventListener("keydown",e=>{ if(e.key==="Enter"){ const hit=$("asFhResults").querySelector(".as-fh-hit"); if(hit){ e.preventDefault(); selectAsFh(hit.dataset.nr); } } });
+$("asFhResults").addEventListener("mousedown",e=>{ const hit=e.target.closest(".as-fh-hit"); if(hit){ e.preventDefault(); selectAsFh(hit.dataset.nr); } });
+$("asFhSearch").addEventListener("blur",()=>setTimeout(()=>$("asFhResults").classList.add("hidden"),150));
 $("adminEmployeesClose").onclick=()=>$("adminEmployeesModal").classList.add("hidden");
 $("adCreateBtn").onclick=createAdminUser;
 $("empCreateBtn").onclick=createEmployee;
@@ -14549,6 +15059,96 @@ function buildMitarbeiterDropdown(){
     maybeAutoShowNotifications();
   }
 })();
+</script>
+<!-- ---------- Home-Bildschirm-App (PWA) ----------
+     Fertige Dateien (PDFs) in der App über das iOS-Teilen-Menü ausgeben,
+     Offline-Hinweis und Service Worker. -->
+<div class="modal-bg hidden" id="appFileModal" style="z-index:90">
+  <div class="modal" style="max-width:380px">
+    <h3 style="margin:0 0 6px">PDF ist fertig</h3>
+    <p id="appFileName" style="font-size:13px;color:var(--muted);margin:0 0 4px;word-break:break-all"></p>
+    <p style="font-size:12.5px;color:var(--muted);margin:0">Über „Teilen“ lässt sich das PDF in Dateien sichern, drucken, per Mail/AirDrop senden oder in einer anderen App öffnen.</p>
+    <div class="actions">
+      <button class="btn btn-ghost" id="appFileClose" type="button">Schließen</button>
+      <button class="btn btn-blue" id="appFileShare" type="button">⬆︎ Teilen</button>
+    </div>
+  </div>
+</div>
+<div id="offlineBanner" class="hidden" role="status">Offline – keine Internetverbindung. Änderungen werden erst wieder gespeichert, wenn die Verbindung zurück ist.</div>
+<style>
+#offlineBanner{
+  position:fixed;left:0;right:0;top:0;z-index:95;
+  padding:8px 16px;padding-top:calc(8px + env(safe-area-inset-top));
+  background:var(--amber);color:#3B2600;font-weight:700;font-size:13px;text-align:center;
+  box-shadow:var(--shadow);
+}
+</style>
+<script>
+// Das Teilen-Menü (navigator.share) darf iOS nur direkt nach einem Antippen
+// öffnen - die PDF-Erstellung (html2canvas) dauert aber oft mehrere
+// Sekunden, danach wäre diese "Nutzer-Geste" verfallen und iOS würde den
+// Aufruf blockieren. Deshalb erst dieser kleine Dialog "PDF ist fertig",
+// dessen Button-Tipp dann das Teilen-Menü öffnet.
+let appFilePending=null;
+function deliverFileInApp(blob,filename,type){
+  appFilePending={blob,filename,type:type||blob.type||"application/octet-stream"};
+  document.getElementById("appFileName").textContent=filename;
+  document.getElementById("appFileModal").classList.remove("hidden");
+}
+function appFileFallbackOpen(f){
+  // Ohne Datei-Teilen (ältere iOS-Versionen): Download-Link. iOS zeigt das
+  // PDF dann in einer Vorschau mit eigenem "Fertig"- und Teilen-Button.
+  const url=URL.createObjectURL(f.blob);
+  const a=document.createElement("a");
+  a.href=url; a.download=f.filename; document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+document.getElementById("appFileShare").onclick=async()=>{
+  const f=appFilePending; if(!f) return;
+  const file=new File([f.blob],f.filename,{type:f.type});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){
+    try{
+      await navigator.share({files:[file],title:f.filename});
+      document.getElementById("appFileModal").classList.add("hidden");
+      appFilePending=null;
+    }catch(e){
+      // AbortError = Teilen-Menü ohne Auswahl geschlossen -> Dialog bleibt
+      // offen, damit man es nochmals versuchen kann.
+      if(e&&e.name!=="AbortError"){ console.error("share failed:",e); appFileFallbackOpen(f); }
+    }
+  }else{
+    appFileFallbackOpen(f);
+  }
+};
+document.getElementById("appFileClose").onclick=()=>{
+  document.getElementById("appFileModal").classList.add("hidden");
+  appFilePending=null;
+};
+// Alle übrigen Exporte rufen direkt jsPDF.save() auf (Download) - in der
+// App wird das zentral auf das Teilen-Menü umgeleitet, statt jede einzelne
+// Stelle anzupassen.
+if(IS_STANDALONE_APP&&window.jspdf&&window.jspdf.jsPDF&&window.jspdf.jsPDF.API){
+  window.jspdf.jsPDF.API.save=function(filename){
+    deliverFileInApp(this.output("blob"),filename||"dokument.pdf","application/pdf");
+    return this;
+  };
+}
+// Offline-Hinweis (Leiste oben), solange keine Verbindung besteht.
+(function(){
+  const banner=document.getElementById("offlineBanner");
+  const upd=()=>banner.classList.toggle("hidden",navigator.onLine!==false);
+  window.addEventListener("online",upd);
+  window.addEventListener("offline",upd);
+  upd();
+})();
+// Service Worker: Offline-Seite + schnellerer Start (siehe sw.js). Nur über
+// https/localhost - beim direkten Öffnen der Datei (file://) gibt es keinen.
+if("serviceWorker" in navigator&&(location.protocol==="https:"||location.hostname==="localhost")){
+  window.addEventListener("load",()=>{
+    navigator.serviceWorker.register("sw.js").catch(e=>console.warn("Service Worker nicht registriert:",e));
+  });
+}
 </script>
 </body>
 </html>
