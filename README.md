@@ -162,7 +162,7 @@ und den Login-Zwang.
 ## Performance Akquisetool (`akquise.html`)
 
 Eigene Seite neben dem Dashboard, gleiche Anmeldung und gleiche Daten. Freigabe für alle
-Nutzer über den Schalter **„Akquisetool“** im Admin-Panel (`dashboard_kv` `akquisetool_enabled`);
+Nutzer über den Schalter **„Akquisetool aktivieren“** im Admin-Panel (`dashboard_kv` `akquisetool_enabled`);
 Admins können das Tool auch ohne Freigabe öffnen.
 
 - **Akquise:** Betriebe der Sparten Elektrohandel, Elektroservicebetrieb, Mobilfunk, Hörakustiker,

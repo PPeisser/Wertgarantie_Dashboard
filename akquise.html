@@ -1448,7 +1448,7 @@ async function openSettings(){
   $("setBrowserKey").value=browserKey;
   $("setEnabledInfo").innerHTML=toolEnabled
     ? '<span class="tag pos">aktiv</span> Das Tool ist für alle Nutzer freigeschaltet (Schalter im Admin-Panel des Dashboards).'
-    : '<span class="tag warn">nicht freigeschaltet</span> Nur Admins können das Tool öffnen. Freigabe über das Admin-Panel des Dashboards („Akquisetool“).';
+    : '<span class="tag warn">nicht freigeschaltet</span> Nur Admins können das Tool öffnen. Freigabe über das Admin-Panel des Dashboards („Akquisetool aktivieren“).';
   $("setServerInfo").textContent="wird geprüft …";
   try{
     const s=await callFn("status");
