@@ -347,7 +347,16 @@ async function afterLogin(user){
   await loadAll();
   checkDealerWarn();
 }
-async function doLogout(){ await sb.auth.signOut(); location.href = location.pathname; }
+// Abmelden nur auf diesem Gerät (scope "local"): "global" beendet sonst auch
+// die Sitzungen auf allen anderen Geräten desselben Nutzers. Danach liefert
+// dort der Server 403 session_not_found - supabase-js 2.45 meldet das als
+// Fehler und lässt die Sitzung im Browser liegen, man bleibt "angemeldet".
+// Deshalb räumen wir den gespeicherten Token in jedem Fall selbst weg.
+async function doLogout(){
+  try{ await sb.auth.signOut({ scope:"local" }); }catch(e){}
+  try{ Object.keys(localStorage).filter(k=>/^sb-.*-auth-token/.test(k)).forEach(k=>localStorage.removeItem(k)); }catch(e){}
+  location.href = location.pathname;
+}
 
 async function doForgot(){
   const email=$("forgotEmail").value.trim();
