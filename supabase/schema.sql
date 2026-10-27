@@ -694,10 +694,17 @@ begin
     clubnr := r->>'club_nr';
     mietename := nullif(r->>'name','');
 
+    -- Bug-Report 27.10.2026: 0-Monate (vom Client für alle Monate gesendet,
+    -- die die Datei abdeckt) überschreiben veraltete Werte und werden danach
+    -- aus miete_monthly entfernt (Migration fh_sync_miete_strip_zero_months).
     insert into public.fh_contacts (fh_nr, miete_monthly, miete_sortiment, club_weiss_mitglied, club_weiss_mitgliedsnummer, miete_name)
-    values (r->>'fh_nr', monthlyj, sortimentj, true, clubnr, mietename)
+    values (r->>'fh_nr',
+      (select coalesce(jsonb_object_agg(e.key,e.value),'{}'::jsonb) from jsonb_each(monthlyj) e where e.value <> '0'::jsonb),
+      sortimentj, true, clubnr, mietename)
     on conflict (fh_nr) do update set
-      miete_monthly = coalesce(fh_contacts.miete_monthly,'{}'::jsonb) || excluded.miete_monthly,
+      miete_monthly = (select coalesce(jsonb_object_agg(e.key,e.value),'{}'::jsonb)
+                       from jsonb_each(coalesce(fh_contacts.miete_monthly,'{}'::jsonb) || monthlyj) e
+                       where e.value <> '0'::jsonb),
       miete_sortiment = coalesce(fh_contacts.miete_sortiment,'{}'::jsonb) || excluded.miete_sortiment,
       club_weiss_mitglied = true,
       club_weiss_mitgliedsnummer = coalesce(excluded.club_weiss_mitgliedsnummer, fh_contacts.club_weiss_mitgliedsnummer),

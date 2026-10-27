@@ -5516,8 +5516,16 @@ const MIETE_V2_MONAT_LANG=["Jänner","Januar","Februar","März","April","Mai","J
 // ältesten Blatt ("Produktion 2024") dagegen reiner Text ("Januar" ohne
 // Jahresangabe - dort gilt implizit das Jahr des Blatts selbst, da dieses
 // Blatt keine Vorjahresvergleichs-Spalten hat).
+//
+// Bug-Report 27.10.2026 ("Liste zeigt weniger Miete als das Dashboard"):
+// SheetJS liefert diese Datumswerte als LOKALE Mitternacht (wie bei
+// cellDate() oben) - in Österreich ist "1. Feb 2026 00:00" in UTC noch der
+// 31. Jänner 23:00. Mit getUTCMonth()/getUTCFullYear() wurde dadurch jeder
+// Monat um einen nach vorne verschoben (Feb-Wert als Jänner gespeichert,
+// Okt als Sep, ...) und der Jänner fiel als "Dezember Vorjahr" ganz weg.
+// Daher wie cellDate() die lokalen Getter.
 function mieteV2MonthIndex(label,sheetYear){
-  if(label instanceof Date) return {month:label.getUTCMonth()+1,year:label.getUTCFullYear()};
+  if(label instanceof Date) return {month:label.getMonth()+1,year:label.getFullYear()};
   const s=String(label).trim();
   const mmYY=s.match(/^([A-Za-z]{3})-(\d{2})$/);
   if(mmYY){
@@ -5530,6 +5538,10 @@ function mieteV2MonthIndex(label,sheetYear){
 function parseMieteReportV2(wb,yearSheets){
   const byFh={};
   let totalRows=0;
+  // Alle Monate, die die Datei vollständig abdeckt (je Jahresblatt die
+  // eigenen Monatsspalten) - für diese Monate ist die Datei die komplette
+  // Wahrheit, siehe upsertMieteData().
+  const coveredMonths=new Set();
   for(const sheetName of yearSheets){
     const sheetYear=+sheetName.match(/\d{4}/)[0];
     const rows=toRows(wb.Sheets[sheetName]);
@@ -5553,14 +5565,20 @@ function parseMieteReportV2(wb,yearSheets){
       monthCols.push({col:j,ym:sheetYear+"-"+String(parsed.month).padStart(2,"0")});
     }
     if(!monthCols.length) continue;
+    for(const {ym} of monthCols) coveredMonths.add(ym);
     for(let i=2;i<rows.length;i++){
       const r=rows[i]; if(!r||r[idxFh]==null||r[idxFh]==="") continue;
       const fhNr=String(r[idxFh]).trim(); if(!fhNr) continue;
       if(!/^\d+$/.test(fhNr)) continue;
       if(!byFh[fhNr]) byFh[fhNr]={monthly:{},sortiment:{},clubNr:null,name:null};
+      // Auch 0 übernehmen (Bug-Report 27.10.2026): sonst blieb ein früher
+      // eingespielter (oder durch den Zeitzonen-Fehler verschobener) Wert
+      // für diesen Monat stehen, weil der Import nur ergänzt. fh_sync_miete
+      // entfernt 0-Monate anschließend wieder aus miete_monthly.
       for(const {col,ym} of monthCols){
-        const count=num(r[col]);
-        if(count){ byFh[fhNr].monthly[ym]=(byFh[fhNr].monthly[ym]||0)+count; totalRows+=count; }
+        const count=num(r[col])||0;
+        byFh[fhNr].monthly[ym]=(byFh[fhNr].monthly[ym]||0)+count;
+        totalRows+=count;
       }
       const clubNr=idxClubNr>-1?String(r[idxClubNr]??"").trim():"";
       if(clubNr) byFh[fhNr].clubNr=clubNr;
@@ -5568,14 +5586,36 @@ function parseMieteReportV2(wb,yearSheets){
       if(bez) byFh[fhNr].name=bez;
     }
   }
-  return totalRows?{byFh,totalRows}:null;
+  return totalRows?{byFh,totalRows,coveredMonths:[...coveredMonths]}:null;
 }
 // Schreibt die je Fachhändler aggregierten Miete-Daten per RPC (fh_sync_miete,
 // siehe schema.sql) - JSONB-Merge statt Überschreiben, damit ein Import mit
 // weniger Jahresblättern ältere Monate/Sortimente nicht löscht. Kleinere
 // Chunk-Größe als bei den übrigen Bulk-Importen, da jede Zeile hier zwei
 // verschachtelte JSON-Objekte (monthly+sortiment) mitbringt.
-async function upsertMieteData(byFh){
+// coveredMonths (nur Neuformat, siehe parseMieteReportV2): Monate, die die
+// Datei vollständig abdeckt. Fachhändler, die dort noch Miete-Werte haben,
+// aber in der Datei gar nicht (mehr) vorkommen, bekommen für diese Monate
+// eine 0 - sonst blieben veraltete Werte stehen und das Dashboard zeigte
+// mehr als die Club.Weiss-Liste (Bug-Report 27.10.2026). fh_sync_miete
+// entfernt 0-Monate wieder, es bleiben also keine Null-Einträge stehen.
+async function upsertMieteData(byFh,coveredMonths){
+  byFh={...byFh}; // Aufrufer zählen danach noch die FH der Datei selbst
+  if(coveredMonths&&coveredMonths.length){
+    const covered=new Set(coveredMonths);
+    const PAGE=1000;
+    for(let from=0;;from+=PAGE){
+      const { data, error }=await sb.from("fh_contacts").select("fh_nr,miete_monthly").neq("miete_monthly","{}").range(from,from+PAGE-1);
+      if(error) throw error;
+      for(const r of (data||[])){
+        if(byFh[r.fh_nr]) continue;
+        const stale=Object.keys(r.miete_monthly||{}).filter(k=>covered.has(k));
+        if(!stale.length) continue;
+        byFh[r.fh_nr]={monthly:Object.fromEntries(stale.map(k=>[k,0])),sortiment:{},clubNr:null,name:null};
+      }
+      if(!data||data.length<PAGE) break;
+    }
+  }
   const entries=Object.entries(byFh);
   const CHUNK=200;
   for(let i=0;i<entries.length;i+=CHUNK){
@@ -5602,7 +5642,7 @@ async function handleMieteFile(files){
     const wb=XLSX.read(buf,{type:"array",cellDates:true});
     const parsed=parseMieteReport(wb,files[0].name);
     if(!parsed){ toast('Format nicht erkannt – bitte die Miete-Report-Datei mit Blatt "AT_<Jahr>" einspielen.'); return; }
-    await upsertMieteData(parsed.byFh);
+    await upsertMieteData(parsed.byFh,parsed.coveredMonths);
     await loadFhMieteIndex();
     if(fhModalCurrent){ await loadFhContact(fhModalCurrent); renderFhContactView(); renderFhMieteSection(); }
     render();
@@ -5889,7 +5929,7 @@ async function processPendingImports(){
             // zulässig (siehe parseMieteReport).
             const parsed=parseMieteReport(wb,row.filename);
             if(parsed){
-              await upsertMieteData(parsed.byFh);
+              await upsertMieteData(parsed.byFh,parsed.coveredMonths);
               mieteCount++; mieteFhCount+=Object.keys(parsed.byFh).length; importType="miete";
             }else{
               // Auch kein Miete-Format - könnte die (absolut vertrauliche)
