@@ -59,6 +59,13 @@ interface Attachment {
   contentType?: string;
 }
 
+// Dateiname im MIME-Header nur ASCII (siehe asciiFilenamePart() im Client).
+function asciiFilename(s: string): string {
+  return s.replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue")
+    .replace(/Ä/g, "Ae").replace(/Ö/g, "Oe").replace(/Ü/g, "Ue").replace(/ß/g, "ss")
+    .replace(/[^\x20-\x7e]/g, "_").replace(/"/g, "");
+}
+
 // RFC 2045: Base64-Zeilen max. 76 Zeichen. Array-Push+Join statt Regex/
 // Zeichen-für-Zeichen-Konkatenation - bei mehreren MB Anhang ist das der
 // entscheidende Unterschied zwischen Millisekunden und einem CPU-Zeit-
@@ -71,6 +78,39 @@ function wrapBase64(b64: string): string {
 
 function b64Encode(s: string): string {
   return btoa(s);
+}
+
+// UTF-8 -> Base64 (btoa kann nur Latin-1).
+function utf8B64(s: string): string {
+  const bytes = new TextEncoder().encode(s);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return btoa(bin);
+}
+
+// RFC 2047: Header-Text mit Nicht-ASCII-Zeichen als "=?UTF-8?B?...?=".
+// Reines ASCII bleibt unverändert. In Stücke von max. 45 Bytes geteilt
+// (Encoded-Words dürfen max. 75 Zeichen lang sein), ohne ein Mehrbyte-
+// Zeichen zu zerschneiden.
+function encodeHeaderWord(s: string): string {
+  if (/^[\x20-\x7e]*$/.test(s)) return s;
+  const words: string[] = [];
+  let chunk = "";
+  for (const ch of s) {
+    if (new TextEncoder().encode(chunk + ch).length > 45) { words.push(chunk); chunk = ""; }
+    chunk += ch;
+  }
+  if (chunk) words.push(chunk);
+  return words.map((w) => `=?UTF-8?B?${utf8B64(w)}?=`).join("\r\n ");
+}
+
+// RFC 5322-Datum, z.B. "Tue, 03 Nov 2026 14:05:00 +0000".
+function rfc5322Date(d: Date): string {
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${days[d.getUTCDay()]}, ${p(d.getUTCDate())} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()} ` +
+    `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())} +0000`;
 }
 
 // Minimaler, eigenständiger SMTP-Client (EHLO/STARTTLS/AUTH LOGIN/MAIL/
@@ -164,10 +204,21 @@ async function sendSmtpMail(opts: {
     await sendCmd("DATA", ["354"]);
 
     const boundary = "wgdash-" + crypto.randomUUID();
+    // Bug-Report 03.11.2026 ("Mailversand funktioniert nicht mehr", u.a.
+    // Berichte an sich selbst kamen nicht an): seit dem eigenen SMTP-Client
+    // vom 06.10.2026 fehlten die Pflicht-Header Date und Message-ID (RFC
+    // 5322), und Betreff/Absendername gingen als rohes UTF-8 raus (z.B. "–",
+    // Umlaute) statt RFC-2047-kodiert. denomailer hatte das vorher selbst
+    // erledigt. Der Versand-Server nimmt solche Mails zwar an (250), beim
+    // Empfänger landen sie aber im Spam oder werden abgewiesen. Jetzt ist die
+    // komplette Mail reines 7-Bit-ASCII mit allen Pflicht-Headern.
+    const domain = fromEmail.split("@")[1] || "wgaustria.at";
     const headers =
-      `From: ${fromName} <${fromEmail}>\r\n` +
+      `From: ${encodeHeaderWord(fromName)} <${fromEmail}>\r\n` +
       `To: ${opts.to}\r\n` +
-      `Subject: ${opts.subject}\r\n` +
+      `Subject: ${encodeHeaderWord(opts.subject)}\r\n` +
+      `Date: ${rfc5322Date(new Date())}\r\n` +
+      `Message-ID: <${crypto.randomUUID()}@${domain}>\r\n` +
       `MIME-Version: 1.0\r\n` +
       `Content-Type: multipart/mixed; boundary="${boundary}"\r\n\r\n`;
 
@@ -179,9 +230,9 @@ async function sendSmtpMail(opts: {
 
     const attachmentParts = (opts.attachments || []).map((a) =>
       `--${boundary}\r\n` +
-      `Content-Type: ${a.contentType || "application/octet-stream"}; name="${a.filename}"\r\n` +
+      `Content-Type: ${a.contentType || "application/octet-stream"}; name="${asciiFilename(a.filename)}"\r\n` +
       `Content-Transfer-Encoding: base64\r\n` +
-      `Content-Disposition: attachment; filename="${a.filename}"\r\n\r\n` +
+      `Content-Disposition: attachment; filename="${asciiFilename(a.filename)}"\r\n\r\n` +
       wrapBase64(a.content) + "\r\n\r\n",
     ).join("");
 
