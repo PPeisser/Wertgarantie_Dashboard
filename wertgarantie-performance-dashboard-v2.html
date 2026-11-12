@@ -1058,7 +1058,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
     <h2 class="sec"><svg class="arr" viewBox="0 0 60 30"><path d="M4 22 C 20 10, 35 8, 48 12" fill="none" stroke="#009FE3" stroke-width="6" stroke-linecap="round"/><path d="M39 4 L 56 13 L 37 20 Z" fill="#009FE3"/></svg> Produktmix &amp; Sparten</h2>
     <div class="quad">
       <div class="panel">
-        <h3><span class="dot" style="background:var(--wg-navy)"></span>Komplettschutz vs. Geräteschutz <small style="color:var(--muted);font-weight:600">Österreich · ZE_Region</small></h3>
+        <h3><span class="dot" style="background:var(--wg-navy)"></span>Komplettschutz vs. Geräteschutz <small id="mixWho" style="color:var(--muted);font-weight:600">Österreich · ZE_Region</small></h3>
         <div id="mixBody"></div>
       </div>
       <div class="panel">
@@ -1313,6 +1313,8 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div><span class="ac-lbl">Betreuer</span><div class="ac-val" id="fhBetreuerView">–</div></div>
         <div><span class="ac-lbl">Hauptzweig</span><div class="ac-val" id="fhHauptzweigView">–</div></div>
         <div><span class="ac-lbl">Letzter Besuch</span><div class="ac-val" id="fhBesuchView">–</div></div>
+        <div id="fhNaechsterViewRow" class="hidden"><span class="ac-lbl">Nächster Termin</span><div class="ac-val" id="fhNaechsterView">–</div></div>
+        <div id="fhTermineViewRow" class="hidden"><span class="ac-lbl" id="fhTermineLbl">Termine</span><div class="ac-val" id="fhTermineView">–</div></div>
         <div><span class="ac-lbl">9-Wochen-Plan</span><div class="ac-val" id="fhNwView">–</div></div>
         <div id="fhClubViewRow" class="hidden"><span class="ac-lbl">Club.Weiss Mitglied</span><div class="ac-val" id="fhClubView">–</div></div>
         <div id="fhClubNrViewRow" class="hidden"><span class="ac-lbl">Club.Weiss Mitgliedsnummer</span><div class="ac-val" id="fhClubNrView">–</div></div>
@@ -4591,6 +4593,24 @@ function cellDate(v){
   return null;
 }
 
+// Spalten über ihre Überschrift statt über eine feste Position finden
+// (Bug-Report 12.11.2026: die "neue Produktionsauswertung" ab 13.11.2026 hat
+// in FH_Liste eine Spalte weniger vor "GL" - alle Werte ab dort lagen eine
+// Spalte weiter links, der Parser las Monat als Vortag, EWR als Plan usw.;
+// die AKQ-Liste heißt in der Kopfzeile "GL Name" statt "Gebietsleiter" und
+// wurde gar nicht mehr erkannt). hdrIndex() baut aus der Kopfzeile eine Map
+// normalisierte Überschrift -> Spalte, hcol() sucht darin und fällt auf die
+// bisherige feste Spalte zurück (alte Dateien funktionieren unverändert).
+function normHdrKey(v){ return String(v??"").toLowerCase().replace(/[\s._\-]+/g,""); }
+function hdrIndex(row){
+  const m={};
+  (row||[]).forEach((v,j)=>{ const k=normHdrKey(v); if(k&&!(k in m)) m[k]=j; });
+  return m;
+}
+function hcol(map,names,fallback){
+  for(const n of names){ const k=normHdrKey(n); if(k in map) return map[k]; }
+  return fallback;
+}
 function parseAuswertung(wb){
   const snap={date:null,vortag:null,jahr:null,monat:null,tageIst:null,tageSoll:null,gl:{},fh:{},akp:[],akq:[]};
 
@@ -4685,6 +4705,14 @@ function parseAuswertung(wb){
   let fhi=-1;
   for(let i=0;i<Math.min(fh.length,5);i++){ if(fh[i]&&String(fh[i][0]||"").replace(/\s/g,"")==="FHNr"){ fhi=i; break; } }
   if(fhi>-1){
+    // Spalten über die Überschrift (Fallback: Positionen der bisherigen Datei).
+    const H=hdrIndex(fh[fhi]);
+    const C={ name:hcol(H,["FH Name"],1), plz:hcol(H,["FH PLZ"],2), ort:hcol(H,["FH Ort"],3), gl:hcol(H,["GL","Gebietsleiter"],5),
+      vt:hcol(H,["Prod. Vortag"],6), monat:hcol(H,["Prod. Monat"],7), lj:hcol(H,["Prod. LJ"],8), vj:hcol(H,["Prod. VJ"],9),
+      po:hcol(H,["Anteil PO in % LJ"],11), f2:hcol(H,["Anteil 3für2 in % LJ"],12), plan:hcol(H,["Plan Stück","Plan"],13),
+      kP:hcol(H,["Anzahl bisherige Kontakte persönlich"],-1), kT:hcol(H,["Anzahl bisherige Kontakte telefonisch"],-1), kD:hcol(H,["Anzahl bisherige Kontakte digital"],-1),
+      lT:hcol(H,["letzter Termin"],-1), lTh:hcol(H,["letztes Thema"],-1), lA:hcol(H,["letzte Aktivität"],-1),
+      nT:hcol(H,["nächster Termin"],-1), nTh:hcol(H,["nächstes Thema"],-1), nA:hcol(H,["nächste Aktivität"],-1) };
     for(let i=fhi+1;i<fh.length;i++){
       const r=fh[i]; if(!r||r[0]==null) continue;
       const rawNr=String(r[0]).trim(); if(!rawNr) continue;
@@ -4694,22 +4722,36 @@ function parseAuswertung(wb){
       // sind) und verfälschen glPlan[AT_KEY]/die Monatsproduktion.
       if(!/^\d+$/.test(rawNr)) continue;
       const nr=resolveFhDup(rawNr);
-      const glRaw=String(r[5]||"").trim();
-      const rec={ name:String(r[1]||"").trim(), plz:String(r[2]||""), ort:String(r[3]||"").trim(),
+      const glRaw=String(r[C.gl]||"").trim();
+      const opt=(j)=>j>-1?r[j]:null;
+      const optStr=(j)=>{ const v=opt(j); return v==null?null:(String(v).trim()||null); };
+      const rec={ name:String(r[C.name]||"").trim(), plz:String(r[C.plz]||""), ort:String(r[C.ort]||"").trim(),
         gl:glRaw, emp:matchEmployee(glRaw),
-        vt:num(r[6]), monat:num(r[7]), lj:num(r[8]), vj:num(r[9]), plan:num(r[13]),
+        vt:num(r[C.vt]), monat:num(r[C.monat]), lj:num(r[C.lj]), vj:num(r[C.vj]), plan:num(r[C.plan]),
+        // Neue Produktionsauswertung (ab 13.11.2026): Termine/Kontakte je FH -
+        // nur befüllt, wenn die Spalten in der Datei vorkommen (sonst null).
+        kontakteP:C.kP>-1?num(r[C.kP]):null, kontakteT:C.kT>-1?num(r[C.kT]):null, kontakteD:C.kD>-1?num(r[C.kD]):null,
+        letzterTermin:cellDate(opt(C.lT)), letztesThema:optStr(C.lTh), letzteAktivitaet:optStr(C.lA),
+        naechsterTermin:cellDate(opt(C.nT)), naechstesThema:optStr(C.nTh), naechsteAktivitaet:optStr(C.nA),
         // Spalte L "Anteil PO in % LJ" / M "Anteil 3für2 in % LJ" - als Bruch
         // wie bei GW-Quote (0,483 statt 48,3), keine GL-Pivot-Tabelle dafür
         // vorhanden, deshalb hier je FH erfasst und in renderMix() nach
         // Jahresproduktion gewichtet aggregiert (analog zur GW-Quote).
-        poQuote:num(r[11]), q3fuer2:num(r[12]) };
+        poQuote:num(r[C.po]), q3fuer2:num(r[C.f2]) };
       const ex=snap.fh[nr];
       if(ex){
         // Alias- UND kanonische FH-Nr stehen beide in derselben Einspielung
         // (FH-Duplikate zusammenführen, siehe resolveFhDup()) - Produktions-
         // zahlen addieren, Name/Ort/Betreuer vom zuerst gesehenen Eintrag
         // behalten (meist der kanonische, da FH_Liste i.d.R. sortiert ist).
-        snap.fh[nr]={...ex, vt:ex.vt+rec.vt, monat:ex.monat+rec.monat, lj:ex.lj+rec.lj, vj:ex.vj+rec.vj, plan:ex.plan+rec.plan};
+        const sumN=(a,b)=>(a==null&&b==null)?null:(a||0)+(b||0);
+        const later=(a,b)=>(a&&b)?(a>b?a:b):(a||b);
+        snap.fh[nr]={...ex, vt:ex.vt+rec.vt, monat:ex.monat+rec.monat, lj:ex.lj+rec.lj, vj:ex.vj+rec.vj, plan:ex.plan+rec.plan,
+          kontakteP:sumN(ex.kontakteP,rec.kontakteP), kontakteT:sumN(ex.kontakteT,rec.kontakteT), kontakteD:sumN(ex.kontakteD,rec.kontakteD),
+          ...(rec.letzterTermin&&later(ex.letzterTermin,rec.letzterTermin)===rec.letzterTermin&&rec.letzterTermin!==ex.letzterTermin
+            ?{letzterTermin:rec.letzterTermin,letztesThema:rec.letztesThema,letzteAktivitaet:rec.letzteAktivitaet}:{}),
+          ...(rec.naechsterTermin&&(!ex.naechsterTermin||rec.naechsterTermin<ex.naechsterTermin)
+            ?{naechsterTermin:rec.naechsterTermin,naechstesThema:rec.naechstesThema,naechsteAktivitaet:rec.naechsteAktivitaet}:{})};
       }else{
         snap.fh[nr]=rec;
       }
@@ -4740,7 +4782,9 @@ function parseAuswertung(wb){
   /* --- AKQ-Liste --- */
   const aq=toRows(sheetByName(wb,"akqliste"));
   let qi=-1;
-  for(let i=0;i<Math.min(aq.length,5);i++){ if(aq[i]&&String(aq[i][1]||"").trim()==="Gebietsleiter"){ qi=i; break; } }
+  // Kopfzeile: früher "Gebietsleiter", seit der neuen Produktionsauswertung
+  // (13.11.2026) "GL Name" - beide erkennen (siehe hdrIndex()).
+  for(let i=0;i<Math.min(aq.length,5);i++){ const k=normHdrKey(aq[i]&&aq[i][1]); if(k==="gebietsleiter"||k==="glname"){ qi=i; break; } }
   if(qi>-1){
     // Map statt direktem push(): Alias- und kanonische FH-Nr (FH-Duplikate
     // zusammenführen, siehe resolveFhDup()) können beide als eigene Zeile in
@@ -4748,17 +4792,37 @@ function parseAuswertung(wb){
     // (Kennzahlen addiert, frühester Beginn behalten), bevor snap.akq daraus
     // gebaut wird.
     const akqMap=new Map();
+    // Spalten über die Überschrift (Fallback: Positionen der bisherigen
+    // Datei). Neue Produktionsauswertung: "Anzahl bisherige Kontakte
+    // persönlich/telefonisch/digital" ersetzen die bisherigen Besuchsspalten -
+    // besP/besT wie bisher, besG ("g.") = Summe aller Termine (Nutzervorgabe
+    // 12.11.2026). Die Jahres-Spalten heißen "Prod <Jahr>" und verschieben
+    // sich mit jedem Jahr, deshalb bewusst positional relativ zum Beginn.
+    const H=hdrIndex(aq[qi]);
+    const C={ gl:hcol(H,["GL Name","Gebietsleiter"],1), nr:hcol(H,["FH Nr"],2), name:hcol(H,["FH Name"],3),
+      strasse:hcol(H,["FH Straße"],4), plz:hcol(H,["FH PLZ"],5), ort:hcol(H,["FH Ort"],6), tel:hcol(H,["FH Telefonnr"],7),
+      beginn:hcol(H,["FH Beginn Zusammenarbeit"],9),
+      produzent:hcol(H,["Produzent"],13), kw:hcol(H,["Prod. aktuelle KW"],14),
+      kP:hcol(H,["Anzahl bisherige Kontakte persönlich"],-1), kT:hcol(H,["Anzahl bisherige Kontakte telefonisch"],-1), kD:hcol(H,["Anzahl bisherige Kontakte digital"],-1),
+      lT:hcol(H,["Letzter Termin"],-1), lTh:hcol(H,["letztes Thema"],-1), lA:hcol(H,["letzte Aktivität"],-1),
+      nT:hcol(H,["nächster Termin"],-1), nTh:hcol(H,["nächstes Thema"],-1), nA:hcol(H,["nächste Aktivität"],-1) };
+    const newFmt=C.kP>-1;
     for(let i=qi+1;i<aq.length;i++){
-      const r=aq[i]; if(!r||r[3]==null) continue;
-      const glRaw=String(r[1]||"").trim();
-      const beginn=cellDate(r[9]);
-      const nr=resolveFhDup(String(r[2]||""));
-      const rec={ nr, name:String(r[3]).trim(),
-        strasse:String(r[4]||"").trim(), plz:String(r[5]||""), ort:String(r[6]||"").trim(), tel:String(r[7]||"").trim(),
+      const r=aq[i]; if(!r||r[C.name]==null) continue;
+      const glRaw=String(r[C.gl]||"").trim();
+      const beginn=cellDate(r[C.beginn]);
+      const nr=resolveFhDup(String(r[C.nr]||""));
+      const optStr=(j)=>{ const v=j>-1?r[j]:null; return v==null?null:(String(v).trim()||null); };
+      const besP=newFmt?num(r[C.kP]):num(r[15]), besT=newFmt?num(r[C.kT]):num(r[16]);
+      const rec={ nr, name:String(r[C.name]).trim(),
+        strasse:String(r[C.strasse]||"").trim(), plz:String(r[C.plz]||""), ort:String(r[C.ort]||"").trim(), tel:String(r[C.tel]||"").trim(),
         beginn, beginnJahr:beginn?parseInt(beginn.slice(0,4),10):null,
         glRaw, emp:matchEmployee(glRaw),
-        p2024:num(r[10]), p2025:num(r[11]), p2026:num(r[12]),
-        produzent:String(r[13]||"").trim().toUpperCase()==="JA", kw:num(r[14]), besP:num(r[15]), besT:num(r[16]), besG:num(r[17]) };
+        p2024:num(r[C.beginn+1]), p2025:num(r[C.beginn+2]), p2026:num(r[C.beginn+3]),
+        produzent:String(r[C.produzent]||"").trim().toUpperCase()==="JA", kw:num(r[C.kw]), besP, besT,
+        besG:newFmt?besP+besT+(C.kD>-1?num(r[C.kD]):0):num(r[17]),
+        letzterTermin:cellDate(C.lT>-1?r[C.lT]:null), letztesThema:optStr(C.lTh), letzteAktivitaet:optStr(C.lA),
+        naechsterTermin:cellDate(C.nT>-1?r[C.nT]:null), naechstesThema:optStr(C.nTh), naechsteAktivitaet:optStr(C.nA) };
       const ex=akqMap.get(nr);
       if(ex){
         const earlierBeginn=(ex.beginn&&rec.beginn)?(ex.beginn<rec.beginn?ex.beginn:rec.beginn):(ex.beginn||rec.beginn);
@@ -4988,6 +5052,47 @@ function parseAuswertung(wb){
       }
     }
     if(snap.gl[AT_KEY]&&snap.zeAtMonatVJ!=null) snap.gl[AT_KEY].monatVJ=snap.zeAtMonatVJ;
+  })();
+
+  /* --- Neue Produktionsauswertung (ab 13.11.2026): weitere Pivot-Hilfsblätter
+     je GL - wie bei der GW-Quote oben über die Kopfzeile gesucht, nicht über
+     den Blattnamen:
+     - "Quote 3für2" / "Quote 3für2 VJ" (offizielle 3-für-2-Quote je GL)
+     - "KS" / "Andere Produkte" (Komplettschutz vs. übrige Produkte im
+       laufenden Monat je GL, für den Produktmix in der Mitarbeiter-Ansicht) */
+  function dataSheetByHeaders(test){
+    for(const n of wb.SheetNames){
+      if(!n.toLowerCase().startsWith("data_")) continue;
+      const rows=toRowsIgnoringRef(wb.Sheets[n]);
+      for(let i=0;i<Math.min(rows.length,5);i++){
+        const r=rows[i]; if(!r) continue;
+        const cols=test(r.map(v=>String(v??"").trim()));
+        if(cols) return {rows,hi:i,cols};
+      }
+    }
+    return null;
+  }
+  (function(){
+    const f=dataSheetByHeaders(h=>{ const a=h.indexOf("Quote 3für2"), b=h.indexOf("Quote 3für2 VJ"); return a>-1?{a,b}:null; });
+    if(!f) return;
+    snap.q3fuer2Gl={};
+    for(let i=f.hi+1;i<f.rows.length;i++){
+      const r=f.rows[i]; if(!r||r[0]==null) continue;
+      const name=String(r[0]).trim();
+      if(/^(auswertung|gesamt|summe|total)$/i.test(name)) continue;
+      snap.q3fuer2Gl[matchEmployee(name)||("x_"+name)]={lj:num(r[f.cols.a]),vj:f.cols.b>-1?num(r[f.cols.b]):null};
+    }
+  })();
+  (function(){
+    const f=dataSheetByHeaders(h=>{ const a=h.indexOf("KS"), b=h.indexOf("Andere Produkte"); return (a>-1&&b>-1)?{a,b}:null; });
+    if(!f) return;
+    snap.ksGl={};
+    for(let i=f.hi+1;i<f.rows.length;i++){
+      const r=f.rows[i]; if(!r||r[0]==null) continue;
+      const name=String(r[0]).trim();
+      if(/^(auswertung|gesamt|summe|total)$/i.test(name)) continue;
+      snap.ksGl[matchEmployee(name)||("x_"+name)]={ks:num(r[f.cols.a]),andere:num(r[f.cols.b])};
+    }
   })();
 
   const ok=Object.keys(snap.gl).length>0||Object.keys(snap.fh).length>0;
@@ -6086,6 +6191,17 @@ async function syncFhContacts(snap){
     const mk=snap.jahr+"-"+String(snap.monat).padStart(2,"0");
     const rows=Object.entries(snap.fh).map(([nr,f])=>({nr,mk,mv:f.monat||0}));
     if(rows.length) await sb.rpc("fh_sync_daily",{rows});
+  }catch(e){}
+  // "Letzter Besuch" aus dem "letzten Termin" der neuen Produktionsauswertung
+  // (FH_Liste, für reine Akquisekunden AKQ-Liste) - fh_sync_letzter_besuch
+  // überschreibt nur, wenn das Datum aus der Datei NEUER ist als das
+  // gespeicherte (auch manuell eingetragene) Datum.
+  try{
+    const byNr={};
+    for(const [nr,f] of Object.entries(snap.fh)) if(f.letzterTermin) byNr[nr]=f.letzterTermin;
+    for(const a of (snap.akq||[])) if(a.nr&&a.letzterTermin&&(!byNr[a.nr]||a.letzterTermin>byNr[a.nr])) byNr[a.nr]=a.letzterTermin;
+    const rows=Object.entries(byNr).map(([nr,d])=>({nr,d}));
+    if(rows.length) await sb.rpc("fh_sync_letzter_besuch",{rows});
   }catch(e){}
 }
 // Lädt die komplette AKP-Kontaktdatenbank einmal pro Sitzung (paginiert, >10.000
@@ -9867,7 +9983,26 @@ function renderFhContactView(){
   $("fhKooperationView").textContent=c.kooperation||"–";
   $("fhBetreuerView").textContent=c.akq_gl||"–";
   $("fhHauptzweigView").textContent=c.hauptzweig||"–";
-  $("fhBesuchView").textContent=c.letzter_besuch?fmtDate(c.letzter_besuch):"–";
+  // Neue Produktionsauswertung (ab 13.11.2026): Termine je Händler aus
+  // FH_Liste (bzw. AKQ-Liste für reine Akquisekunden). "Letzter Besuch" ist
+  // das neuere Datum aus Stammdaten (manuell) und Datei; Thema/Art nur, wenn
+  // das angezeigte Datum auch aus der Datei stammt.
+  const tf=(f&&(f.letzterTermin||f.naechsterTermin||f.kontakteP!=null))?f:(akq&&(akq.letzterTermin||akq.naechsterTermin)?akq:f);
+  const fileLast=tf&&tf.letzterTermin||null;
+  const lastDate=(c.letzter_besuch&&(!fileLast||c.letzter_besuch>=fileLast))?c.letzter_besuch:fileLast;
+  const lastExtra=(lastDate&&lastDate===fileLast)?[tf.letztesThema,tf.letzteAktivitaet].filter(Boolean):[];
+  $("fhBesuchView").textContent=lastDate?[fmtDate(lastDate),...lastExtra].join(" · "):"–";
+  const nextDate=tf&&tf.naechsterTermin||null;
+  $("fhNaechsterViewRow").classList.toggle("hidden",!nextDate);
+  $("fhNaechsterView").textContent=nextDate?[fmtDate(nextDate),tf.naechstesThema,tf.naechsteAktivitaet].filter(Boolean).join(" · "):"–";
+  // "Termine <Jahr>" (Nutzervorgabe 12.11.2026, statt "Kontakte"): nur aus
+  // FH_Liste, nur wenn die Datei die Spalten enthält.
+  const hasTermine=f&&f.kontakteP!=null;
+  $("fhTermineViewRow").classList.toggle("hidden",!hasTermine);
+  if(hasTermine){
+    $("fhTermineLbl").textContent="Termine "+state.latest.jahr;
+    $("fhTermineView").textContent=`${fmt(f.kontakteP||0)} persönlich · ${fmt(f.kontakteT||0)} telefonisch · ${fmt(f.kontakteD||0)} digital`;
+  }
   $("fhNwView").textContent=c.neunwochen_erledigt?"✓ erledigt":"– offen";
   // Club.Weiss- und Weitere-Zuordnung-Zeilen nur anzeigen, wenn zutreffend
   // (Nutzervorgabe: die meisten FH sind weder Club.Weiss-Mitglied noch haben
@@ -14193,18 +14328,31 @@ function renderAKQ(){
 }
 
 /* Produktmix: Komplettschutz vs. Geräteschutz (Österreich, aus ZE_Region) */
-function stackBar(ks,gs,lbl){
+function stackBar(ks,gs,lbl,gsShort="GS",gsName="Geräteschutz"){
   const t=ks+gs; if(t<=0) return `<div class="empty-note">keine Daten</div>`;
   const kp=ks/t*100, gp=gs/t*100;
   return `<div class="mix-lbl">${lbl}</div>
   <div class="mixbar">
     <div class="seg ks" style="width:${kp}%" title="Komplettschutz ${fmt(ks)}">${kp>=14?`KS ${kp.toFixed(1).replace(".",",")} %`:""}</div>
-    <div class="seg gs" style="width:${gp}%" title="Geräteschutz ${fmt(gs)}">${gp>=14?`GS ${gp.toFixed(1).replace(".",",")} %`:""}</div>
+    <div class="seg gs" style="width:${gp}%" title="${gsName} ${fmt(gs)}">${gp>=14?`${gsShort} ${gp.toFixed(1).replace(".",",")} %`:""}</div>
   </div>
-  <div class="mix-sub">KS ${fmt(ks)} Stk. (${kp.toFixed(1).replace(".",",")} %) · GS ${fmt(gs)} Stk. (${gp.toFixed(1).replace(".",",")} %)</div>`;
+  <div class="mix-sub">KS ${fmt(ks)} Stk. (${kp.toFixed(1).replace(".",",")} %) · ${gsShort} ${fmt(gs)} Stk. (${gp.toFixed(1).replace(".",",")} %)</div>`;
 }
 function renderMix(){
   const s=state.latest;
+  // Mitarbeiter-Ansicht (neue Produktionsauswertung ab 13.11.2026, Hilfsblatt
+  // "KS"/"Andere Produkte" je GL): eigener Mix des laufenden Monats. Die
+  // Datei liefert je GL nur "Andere Produkte" (nicht exakt Geräteschutz) und
+  // keinen Vorjahreswert - deshalb eigene Beschriftung, Österreich als
+  // Vergleich darunter.
+  const g=currentEmp!==AT_GESAMT&&s.ksGl&&s.ksGl[currentEmp];
+  $("mixWho").textContent=g?currentEmp+" · Region_nach_GL":"Österreich · ZE_Region";
+  if(g){
+    $("mixBody").innerHTML=
+      stackBar(g.ks,g.andere,`Laufender Monat · ${escapeHtml(currentEmp)}`,"Andere","Andere Produkte")+
+      (s.ks?stackBar(s.ks.lj.ks,s.ks.lj.gs,`Zum Vergleich: Österreich, laufender Monat (Hochrechnung)`):"");
+    return;
+  }
   if(!s.ks){ $("mixBody").innerHTML=`<div class="empty-note">KS/GS-Daten in dieser Einspielung nicht enthalten – bitte Auswertung mit dieser Version neu einspielen.</div>`; return; }
   const dK=s.ks.lj.ks-s.ks.vj.ks, dG=s.ks.lj.gs-s.ks.vj.gs;
   $("mixBody").innerHTML=

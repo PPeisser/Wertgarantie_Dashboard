@@ -1107,3 +1107,28 @@ select cron.schedule('auswertung-scheduled-mail-daily', '0 6 * * *', $$
     timeout_milliseconds := 55000
   );
 $$);
+
+
+-- Neue Produktionsauswertung (ab 13.11.2026): "letzter Termin" aus FH_Liste/
+-- AKQ-Liste als fh_contacts.letzter_besuch übernehmen, nur wenn neuer
+-- (Migration fh_sync_letzter_besuch, live seit 12.11.2026).
+create or replace function public.fh_sync_letzter_besuch(rows jsonb) returns integer
+language plpgsql security definer set search_path = public as $$
+declare n integer;
+begin
+  if auth.uid() is null then
+    raise exception 'Anmeldung erforderlich';
+  end if;
+  update public.fh_contacts f
+     set letzter_besuch = x.d, updated_at = now()
+    from (select r->>'nr' nr, (r->>'d')::date d
+            from jsonb_array_elements(rows) r
+           where coalesce(r->>'nr','') <> '' and coalesce(r->>'d','') ~ '^\d{4}-\d{2}-\d{2}$') x
+   where f.fh_nr = x.nr
+     and f.gesperrt_am is null
+     and (f.letzter_besuch is null or f.letzter_besuch < x.d);
+  get diagnostics n = row_count;
+  return n;
+end;
+$$;
+grant execute on function public.fh_sync_letzter_besuch(jsonb) to authenticated;
