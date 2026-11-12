@@ -5862,6 +5862,21 @@ function mergeSnapshot(snap){
         if(!seen.has(k)) snap.akp.push({...a,vt:0,monat:sumMonthFromDaily(state.dailyAKP[k]||{},snap.jahr,snap.monat)});
       }
     }
+    // Pläne eingefroren (Nutzervorgabe 12.11.2026): die neue Produktions-
+    // auswertung (ab 13.11.2026) liefert in FH_Liste "Plan Stück" mit teils
+    // anderen Werten (z.B. Hartlauer/Szendi 0 statt bisher 47.210) - die
+    // Pläne sollen NICHT mehr aus der FH_Liste übernommen werden, sondern auf
+    // dem bisherigen Stand bleiben. Plan je FH und die daraus summierten
+    // Pläne je GL (glPlan) werden deshalb vom bisherigen Stand übernommen;
+    // ein FH ohne bisherigen Plan bekommt 0. (Die persönlichen Jahresziele
+    // kommen ohnehin fix aus der Tabelle employees, siehe PERS_JAHRESZIELE.)
+    if(state.latest&&state.latest.fh&&state.latest.glPlan){
+      for(const [nr,f] of Object.entries(snap.fh)){
+        const old=state.latest.fh[nr];
+        f.plan=(old&&old.plan)||0;
+      }
+      snap.glPlan=state.latest.glPlan;
+    }
     state.latest=snap;
   }
 }
