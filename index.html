@@ -437,6 +437,7 @@ td .betr{font-size:11px;color:var(--muted)}
 .pill.pos{background:var(--pos-bg);color:var(--pos)}
 .pill.neg{background:var(--neg-bg);color:var(--neg)}
 .pill.neu{background:#EDF2F6;color:var(--muted)}
+.pill.amb{background:var(--amber-bg);color:#B45309}
 .empty-note{color:var(--muted);font-size:12.5px;padding:14px 6px;text-align:center}
 
 /* ---------- Beobachtung / AKP ---------- */
@@ -4712,7 +4713,8 @@ function parseAuswertung(wb){
       po:hcol(H,["Anteil PO in % LJ"],11), f2:hcol(H,["Anteil 3für2 in % LJ"],12), plan:hcol(H,["Plan Stück","Plan"],13),
       kP:hcol(H,["Anzahl bisherige Kontakte persönlich"],-1), kT:hcol(H,["Anzahl bisherige Kontakte telefonisch"],-1), kD:hcol(H,["Anzahl bisherige Kontakte digital"],-1),
       lT:hcol(H,["letzter Termin"],-1), lTh:hcol(H,["letztes Thema"],-1), lA:hcol(H,["letzte Aktivität"],-1),
-      nT:hcol(H,["nächster Termin"],-1), nTh:hcol(H,["nächstes Thema"],-1), nA:hcol(H,["nächste Aktivität"],-1) };
+      nT:hcol(H,["nächster Termin"],-1), nTh:hcol(H,["nächstes Thema"],-1), nA:hcol(H,["nächste Aktivität"],-1),
+      tage:hcol(H,["Tage seit letztem Besuch"],-1) };
     for(let i=fhi+1;i<fh.length;i++){
       const r=fh[i]; if(!r||r[0]==null) continue;
       const rawNr=String(r[0]).trim(); if(!rawNr) continue;
@@ -4733,6 +4735,9 @@ function parseAuswertung(wb){
         kontakteP:C.kP>-1?num(r[C.kP]):null, kontakteT:C.kT>-1?num(r[C.kT]):null, kontakteD:C.kD>-1?num(r[C.kD]):null,
         letzterTermin:cellDate(opt(C.lT)), letztesThema:optStr(C.lTh), letzteAktivitaet:optStr(C.lA),
         naechsterTermin:cellDate(opt(C.nT)), naechstesThema:optStr(C.nTh), naechsteAktivitaet:optStr(C.nA),
+        // Spalte "Tage seit letztem Besuch" (negativ, z.B. -35) - null, wenn
+        // leer (Händler ohne erfassten Besuch) oder Spalte nicht vorhanden.
+        tageSeitBesuch:(C.tage>-1&&opt(C.tage)!=null&&String(opt(C.tage)).trim()!=="")?num(opt(C.tage)):null,
         // Spalte L "Anteil PO in % LJ" / M "Anteil 3für2 in % LJ" - als Bruch
         // wie bei GW-Quote (0,483 statt 48,3), keine GL-Pivot-Tabelle dafür
         // vorhanden, deshalb hier je FH erfasst und in renderMix() nach
@@ -4748,6 +4753,7 @@ function parseAuswertung(wb){
         const later=(a,b)=>(a&&b)?(a>b?a:b):(a||b);
         snap.fh[nr]={...ex, vt:ex.vt+rec.vt, monat:ex.monat+rec.monat, lj:ex.lj+rec.lj, vj:ex.vj+rec.vj, plan:ex.plan+rec.plan,
           kontakteP:sumN(ex.kontakteP,rec.kontakteP), kontakteT:sumN(ex.kontakteT,rec.kontakteT), kontakteD:sumN(ex.kontakteD,rec.kontakteD),
+          tageSeitBesuch:(ex.tageSeitBesuch==null)?rec.tageSeitBesuch:(rec.tageSeitBesuch==null?ex.tageSeitBesuch:Math.max(ex.tageSeitBesuch,rec.tageSeitBesuch)),
           ...(rec.letzterTermin&&later(ex.letzterTermin,rec.letzterTermin)===rec.letzterTermin&&rec.letzterTermin!==ex.letzterTermin
             ?{letzterTermin:rec.letzterTermin,letztesThema:rec.letztesThema,letzteAktivitaet:rec.letzteAktivitaet}:{}),
           ...(rec.naechsterTermin&&(!ex.naechsterTermin||rec.naechsterTermin<ex.naechsterTermin)
@@ -5849,7 +5855,11 @@ function mergeSnapshot(snap){
     // neuer Kalendermonat ergibt automatisch 0 (noch keine Tageshistorie).
     if(state.latest&&state.latest.fh){
       for(const [nr,f] of Object.entries(state.latest.fh)){
-        if(!snap.fh[nr]) snap.fh[nr]={...f,vt:0,monat:sumMonthFromDaily(state.dailyFH[nr]||{},snap.jahr,snap.monat)};
+        if(!snap.fh[nr]) snap.fh[nr]={...f,vt:0,monat:sumMonthFromDaily(state.dailyFH[nr]||{},snap.jahr,snap.monat),
+          // "Tage seit letztem Besuch" eines heute nicht gelisteten FH aus dem
+          // letzten Termin zum neuen Berichtsdatum neu rechnen (sonst bliebe
+          // der Wert vom Vortag stehen).
+          ...(f.letzterTermin&&snap.date?{tageSeitBesuch:-Math.round((parseISO(snap.date)-parseISO(f.letzterTermin))/86400000)}:{})};
       }
     }
     // Gleiches für die AKP-Liste (poQuote/q3fuer2 je Aktivpartner, siehe oben) -
@@ -9216,6 +9226,7 @@ const OBS_CATEGORIES=[
   {cat:"ueberschnitt",label:()=>"deutlich über dem Monatsschnitt"},
   {cat:"tagesabweichung",label:()=>"Veränderung zu Schnitt pro Tag"},
   {cat:"akqohnezuordnung",label:()=>"AKQ ohne Zuordnung"},
+  {cat:"terminhistorie",label:()=>"Terminhistorie"},
 ];
 // Schwellen für die AKP-Einbruch-Erkennung (rollierendes 3-Monats-Fenster,
 // siehe akpQuarterSum). Die FH-Kategorie "einbruch" arbeitet mit -30%/vj>=100
@@ -9286,6 +9297,21 @@ function renderObs(){
       sub:`${rec.gl||"ohne Zuordnung"} · AKQ ohne Zuordnung`,
       txt:`Akquisestaffel-Punkte: <b>${fmt(rec.punkte)}</b>`});
   });
+  // Terminhistorie (Nutzervorgabe 14.11.2026, Spalte "Tage seit letztem
+  // Besuch" der FH_Liste): Mitarbeiter-Ansicht = ALLE Händler dieses
+  // Mitarbeiters, Österreich gesamt = Top 30 über alle Gebietsleiter (ohne
+  // "Technischer GL"/"ohne Zuordnung"), jeweils mit dem längsten Abstand
+  // zuerst. Händler ohne erfassten Besuch (leere Spalte) fehlen. Nur sichtbar,
+  // wenn der Filter "Terminhistorie" aktiv ist - ungefiltert würden sonst
+  // hunderte Einträge die übrigen Beobachtungen verdrängen.
+  {
+    let th=fhFor(currentEmp).map(f=>({...f,tageSeitBesuch:fhTageSeitBesuch(f)})).filter(f=>f.tageSeitBesuch!=null);
+    if(currentEmp===AT_GESAMT) th=th.filter(f=>f.emp&&!/^(technischer gl|ohne zuordnung)/i.test(f.emp));
+    th.sort((a,b)=>a.tageSeitBesuch-b.tageSeitBesuch);
+    if(currentEmp===AT_GESAMT) th=th.slice(0,30);
+    th.forEach(f=>items.push({f,type:f.tageSeitBesuch<-180?"down":"up",prio:-1,cat:"terminhistorie",sev:-f.tageSeitBesuch,ic:"🗓️",
+      txt:`${tageSeitBesuchPill(f.tageSeitBesuch)} seit letztem Besuch${f.letzterTermin?` · ${fmtDate(f.letzterTermin)}${f.letztesThema?" · "+escapeHtml(f.letztesThema):""}`:""}`}));
+  }
   // Zuerst nach Priorität (Stufe), innerhalb einer Stufe nach Auffälligkeit
   // (Schweregrad) reihen, statt nach Einfüge-Reihenfolge – damit bei der
   // Druck-Kappung auf 16 die wichtigsten Fälle zuerst stehen.
@@ -9293,7 +9319,7 @@ function renderObs(){
   $("obsFilters").innerHTML=OBS_CATEGORIES.map(c=>
     `<button type="button" data-cat="${c.cat}" class="${obsActiveFilters.has(c.cat)?"on":""}">${escapeHtml(c.label(s.jahr))}</button>`
   ).join("");
-  const filtered=obsActiveFilters.size?items.filter(o=>obsActiveFilters.has(o.cat)):items;
+  const filtered=obsActiveFilters.size?items.filter(o=>obsActiveFilters.has(o.cat)):items.filter(o=>o.cat!=="terminhistorie");
   // Bildschirm: alle Treffer, das Panel scrollt selbst (wie AKQ-Liste/
   // 9-Wochen-Plan daneben). Druck/PDF bleibt bewusst bei den bisherigen
   // max. 16 (siehe .obs-item.pcap), da dort keine Scrollfläche existiert.
@@ -9974,6 +10000,22 @@ async function loadFhContact(fhNr){
     markFhNeunWochenErledigt([fhNr]);
   }
 }
+// Farbe für "Tage seit letztem Besuch" (Nutzervorgabe 14.11.2026):
+// 0 bis -90 grün, -91 bis -180 gelb/orange, ab -181 rot.
+// Wert aus der Datei; fehlt er (Einspielungen vor dem 14.11.2026 kannten die
+// Spalte noch nicht), aus letztem Termin und Berichtsdatum gerechnet - die
+// Datei rechnet genauso (z.B. Termin 08.10., Bericht 12.11. -> -35).
+function fhTageSeitBesuch(f){
+  if(!f) return null;
+  if(f.tageSeitBesuch!=null) return f.tageSeitBesuch;
+  const d=state.latest&&state.latest.date;
+  return (f.letzterTermin&&d)?-Math.round((parseISO(d)-parseISO(f.letzterTermin))/86400000):null;
+}
+function tageSeitBesuchPill(t){
+  if(t==null) return "";
+  const cls=t>=-90?"pos":(t>=-180?"amb":"neg");
+  return `<span class="pill ${cls}" title="Tage seit letztem Besuch">${t>0?"+":""}${fmt(t)} Tage</span>`;
+}
 function renderFhContactView(){
   const c=fhContactCurrent||{};
   const f=state.latest.fh[fhModalCurrent];
@@ -10006,7 +10048,13 @@ function renderFhContactView(){
   const fileLast=tf&&tf.letzterTermin||null;
   const lastDate=(c.letzter_besuch&&(!fileLast||c.letzter_besuch>=fileLast))?c.letzter_besuch:fileLast;
   const lastExtra=(lastDate&&lastDate===fileLast)?[tf.letztesThema,tf.letzteAktivitaet].filter(Boolean):[];
-  $("fhBesuchView").textContent=lastDate?[fmtDate(lastDate),...lastExtra].join(" · "):"–";
+  // Tage seit Besuch: Wert aus der Datei, wenn das angezeigte Datum aus der
+  // Datei stammt; bei neuerem manuell eingetragenem Datum selbst gerechnet.
+  let tage=null;
+  if(lastDate&&lastDate===fileLast&&fhTageSeitBesuch(tf)!=null) tage=fhTageSeitBesuch(tf);
+  else if(lastDate&&state.latest.date) tage=-Math.round((parseISO(state.latest.date)-parseISO(lastDate))/86400000);
+  else tage=fhTageSeitBesuch(f);
+  $("fhBesuchView").innerHTML=(lastDate?escapeHtml([fmtDate(lastDate),...lastExtra].join(" · ")):(tage!=null?"":"–"))+(tage!=null?" "+tageSeitBesuchPill(tage):"");
   const nextDate=tf&&tf.naechsterTermin||null;
   $("fhNaechsterViewRow").classList.toggle("hidden",!nextDate);
   $("fhNaechsterView").textContent=nextDate?[fmtDate(nextDate),tf.naechstesThema,tf.naechsteAktivitaet].filter(Boolean).join(" · "):"–";
