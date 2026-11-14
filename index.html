@@ -1649,6 +1649,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <div><span class="ac-lbl">Aktionsteilnahme</span><div class="ac-val" id="acAktView">–</div></div>
         <div><span class="ac-lbl">Profi-Training</span><div class="ac-val" id="acTrainView">–</div></div>
         <div><span class="ac-lbl">Letzte Produktion</span><div class="ac-val" id="acLastProdView">–</div></div>
+        <div id="acWeitereZuordnungViewRow" class="hidden"><span class="ac-lbl">Weitere Zuordnung</span><div class="ac-val" id="acWeitereZuordnungView">–</div></div>
       </div>
       <div id="acGesperrtNotice" class="hidden" style="margin-top:14px;border-left:4px solid var(--neg);background:#FDF1F4;border-radius:8px;padding:10px 14px">
         <div style="font-weight:800;color:var(--neg);font-size:12px">🔒 Datensatz gesperrt (DSGVO)</div>
@@ -1675,6 +1676,23 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
             <option value="abgeschlossen">abgeschlossen</option><option value="teilgenommen">teilgenommen</option>
             <option value="500">500 Verträge</option>
           </select>
+        </div>
+      </div>
+      <div style="margin-top:14px">
+        <label class="nw-check" for="acWeitereZuordnungChk"><input type="checkbox" id="acWeitereZuordnungChk"> Weitere Zuordnung aktivieren</label>
+        <div id="acWeitereZuordnungFields" class="hidden" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+          <div style="flex:1;min-width:160px">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <label class="ac-lbl" for="acWeitereZuordnungSelect">Auswahl</label>
+              <button type="button" id="acWeitereZuordnungManageBtn" class="btn btn-ghost" style="padding:2px 9px;font-size:11px">Verwalten</button>
+            </div>
+            <select id="acWeitereZuordnungSelect"></select>
+            <div id="acWeitereZuordnungManageList" class="hidden" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div>
+          </div>
+          <div style="flex:1;min-width:160px">
+            <label class="ac-lbl" for="acWeitereZuordnungNeu">oder neuer Wert (wird für alle AKP als Auswahl übernommen)</label>
+            <input id="acWeitereZuordnungNeu" autocomplete="off">
+          </div>
         </div>
       </div>
       <div class="actions" style="margin-top:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
@@ -2357,6 +2375,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
         <button class="btn btn-ghost auswertung-type-btn" data-typ="filialbetriebe" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>🏪 Filialbetriebe</span><small style="font-weight:600;opacity:.75">eine Filialkette</small></span></button>
         <button class="btn btn-ghost auswertung-type-btn" data-typ="fachhaendler" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>🏬 Fachhändler</span><small style="font-weight:600;opacity:.75">ein oder mehrere FH</small></span></button>
         <button class="btn btn-ghost auswertung-type-btn" data-typ="akp" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>🧑‍💼 AKP (Aktivpartner)</span><small style="font-weight:600;opacity:.75">ein oder mehrere AKP</small></span></button>
+        <button class="btn btn-ghost auswertung-type-btn" data-typ="akp_weitere_zuordnung" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>➕ Weitere Zuordnung (AKP)</span><small style="font-weight:600;opacity:.75">alle AKP mit diesem Wert, gemeinsam ausgewertet</small></span></button>
         <button class="btn btn-ghost auswertung-type-btn hidden" id="auswertungTrainingBtn" data-typ="training" style="flex:1;min-width:160px;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><span>🎓 Trainingsauswertungen</span><small style="font-weight:600;opacity:.75">aktive &amp; abgeschlossene Trainereinsätze</small></span></button>
       </div>
     </div>
@@ -3372,7 +3391,7 @@ async function renderAdminTrainerberichteList(){
 // Pausieren/Reaktivieren, Löschen (nur ohne Sende-Historie, sonst nur
 // Deaktivieren - Historie bleibt erhalten), aufklappbare Sende-Historie mit
 // PDF-Download (Muster renderAdminTrainerberichteList()).
-const AUSWERTUNG_TYP_LABEL={kooperation:"Kooperation",weitere_zuordnung:"Weitere Zuordnung",filialbetriebe:"Filialbetriebe",fachhaendler:"Fachhändler",akp:"AKP"};
+const AUSWERTUNG_TYP_LABEL={kooperation:"Kooperation",weitere_zuordnung:"Weitere Zuordnung",filialbetriebe:"Filialbetriebe",fachhaendler:"Fachhändler",akp:"AKP",akp_weitere_zuordnung:"Weitere Zuordnung (AKP)"};
 const AUSWERTUNG_INTERVAL_LABEL={daily:"Täglich",weekly:"Wöchentlich",monthly:"Monatlich",quarterly:"Quartal",yearly:"Jährlich"};
 async function renderAdminAuswertungAutoList(){
   const box=$("adminAuswertungAutoList");
@@ -6237,7 +6256,7 @@ async function loadAkpContactsIndex(){
   if(!(sb&&supaUser)) return;
   try{
     const rows=await fetchAllRowsParallel("akp_contacts",
-      "nr,vorname,nachname,firma,ort,fh_nr,email,prod_monthly,prod_monthly_other,poquote_monthly,q3fuer2_monthly,gesperrt_am,storno_widerruf_quote,storno_erstpraemie_quote,storno_wegfall_quote",
+      "nr,vorname,nachname,firma,ort,fh_nr,email,prod_monthly,prod_monthly_other,poquote_monthly,q3fuer2_monthly,gesperrt_am,storno_widerruf_quote,storno_erstpraemie_quote,storno_wegfall_quote,weitere_zuordnung",
       q=>q.order("nr"));
     const idx={};
     // FH-Nr auf kanonische Nummer auflösen (FH-Duplikate zusammenführen,
@@ -9847,6 +9866,20 @@ async function loadWeitereZuordnungOptions(){
   weitereZuordnungOptionsCache=[...set].sort((a,b)=>a.localeCompare(b,"de"));
   return weitereZuordnungOptionsCache;
 }
+// "Weitere Zuordnung" für AKP (Nutzervorgabe 14.11.2026): gleiche Funktion
+// wie bei den Fachhändlern, aber eigener Werte-Pool aus akp_contacts (AKP-
+// Kategorien sind andere als Händler-Kategorien wie "A1 Shop") und eigene
+// Ausblenden-Liste (dashboard_kv "akp_weitere_zuordnung_hidden").
+let akpWeitereZuordnungOptionsCache=null, akpWeitereZuordnungHiddenSet=new Set();
+async function loadAkpWeitereZuordnungOptions(){
+  const set=new Set();
+  try{
+    const {data,error}=await sb.from("akp_contacts").select("weitere_zuordnung").not("weitere_zuordnung","is",null);
+    if(!error&&data) data.forEach(r=>{ if(r.weitere_zuordnung) set.add(r.weitere_zuordnung); });
+  }catch(e){}
+  akpWeitereZuordnungOptionsCache=[...set].sort((a,b)=>a.localeCompare(b,"de"));
+  return akpWeitereZuordnungOptionsCache;
+}
 // pool optional - Default ist der Weitere-Zuordnung-Pool; Filialbetriebe
 // übergibt seinen eigenen, unabhängigen Pool (siehe unten). hiddenSet optional
 // - vom Nutzer ausgeblendete Werte (siehe wireZuordnungManage unten); der
@@ -9902,15 +9935,16 @@ function renderZuordnungManageList(listId,pool,hiddenSet){
 // Bulk-Umbenennung: alle fh_contacts-Zeilen mit altem Wert auf neuen Wert
 // setzen, danach Pool + ggf. Hidden-Set (falls der alte Wert ausgeblendet
 // war) aktualisieren.
-async function renameZuordnungValue(column,oldVal,newVal,hiddenSet,hiddenKey){
+async function renameZuordnungValue(column,oldVal,newVal,hiddenSet,hiddenKey,table){
   try{
-    const {error}=await sb.from("fh_contacts").update({[column]:newVal}).eq(column,oldVal);
+    const {error}=await sb.from(table||"fh_contacts").update({[column]:newVal}).eq(column,oldVal);
     if(error){ toast("Umbenennen fehlgeschlagen: "+error.message); return false; }
   }catch(e){ toast("Umbenennen fehlgeschlagen."); return false; }
+  if(table==="akp_contacts"&&akpContactsIndex) for(const a of Object.values(akpContactsIndex)) if(a[column]===oldVal) a[column]=newVal;
   if(hiddenSet.has(oldVal)){ hiddenSet.delete(oldVal); hiddenSet.add(newVal); await saveZuordnungHidden(hiddenKey,hiddenSet); }
   return true;
 }
-function wireZuordnungManage(btnId,listId,selectId,column,hiddenKey,poolFn,hiddenSetFn,setHiddenSetFn,reloadPoolFn,repopulateFn){
+function wireZuordnungManage(btnId,listId,selectId,column,hiddenKey,poolFn,hiddenSetFn,setHiddenSetFn,reloadPoolFn,repopulateFn,table){
   $(btnId).onclick=()=>{
     const list=$(listId);
     const opening=list.classList.contains("hidden");
@@ -9934,7 +9968,7 @@ function wireZuordnungManage(btnId,listId,selectId,column,hiddenKey,poolFn,hidde
       const neu=prompt("Neuer Name für \""+oldVal+"\":",oldVal);
       if(!neu||!neu.trim()||neu.trim()===oldVal) return;
       const newVal=neu.trim();
-      const ok=await renameZuordnungValue(column,oldVal,newVal,hiddenSetFn(),hiddenKey);
+      const ok=await renameZuordnungValue(column,oldVal,newVal,hiddenSetFn(),hiddenKey,table);
       if(!ok) return;
       await reloadPoolFn();
       renderZuordnungManageList(listId,poolFn(),hiddenSetFn());
@@ -11661,7 +11695,7 @@ async function exportKooperationsgespraechKiPdf(koop){
 // Typen mit einem einzelnen aggregierten Auswahlwert (Dropdown-artige Suche,
 // EIN gemeinsamer PDF-Abschnitt) statt einer Mehrfachauswahl konkreter
 // Einheiten (Fachhändler/AKP) - siehe auswertungLoadUnits()/buildAuswertungPdfDoc().
-const AUSWERTUNG_SINGLE_TYPES=["kooperation","weitere_zuordnung","filialbetriebe"];
+const AUSWERTUNG_SINGLE_TYPES=["kooperation","weitere_zuordnung","filialbetriebe","akp_weitere_zuordnung"];
 let auswertungTyp=null; // 'kooperation'|'weitere_zuordnung'|'filialbetriebe'|'fachhaendler'|'akp'
 let auswertungSingleValue=null; // Kooperation/Weitere-Zuordnung-Wert
 let auswertungMultiKeys=[]; // FH-Nrn bzw. AKP-Nrn
@@ -11832,6 +11866,7 @@ function selectAuswertungTyp(typ){
     filialbetriebe:"Filialbetrieb (Filialkette) suchen und auswählen.",
     fachhaendler:"Einen oder mehrere Fachhändler suchen und auswählen (Name, Ort oder FH-Nr.).",
     akp:"Einen oder mehrere Aktivpartner (AKP) suchen und auswählen (Name oder Firma).",
+    akp_weitere_zuordnung:"Wert der Weiteren Zuordnung (AKP) suchen und auswählen.",
   };
   $("auswertungSelectHint").textContent=hints[typ]||"";
   if(typ==="weitere_zuordnung"){
@@ -11839,6 +11874,9 @@ function selectAuswertungTyp(typ){
   }
   if(typ==="filialbetriebe"){
     loadFilialbetriebeOptions().then(()=>{ if(auswertungTyp==="filialbetriebe") renderAuswertungSingleSearch(); });
+  }
+  if(typ==="akp_weitere_zuordnung"){
+    loadAkpWeitereZuordnungOptions().then(()=>{ if(auswertungTyp==="akp_weitere_zuordnung") renderAuswertungSingleSearch(); });
   }
   if(isMulti) renderAuswertungMultiSearch(); else renderAuswertungSingleSearch();
   setTimeout(()=>{ (isMulti?$("auswertungMultiSearchInput"):$("auswertungSingleSearchInput")).focus(); },50);
@@ -11850,6 +11888,7 @@ function renderAuswertungSingleSearch(){
   if(auswertungTyp==="kooperation") list=KOOPERATION_OPTIONS.filter(k=>k!=="ohne Kooperation");
   else if(auswertungTyp==="weitere_zuordnung") list=(weitereZuordnungOptionsCache||WEITERE_ZUORDNUNG_BASE).slice();
   else if(auswertungTyp==="filialbetriebe") list=(filialbetriebeOptionsCache||[]).slice();
+  else if(auswertungTyp==="akp_weitere_zuordnung") list=(akpWeitereZuordnungOptionsCache||[]).slice();
   list=list.filter(k=>!q||k.toLowerCase().includes(q));
   if(!list.length){ box.innerHTML=`<div class="empty-note">Nichts gefunden.</div>`; return; }
   box.innerHTML=list.map(k=>`<div class="akp-search-row" style="cursor:pointer" data-val="${escapeHtml(k)}"><span><b>${escapeHtml(k)}</b></span></div>`).join("");
@@ -11928,10 +11967,10 @@ function proceedToAuswertungPeriod(){
   $("auswertungSelectStep").classList.add("hidden");
   $("auswertungPeriodStep").classList.remove("hidden");
   $("auswertungHint").textContent="";
-  const headerLbl={kooperation:"Kooperation: ",weitere_zuordnung:"Weitere Zuordnung: ",filialbetriebe:"Filialbetriebe: ",fachhaendler:"Fachhändler: ",akp:"AKP: "}[auswertungTyp]||"";
+  const headerLbl={kooperation:"Kooperation: ",weitere_zuordnung:"Weitere Zuordnung: ",filialbetriebe:"Filialbetriebe: ",fachhaendler:"Fachhändler: ",akp:"AKP: ",akp_weitere_zuordnung:"Weitere Zuordnung (AKP): "}[auswertungTyp]||"";
   const sel=AUSWERTUNG_SINGLE_TYPES.includes(auswertungTyp)?auswertungSingleValue:auswertungMultiKeys.map(k=>auswertungEntityLabel(k)).join("  •  ");
   $("auswertungPeriodHeader").textContent=headerLbl+sel;
-  $("auswertungAkpChkRow").classList.toggle("hidden",auswertungTyp==="akp");
+  $("auswertungAkpChkRow").classList.toggle("hidden",auswertungTyp==="akp"||auswertungTyp==="akp_weitere_zuordnung");
   $("auswertungAkpChk").checked=false;
   $("auswertungVjChk").checked=false;
   $("auswertungVvjChk").checked=false;
@@ -12050,7 +12089,7 @@ async function saveAuswertungAutoSubscription(){
       recipient_emails:recipients, send_to_external:!employeeOnly, send_to_employee:auswertungSendEmployeeAllowed, interval:$("auswertungAutoInterval").value,
       fixed_range_enabled:fixedEnabled, range_start:fixedEnabled?rangeStart:null, range_end:fixedEnabled?rangeEnd:null,
       include_vj:$("auswertungVjChk").checked, include_vvj:$("auswertungVvjChk").checked,
-      show_akp:auswertungTyp==="akp"?false:$("auswertungAkpChk").checked,
+      show_akp:(auswertungTyp==="akp"||auswertungTyp==="akp_weitere_zuordnung")?false:$("auswertungAkpChk").checked,
       created_by:(supaUser&&supaUser.id)||null, created_by_name:myName||null,
       created_by_email:(supaUser&&supaUser.email)||"",
     });
@@ -12200,7 +12239,18 @@ function auswertungBuildSeries(units,vonISO,bisISO){
 // Monats-Produktion und Tages-Historie (für Wochenbuckets).
 async function auswertungLoadUnits(typ,singleVal,multiKeys){
   const fhMap=state.latest.fh||{};
-  if(typ==="akp"){
+  if(typ==="akp_weitere_zuordnung"){
+    // Alle AKP mit diesem Wert (aus der vollständig geladenen AKP-Datenbank),
+    // danach exakt wie eine AKP-Mehrfachauswahl aufbereitet.
+    if(!akpContactsIndex) await loadAkpContactsIndex();
+    const nrs=Object.values(akpContactsIndex||{}).filter(a=>a.weitere_zuordnung===singleVal&&!a.gesperrt_am).map(a=>a.nr);
+    return auswertungLoadAkpUnits(nrs);
+  }
+  if(typ==="akp") return auswertungLoadAkpUnits(multiKeys);
+  return auswertungLoadFhUnits(typ,singleVal,multiKeys,fhMap);
+}
+function auswertungLoadAkpUnits(multiKeys){
+  {
     return multiKeys.map(nr=>{
       const a=(akpContactsIndex&&akpContactsIndex[nr])||{};
       const bulk={};
@@ -12217,6 +12267,8 @@ async function auswertungLoadUnits(typ,singleVal,multiKeys){
       };
     });
   }
+}
+async function auswertungLoadFhUnits(typ,singleVal,multiKeys,fhMap){
   let query=sb.from("fh_contacts").select("fh_nr,prod_monthly,miete_monthly,beitragsfrei_yearly,akq_punkte,club_weiss_mitglied,club_weiss_mitgliedsnummer,ansprechpartner,ansprechpartner_email,email,telefon");
   if(typ==="kooperation") query=query.eq("kooperation",singleVal);
   else if(typ==="weitere_zuordnung") query=query.eq("weitere_zuordnung",singleVal);
@@ -12367,6 +12419,27 @@ function auswertungUnitSectionHtml(u,vonISO,bisISO,idx,total,showAkp,akpByFh,sho
 // Ein aggregierter Abschnitt für Kooperation/Weitere-Zuordnung: Summe über
 // alle Mitglieds-Fachhändler + nach Produktion sortierte Mitgliederliste,
 // optional inkl. AKP-Übersicht aller Mitglieds-Fachhändler.
+// "Weitere Zuordnung (AKP)": gemeinsamer Abschnitt über alle AKP mit diesem
+// Wert - wie der Fachhändler-Abschnitt unten, aber mit AKP-Tabelle (Name,
+// Firma, Fachhändler, Produktion, PO-/3-für-2-Quote).
+function auswertungAkpAggregateSectionHtml(units,vonISO,bisISO,showVj,showVvj){
+  const series=auswertungBuildSeries(units,vonISO,bisISO);
+  const monthsInRange=monthKeysInRange(vonISO,bisISO);
+  const prodOf=u=>series.weekly?sumDailyRangeExclSunday(u.dailyWg,vonISO,bisISO):monthsInRange.reduce((s,mk)=>s+(u.monthlyWg[mk]||0),0);
+  const pctTxt=v=>v!=null?(v*100).toFixed(1).replace(".",",")+" %":"–";
+  const rows=[...units].sort((a,b)=>prodOf(b)-prodOf(a)).map(u=>`<tr><td>${escapeHtml(u.name)}</td><td>${escapeHtml(u.firma||"–")}</td><td>${escapeHtml(u.fhNr||"–")}</td><td class="r">${fmt(prodOf(u))}</td><td class="r">${pctTxt(u.poQuote)}</td><td class="r">${pctTxt(u.q3fuer2)}</td></tr>`).join("");
+  return `
+    ${auswertungSummaryStrip(series,units.length,"AKP")}
+    ${auswertungBucketsChart(series,false)}
+    ${auswertungVjVvjSectionHtml(series,showVj,showVvj)}
+    <div class="pdf-block" style="margin-bottom:18px">
+      <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:10px">AKP mit dieser Zuordnung (sortiert nach Produktion im Zeitraum)</div>
+      ${units.length?`<table style="width:100%;border-collapse:collapse;font-size:9.5px">
+        <thead><tr style="color:#5D7284;text-align:left"><th>Name</th><th>Firma</th><th>FH-Nr.</th><th class="r">Produktion im Zeitraum</th><th class="r">PO-Quote</th><th class="r">3-für-2-Quote</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`:`<div style="font-size:11px;color:#5D7284">Keine AKP mit dieser Zuordnung.</div>`}
+    </div>`;
+}
 function auswertungAggregateSectionHtml(units,vonISO,bisISO,showAkp,showVj,showVvj){
   const series=auswertungBuildSeries(units,vonISO,bisISO);
   const kennzahl=(lbl,val)=>`<div style="text-align:center"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284">${lbl}</div><div style="font-size:18px;font-weight:900;color:#062A3F;margin-top:2px">${val}</div></div>`;
@@ -12433,7 +12506,7 @@ async function buildAuswertungPdfDoc(typ,singleVal,multiKeys,vonISO,bisISO,showA
   if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)) throw new Error("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals versuchen.");
   const units=await auswertungLoadUnits(typ,singleVal,multiKeys);
   const nowStr=fmtNowDateTime();
-  const typLabel={kooperation:"Kooperation",weitere_zuordnung:"Weitere Zuordnung",filialbetriebe:"Filialbetriebe",fachhaendler:"Fachhändler",akp:"AKP (Aktivpartner)"}[typ];
+  const typLabel={kooperation:"Kooperation",weitere_zuordnung:"Weitere Zuordnung",filialbetriebe:"Filialbetriebe",fachhaendler:"Fachhändler",akp:"AKP (Aktivpartner)",akp_weitere_zuordnung:"Weitere Zuordnung (AKP)"}[typ];
   const titleVal=AUSWERTUNG_SINGLE_TYPES.includes(typ)?singleVal:(units.length===1?units[0].name:units.length+" ausgewählt");
   const periodTxt=fmtDate(vonISO)+" – "+fmtDate(bisISO);
   const filename=auswertungPdfFilename(typ,singleVal,multiKeys);
@@ -12487,7 +12560,9 @@ async function buildAuswertungPdfDoc(typ,singleVal,multiKeys,vonISO,bisISO,showA
 
   // Einzelauswahl (ein Fachhändler/AKP) oder Kooperation/Weitere Zuordnung
   // (ein aggregierter Abschnitt): durchgehendes Hochformat-Dokument wie bisher.
-  const bodyHtml=AUSWERTUNG_SINGLE_TYPES.includes(typ)
+  const bodyHtml=typ==="akp_weitere_zuordnung"
+    ? auswertungAkpAggregateSectionHtml(units,vonISO,bisISO,showVj,showVvj)
+    : AUSWERTUNG_SINGLE_TYPES.includes(typ)
     ? auswertungAggregateSectionHtml(units,vonISO,bisISO,showAkp,showVj,showVvj)
     : auswertungUnitSectionHtml(units[0],vonISO,bisISO,0,1,showAkp,showAkp?auswertungAkpByFh():{},showVj,showVvj);
   const box=document.createElement("div");
@@ -13798,6 +13873,8 @@ function renderAkpContactView(){
   $("acTrainView").textContent=c.training_status?(TRAINING_STATUS_LBL[c.training_status]||c.training_status):"Keines";
   const lastDay=akpLastProdDay(c.nr);
   $("acLastProdView").textContent=lastDay?fmtDate(lastDay):"Noch keine Tagesdaten erfasst";
+  $("acWeitereZuordnungViewRow").classList.toggle("hidden",!c.weitere_zuordnung);
+  $("acWeitereZuordnungView").textContent=c.weitere_zuordnung||"–";
   // PO-/3-für-2-Quote kommen aus der heutigen Einspielung (state.latest.akp),
   // nicht aus den persistierten Stammdaten - deshalb bewusst unten bei der
   // Produktion (nicht im editierbar wirkenden Stammdaten-Grid oben) und
@@ -14267,6 +14344,13 @@ function toggleAkpEdit(on){
     $("acGebEdit").value=c.geburtsdatum||"";
     $("acAktEdit").value=c.aktionsteilnahme==null?"":(c.aktionsteilnahme?"ja":"nein");
     $("acTrainEdit").value=c.training_status||"";
+    $("acWeitereZuordnungChk").checked=!!c.weitere_zuordnung;
+    $("acWeitereZuordnungFields").classList.toggle("hidden",!c.weitere_zuordnung);
+    $("acWeitereZuordnungNeu").value="";
+    $("acWeitereZuordnungManageList").classList.add("hidden");
+    populateWeitereZuordnungSelect("acWeitereZuordnungSelect",c.weitere_zuordnung,akpWeitereZuordnungOptionsCache||[],akpWeitereZuordnungHiddenSet);
+    Promise.all([loadAkpWeitereZuordnungOptions(),loadZuordnungHidden("akp_weitere_zuordnung_hidden").then(s=>akpWeitereZuordnungHiddenSet=s)])
+      .then(()=>{ if(!$("acEditMode").classList.contains("hidden")) populateWeitereZuordnungSelect("acWeitereZuordnungSelect",$("acWeitereZuordnungSelect").value||c.weitere_zuordnung,akpWeitereZuordnungOptionsCache,akpWeitereZuordnungHiddenSet); });
   }
 }
 async function saveAkpContact(){
@@ -14283,14 +14367,19 @@ async function saveAkpContact(){
   // analog zu akp_profi_training_upsert() serverseitig beim Listen-Import.
   const training_status_by_year={...(akpContactCurrent.training_status_by_year||{})};
   if(training_status) training_status_by_year[String(new Date().getFullYear())]=training_status;
+  const wzNeu=$("acWeitereZuordnungNeu").value.trim();
+  const wzSel=$("acWeitereZuordnungSelect").value;
+  const weitere_zuordnung=$("acWeitereZuordnungChk").checked?(wzNeu||wzSel||null):null;
   $("acSaveBtn").disabled=true;
   const {error}=await sb.from("akp_contacts").upsert({
-    nr,telefon,email,geburtsdatum,aktionsteilnahme,training_status,training_status_by_year,
+    nr,telefon,email,geburtsdatum,aktionsteilnahme,training_status,training_status_by_year,weitere_zuordnung,
     updated_by:(supaUser&&supaUser.id)||null,updated_at:new Date().toISOString()
   },{onConflict:"nr"});
   $("acSaveBtn").disabled=false;
   if(error){ $("acSaveHint").textContent="Fehler: "+error.message; return; }
-  Object.assign(akpContactCurrent,{telefon,email,geburtsdatum,aktionsteilnahme,training_status,training_status_by_year});
+  Object.assign(akpContactCurrent,{telefon,email,geburtsdatum,aktionsteilnahme,training_status,training_status_by_year,weitere_zuordnung});
+  if(akpContactsIndex&&akpContactsIndex[nr]) akpContactsIndex[nr].weitere_zuordnung=weitere_zuordnung;
+  if(wzNeu) akpWeitereZuordnungOptionsCache=null;
   renderAkpContactView();
   toggleAkpEdit(false);
   toast("Kontaktdaten gespeichert ✓");
@@ -15229,6 +15318,13 @@ function wireWeitereZuordnungSlot(chkId,fieldsId,selectId,neuId){
 }
 wireWeitereZuordnungSlot("fhWeitereZuordnungChk","fhWeitereZuordnungFields","fhWeitereZuordnungSelect","fhWeitereZuordnungNeu");
 wireWeitereZuordnungSlot("fhFilialbetriebeChk","fhFilialbetriebeFields","fhFilialbetriebeSelect","fhFilialbetriebeNeu");
+wireWeitereZuordnungSlot("acWeitereZuordnungChk","acWeitereZuordnungFields","acWeitereZuordnungSelect","acWeitereZuordnungNeu");
+wireZuordnungManage("acWeitereZuordnungManageBtn","acWeitereZuordnungManageList","acWeitereZuordnungSelect",
+  "weitere_zuordnung","akp_weitere_zuordnung_hidden",
+  ()=>akpWeitereZuordnungOptionsCache||[], ()=>akpWeitereZuordnungHiddenSet, s=>{akpWeitereZuordnungHiddenSet=s;},
+  loadAkpWeitereZuordnungOptions,
+  ()=>populateWeitereZuordnungSelect("acWeitereZuordnungSelect",$("acWeitereZuordnungSelect").value,akpWeitereZuordnungOptionsCache||[],akpWeitereZuordnungHiddenSet),
+  "akp_contacts");
 wireZuordnungManage("fhWeitereZuordnungManageBtn","fhWeitereZuordnungManageList","fhWeitereZuordnungSelect",
   "weitere_zuordnung","weitere_zuordnung_hidden",
   ()=>weitereZuordnungOptionsCache||WEITERE_ZUORDNUNG_BASE, ()=>weitereZuordnungHiddenSet, s=>{weitereZuordnungHiddenSet=s;},

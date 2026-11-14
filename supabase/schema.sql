@@ -1132,3 +1132,9 @@ begin
 end;
 $$;
 grant execute on function public.fh_sync_letzter_besuch(jsonb) to authenticated;
+
+
+-- Nutzervorgabe 14.11.2026: "Weitere Zuordnung" auch für AKP (Migration
+-- akp_contacts_weitere_zuordnung, live seit 14.11.2026).
+alter table public.akp_contacts add column if not exists weitere_zuordnung text;
+create index if not exists akp_contacts_weitere_zuordnung_idx on public.akp_contacts (weitere_zuordnung) where weitere_zuordnung is not null;

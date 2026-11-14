@@ -170,7 +170,7 @@ interface Unit {
 }
 const TYP_LABEL: Record<string, string> = {
   kooperation: "Kooperation", weitere_zuordnung: "Weitere Zuordnung", filialbetriebe: "Filialbetriebe",
-  fachhaendler: "Fachhändler", akp: "AKP (Aktivpartner)",
+  fachhaendler: "Fachhändler", akp: "AKP (Aktivpartner)", akp_weitere_zuordnung: "Weitere Zuordnung (AKP)",
 };
 
 // Namens-/Ort-Auflösung wie fhResolveNameOrt() im Client (Bug-Report
@@ -192,6 +192,18 @@ async function loadUnitsForSubscription(
     for (const [k, v] of Object.entries((a?.prod_monthly_other as Record<string, number>) || {})) monthlyWg[k] = (monthlyWg[k] || 0) + (Number(v) || 0);
     const label = a ? ([a.vorname, a.nachname].filter(Boolean).join(" ") || a.firma || entityKey) : entityKey;
     return { units: [{ key: entityKey, monthlyWg }], label };
+  }
+  // "Weitere Zuordnung (AKP)" (Nutzervorgabe 14.11.2026): alle nicht
+  // gesperrten AKP mit diesem Wert, Entity-Key selbst ist der Anzeige-Label.
+  if (typ === "akp_weitere_zuordnung") {
+    const { data: rows } = await admin.from("akp_contacts").select("nr,prod_monthly,prod_monthly_other").eq("weitere_zuordnung", entityKey).is("gesperrt_am", null);
+    const units: Unit[] = (rows || []).map((a) => {
+      const monthlyWg: Record<string, number> = {};
+      for (const [k, v] of Object.entries((a.prod_monthly as Record<string, number>) || {})) monthlyWg[k] = (monthlyWg[k] || 0) + (Number(v) || 0);
+      for (const [k, v] of Object.entries((a.prod_monthly_other as Record<string, number>) || {})) monthlyWg[k] = (monthlyWg[k] || 0) + (Number(v) || 0);
+      return { key: a.nr as string, monthlyWg };
+    });
+    return { units, label: entityKey };
   }
   if (typ === "fachhaendler") {
     const { data: fh } = await admin.from("fh_contacts").select("fh_nr,name,akq_name,miete_name,prod_monthly").eq("fh_nr", entityKey).maybeSingle();
@@ -228,7 +240,7 @@ async function loadDailyHistory(admin: ReturnType<typeof createClient>): Promise
 
 function unitsTotal(units: Unit[], typ: string, fromISO: string, toISO: string, useDailyHistory: boolean, dailyFH: Record<string, Record<string, number>>, dailyAKP: Record<string, Record<string, number>>): number {
   if (useDailyHistory) {
-    const dailyMap = typ === "akp" ? dailyAKP : dailyFH;
+    const dailyMap = (typ === "akp" || typ === "akp_weitere_zuordnung") ? dailyAKP : dailyFH;
     return units.reduce((s, u) => s + sumDailyInRange(dailyMap[u.key], fromISO, toISO), 0);
   }
   return units.reduce((s, u) => s + sumProdMonthlyInRange(u.monthlyWg, fromISO, toISO), 0);
