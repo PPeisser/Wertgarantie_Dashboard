@@ -4301,6 +4301,11 @@ function mondayOf(d){ const x=new Date(d); const wd=(x.getUTCDay()+6)%7; x.setUT
 /* ---------- Format ---------- */
 const nf = new Intl.NumberFormat("de-DE");
 function fmt(n){ return n==null?"–":nf.format(Math.round(n)); }
+// Akquisepunkte (Bug-Report 14.11.2026): Punkte kommen mit einer
+// Kommastelle (z.B. 53,5) - fmt() rundet auf ganze Zahlen, deshalb eigene
+// Formatierung mit genau einer Nachkommastelle.
+const nfPkt = new Intl.NumberFormat("de-DE",{minimumFractionDigits:1,maximumFractionDigits:1});
+function fmtPkt(n){ return n==null||!isFinite(n)?"–":nfPkt.format(Math.round(Number(n)*10)/10); }
 function fmtSign(n){ return n==null?"–":(n>0?"+":"")+fmt(n); }
 function fmtPct(n){ if(n==null||!isFinite(n)) return "–"; return (n>0?"+":"")+n.toFixed(1).replace(".",",")+" %"; }
 function fmtDate(s){ if(!s) return "–"; const d=parseISO(s); return String(d.getUTCDate()).padStart(2,"0")+"."+String(d.getUTCMonth()+1).padStart(2,"0")+"."+d.getUTCFullYear(); }
@@ -9085,9 +9090,9 @@ function openAkqStaffelnModal(){
     rows.map((r,i)=>`<tr>
       <td><span class="rank">${i+1}</span></td>
       <td><button type="button" class="hname fh-name-link" data-fh-nr="${escapeHtml(r.fhNr)}">${escapeHtml(r.name)}</button><br><span class="betr">${escapeHtml(r.fhNr)}${r.ort?" · "+escapeHtml(r.ort):""}${r.betreuer?" · "+escapeHtml(r.betreuer):""}</span></td>
-      <td class="r" style="font-weight:900" data-label="Punkte">${r.punkte!=null?fmt(r.punkte):"–"}</td>
+      <td class="r" style="font-weight:900" data-label="Punkte">${r.punkte!=null?fmtPkt(r.punkte):"–"}</td>
       <td class="r" data-label="Staffeln"><span class="pill ${r.reachedCount>=7?"pos":"neu"}">${r.reachedCount}/7</span></td>
-      <td class="card-wide" style="font-size:11.5px;color:var(--muted)" data-label="Nächste Stufe">${r.next?`noch ${fmt(r.next.missing)} bis Staffel ${r.next.nextIdx+1} (${r.next.threshold})`:`<span class="pos-t">alle 7 erreicht 🏆</span>`}</td>
+      <td class="card-wide" style="font-size:11.5px;color:var(--muted)" data-label="Nächste Stufe">${r.next?`noch ${fmtPkt(r.next.missing)} bis Staffel ${r.next.nextIdx+1} (${r.next.threshold})`:`<span class="pos-t">alle 7 erreicht 🏆</span>`}</td>
     </tr>`).join("")+`</tbody></table>`:`<div class="empty-note">Keine Akquisestaffel-Daten für diese Ansicht.</div>`;
   $("akqStaffelnModal").classList.remove("hidden");
 }
@@ -9314,7 +9319,7 @@ function renderObs(){
     const fh=s.fh[fhNr];
     items.push({f:{name:(fh&&fh.name)||rec.name||fhNr,nr:fhNr,ort:fh&&fh.ort,emp:null,gl:rec.gl},type:"down",prio:2,cat:"akqohnezuordnung",sev:rec.punkte,ic:"🧭",layout:"akq",
       sub:`${rec.gl||"ohne Zuordnung"} · AKQ ohne Zuordnung`,
-      txt:`Akquisestaffel-Punkte: <b>${fmt(rec.punkte)}</b>`});
+      txt:`Akquisestaffel-Punkte: <b>${fmtPkt(rec.punkte)}</b>`});
   });
   // Terminhistorie (Nutzervorgabe 14.11.2026, Spalte "Tage seit letztem
   // Besuch" der FH_Liste): Mitarbeiter-Ansicht = ALLE Händler dieses
@@ -11024,7 +11029,7 @@ async function chefgespraechUnterlagenSectionHtml(fhNr,idx,total,showBranding){
       ${kennzahlBadge("Kooperation",c.kooperation&&c.kooperation!=="ohne Kooperation"?pdfBadge(c.kooperation,"info"):pdfBadge("ohne Kooperation","muted"))}
       ${kennzahl("PO-Quote (LJ)",f.poQuote!=null?(f.poQuote*100).toFixed(1).replace(".",",")+" %":"–")}
       ${kennzahl("3-für-2-Quote (LJ)",f.q3fuer2!=null?(f.q3fuer2*100).toFixed(1).replace(".",",")+" %":"–")}
-      ${kennzahl("Akquisepunkte",c.akq_punkte!=null?fmt(Math.round(c.akq_punkte)):"–")}
+      ${kennzahl("Akquisepunkte",c.akq_punkte!=null?fmtPkt(c.akq_punkte):"–")}
     </div>
     ${prodChart?`<div class="pdf-block" style="margin-bottom:18px">
       <div style="font-size:13px;font-weight:800;color:#062A3F;margin-bottom:6px">Produktion nach Jahren</div>
@@ -11539,7 +11544,7 @@ async function buildKooperationsgespraechUnterlagenPdfDoc(koop){
 
   const memberRows=[...agg.perFh].sort((a,b)=>(b.byYear[agg.curYear]||0)-(a.byYear[agg.curYear]||0)).map(m=>{
     const f=fhResolveNameOrt(m.fh_nr);
-    return `<tr><td>${escapeHtml(f.name)}</td><td>${escapeHtml(f.ort||"–")}</td><td>${escapeHtml(m.fh_nr)}</td><td class="r">${fmt(m.byYear[agg.curYear]||0)}</td><td class="r">${m.akq_punkte!=null?fmt(Math.round(m.akq_punkte)):"–"}</td><td style="text-align:center">${m.club_weiss_mitglied?"✓":"–"}</td></tr>`;
+    return `<tr><td>${escapeHtml(f.name)}</td><td>${escapeHtml(f.ort||"–")}</td><td>${escapeHtml(m.fh_nr)}</td><td class="r">${fmt(m.byYear[agg.curYear]||0)}</td><td class="r">${m.akq_punkte!=null?fmtPkt(m.akq_punkte):"–"}</td><td style="text-align:center">${m.club_weiss_mitglied?"✓":"–"}</td></tr>`;
   }).join("");
 
   const kennzahl=(lbl,val)=>`<div style="text-align:center"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#5D7284">${lbl}</div><div style="font-size:18px;font-weight:900;color:#062A3F;margin-top:2px">${val}</div></div>`;
@@ -11559,7 +11564,7 @@ async function buildKooperationsgespraechUnterlagenPdfDoc(koop){
       ${kennzahl("Jahresproduktion"+(agg.curYear?" "+agg.curYear:""),fmt(agg.curProd))}
       ${kennzahl("Wachstum ggü. Vorjahr",agg.yoy!=null?(agg.yoy*100).toFixed(1).replace(".",",")+" %":"–")}
       ${kennzahl("3-für-2-Quote",agg.q3f2!=null?(agg.q3f2*100).toFixed(1).replace(".",",")+" %":"–")}
-      ${kennzahl("Ø Akquisepunkte je FH",agg.akqPunkte!=null?fmt(Math.round(agg.akqPunkte)):"–")}
+      ${kennzahl("Ø Akquisepunkte je FH",agg.akqPunkte!=null?fmtPkt(agg.akqPunkte):"–")}
       ${kennzahlBadge("Club Weiss Mitglieder",pdfBadge(agg.clubWeissCount+" von "+agg.fhCount+" FH"+(agg.clubWeissRate!=null?" ("+(agg.clubWeissRate*100).toFixed(0)+" %)":""),agg.clubWeissCount>0?"good":"muted"))}
     </div>
     ${prodChart?`<div class="pdf-block" style="margin-bottom:18px">
@@ -12408,7 +12413,7 @@ function auswertungUnitSectionHtml(u,vonISO,bisISO,idx,total,showAkp,akpByFh,sho
       ${series.totalMiete>0?kennzahl("davon Club Weiss",fmt(series.totalMiete)):""}
       ${kennzahl("PO-Quote (LJ)",u.poQuote!=null?(u.poQuote*100).toFixed(1).replace(".",",")+" %":"–")}
       ${kennzahl("3-für-2-Quote (LJ)",u.q3fuer2!=null?(u.q3fuer2*100).toFixed(1).replace(".",",")+" %":"–")}
-      ${u.kind==="fh"?kennzahl("Akquisepunkte",u.akqPunkte!=null?fmt(Math.round(u.akqPunkte)):"–"):""}
+      ${u.kind==="fh"?kennzahl("Akquisepunkte",u.akqPunkte!=null?fmtPkt(u.akqPunkte):"–"):""}
       ${u.kind==="fh"?kennzahlBadge("Club Weiss",u.clubWeiss?pdfBadge("✓ Mitglied","good"):pdfBadge("Kein Mitglied","muted")):""}
     </div>
     ${auswertungBucketsChart(series,series.totalMiete>0)}
@@ -12712,14 +12717,12 @@ function renderFhMonthly(){
 // verifiziert, u.a. FH 2259462: Staffel 6 (250 Pkt.) im Juli 2026 mit
 // Jahrespunkten=251 gerade erreicht, Staffel 7 (300 Pkt.) mit 251 noch
 // offen - 49 fehlend, nicht 300-250-251=-1.
-// "punkte" wird HIER schon gerundet (nicht erst beim Anzeigen über fmt()) -
-// die Akquisestaffel-Datei liefert teils nicht-ganzzahlige Punkte (z.B. 1,5).
-// Würde man threshold-punkte mit dem rohen Wert bilden und erst missing beim
-// Rendern separat runden, rundet Math.round() Anzeige-Punkte und Restbetrag
-// bei einer .5-Kommastelle JEWEILS nach oben auf - die beiden gerundeten
-// Zahlen ergeben dann in Summe einen Punkt mehr als den Schwellenwert (z.B.
-// 2 Punkte + "noch 19" bei Staffel 20, statt 2 + 18). Durch das Runden von
-// punkte an dieser einen Stelle bleiben Anzeige und Restbetrag konsistent.
+// Bug-Report 14.11.2026: Punkte werden NICHT mehr auf ganze Zahlen gerundet -
+// die Akquisestaffel-Datei liefert Punkte mit einer Kommastelle (z.B. 49,5),
+// die bisherige Rundung machte daraus 50 und meldete z.B. Staffel 50 als
+// "noch 0 Punkte". Angezeigt wird jetzt über fmtPkt() (eine Kommastelle),
+// der Restbetrag wird auf eine Kommastelle gerundet (Float-Artefakte), damit
+// Anzeige-Punkte + Restbetrag exakt den Schwellenwert ergeben.
 function akqNextStaffelInfo(rec){
   const staffeln=(rec&&rec.staffeln)||[];
   let lastIdx=-1;
@@ -12727,8 +12730,8 @@ function akqNextStaffelInfo(rec){
   if(lastIdx>=AKQ_STAFFEL_THRESHOLDS.length-1) return null; // alle 7 Stufen erreicht
   const nextIdx=lastIdx+1;
   const threshold=AKQ_STAFFEL_THRESHOLDS[nextIdx];
-  const punkte=(rec&&rec.punkte!=null)?Math.round(rec.punkte):0;
-  return { nextIdx, threshold, missing:Math.max(0,threshold-punkte) };
+  const punkte=(rec&&rec.punkte!=null)?Number(rec.punkte)||0:0;
+  return { nextIdx, threshold, missing:Math.max(0,Math.round((threshold-punkte)*10)/10) };
 }
 // Die Akquisestaffeln-Datei wird immer erst im Folgemonat für den
 // abgeschlossenen Vormonat eingespielt (z.B. Anfang/Mitte August für Juli) -
@@ -12755,8 +12758,8 @@ function renderFhAkqStaffel(fhNr){
   }).join("");
   box.innerHTML=`<h4 style="margin:18px 0 8px;color:var(--wg-navy);font-size:13px">Akquisestaffeln</h4>
     <div class="akq-fh-block">
-      <div class="akq-fh-punkte">Aktuelle Punkte (laufendes Jahr): <b>${rec.punkte!=null?fmt(rec.punkte):"–"}</b> <span style="color:var(--muted);font-weight:600">(Stand: ${akqStaffelnStandLabel()})</span>
-        ${next?` · noch <b>${fmt(next.missing)}</b> Punkte bis Staffel ${next.nextIdx+1} (${next.threshold})`:` · <span class="pos-t">alle 7 Staffeln erreicht 🏆</span>`}</div>
+      <div class="akq-fh-punkte">Aktuelle Punkte (laufendes Jahr): <b>${rec.punkte!=null?fmtPkt(rec.punkte):"–"}</b> <span style="color:var(--muted);font-weight:600">(Stand: ${akqStaffelnStandLabel()})</span>
+        ${next?` · noch <b>${fmtPkt(next.missing)}</b> Punkte bis Staffel ${next.nextIdx+1} (${next.threshold})`:` · <span class="pos-t">alle 7 Staffeln erreicht 🏆</span>`}</div>
       <div class="akq-steps">${steps}</div>
     </div>`;
 }
@@ -14277,9 +14280,9 @@ async function exportAkqStaffelnPdf(){
           <div style="font-weight:800;color:#10202C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(r.name)}</div>
           <div style="color:#5D7284;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(r.fhNr)}${r.ort?" · "+escapeHtml(r.ort):""}${r.betreuer?" · "+escapeHtml(r.betreuer):""}</div>
         </div>
-        <div style="text-align:right;white-space:nowrap;font-weight:900">${r.punkte!=null?fmt(r.punkte):"–"} <small style="font-weight:600;color:#5D7284">Pkt.</small></div>
+        <div style="text-align:right;white-space:nowrap;font-weight:900">${r.punkte!=null?fmtPkt(r.punkte):"–"} <small style="font-weight:600;color:#5D7284">Pkt.</small></div>
         <div style="text-align:right;white-space:nowrap;font-size:9.5px;font-weight:800;color:${r.reachedCount>=7?"#0A8A4A":"#5D7284"}">${r.reachedCount}/7</div>
-        <div style="min-width:150px;text-align:right;white-space:nowrap;font-size:9px;color:#5D7284">${r.next?`noch ${fmt(r.next.missing)} bis Staffel ${r.next.nextIdx+1}`:"alle 7 erreicht 🏆"}</div>
+        <div style="min-width:150px;text-align:right;white-space:nowrap;font-size:9px;color:#5D7284">${r.next?`noch ${fmtPkt(r.next.missing)} bis Staffel ${r.next.nextIdx+1}`:"alle 7 erreicht 🏆"}</div>
       </div>`;
     box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
     box.innerHTML=`
