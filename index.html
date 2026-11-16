@@ -2837,7 +2837,7 @@ async function doLogin(){
   const p = await fetchProfile(); myRole = p && p.role; myName = p && p.name; showRoleBadge();
   if(p && p.must_change_password) showForcePasswordModal();
   await loadUserSettings();
-  await loadAll(); render();
+  await withStateLock(()=>loadAll()); render();
   maybeAutoShowNotifications();
 }
 async function doLogout(){
@@ -2899,7 +2899,7 @@ async function doSetNewPassword(){
     $("logoutBtn").classList.remove("hidden");
     const p = await fetchProfile(); myRole = p && p.role; myName = p && p.name; showRoleBadge();
     await loadUserSettings();
-    await loadAll(); render();
+    await withStateLock(()=>loadAll()); render();
     maybeAutoShowNotifications();
   }
 }
@@ -5958,7 +5958,25 @@ async function notifyAkqImport(){
     });
   }catch(e){ console.error("notifyAkqImport failed:",e); }
 }
-async function handleFiles(files){
+// Bug-Report 16.11.2026: Mail-Import (Vortag 14.11.) wurde verarbeitet und
+// protokolliert, die Zahlen fehlten aber im gespeicherten Stand. Root Cause:
+// Race Condition - während processPendingImports() noch auf syncAkpContacts/
+// syncFhContacts wartete, lief in derselben Sitzung refreshData() (iOS-App
+// kehrt in den Vordergrund -> visibilitychange, bzw. Mitarbeiter-Wechsel)
+// und ersetzte über loadAll() das globale state-Objekt durch den alten
+// Datenbank-Stand. Der Import speicherte danach (saveData) diesen alten
+// Stand - der frisch gemergte Snapshot ging verloren, die Datei galt aber
+// als "processed". Deshalb laufen jetzt ALLE Vorgänge, die state laden oder
+// einen Snapshot hineinmergen (loadAll in init/refreshData, Mail-Import,
+// manueller Excel-Import), über diese eine Sperre strikt nacheinander.
+let stateLockChain=Promise.resolve();
+function withStateLock(fn){
+  const run=stateLockChain.then(()=>fn());
+  stateLockChain=run.catch(()=>{});
+  return run;
+}
+function handleFiles(files){ return withStateLock(()=>handleFilesLocked(files)); }
+async function handleFilesLocked(files){
   let okCount=0, akqImported=false;
   const importedFilenames=[];
   for(const file of files){
@@ -15226,8 +15244,13 @@ async function refreshData(silent){
     // Aufbau ihrer Indizes auf, dürfen also nicht parallel dazu erst noch
     // FH_DUP_MAP befüllen (sonst Race Condition mit veraltetem/leerem Stand).
     await loadFhDuplicateMerges();
-    await Promise.all([loadAll(), loadAkpContactsIndex(), loadFhContactsIndicesAll()]);
-    await processPendingImports();
+    // loadAll + Mail-Import unter der state-Sperre (siehe withStateLock):
+    // ein noch laufender Import aus init() wird erst abgewartet, statt dessen
+    // Ergebnis per loadAll() mit dem alten Datenbank-Stand zu überschreiben.
+    await withStateLock(async()=>{
+      await Promise.all([loadAll(), loadAkpContactsIndex(), loadFhContactsIndicesAll()]);
+      await processPendingImports();
+    });
     processDueTrainerberichte();
     render();
     if(!silent) toast("Aktualisiert ✓");
@@ -15395,9 +15418,12 @@ function buildMitarbeiterDropdown(){
     // Vor loadAll()/den Kontaktdatenbank-Indizes laden (siehe resolveFhDup()
     // und Kommentar in refreshData()).
     await loadFhDuplicateMerges();
-    await loadAll(); showRoleBadge(); render();
-    await Promise.all([loadAkpContactsIndex(), loadFhContactsIndicesAll()]);
-    await processPendingImports();
+    // Unter der state-Sperre (siehe withStateLock, Bug-Report 16.11.2026).
+    await withStateLock(async()=>{
+      await loadAll(); showRoleBadge(); render();
+      await Promise.all([loadAkpContactsIndex(), loadFhContactsIndicesAll()]);
+      await processPendingImports();
+    });
     processDueTrainerberichte();
     render();
     maybeAutoShowNotifications();
