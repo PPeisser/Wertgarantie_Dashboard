@@ -74,6 +74,11 @@ var IS_STANDALONE_APP=!!(window.navigator.standalone||(window.matchMedia&&window
 // html.is-app: CSS-Haken für App-spezifische Darstellung (z.B. die
 // hochkant gedrehte Monatsproduktion, siehe .mt-tall).
 if(IS_STANDALONE_APP) document.documentElement.classList.add("is-app");
+// IS_IOS_DEVICE: iPhone/iPad (iPadOS meldet sich als "MacIntel", hat aber
+// Touch). Nur dort laufen Dateien über das Teilen-Menü - in der Mac-App
+// (Safari "Zum Dock hinzufügen") wird normal heruntergeladen (Bug-Report
+// 19.11.2026: "am Mac kommt nur Teilen, kein Download").
+var IS_IOS_DEVICE=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
 // iPhone/iPad: Safari zoomt beim Antippen eines Eingabefelds mit Schrift
 // < 16px automatisch hinein und bleibt dann vergrößert. maximum-scale=1
 // verhindert nur dieses Auto-Zoomen - Zoomen mit zwei Fingern bleibt auf iOS
@@ -12714,9 +12719,16 @@ async function buildAuswertungWorkbook(typ,singleVal,multiKeys,vonISO,bisISO,sho
   const pctNum=v=>v!=null&&isFinite(v)?v:null;
   const change=(cur,prev)=>prev>0?(cur-prev)/prev:null;
   const wb=XLSX.utils.book_new();
-  const addSheet=(name,aoa,cols,pctCols)=>{
+  const addSheet=(name,aoa,cols,pctCols,autoFilter=true)=>{
     const ws=XLSX.utils.aoa_to_sheet(aoa);
     if(cols) ws["!cols"]=cols.map(w=>({wch:w}));
+    // Tausenderpunkt für Ganzzahlen (Excel zeigt ihn je nach Ländereinstellung
+    // als "." bzw. ","), Kommazahlen (z.B. Akquisepunkte) mit 1 Nachkommastelle.
+    const rngAll=XLSX.utils.decode_range(ws["!ref"]);
+    for(let R=0;R<=rngAll.e.r;R++) for(let C=0;C<=rngAll.e.c;C++){
+      const cell=ws[XLSX.utils.encode_cell({r:R,c:C})];
+      if(cell&&cell.t==="n"&&!cell.z) cell.z=Number.isInteger(cell.v)?"#,##0":"#,##0.0";
+    }
     if(pctCols&&pctCols.length){
       const rng=XLSX.utils.decode_range(ws["!ref"]);
       for(let R=1;R<=rng.e.r;R++) for(const C of pctCols){
@@ -12724,6 +12736,9 @@ async function buildAuswertungWorkbook(typ,singleVal,multiKeys,vonISO,bisISO,sho
         if(cell&&cell.t==="n") cell.z="0.0%";
       }
     }
+    // Autofilter auf der Kopfzeile (Nutzervorgabe 19.11.2026) - nur bei
+    // echten Tabellenblättern (Kopfzeile in Zeile 1), nicht bei der Übersicht.
+    if(autoFilter) ws["!autofilter"]={ref:ws["!ref"]};
     XLSX.utils.book_append_sheet(wb,ws,name);
     return ws;
   };
@@ -12744,14 +12759,14 @@ async function buildAuswertungWorkbook(typ,singleVal,multiKeys,vonISO,bisISO,sho
   if(showVj) ov.push(["Vorjahreszeitraum ("+fmtDate(series.vonPrev)+" – "+fmtDate(series.bisPrev)+")",series.totalWgPrev,pctNum(change(series.totalWg,series.totalWgPrev))]);
   if(showVvj) ov.push(["Vorvorjahreszeitraum ("+fmtDate(series.vonPrev2)+" – "+fmtDate(series.bisPrev2)+")",series.totalWgPrev2,pctNum(change(series.totalWg,series.totalWgPrev2))]);
   ov.push([],["Hinweis: PO-Quote und 3-für-2-Quote sind aktuelle Werte des laufenden Jahres (LJ). Club-Weiss-Produktion liegt nur monatsgenau vor."]);
-  const ovWs=addSheet("Übersicht",ov,[48,28,14],[]);
+  const ovWs=addSheet("Übersicht",ov,[48,28,14],[],false);
   for(let R=8;R<ov.length;R++){ const c=ovWs[XLSX.utils.encode_cell({r:R,c:2})]; if(c&&c.t==="n") c.z="0.0%"; }
   // 2) Verlauf
   const showMiete=series.totalMiete>0;
   const vl=[[series.weekly?"Woche":"Monat","WG-Produktion",...(showMiete?["davon Club Weiss"]:[])]];
   for(const b of series.buckets) vl.push([b.label,b.wg,...(showMiete?[b.miete]:[])]);
   vl.push(["Summe",series.totalWg,...(showMiete?[series.totalMiete]:[])]);
-  addSheet("Verlauf",vl,[22,16,16],[]);
+  addSheet("Verlauf",vl,[22,16,16],[],false);
   // 3) Einheiten
   const rowsUnits=[...units].map(u=>({u,prod:prodOf(u),prev:auswertungBuildSeries([u],vonISO,bisISO).totalWgPrev})).sort((a,b)=>b.prod-a.prod);
   if(isAkp){
@@ -15626,11 +15641,12 @@ function buildMitarbeiterDropdown(){
      Offline-Hinweis und Service Worker. -->
 <div class="modal-bg hidden" id="appFileModal" style="z-index:90">
   <div class="modal" style="max-width:380px">
-    <h3 style="margin:0 0 6px">PDF ist fertig</h3>
+    <h3 style="margin:0 0 6px">Datei ist fertig</h3>
     <p id="appFileName" style="font-size:13px;color:var(--muted);margin:0 0 4px;word-break:break-all"></p>
-    <p style="font-size:12.5px;color:var(--muted);margin:0">Über „Teilen“ lässt sich das PDF in Dateien sichern, drucken, per Mail/AirDrop senden oder in einer anderen App öffnen.</p>
+    <p style="font-size:12.5px;color:var(--muted);margin:0">Über „Teilen“ lässt sich die Datei in Dateien sichern, drucken, per Mail/AirDrop senden oder in einer anderen App öffnen. „Sichern/Öffnen“ öffnet sie direkt.</p>
     <div class="actions">
       <button class="btn btn-ghost" id="appFileClose" type="button">Schließen</button>
+      <button class="btn btn-ghost" id="appFileDownload" type="button">⬇ Sichern/Öffnen</button>
       <button class="btn btn-blue" id="appFileShare" type="button">⬆︎ Teilen</button>
     </div>
   </div>
@@ -15652,6 +15668,12 @@ function buildMitarbeiterDropdown(){
 // dessen Button-Tipp dann das Teilen-Menü öffnet.
 let appFilePending=null;
 function deliverFileInApp(blob,filename,type){
+  // Mac-/Desktop-App: direkt herunterladen statt Teilen-Dialog.
+  if(!IS_IOS_DEVICE){
+    appFileFallbackOpen({blob,filename,type});
+    if(typeof toast==="function") toast("Datei erstellt ✓ Download gestartet");
+    return;
+  }
   appFilePending={blob,filename,type:type||blob.type||"application/octet-stream"};
   document.getElementById("appFileName").textContent=filename;
   document.getElementById("appFileModal").classList.remove("hidden");
@@ -15681,6 +15703,12 @@ document.getElementById("appFileShare").onclick=async()=>{
   }else{
     appFileFallbackOpen(f);
   }
+};
+document.getElementById("appFileDownload").onclick=()=>{
+  const f=appFilePending; if(!f) return;
+  appFileFallbackOpen(f);
+  document.getElementById("appFileModal").classList.add("hidden");
+  appFilePending=null;
 };
 document.getElementById("appFileClose").onclick=()=>{
   document.getElementById("appFileModal").classList.add("hidden");
