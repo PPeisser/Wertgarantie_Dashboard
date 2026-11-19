@@ -2425,7 +2425,11 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <label id="auswertungVvjChkRow" for="auswertungVvjChk" style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;padding:4px 0;cursor:pointer">
         <input type="checkbox" id="auswertungVvjChk" style="width:18px;height:18px;accent-color:var(--wg-blue);cursor:pointer;flex-shrink:0"> Vorvorjahr im Vergleich anzeigen
       </label>
-      <button class="btn btn-blue" id="auswertungBuildBtn" style="margin-top:18px;width:100%;padding:14px;font-size:14px">📊 Auswertung erstellen</button>
+      <!-- Nutzervorgabe 19.11.2026: Auswertung wahlweise als PDF oder Excel. -->
+      <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap">
+        <button class="btn btn-blue" id="auswertungBuildBtn" style="flex:1;min-width:150px;padding:14px;font-size:14px">📄 Als PDF erstellen</button>
+        <button class="btn btn-blue" id="auswertungExcelBtn" style="flex:1;min-width:150px;padding:14px;font-size:14px">📊 Als Excel erstellen</button>
+      </div>
 
       <!-- Nutzervorgabe 24.09.2026: automatische wiederkehrende Auswertung
            für GENAU DIESE Auswahl einrichten (pro Einzel-Entität, nicht
@@ -10870,8 +10874,72 @@ function pdfBadge(label,tone){
 // in einem Dokument kombinieren. newPage=false nutzt die aktuelle (leere)
 // Seite von `pdf` für die erste Slice dieser Box, statt eine zusätzliche
 // leere Seite einzufügen - für die jeweils erste Box eines Dokuments.
+// Kopierbare PDFs (Nutzervorgabe 19.11.2026): die PDFs entstehen als Bild
+// (html2canvas) - Text war darin nicht markier-/kopierbar. Vor dem Rendern
+// werden deshalb alle sichtbaren Textstellen der Box samt Position erfasst
+// (zeilenweise zusammengefasste Wörter) und nach dem Einfügen der Bilder als
+// UNSICHTBARE Textebene (renderingMode "invisible", wie bei OCR-PDFs) exakt
+// darüber gelegt: Optik unverändert, Text lässt sich markieren, kopieren und
+// durchsuchen.
+function pdfTextSafe(t){
+  // jsPDF-Standardschrift (Helvetica) kann nur WinAnsi (cp1252) - alles
+  // andere würde als Zeichensalat kopiert.
+  const extra="€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ";
+  return String(t).replace(/✓|✔/g,"ja").replace(/→/g,"->").replace(/▲/g,"+").replace(/▼/g,"-").replace(/[≥]/g,">=").replace(/[≤]/g,"<=")
+    .replace(/./gu,c=>(c.codePointAt(0)<256||extra.includes(c))?c:"").replace(/\s+/g," ").trim();
+}
+function pdfCollectTextRuns(box){
+  const bRect=box.getBoundingClientRect();
+  const runs=[];
+  const walker=document.createTreeWalker(box,NodeFilter.SHOW_TEXT);
+  const range=document.createRange();
+  let n;
+  while((n=walker.nextNode())){
+    const txt=n.nodeValue;
+    if(!txt||!txt.trim()) continue;
+    const el=n.parentElement; if(!el) continue;
+    const cs=getComputedStyle(el);
+    if(cs.visibility==="hidden"||cs.display==="none"||cs.opacity==="0") continue;
+    const fsPx=parseFloat(cs.fontSize)||12;
+    const re=/\S+/g; let m, cur=null;
+    while((m=re.exec(txt))){
+      range.setStart(n,m.index); range.setEnd(n,m.index+m[0].length);
+      const r=range.getClientRects()[0];
+      if(!r||!r.width) continue;
+      const x=r.left-bRect.left, y=r.top-bRect.top, x2=r.right-bRect.left;
+      if(cur&&Math.abs(cur.y-y)<2&&x>=cur.x2-1){ cur.text+=" "+m[0]; cur.x2=x2; cur.h=Math.max(cur.h,r.height); }
+      else{ if(cur) runs.push(cur); cur={text:m[0],x,y,x2,h:r.height,fsPx}; }
+    }
+    if(cur) runs.push(cur);
+  }
+  return runs;
+}
+function pdfAddInvisibleText(pdf,runs,slices,margin,mmPerBoxPx){
+  if(!runs.length||!slices.length) return;
+  const lastPage=pdf.getNumberOfPages();
+  const prevFont=pdf.getFont(), prevSize=pdf.getFontSize();
+  pdf.setFont("helvetica","normal");
+  for(const r of runs){
+    const text=pdfTextSafe(r.text); if(!text) continue;
+    const cy=r.y+r.h/2;
+    const sl=slices.find(s=>cy>=s.start&&cy<s.end); if(!sl) continue;
+    pdf.setPage(sl.page);
+    const fsPt=Math.max(1,r.fsPx*mmPerBoxPx/0.352778);
+    pdf.setFontSize(fsPt);
+    const x=margin+r.x*mmPerBoxPx;
+    const baseline=margin+(r.y-sl.start+(r.h-r.fsPx)/2+r.fsPx*0.82)*mmPerBoxPx;
+    const target=(r.x2-r.x)*mmPerBoxPx, natural=pdf.getTextWidth(text);
+    const opts={renderingMode:"invisible",baseline:"alphabetic"};
+    if(text.length>1&&natural>0) opts.charSpace=(target-natural)/(text.length-1);
+    try{ pdf.text(text,x,baseline,opts); }catch(e){}
+  }
+  pdf.setPage(lastPage);
+  try{ pdf.setFont(prevFont.fontName,prevFont.fontStyle); pdf.setFontSize(prevSize); }catch(e){}
+}
 async function appendBoxPagesToPdf(pdf,box,newPage,format,orientation){
   if(newPage) pdf.addPage(format,orientation);
+  const textRuns=pdfCollectTextRuns(box);
+  const textSlices=[];
   const blocks=[...box.querySelectorAll(".pdf-block")];
   const blockEndsBoxPx=blocks.map(b=>b.offsetTop+b.offsetHeight);
   const canvas=await html2canvas(box,{scale:2,backgroundColor:"#ffffff",useCORS:true,logging:false});
@@ -10895,8 +10963,13 @@ async function appendBoxPagesToPdf(pdf,box,newPage,format,orientation){
     const sliceImgH=sliceH*imgW/canvas.width;
     if(pageIdx>0) pdf.addPage(format,orientation);
     pdf.addImage(sliceCanvas.toDataURL("image/jpeg",0.95),"JPEG",margin,margin,imgW,sliceImgH);
+    textSlices.push({start:renderedPx/canvasPxPerBoxPx,end:(renderedPx+sliceH)/canvasPxPerBoxPx,page:pdf.getNumberOfPages()});
     renderedPx+=sliceH; pageIdx++;
   }
+  // Text erst NACH allen Bildern (Bild liegt sonst über dem Text) - die
+  // unsichtbare Ebene ist ohnehin nicht sichtbar, aber Markieren/Kopieren
+  // nimmt so verlässlich den Text.
+  try{ pdfAddInvisibleText(pdf,textRuns,textSlices,margin,imgW/box.offsetWidth); }catch(e){ console.warn("PDF-Textebene fehlgeschlagen:",e); }
 }
 async function pdfBoxRenderToPdf(box){
   const {jsPDF}=window.jspdf;
@@ -12616,6 +12689,115 @@ async function exportAuswertungPdf(typ,singleVal,multiKeys,vonISO,bisISO,showAkp
     pdfSendTarget=null;
   }finally{
     auswertungPdfBusy=false;
+  }
+}
+// Excel-Export der Auswertung (Nutzervorgabe 19.11.2026: "zwischen PDF und
+// Excel wählen"). Gleiche Datenbasis und Rechenwege wie das PDF
+// (auswertungLoadUnits/auswertungBuildSeries), aber als echte Zahlen in
+// Tabellenblättern: Übersicht, Verlauf (Wochen/Monate), Einheiten
+// (Fachhändler bzw. AKP inkl. Vorjahr je Einheit) und - falls gewählt -
+// AKP der Fachhändler.
+async function buildAuswertungWorkbook(typ,singleVal,multiKeys,vonISO,bisISO,showAkp,showVj,showVvj){
+  if(!window.XLSX) throw new Error("Excel-Modul lädt noch – bitte in 2–3 Sekunden nochmals versuchen.");
+  const units=await auswertungLoadUnits(typ,singleVal,multiKeys);
+  const series=auswertungBuildSeries(units,vonISO,bisISO);
+  const typLabel={kooperation:"Kooperation",weitere_zuordnung:"Weitere Zuordnung",filialbetriebe:"Filialbetriebe",fachhaendler:"Fachhändler",akp:"AKP (Aktivpartner)",akp_weitere_zuordnung:"Weitere Zuordnung (AKP)"}[typ]||typ;
+  const titleVal=AUSWERTUNG_SINGLE_TYPES.includes(typ)?singleVal:(units.length===1?units[0].name:units.length+" ausgewählt");
+  const isAkp=typ==="akp"||typ==="akp_weitere_zuordnung";
+  const isAggregate=AUSWERTUNG_SINGLE_TYPES.includes(typ);
+  const monthsInRange=monthKeysInRange(vonISO,bisISO);
+  // Produktion je Einheit exakt wie im PDF: Aggregat-Typen über die
+  // Mitgliederliste (prodOf), Einzel-/Mehrfachauswahl über die eigene Serie.
+  const prodOf=u=>isAggregate
+    ? (series.weekly?sumDailyRangeExclSunday(u.dailyWg,vonISO,bisISO):monthsInRange.reduce((s,mk)=>s+(u.monthlyWg[mk]||0),0))
+    : auswertungBuildSeries([u],vonISO,bisISO).totalWg;
+  const pctNum=v=>v!=null&&isFinite(v)?v:null;
+  const change=(cur,prev)=>prev>0?(cur-prev)/prev:null;
+  const wb=XLSX.utils.book_new();
+  const addSheet=(name,aoa,cols,pctCols)=>{
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    if(cols) ws["!cols"]=cols.map(w=>({wch:w}));
+    if(pctCols&&pctCols.length){
+      const rng=XLSX.utils.decode_range(ws["!ref"]);
+      for(let R=1;R<=rng.e.r;R++) for(const C of pctCols){
+        const cell=ws[XLSX.utils.encode_cell({r:R,c:C})];
+        if(cell&&cell.t==="n") cell.z="0.0%";
+      }
+    }
+    XLSX.utils.book_append_sheet(wb,ws,name);
+    return ws;
+  };
+  // 1) Übersicht
+  const ov=[
+    ["Wertgarantie Performance Dashboard – Auswertung"],
+    [],
+    ["Auswertung",typLabel],
+    ["Auswahl",titleVal],
+    ["Zeitraum",fmtDate(vonISO)+" – "+fmtDate(bisISO)],
+    ["Erstellt am",fmtNowDateTime()],
+    [],
+    ["Kennzahl","Wert","Veränderung"],
+    [isAkp?"Anzahl AKP":"Anzahl Fachhändler",units.length],
+    ["WG-Produktion im Zeitraum",series.totalWg],
+  ];
+  if(series.totalMiete>0) ov.push(["davon Club Weiss",series.totalMiete]);
+  if(showVj) ov.push(["Vorjahreszeitraum ("+fmtDate(series.vonPrev)+" – "+fmtDate(series.bisPrev)+")",series.totalWgPrev,pctNum(change(series.totalWg,series.totalWgPrev))]);
+  if(showVvj) ov.push(["Vorvorjahreszeitraum ("+fmtDate(series.vonPrev2)+" – "+fmtDate(series.bisPrev2)+")",series.totalWgPrev2,pctNum(change(series.totalWg,series.totalWgPrev2))]);
+  ov.push([],["Hinweis: PO-Quote und 3-für-2-Quote sind aktuelle Werte des laufenden Jahres (LJ). Club-Weiss-Produktion liegt nur monatsgenau vor."]);
+  const ovWs=addSheet("Übersicht",ov,[48,28,14],[]);
+  for(let R=8;R<ov.length;R++){ const c=ovWs[XLSX.utils.encode_cell({r:R,c:2})]; if(c&&c.t==="n") c.z="0.0%"; }
+  // 2) Verlauf
+  const showMiete=series.totalMiete>0;
+  const vl=[[series.weekly?"Woche":"Monat","WG-Produktion",...(showMiete?["davon Club Weiss"]:[])]];
+  for(const b of series.buckets) vl.push([b.label,b.wg,...(showMiete?[b.miete]:[])]);
+  vl.push(["Summe",series.totalWg,...(showMiete?[series.totalMiete]:[])]);
+  addSheet("Verlauf",vl,[22,16,16],[]);
+  // 3) Einheiten
+  const rowsUnits=[...units].map(u=>({u,prod:prodOf(u),prev:auswertungBuildSeries([u],vonISO,bisISO).totalWgPrev})).sort((a,b)=>b.prod-a.prod);
+  if(isAkp){
+    const head=["Name","Firma","FH-Nr.","Ort","Produktion im Zeitraum",...(showVj?["Vorjahreszeitraum","Veränderung"]:[]),"PO-Quote (LJ)","3-für-2-Quote (LJ)"];
+    const aoa=[head,...rowsUnits.map(({u,prod,prev})=>[u.name,u.firma||"",u.fhNr||"",u.ort||"",prod,...(showVj?[prev,pctNum(change(prod,prev))]:[]),pctNum(u.poQuote),pctNum(u.q3fuer2)])];
+    const pc=showVj?[6,7,8]:[5,6];
+    addSheet("AKP",aoa,[28,30,10,18,14,...(showVj?[14,12]:[]),12,14],pc);
+  }else{
+    const head=["Name","Ort","FH-Nr.","Produktion im Zeitraum",...(showVj?["Vorjahreszeitraum","Veränderung"]:[]),"PO-Quote (LJ)","3-für-2-Quote (LJ)","Akquisepunkte","Club Weiss","Ansprechpartner","E-Mail"];
+    const aoa=[head,...rowsUnits.map(({u,prod,prev})=>[u.name,u.ort||"",u.fhNr||"",prod,...(showVj?[prev,pctNum(change(prod,prev))]:[]),pctNum(u.poQuote),pctNum(u.q3fuer2),u.akqPunkte!=null?Number(u.akqPunkte):null,u.clubWeiss?"ja":"nein",u.ansprechpartner||"",u.ansprechpartnerEmail||u.email||""])];
+    const pc=showVj?[5,6,7]:[4,5];
+    addSheet("Fachhändler",aoa,[34,18,10,14,...(showVj?[14,12]:[]),12,14,12,10,24,30],pc);
+    // 4) AKP der Fachhändler
+    if(showAkp){
+      const akpByFh=auswertungAkpByFh();
+      const list=[];
+      for(const u of units) for(const a of (akpByFh[u.fhNr]||[])){
+        const snapAkp=(state.latest.akp||[]).find(x=>x.nr===a.nr);
+        list.push([[a.vorname,a.nachname].filter(Boolean).join(" ")||a.nr,a.firma||"",u.name,u.fhNr||"",auswertungAkpProdInPeriod(a,vonISO,bisISO,series.weekly),pctNum(snapAkp&&snapAkp.poQuote),pctNum(snapAkp&&snapAkp.q3fuer2)]);
+      }
+      list.sort((a,b)=>b[4]-a[4]);
+      if(list.length) addSheet("AKP",[["Name","Firma","Fachhändler","FH-Nr.","Produktion im Zeitraum","PO-Quote (LJ)","3-für-2-Quote (LJ)"],...list],[28,30,34,10,14,12,14],[5,6]);
+    }
+  }
+  const filename=auswertungPdfFilename(typ,singleVal,multiKeys).replace(/\.pdf$/i,".xlsx");
+  return {wb,filename};
+}
+let auswertungExcelBusy=false;
+async function exportAuswertungExcel(typ,singleVal,multiKeys,vonISO,bisISO,showAkp,showVj,showVvj){
+  if(auswertungExcelBusy) return;
+  auswertungExcelBusy=true;
+  toast("Excel wird erstellt …");
+  try{
+    const {wb,filename}=await buildAuswertungWorkbook(typ,singleVal,multiKeys,vonISO,bisISO,showAkp,showVj,showVvj);
+    if(IS_STANDALONE_APP){
+      const out=XLSX.write(wb,{bookType:"xlsx",type:"array"});
+      deliverFileInApp(new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),filename,"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }else{
+      XLSX.writeFile(wb,filename);
+      toast("Excel erstellt ✓ Download gestartet");
+    }
+  }catch(e){
+    console.error("exportAuswertungExcel failed:",e);
+    toast("Erstellung fehlgeschlagen: "+(e.message||e));
+  }finally{
+    auswertungExcelBusy=false;
   }
 }
 // Stammdaten-Änderungsworkflow: PLZ/Ort sind die einzigen Stammdaten-Felder,
@@ -15137,15 +15319,22 @@ $("auswertungPeriodBack").onclick=()=>{
 document.querySelectorAll(".auswertung-preset-btn").forEach(btn=>{
   btn.onclick=()=>applyAuswertungPreset(btn.dataset.preset);
 });
-$("auswertungBuildBtn").onclick=()=>{
+function auswertungCurrentParams(){
   const von=$("auswertungVonInput").value, bis=$("auswertungBisInput").value;
-  if(!von||!bis){ $("auswertungHint").textContent="Bitte Zeitraum von/bis angeben."; return; }
-  if(von>bis){ $("auswertungHint").textContent="\"Von\" muss vor \"bis\" liegen."; return; }
+  if(!von||!bis){ $("auswertungHint").textContent="Bitte Zeitraum von/bis angeben."; return null; }
+  if(von>bis){ $("auswertungHint").textContent="\"Von\" muss vor \"bis\" liegen."; return null; }
   $("auswertungHint").textContent="";
   const showAkp=auswertungTyp==="akp"?true:$("auswertungAkpChk").checked;
   const showVj=$("auswertungVjChk").checked, showVvj=$("auswertungVvjChk").checked;
-  const typ=auswertungTyp, singleVal=auswertungSingleValue, multiKeys=auswertungMultiKeys.slice();
-  openPdfTargetChoice(()=>exportAuswertungPdf(typ,singleVal,multiKeys,von,bis,showAkp,showVj,showVvj));
+  return {typ:auswertungTyp, singleVal:auswertungSingleValue, multiKeys:auswertungMultiKeys.slice(), von, bis, showAkp, showVj, showVvj};
+}
+$("auswertungBuildBtn").onclick=()=>{
+  const p=auswertungCurrentParams(); if(!p) return;
+  openPdfTargetChoice(()=>exportAuswertungPdf(p.typ,p.singleVal,p.multiKeys,p.von,p.bis,p.showAkp,p.showVj,p.showVvj));
+};
+$("auswertungExcelBtn").onclick=()=>{
+  const p=auswertungCurrentParams(); if(!p) return;
+  exportAuswertungExcel(p.typ,p.singleVal,p.multiKeys,p.von,p.bis,p.showAkp,p.showVj,p.showVvj);
 };
 // Vorvorjahr ohne Vorjahr wäre eine inkonsistente Darstellung (Lücke in der
 // Vergleichsreihe) - VVJ aktiviert daher automatisch auch VJ mit.
