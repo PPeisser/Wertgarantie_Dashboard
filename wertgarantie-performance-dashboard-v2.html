@@ -12702,8 +12702,11 @@ async function exportAuswertungPdf(typ,singleVal,multiKeys,vonISO,bisISO,showAkp
 // Tabellenblättern: Übersicht, Verlauf (Wochen/Monate), Einheiten
 // (Fachhändler bzw. AKP inkl. Vorjahr je Einheit) und - falls gewählt -
 // AKP der Fachhändler.
-async function buildAuswertungWorkbook(typ,singleVal,multiKeys,vonISO,bisISO,showAkp,showVj,showVvj){
-  if(!window.XLSX) throw new Error("Excel-Modul lädt noch – bitte in 2–3 Sekunden nochmals versuchen.");
+// Datenmodell der Excel-Auswertung (Nutzervorgabe 19.11.2026): einmal
+// berechnen, dann entweder hochwertig formatiert (ExcelJS, Standard) oder -
+// falls ExcelJS nicht geladen werden kann - schlicht über SheetJS ausgeben.
+// Spaltenformate: text | int | dec | pct | chg (Veränderung, grün/rot).
+async function buildAuswertungExcelModel(typ,singleVal,multiKeys,vonISO,bisISO,showAkp,showVj,showVvj){
   const units=await auswertungLoadUnits(typ,singleVal,multiKeys);
   const series=auswertungBuildSeries(units,vonISO,bisISO);
   const typLabel={kooperation:"Kooperation",weitere_zuordnung:"Weitere Zuordnung",filialbetriebe:"Filialbetriebe",fachhaendler:"Fachhändler",akp:"AKP (Aktivpartner)",akp_weitere_zuordnung:"Weitere Zuordnung (AKP)"}[typ]||typ;
@@ -12716,83 +12719,217 @@ async function buildAuswertungWorkbook(typ,singleVal,multiKeys,vonISO,bisISO,sho
   const prodOf=u=>isAggregate
     ? (series.weekly?sumDailyRangeExclSunday(u.dailyWg,vonISO,bisISO):monthsInRange.reduce((s,mk)=>s+(u.monthlyWg[mk]||0),0))
     : auswertungBuildSeries([u],vonISO,bisISO).totalWg;
-  const pctNum=v=>v!=null&&isFinite(v)?v:null;
+  const num=v=>v!=null&&isFinite(v)?Number(v):null;
   const change=(cur,prev)=>prev>0?(cur-prev)/prev:null;
-  const wb=XLSX.utils.book_new();
-  const addSheet=(name,aoa,cols,pctCols,autoFilter=true)=>{
-    const ws=XLSX.utils.aoa_to_sheet(aoa);
-    if(cols) ws["!cols"]=cols.map(w=>({wch:w}));
-    // Tausenderpunkt für Ganzzahlen (Excel zeigt ihn je nach Ländereinstellung
-    // als "." bzw. ","), Kommazahlen (z.B. Akquisepunkte) mit 1 Nachkommastelle.
-    const rngAll=XLSX.utils.decode_range(ws["!ref"]);
-    for(let R=0;R<=rngAll.e.r;R++) for(let C=0;C<=rngAll.e.c;C++){
-      const cell=ws[XLSX.utils.encode_cell({r:R,c:C})];
-      if(cell&&cell.t==="n"&&!cell.z) cell.z=Number.isInteger(cell.v)?"#,##0":"#,##0.0";
-    }
-    if(pctCols&&pctCols.length){
-      const rng=XLSX.utils.decode_range(ws["!ref"]);
-      for(let R=1;R<=rng.e.r;R++) for(const C of pctCols){
-        const cell=ws[XLSX.utils.encode_cell({r:R,c:C})];
-        if(cell&&cell.t==="n") cell.z="0.0%";
-      }
-    }
-    // Autofilter auf der Kopfzeile (Nutzervorgabe 19.11.2026) - nur bei
-    // echten Tabellenblättern (Kopfzeile in Zeile 1), nicht bei der Übersicht.
-    if(autoFilter) ws["!autofilter"]={ref:ws["!ref"]};
-    XLSX.utils.book_append_sheet(wb,ws,name);
-    return ws;
-  };
-  // 1) Übersicht
-  const ov=[
-    ["Wertgarantie Performance Dashboard – Auswertung"],
-    [],
-    ["Auswertung",typLabel],
-    ["Auswahl",titleVal],
-    ["Zeitraum",fmtDate(vonISO)+" – "+fmtDate(bisISO)],
-    ["Erstellt am",fmtNowDateTime()],
-    [],
-    ["Kennzahl","Wert","Veränderung"],
-    [isAkp?"Anzahl AKP":"Anzahl Fachhändler",units.length],
-    ["WG-Produktion im Zeitraum",series.totalWg],
-  ];
-  if(series.totalMiete>0) ov.push(["davon Club Weiss",series.totalMiete]);
-  if(showVj) ov.push(["Vorjahreszeitraum ("+fmtDate(series.vonPrev)+" – "+fmtDate(series.bisPrev)+")",series.totalWgPrev,pctNum(change(series.totalWg,series.totalWgPrev))]);
-  if(showVvj) ov.push(["Vorvorjahreszeitraum ("+fmtDate(series.vonPrev2)+" – "+fmtDate(series.bisPrev2)+")",series.totalWgPrev2,pctNum(change(series.totalWg,series.totalWgPrev2))]);
-  ov.push([],["Hinweis: PO-Quote und 3-für-2-Quote sind aktuelle Werte des laufenden Jahres (LJ). Club-Weiss-Produktion liegt nur monatsgenau vor."]);
-  const ovWs=addSheet("Übersicht",ov,[48,28,14],[],false);
-  for(let R=8;R<ov.length;R++){ const c=ovWs[XLSX.utils.encode_cell({r:R,c:2})]; if(c&&c.t==="n") c.z="0.0%"; }
-  // 2) Verlauf
+  const sheets=[];
   const showMiete=series.totalMiete>0;
-  const vl=[[series.weekly?"Woche":"Monat","WG-Produktion",...(showMiete?["davon Club Weiss"]:[])]];
-  for(const b of series.buckets) vl.push([b.label,b.wg,...(showMiete?[b.miete]:[])]);
-  vl.push(["Summe",series.totalWg,...(showMiete?[series.totalMiete]:[])]);
-  addSheet("Verlauf",vl,[22,16,16],[],false);
-  // 3) Einheiten
-  const rowsUnits=[...units].map(u=>({u,prod:prodOf(u),prev:auswertungBuildSeries([u],vonISO,bisISO).totalWgPrev})).sort((a,b)=>b.prod-a.prod);
+  // Verlauf
+  sheets.push({
+    name:"Verlauf", heading:"Produktion je "+(series.weekly?"Woche":"Monat"),
+    columns:[{h:series.weekly?"Woche":"Monat",w:30,f:"text"},{h:"WG-Produktion",w:22,f:"int"},...(showMiete?[{h:"davon Club Weiss",w:22,f:"int"}]:[])],
+    rows:series.buckets.map(b=>[b.label,b.wg,...(showMiete?[b.miete]:[])]),
+    total:["Summe",series.totalWg,...(showMiete?[series.totalMiete]:[])],
+  });
+  // Einheiten
+  const rowsUnits=units.map(u=>({u,prod:prodOf(u),prev:auswertungBuildSeries([u],vonISO,bisISO).totalWgPrev})).sort((a,b)=>b.prod-a.prod);
+  const sumProd=rowsUnits.reduce((s,r)=>s+r.prod,0), sumPrev=rowsUnits.reduce((s,r)=>s+r.prev,0);
   if(isAkp){
-    const head=["Name","Firma","FH-Nr.","Ort","Produktion im Zeitraum",...(showVj?["Vorjahreszeitraum","Veränderung"]:[]),"PO-Quote (LJ)","3-für-2-Quote (LJ)"];
-    const aoa=[head,...rowsUnits.map(({u,prod,prev})=>[u.name,u.firma||"",u.fhNr||"",u.ort||"",prod,...(showVj?[prev,pctNum(change(prod,prev))]:[]),pctNum(u.poQuote),pctNum(u.q3fuer2)])];
-    const pc=showVj?[6,7,8]:[5,6];
-    addSheet("AKP",aoa,[28,30,10,18,14,...(showVj?[14,12]:[]),12,14],pc);
+    sheets.push({
+      name:"AKP", heading:"AKP (Aktivpartner) – sortiert nach Produktion im Zeitraum",
+      columns:[{h:"Name",w:28,f:"text"},{h:"Firma",w:30,f:"text"},{h:"FH-Nr.",w:10,f:"text"},{h:"Ort",w:20,f:"text"},{h:"Produktion im Zeitraum",w:16,f:"int"},
+        ...(showVj?[{h:"Vorjahreszeitraum",w:16,f:"int"},{h:"Veränderung",w:13,f:"chg"}]:[]),
+        {h:"PO-Quote (LJ)",w:13,f:"pct"},{h:"3-für-2-Quote (LJ)",w:15,f:"pct"}],
+      rows:rowsUnits.map(({u,prod,prev})=>[u.name,u.firma||"",u.fhNr||"",u.ort||"",prod,...(showVj?[prev,change(prod,prev)]:[]),num(u.poQuote),num(u.q3fuer2)]),
+      total:["Summe ("+units.length+" AKP)","","","",sumProd,...(showVj?[sumPrev,change(sumProd,sumPrev)]:[]),null,null],
+    });
   }else{
-    const head=["Name","Ort","FH-Nr.","Produktion im Zeitraum",...(showVj?["Vorjahreszeitraum","Veränderung"]:[]),"PO-Quote (LJ)","3-für-2-Quote (LJ)","Akquisepunkte","Club Weiss","Ansprechpartner","E-Mail"];
-    const aoa=[head,...rowsUnits.map(({u,prod,prev})=>[u.name,u.ort||"",u.fhNr||"",prod,...(showVj?[prev,pctNum(change(prod,prev))]:[]),pctNum(u.poQuote),pctNum(u.q3fuer2),u.akqPunkte!=null?Number(u.akqPunkte):null,u.clubWeiss?"ja":"nein",u.ansprechpartner||"",u.ansprechpartnerEmail||u.email||""])];
-    const pc=showVj?[5,6,7]:[4,5];
-    addSheet("Fachhändler",aoa,[34,18,10,14,...(showVj?[14,12]:[]),12,14,12,10,24,30],pc);
-    // 4) AKP der Fachhändler
+    sheets.push({
+      name:"Fachhändler", heading:"Fachhändler – sortiert nach Produktion im Zeitraum",
+      columns:[{h:"Name",w:36,f:"text"},{h:"Ort",w:20,f:"text"},{h:"FH-Nr.",w:10,f:"text"},{h:"Produktion im Zeitraum",w:16,f:"int"},
+        ...(showVj?[{h:"Vorjahreszeitraum",w:16,f:"int"},{h:"Veränderung",w:13,f:"chg"}]:[]),
+        {h:"PO-Quote (LJ)",w:13,f:"pct"},{h:"3-für-2-Quote (LJ)",w:15,f:"pct"},{h:"Akquisepunkte",w:13,f:"dec"},{h:"Club Weiss",w:11,f:"text",a:"center"},{h:"Ansprechpartner",w:24,f:"text"},{h:"E-Mail",w:32,f:"text"}],
+      rows:rowsUnits.map(({u,prod,prev})=>[u.name,u.ort||"",u.fhNr||"",prod,...(showVj?[prev,change(prod,prev)]:[]),num(u.poQuote),num(u.q3fuer2),num(u.akqPunkte),u.clubWeiss?"ja":"nein",u.ansprechpartner||"",u.ansprechpartnerEmail||u.email||""]),
+      total:["Summe ("+units.length+" Fachhändler)","","",sumProd,...(showVj?[sumPrev,change(sumProd,sumPrev)]:[]),null,null,null,"","",""],
+    });
     if(showAkp){
       const akpByFh=auswertungAkpByFh();
       const list=[];
       for(const u of units) for(const a of (akpByFh[u.fhNr]||[])){
         const snapAkp=(state.latest.akp||[]).find(x=>x.nr===a.nr);
-        list.push([[a.vorname,a.nachname].filter(Boolean).join(" ")||a.nr,a.firma||"",u.name,u.fhNr||"",auswertungAkpProdInPeriod(a,vonISO,bisISO,series.weekly),pctNum(snapAkp&&snapAkp.poQuote),pctNum(snapAkp&&snapAkp.q3fuer2)]);
+        list.push([[a.vorname,a.nachname].filter(Boolean).join(" ")||a.nr,a.firma||"",u.name,u.fhNr||"",auswertungAkpProdInPeriod(a,vonISO,bisISO,series.weekly),num(snapAkp&&snapAkp.poQuote),num(snapAkp&&snapAkp.q3fuer2)]);
       }
       list.sort((a,b)=>b[4]-a[4]);
-      if(list.length) addSheet("AKP",[["Name","Firma","Fachhändler","FH-Nr.","Produktion im Zeitraum","PO-Quote (LJ)","3-für-2-Quote (LJ)"],...list],[28,30,34,10,14,12,14],[5,6]);
+      if(list.length) sheets.push({
+        name:"AKP", heading:"AKP (Aktivpartner) der Fachhändler",
+        columns:[{h:"Name",w:28,f:"text"},{h:"Firma",w:30,f:"text"},{h:"Fachhändler",w:34,f:"text"},{h:"FH-Nr.",w:10,f:"text"},{h:"Produktion im Zeitraum",w:16,f:"int"},{h:"PO-Quote (LJ)",w:13,f:"pct"},{h:"3-für-2-Quote (LJ)",w:15,f:"pct"}],
+        rows:list,
+        total:["Summe ("+list.length+" AKP)","","","",list.reduce((s,r)=>s+r[4],0),null,null],
+      });
     }
   }
-  const filename=auswertungPdfFilename(typ,singleVal,multiKeys).replace(/\.pdf$/i,".xlsx");
-  return {wb,filename};
+  const kpis=[
+    {label:isAkp?"Anzahl AKP":"Anzahl Fachhändler",value:units.length,f:"int"},
+    {label:"WG-Produktion im Zeitraum",value:series.totalWg,f:"int",strong:true},
+  ];
+  if(showMiete) kpis.push({label:"davon Club Weiss",value:series.totalMiete,f:"int"});
+  if(showVj) kpis.push({label:"Vorjahreszeitraum",sub:fmtDate(series.vonPrev)+" – "+fmtDate(series.bisPrev),value:series.totalWgPrev,f:"int",chg:change(series.totalWg,series.totalWgPrev)});
+  if(showVvj) kpis.push({label:"Vorvorjahreszeitraum",sub:fmtDate(series.vonPrev2)+" – "+fmtDate(series.bisPrev2),value:series.totalWgPrev2,f:"int",chg:change(series.totalWg,series.totalWgPrev2)});
+  return {
+    typLabel,titleVal,periodTxt:fmtDate(vonISO)+" – "+fmtDate(bisISO),created:fmtNowDateTime(),kpis,sheets,
+    note:"PO-Quote und 3-für-2-Quote sind aktuelle Werte des laufenden Jahres (LJ), keine für den Zeitraum rückwirkend berechneten Werte. Club-Weiss-Produktion liegt nur monatsgenau vor. Der Vorjahresvergleich bezieht sich auf den exakt gleich langen Zeitraum im Vorjahr.",
+    filename:auswertungPdfFilename(typ,singleVal,multiKeys).replace(/\.pdf$/i,".xlsx"),
+  };
+}
+const EXCEL_NUMFMT={int:"#,##0",dec:"#,##0.0",pct:"0.0%",chg:"+0.0%;-0.0%;0.0%"};
+// Veränderung grün/rot über die Schriftfarbe der Zelle (Farbcodes im
+// Zahlenformat werden je nach Programm sehr unterschiedlich dargestellt).
+function excelChgColor(v){ return v>0?"FF1B7A43":v<0?"FFB3324A":null; }
+// ExcelJS wird nur bei Bedarf nachgeladen (~1 MB) - cdnjs, sonst jsDelivr.
+let excelJsLoading=null;
+function loadExcelJs(){
+  if(window.ExcelJS) return Promise.resolve(window.ExcelJS);
+  if(excelJsLoading) return excelJsLoading;
+  const urls=["https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js","https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"];
+  excelJsLoading=(async()=>{
+    for(const u of urls){
+      try{
+        await new Promise((res,rej)=>{ const sc=document.createElement("script"); sc.src=u; sc.crossOrigin="anonymous"; sc.onload=res; sc.onerror=rej; document.head.appendChild(sc); });
+        if(window.ExcelJS) return window.ExcelJS;
+      }catch(e){}
+    }
+    excelJsLoading=null;
+    throw new Error("Excel-Modul konnte nicht geladen werden");
+  })();
+  return excelJsLoading;
+}
+// Hochwertige Ausgabe (Wertgarantie-Farben): Titelblock mit Akzentlinie,
+// dunkelblaue fixierte Kopfzeile mit Filter, Zebra-Streifen, Summenzeile,
+// Veränderungen grün/rot, Druck quer auf Seitenbreite mit Wiederholung der
+// Kopfzeile.
+async function renderAuswertungExcelJs(model){
+  const ExcelJS=await loadExcelJs();
+  const NAVY="FF062A3F", BLUE="FF009FE3", MUTED="FF5D7284", LINE="FFE4EDF3", ZEBRA="FFF5F9FC", TOTAL="FFE6F5FC", WHITE="FFFFFFFF";
+  const FONT="Calibri";
+  const wb=new ExcelJS.Workbook();
+  wb.creator="Wertgarantie Performance Dashboard"; wb.created=new Date();
+  const titleBlock=(ws,nCols,heading)=>{
+    ws.mergeCells(1,1,1,nCols); ws.mergeCells(2,1,2,nCols); ws.mergeCells(3,1,3,nCols);
+    const c1=ws.getCell(1,1); c1.value=model.typLabel.toUpperCase(); c1.font={name:FONT,size:9,bold:true,color:{argb:BLUE}};
+    const c2=ws.getCell(2,1); c2.value=model.titleVal; c2.font={name:FONT,size:18,bold:true,color:{argb:NAVY}};
+    const c3=ws.getCell(3,1); c3.value="Zeitraum: "+model.periodTxt+"   ·   Erstellt am: "+model.created; c3.font={name:FONT,size:10,color:{argb:MUTED}};
+    ws.getRow(1).height=16; ws.getRow(2).height=28; ws.getRow(3).height=18;
+    for(let c=1;c<=nCols;c++) ws.getCell(3,c).border={bottom:{style:"medium",color:{argb:BLUE}}};
+    ws.getRow(4).height=10;
+    if(heading){ const h=ws.getCell(5,1); h.value=heading; h.font={name:FONT,size:12,bold:true,color:{argb:NAVY}}; ws.getRow(5).height=22; }
+  };
+  const pageSetup=(ws,headerRow,landscape)=>{
+    ws.pageSetup={paperSize:9,orientation:landscape?"landscape":"portrait",fitToPage:true,fitToWidth:1,fitToHeight:0,
+      margins:{left:0.4,right:0.4,top:0.5,bottom:0.5,header:0.3,footer:0.3},printTitlesRow:headerRow?headerRow+":"+headerRow:undefined};
+    ws.headerFooter={oddFooter:"&L&8Wertgarantie Performance Dashboard&R&8Seite &P von &N"};
+  };
+  // Übersicht
+  {
+    const ws=wb.addWorksheet("Übersicht",{properties:{tabColor:{argb:BLUE}},views:[{showGridLines:false}]});
+    ws.columns=[{width:4},{width:34},{width:20},{width:16},{width:26}];
+    titleBlock(ws,5,"Kennzahlen");
+    const hr=ws.getRow(7);
+    ["","Kennzahl","Wert","Veränderung","Vergleichszeitraum"].forEach((t,i)=>{ const c=hr.getCell(i+1); c.value=t||null; if(i>0){ c.font={name:FONT,size:10,bold:true,color:{argb:WHITE}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:NAVY}}; c.alignment={vertical:"middle",horizontal:i>=2&&i<=3?"right":"left",indent:1}; } });
+    hr.height=24;
+    let r=8;
+    model.kpis.forEach((k,i)=>{
+      const row=ws.getRow(r);
+      row.getCell(2).value=k.label;
+      row.getCell(3).value=k.value; row.getCell(3).numFmt=EXCEL_NUMFMT[k.f];
+      if(k.chg!=null){ row.getCell(4).value=k.chg; row.getCell(4).numFmt=EXCEL_NUMFMT.chg; }
+      if(k.sub) row.getCell(5).value=k.sub;
+      for(let c=2;c<=5;c++){
+        const cell=row.getCell(c);
+        cell.font={name:FONT,size:k.strong?13:11,bold:c===3||c===4||!!k.strong,color:{argb:(c===4&&excelChgColor(k.chg))||(c===5?MUTED:NAVY)}};
+        cell.alignment={vertical:"middle",horizontal:c===3||c===4?"right":"left",indent:1};
+        cell.border={bottom:{style:"thin",color:{argb:LINE}}};
+        if(i%2===1) cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:ZEBRA}};
+      }
+      row.height=k.strong?26:22; r++;
+    });
+    r++;
+    ws.mergeCells(r,2,r+2,5);
+    const n=ws.getCell(r,2); n.value=model.note; n.font={name:FONT,size:9,italic:true,color:{argb:MUTED}}; n.alignment={wrapText:true,vertical:"top"};
+    pageSetup(ws,0,false);
+  }
+  // Tabellenblätter
+  for(const sh of model.sheets){
+    const nCols=sh.columns.length;
+    const ws=wb.addWorksheet(sh.name,{views:[{state:"frozen",ySplit:6,showGridLines:false}]});
+    ws.columns=sh.columns.map(c=>({width:c.w}));
+    titleBlock(ws,nCols,sh.heading);
+    const HR=6;
+    const hr=ws.getRow(HR);
+    sh.columns.forEach((col,i)=>{
+      const c=hr.getCell(i+1); c.value=col.h;
+      c.font={name:FONT,size:10,bold:true,color:{argb:WHITE}};
+      c.fill={type:"pattern",pattern:"solid",fgColor:{argb:NAVY}};
+      c.alignment={vertical:"middle",horizontal:col.a||(col.f==="text"?"left":"right"),wrapText:true,indent:col.f==="text"&&!col.a?1:0};
+      c.border={bottom:{style:"medium",color:{argb:BLUE}}};
+    });
+    hr.height=32;
+    sh.rows.forEach((vals,ri)=>{
+      const row=ws.getRow(HR+1+ri);
+      vals.forEach((v,ci)=>{
+        const col=sh.columns[ci], c=row.getCell(ci+1);
+        c.value=(v===""||v==null)?null:v;
+        if(col.f!=="text") c.numFmt=EXCEL_NUMFMT[col.f];
+        c.font={name:FONT,size:10,color:{argb:(col.f==="chg"&&excelChgColor(v))||(ci===0?NAVY:"FF10202C")},bold:ci===0||col.f==="chg"};
+        c.alignment={vertical:"middle",horizontal:col.a||(col.f==="text"?"left":"right"),indent:col.f==="text"&&!col.a?1:0};
+        c.border={bottom:{style:"thin",color:{argb:LINE}}};
+        if(ri%2===1) c.fill={type:"pattern",pattern:"solid",fgColor:{argb:ZEBRA}};
+      });
+      row.height=18;
+    });
+    const lastData=HR+sh.rows.length;
+    if(sh.total){
+      const row=ws.getRow(lastData+1);
+      sh.total.forEach((v,ci)=>{
+        const col=sh.columns[ci], c=row.getCell(ci+1);
+        c.value=(v===""||v==null)?null:v;
+        if(col.f!=="text") c.numFmt=EXCEL_NUMFMT[col.f];
+        c.font={name:FONT,size:10.5,bold:true,color:{argb:(col.f==="chg"&&excelChgColor(v))||NAVY}};
+        c.fill={type:"pattern",pattern:"solid",fgColor:{argb:TOTAL}};
+        c.alignment={vertical:"middle",horizontal:col.f==="text"?"left":"right",indent:col.f==="text"?1:0};
+        c.border={top:{style:"medium",color:{argb:NAVY}},bottom:{style:"medium",color:{argb:NAVY}}};
+      });
+      row.height=22;
+    }
+    if(sh.rows.length) ws.autoFilter={from:{row:HR,column:1},to:{row:lastData,column:nCols}};
+    pageSetup(ws,HR,nCols>5);
+  }
+  const buf=await wb.xlsx.writeBuffer();
+  return new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+}
+// Notfall-Ausgabe ohne Formatierung (SheetJS), falls ExcelJS nicht lädt.
+function renderAuswertungSheetJs(model){
+  if(!window.XLSX) throw new Error("Excel-Modul lädt noch – bitte in 2–3 Sekunden nochmals versuchen.");
+  const wb=XLSX.utils.book_new();
+  const ov=[[model.typLabel+": "+model.titleVal],["Zeitraum",model.periodTxt],["Erstellt am",model.created],[],["Kennzahl","Wert","Veränderung","Vergleichszeitraum"],
+    ...model.kpis.map(k=>[k.label,k.value,k.chg!=null?k.chg:null,k.sub||""]),[],[model.note]];
+  const ows=XLSX.utils.aoa_to_sheet(ov); ows["!cols"]=[{wch:34},{wch:16},{wch:14},{wch:26}];
+  XLSX.utils.book_append_sheet(wb,ows,"Übersicht");
+  for(const sh of model.sheets){
+    const aoa=[sh.columns.map(c=>c.h),...sh.rows,...(sh.total?[sh.total]:[])];
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"]=sh.columns.map(c=>({wch:c.w}));
+    for(let R=1;R<aoa.length;R++) sh.columns.forEach((col,C)=>{ const cell=ws[XLSX.utils.encode_cell({r:R,c:C})]; if(cell&&cell.t==="n") cell.z=EXCEL_NUMFMT[col.f]||"#,##0"; });
+    if(sh.rows.length) ws["!autofilter"]={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:sh.rows.length,c:sh.columns.length-1}})};
+    XLSX.utils.book_append_sheet(wb,ws,sh.name);
+  }
+  const out=XLSX.write(wb,{bookType:"xlsx",type:"array"});
+  return new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+}
+async function buildAuswertungExcelBlob(typ,singleVal,multiKeys,vonISO,bisISO,showAkp,showVj,showVvj){
+  const model=await buildAuswertungExcelModel(typ,singleVal,multiKeys,vonISO,bisISO,showAkp,showVj,showVvj);
+  let blob;
+  try{ blob=await renderAuswertungExcelJs(model); }
+  catch(e){ console.warn("ExcelJS nicht verfügbar, schlichte Ausgabe:",e); blob=renderAuswertungSheetJs(model); }
+  return {blob,filename:model.filename,model};
 }
 let auswertungExcelBusy=false;
 async function exportAuswertungExcel(typ,singleVal,multiKeys,vonISO,bisISO,showAkp,showVj,showVvj){
@@ -12800,12 +12937,13 @@ async function exportAuswertungExcel(typ,singleVal,multiKeys,vonISO,bisISO,showA
   auswertungExcelBusy=true;
   toast("Excel wird erstellt …");
   try{
-    const {wb,filename}=await buildAuswertungWorkbook(typ,singleVal,multiKeys,vonISO,bisISO,showAkp,showVj,showVvj);
+    const {blob,filename}=await buildAuswertungExcelBlob(typ,singleVal,multiKeys,vonISO,bisISO,showAkp,showVj,showVvj);
     if(IS_STANDALONE_APP){
-      const out=XLSX.write(wb,{bookType:"xlsx",type:"array"});
-      deliverFileInApp(new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),filename,"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      deliverFileInApp(blob,filename,blob.type);
     }else{
-      XLSX.writeFile(wb,filename);
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a"); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(()=>URL.revokeObjectURL(url),60000);
       toast("Excel erstellt ✓ Download gestartet");
     }
   }catch(e){
