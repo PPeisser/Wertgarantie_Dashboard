@@ -10941,40 +10941,125 @@ function pdfAddInvisibleText(pdf,runs,slices,margin,mmPerBoxPx){
   pdf.setPage(lastPage);
   try{ pdf.setFont(prevFont.fontName,prevFont.fontStyle); pdf.setFontSize(prevSize); }catch(e){}
 }
+// Bug-Report 20.11.2026 ("PDF druckt die AKP nicht drauf"): bisher wurde die
+// GESAMTE Box in EIN Canvas gerendert. Große Auswertungen (z.B. Kooperation
+// ElectronicPartner: 559 FH + 2.104 AKP, ~50.000 px hoch) sprengen das
+// Canvas-Limit der Browser (Safari/iOS: ~16,7 Mio. Pixel Fläche, Chrome:
+// 32.767 px Höhe) - alles darüber (die AKP-Liste steht ganz am Ende) fehlte
+// stillschweigend. Jetzt: Seitenumbrüche zuerst in Box-Pixeln berechnen
+// (bevorzugt an .pdf-block-Enden, sonst zwischen zwei Tabellenzeilen statt
+// mitten durch eine Zeile), dann seitenweise in Paketen rendern, deren
+// Canvas sicher unter dem Limit bleibt (html2canvas y/height = Ausschnitt).
 async function appendBoxPagesToPdf(pdf,box,newPage,format,orientation){
   if(newPage) pdf.addPage(format,orientation);
   const textRuns=pdfCollectTextRuns(box);
   const textSlices=[];
-  const blocks=[...box.querySelectorAll(".pdf-block")];
-  const blockEndsBoxPx=blocks.map(b=>b.offsetTop+b.offsetHeight);
-  const canvas=await html2canvas(box,{scale:2,backgroundColor:"#ffffff",useCORS:true,logging:false});
+  const scale=2;
+  const boxW=box.offsetWidth, boxH=box.offsetHeight;
   const pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), margin=10;
   const imgW=pw-2*margin;
-  const canvasPxPerBoxPx=canvas.width/box.offsetWidth;
-  const blockEndsCanvasPx=blockEndsBoxPx.map(px=>px*canvasPxPerBoxPx);
-  const pageContentPxCanvas=(ph-2*margin)*canvas.width/imgW;
-  let renderedPx=0,pageIdx=0;
-  while(renderedPx<canvas.height-1&&pageIdx<200){
-    let cutoff=Math.min(renderedPx+pageContentPxCanvas,canvas.height);
-    if(cutoff<canvas.height){
-      let best=null;
-      for(const b of blockEndsCanvasPx){ if(b>renderedPx&&b<=cutoff) best=b; }
-      if(best!=null) cutoff=best;
+  const mmPerBoxPx=imgW/boxW;
+  const pageBoxPx=(ph-2*margin)/mmPerBoxPx;
+  const bTop=box.getBoundingClientRect().top;
+  const blockEnds=[...box.querySelectorAll(".pdf-block")].map(b=>b.getBoundingClientRect().bottom-bTop).sort((x,y)=>x-y);
+  const rowEnds=[...box.querySelectorAll("tr")].map(tr=>tr.getBoundingClientRect().bottom-bTop).sort((x,y)=>x-y);
+  // 1) Seiten festlegen
+  const pages=[];
+  let start=0;
+  while(start<boxH-1&&pages.length<1000){
+    let end=Math.min(start+pageBoxPx,boxH);
+    if(end<boxH){
+      let bestBlock=null, bestRow=null;
+      for(const c of blockEnds){ if(c>start+1&&c<=end) bestBlock=c; }
+      for(const c of rowEnds){ if(c>start+1&&c<=end) bestRow=c; }
+      // Block-Ende bevorzugen (wie bisher), solange die Seite damit nicht
+      // zu leer bleibt - sonst lieber zwischen zwei Tabellenzeilen umbrechen.
+      if(bestBlock!=null&&(bestBlock-start>=pageBoxPx*0.6||bestRow==null||bestRow<=bestBlock)) end=bestBlock;
+      else if(bestRow!=null) end=bestRow;
+      else if(bestBlock!=null) end=bestBlock;
     }
-    const sliceH=Math.max(1,Math.round(cutoff-renderedPx));
-    const sliceCanvas=document.createElement("canvas");
-    sliceCanvas.width=canvas.width; sliceCanvas.height=sliceH;
-    sliceCanvas.getContext("2d").drawImage(canvas,0,renderedPx,canvas.width,sliceH,0,0,canvas.width,sliceH);
-    const sliceImgH=sliceH*imgW/canvas.width;
-    if(pageIdx>0) pdf.addPage(format,orientation);
-    pdf.addImage(sliceCanvas.toDataURL("image/jpeg",0.95),"JPEG",margin,margin,imgW,sliceImgH);
-    textSlices.push({start:renderedPx/canvasPxPerBoxPx,end:(renderedPx+sliceH)/canvasPxPerBoxPx,page:pdf.getNumberOfPages()});
-    renderedPx+=sliceH; pageIdx++;
+    pages.push({start,end});
+    start=end;
   }
+  // 2) Seiten paketweise rendern (Canvas-Fläche je Paket <= ~12 Mio. Pixel).
+  // Tempo: html2canvas verarbeitet sonst bei JEDEM Paket die komplette Box
+  // (bei 2.600 Tabellenzeilen ~7 s je Paket). In der Kopie, die html2canvas
+  // anlegt (onclone), werden deshalb alle Zeilen/Blöcke außerhalb des
+  // Ausschnitts entfernt; was oberhalb wegfällt, ersetzt ein exakt
+  // nachgemessener Platzhalter, damit der Ausschnitt an derselben Stelle liegt.
+  const marks=[...box.querySelectorAll(".pdf-block, tr")];
+  const markRects=marks.map((el,idx)=>{ el.setAttribute("data-pdfi",idx); const r=el.getBoundingClientRect(); return {top:r.top-bTop,bottom:r.bottom-bTop}; });
+  box.setAttribute("data-pdfbox","1");
+  // Spaltenbreiten einfrieren: ohne die entfernten Zeilen würde der Browser
+  // die (automatischen) Tabellenbreiten in der Kopie neu berechnen und die
+  // Spalten verrutschen.
+  const tables=[...box.querySelectorAll("table")];
+  const tableCols=tables.map((t,idx)=>{
+    t.setAttribute("data-pdft",idx);
+    const row=t.rows[0];
+    if(!row||[...row.cells].some(c=>c.colSpan>1)) return null;
+    return {w:t.getBoundingClientRect().width,cols:[...row.cells].map(c=>c.getBoundingClientRect().width)};
+  });
+  const trimClone=(doc,a,b)=>{
+    const cb=doc.querySelector('[data-pdfbox="1"]'); if(!cb) return;
+    cb.querySelectorAll("table[data-pdft]").forEach(t=>{
+      const tc=tableCols[+t.getAttribute("data-pdft")]; if(!tc) return;
+      const cg=doc.createElement("colgroup");
+      for(const w of tc.cols){ const c=doc.createElement("col"); c.style.width=w+"px"; cg.appendChild(c); }
+      t.insertBefore(cg,t.firstChild);
+      t.style.tableLayout="fixed"; t.style.width=tc.w+"px";
+    });
+    const cloneEls=new Map();
+    cb.querySelectorAll("[data-pdfi]").forEach(el=>cloneEls.set(+el.getAttribute("data-pdfi"),el));
+    let refIdx=-1;
+    markRects.forEach((r,idx)=>{
+      if(r.bottom<=a-1||r.top>=b+1){ const el=cloneEls.get(idx); if(el&&el.parentNode) el.parentNode.removeChild(el); }
+      else if(r.top>=a&&(refIdx<0||r.top<markRects[refIdx].top)) refIdx=idx;
+    });
+    if(refIdx<0) return;
+    const ref=cloneEls.get(refIdx); if(!ref||!ref.isConnected) return;
+    const delta=markRects[refIdx].top-(ref.getBoundingClientRect().top-cb.getBoundingClientRect().top);
+    if(delta>0.5){
+      const spacer=doc.createElement("div");
+      spacer.style.cssText="height:"+delta+"px;margin:0;padding:0;border:0";
+      cb.insertBefore(spacer,cb.firstChild);
+    }
+  };
+  const maxBatchPx=Math.max(pageBoxPx,Math.floor(12e6/(boxW*scale)/scale));
+  let i=0, first=true;
+  while(i<pages.length){
+    const batchStart=pages[i].start;
+    let j=i;
+    while(j+1<pages.length&&pages[j+1].end-batchStart<=maxBatchPx) j++;
+    const batchEnd=pages[j].end;
+    // ignoreElements: alles außerhalb der (fixiert positionierten) PDF-Box
+    // muss html2canvas nicht mitklonen - spart je Paket den Großteil der Zeit.
+    const canvas=await html2canvas(box,{scale,backgroundColor:"#ffffff",useCORS:true,logging:false,
+      y:Math.floor(batchStart),height:Math.ceil(batchEnd-Math.floor(batchStart)),width:boxW,
+      ignoreElements:el=>el!==box&&!box.contains(el)&&!el.contains(box)&&el.tagName!=="HEAD"&&el.tagName!=="STYLE"&&el.tagName!=="LINK",
+      onclone:doc=>trimClone(doc,batchStart,batchEnd)});
+    const pxPerBoxPx=canvas.width/boxW;
+    for(let k=i;k<=j;k++){
+      const pg=pages[k];
+      const sy=Math.round((pg.start-Math.floor(batchStart))*pxPerBoxPx);
+      const sh=Math.max(1,Math.min(canvas.height-sy,Math.round((pg.end-pg.start)*pxPerBoxPx)));
+      const sliceCanvas=document.createElement("canvas");
+      sliceCanvas.width=canvas.width; sliceCanvas.height=sh;
+      sliceCanvas.getContext("2d").drawImage(canvas,0,sy,canvas.width,sh,0,0,canvas.width,sh);
+      if(!first) pdf.addPage(format,orientation);
+      first=false;
+      pdf.addImage(sliceCanvas.toDataURL("image/jpeg",0.95),"JPEG",margin,margin,imgW,sh/pxPerBoxPx*mmPerBoxPx);
+      textSlices.push({start:pg.start,end:pg.end,page:pdf.getNumberOfPages()});
+    }
+    i=j+1;
+  }
+  box.removeAttribute("data-pdfbox");
+  marks.forEach(el=>el.removeAttribute("data-pdfi"));
+  tables.forEach(t=>t.removeAttribute("data-pdft"));
   // Text erst NACH allen Bildern (Bild liegt sonst über dem Text) - die
   // unsichtbare Ebene ist ohnehin nicht sichtbar, aber Markieren/Kopieren
   // nimmt so verlässlich den Text.
-  try{ pdfAddInvisibleText(pdf,textRuns,textSlices,margin,imgW/box.offsetWidth); }catch(e){ console.warn("PDF-Textebene fehlgeschlagen:",e); }
+  try{ pdfAddInvisibleText(pdf,textRuns,textSlices,margin,mmPerBoxPx); }catch(e){ console.warn("PDF-Textebene fehlgeschlagen:",e); }
 }
 async function pdfBoxRenderToPdf(box){
   const {jsPDF}=window.jspdf;
