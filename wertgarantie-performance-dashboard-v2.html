@@ -13670,7 +13670,21 @@ async function processDueTrainerberichte(){
         const dataUri=pdf.output("datauristring");
         const f=fhResolveNameOrt(row.fh_nr);
         const { data:profRow } = await sb.from("profiles").select("email").eq("name",row.trainer_name).maybeSingle();
-        const recipients=[(profRow&&profRow.email)||null,"k.scheiermann@wertgarantie.com"].filter(Boolean);
+        // Nutzervorgabe 23.11.2026: zusätzlich an den Mitarbeiter, dem der
+        // Fachhändler zugeordnet ist (Gebietsleiter aus der täglichen
+        // FH_Liste, state.latest.fh[].emp - sonst über matchEmployee() aus dem
+        // rohen GL-Namen). Platzhalter wie "ohne Zuordnung"/"Technischer GL"
+        // haben kein Profil und bekommen daher keine Mail.
+        const fhSnap=(state.latest&&state.latest.fh&&state.latest.fh[row.fh_nr])||null;
+        const glName=fhSnap?(fhSnap.emp||(fhSnap.gl?matchEmployee(fhSnap.gl):null)):null;
+        let glMail=null;
+        if(glName&&glName!==row.trainer_name){
+          const { data:glProf } = await sb.from("profiles").select("email").eq("name",glName).maybeSingle();
+          glMail=(glProf&&glProf.email)||null;
+        }
+        const seen=new Set();
+        const recipients=[(profRow&&profRow.email)||null,glMail,"k.scheiermann@wertgarantie.com"]
+          .filter(Boolean).filter(m=>{ const k=m.trim().toLowerCase(); if(seen.has(k)) return false; seen.add(k); return true; });
         const subject="Trainerbericht "+f.name+" (FH "+row.fh_nr+")";
         const html=`<div style="font-family:'Segoe UI',Arial,sans-serif;color:#10202C"><p>Der Endbericht zum Trainerbesuch bei ${escapeHtml(f.name)} (FH ${escapeHtml(row.fh_nr)}) vom ${fmtDate(row.besuch_datum)} ist fertig - siehe Anhang.</p></div>`;
         for(const to of recipients){
