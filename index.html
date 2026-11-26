@@ -902,25 +902,25 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
   #acMonthly td:first-child,#acMonthly th:first-child{position:sticky;left:0;background:#fff;z-index:1;box-shadow:6px 0 8px -6px rgba(6,42,63,.35)}
   /* Handy-App (Home-Bildschirm): hochkant gedrehte Tabelle statt der breiten
      (siehe .mt-tall). Im normalen Browser bleibt die gewohnte Ansicht. */
-  html.is-app :is(#fhMonthly,#acMonthly,#filialGruppeBody,#fhMieteSection) .mt-wide{display:none}
-  html.is-app :is(#fhMonthly,#acMonthly,#filialGruppeBody,#fhMieteSection) .mt-tall{display:table}
+  html.is-app :is(#fhMonthly,#acMonthly,#filialGruppeBody,#akpGruppeBody,#fhMieteSection) .mt-wide{display:none}
+  html.is-app :is(#fhMonthly,#acMonthly,#filialGruppeBody,#akpGruppeBody,#fhMieteSection) .mt-tall{display:table}
   /* Jahresvergleich (FH-/AKP-PopUp, "Alle Filialen"): eine Karte je Jahr -
      Jahr als Überschrift, darunter Erfasst/Summe/vs. Vorjahr (FH zusätzlich
      beitragsfrei + 3-für-2-Quote) mit kleiner Beschriftung (data-label). */
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt :is(tbody,tr,td){display:block}
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt{display:block}
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt thead{display:none}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#akpGruppeBody,#fhMieteSection) .yt :is(tbody,tr,td){display:block}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#akpGruppeBody,#fhMieteSection) .yt{display:block}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#akpGruppeBody,#fhMieteSection) .yt thead{display:none}
   /* neuestes Jahr oben - wie die hochkant gedrehte Monatstabelle (neuestes links) */
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt tbody{display:flex;flex-direction:column-reverse}
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt tr{
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#akpGruppeBody,#fhMieteSection) .yt tbody{display:flex;flex-direction:column-reverse}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#akpGruppeBody,#fhMieteSection) .yt tr{
     display:flex;flex-wrap:wrap;gap:6px 10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:#fff;
   }
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt td{border:0;padding:0;text-align:left;white-space:nowrap}
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt td:first-child{flex-basis:100%;font-size:14px;color:var(--wg-navy)}
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt td[data-label]{flex:1 1 26%;min-width:0;order:3}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#akpGruppeBody,#fhMieteSection) .yt td{border:0;padding:0;text-align:left;white-space:nowrap}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#akpGruppeBody,#fhMieteSection) .yt td:first-child{flex-basis:100%;font-size:14px;color:var(--wg-navy)}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#akpGruppeBody,#fhMieteSection) .yt td[data-label]{flex:1 1 26%;min-width:0;order:3}
   /* Summe + Vorjahresvergleich zuerst (wichtigste Zahlen), Rest darunter */
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt td[data-label="Summe"]{order:1;flex-basis:30%}
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt td[data-label="vs. Vorjahr"]{order:2;flex-basis:55%}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#akpGruppeBody,#fhMieteSection) .yt td[data-label="Summe"]{order:1;flex-basis:30%}
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#akpGruppeBody,#fhMieteSection) .yt td[data-label="vs. Vorjahr"]{order:2;flex-basis:55%}
   /* Kompakte Listen im Dashboard selbst (nur Handy-App): Top/Flop Händler,
      Akquise ohne Produktion, 9-Wochen-Plan. Bewusst KEINE Karten (würde die
      Startseite sehr lang machen), sondern eine dichte Zeile je Eintrag:
@@ -949,7 +949,7 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
   html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td.c-addr .akqop-addr{height:auto;max-width:none;-webkit-line-clamp:unset;display:inline}
   html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td[data-label]:not(.c-main)::before{content:attr(data-label) " ";font-size:10px;font-weight:700;color:var(--muted)}
   html.is-app body:not(.pdf-mode) :is(#topTable,#flopTable,#akqOpBody,#nwBody) td.c-main[data-label]::after{content:" " attr(data-label);display:block;font-size:9.5px;font-weight:700;color:var(--muted);text-align:right}
-  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#fhMieteSection) .yt td[data-label]::before{
+  html.is-app :is(#fhYearlyTrend,#acYearlyTrend,#filialGruppeBody,#akpGruppeBody,#fhMieteSection) .yt td[data-label]::before{
     content:attr(data-label);display:block;font-size:9.5px;font-weight:800;letter-spacing:.3px;
     text-transform:uppercase;color:var(--muted);margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;
   }
@@ -10709,7 +10709,7 @@ function akpGruppeDailyHtml(per,ym,forPdf){
     const label=wd[dt.getUTCDay()]+", "+dd.iso.slice(8,10)+"."+dd.iso.slice(5,7)+".";
     return `<tr><td>${label}</td><td class="r">${dd.imported?`<b>${fmt(dd.sum)}</b>`:`<span style="color:var(--muted)">–</span>`}</td><td class="r">${dd.imported?fmt(dd.active):"–"}</td></tr>`;
   }).join("");
-  const akpRows=perAkp.map(r=>`<tr><td><b>${escapeHtml(r.name)}</b>${r.firma?` <span style="color:var(--muted);font-weight:600">· ${escapeHtml(r.firma)}</span>`:""}</td><td class="r">${fmt(r.sum)}</td><td class="r">${r.tage}</td></tr>`).join("");
+  const akpRows=perAkp.map(r=>`<tr><td><b>${escapeHtml(r.name)}</b>${r.firma?`<br><span style="color:var(--muted);font-weight:600;font-size:11.5px">${escapeHtml(r.firma)}</span>`:""}</td><td class="r">${fmt(r.sum)}</td><td class="r">${r.tage}</td></tr>`).join("");
   const blockCls=forPdf?' class="pdf-block"':'';
   return `<div${blockCls} style="margin-bottom:10px"><span class="ac-lbl">Summe ${MONATE[m-1]} ${y} (aus Tageswerten)</span><div class="ac-val" style="font-size:18px;font-weight:900;color:var(--wg-navy)">${fmt(monthSum)} Stk.</div></div>
     <div${blockCls} style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
@@ -10745,7 +10745,7 @@ function akpGruppeBodyHtml(data,forPdf){
   const h4=t=>`<div${B} style="font-size:13px;font-weight:800;color:#062A3F;margin:0 0 8px">${t}</div>`;
   const breakdown=per.map(a=>{
     const pct=gesamt>0?(a.total/gesamt*100):0;
-    return `<tr><td><b>${escapeHtml(a.name)}</b>${a.firma?` <span style="color:var(--muted);font-weight:600">· ${escapeHtml(a.firma)}</span>`:""}</td><td class="r">${fmt(a.total)}</td><td class="r">${pct.toFixed(1).replace(".",",")} %</td></tr>`;
+    return `<tr><td><b>${escapeHtml(a.name)}</b>${a.firma?`<br><span style="color:var(--muted);font-weight:600;font-size:11.5px">${escapeHtml(a.firma)}</span>`:""}</td><td class="r">${fmt(a.total)}</td><td class="r">${pct.toFixed(1).replace(".",",")} %</td></tr>`;
   }).join("");
   const yearly=fhYearlyTrendTableHtml(mergedAll);
   const perBlocks=per.map(a=>{
@@ -10764,7 +10764,7 @@ function akpGruppeBodyHtml(data,forPdf){
     <div${B} style="font-size:13px;color:var(--muted);margin-bottom:14px">${per.length} AKP: ${per.map(a=>escapeHtml(a.name)).join(" · ")}</div>
     <div${B} style="margin-bottom:18px"><span class="ac-lbl">Gesamtproduktion ${year}</span><div class="ac-val" style="font-size:22px;font-weight:900;color:var(--wg-navy)">${fmt(gesamt)} Stk.</div></div>
     ${h4("Aufteilung nach AKP ("+year+")")}
-    <div${B} style="overflow:auto;margin-bottom:18px"><table class="ac-yearly-table"><thead><tr><th>AKP</th><th class="r">Produktion ${year}</th><th class="r">Anteil</th></tr></thead><tbody>${breakdown}</tbody></table></div>
+    <div${B} style="overflow:auto;margin-bottom:18px"><table class="ac-yearly-table"><thead><tr><th>AKP</th><th class="r">Produktion</th><th class="r">Anteil</th></tr></thead><tbody>${breakdown}</tbody></table></div>
     ${h4("Produktion nach Monaten (gesamte Zuordnung)")}
     <div${B} style="margin-bottom:18px">${fhMonthlyTableHtml(mergedAll)}</div>
     ${yearly?h4("Jahresvergleich (gesamte Zuordnung)")+`<div${B} style="margin-bottom:18px">${yearly}</div>`:""}
