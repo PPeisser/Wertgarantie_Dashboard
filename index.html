@@ -564,6 +564,9 @@ td .betr{font-size:11px;color:var(--muted)}
    Dialoge (70), damit ein von HIER aus gestarteter PDF-Export wiederum
    darüber liegt. */
 #filialGruppeModal{z-index:65}
+/* akpGruppeModal wird AUS #akpContactModal (65) heraus geöffnet - darüber,
+   aber unter den PDF-Auswahldialogen (70). */
+#akpGruppeModal{z-index:68}
 /* trainerbesuchModal wird AUS #fhModal heraus geöffnet ("+ Trainerbesuch")
    und muss - wie #akpModal/#filialGruppeModal oben - über #fhModal (60)
    liegen, sonst öffnet es sich sichtbar dahinter (Bug-Report 10.09.2026,
@@ -624,6 +627,17 @@ td .betr{font-size:11px;color:var(--muted)}
    anders als die AKP-Suche in der Seitenspalte) - daher als Overlay mit
    Innen-Scroll gelöst. */
 #fhSearchBox{position:relative}
+/* Schieberegler FH/AKP in der Header-Suche */
+.hs-switch{display:inline-flex;align-items:center;gap:5px;cursor:pointer;user-select:none;flex-shrink:0;font-size:11px;font-weight:800;color:var(--muted)}
+.hs-switch input{position:absolute;opacity:0;width:0;height:0}
+.hs-track{position:relative;width:34px;height:18px;border-radius:999px;background:var(--wg-navy);transition:background .15s}
+.hs-knob{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .15s}
+.hs-switch input:checked + .hs-track{background:var(--wg-blue)}
+.hs-switch input:checked + .hs-track .hs-knob{left:18px}
+.hs-switch input:focus-visible + .hs-track{outline:2px solid var(--wg-blue);outline-offset:2px}
+.hs-switch .hs-opt-fh{color:var(--wg-navy)}
+.hs-switch:has(input:checked) .hs-opt-fh{color:var(--muted)}
+.hs-switch:has(input:checked) .hs-opt-akp{color:var(--wg-blue)}
 #fhSearchResults:not(:empty){
   position:absolute;left:0;right:0;top:100%;margin-top:6px;
   background:var(--card);border:1px solid var(--line);border-radius:10px;
@@ -1010,8 +1024,17 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
       <div class="sub">Vertragsproduktion · Ziele · Händler &amp; AKP im Blick</div>
       <div class="hidden" id="welcomeMsg" style="font-size:12.5px;color:var(--wg-blue-dark);font-weight:700;margin-top:2px"></div>
       <div class="controls-row search-row" style="margin-top:10px;justify-content:flex-start">
-        <div class="hidden no-print akp-search" id="fhSearchBox" style="width:230px;margin-top:0;padding-top:0;border-top:none">
-          <input type="text" id="fhSearchInput" placeholder="Fachhändlersuche: Name, Ort oder FH-Nr. …" autocomplete="off">
+        <div class="hidden no-print akp-search" id="fhSearchBox" style="width:340px;margin-top:0;padding-top:0;border-top:none">
+          <div style="display:flex;align-items:center;gap:8px">
+            <!-- Nutzervorgabe 26.11.2026: Schieberegler FH/AKP-Suche, Standard FH -->
+            <label class="hs-switch" for="headerSearchAkpChk" title="Zwischen Fachhändler- und AKP-Suche umschalten">
+              <span class="hs-opt hs-opt-fh">FH</span>
+              <input type="checkbox" id="headerSearchAkpChk">
+              <span class="hs-track"><span class="hs-knob"></span></span>
+              <span class="hs-opt hs-opt-akp">AKP</span>
+            </label>
+            <input type="text" id="fhSearchInput" placeholder="Fachhändler suchen: Name, Straße, Ort, Mail, Ansprechpartner …" autocomplete="off" style="flex:1;min-width:0">
+          </div>
           <div id="fhSearchResults"></div>
         </div>
         <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" class="hidden" multiple>
@@ -1498,6 +1521,20 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 </div>
 
 <!-- Filialgruppe PopUp (Gesamtübersicht aller Filialen eines "Filialbetriebe"-Werts) -->
+<!-- Nutzervorgabe 26.11.2026: Übersicht aller AKP mit derselben "Weiteren
+     Zuordnung" (wie "Alle Filialen" beim FH) inkl. Produktion nach Tag. -->
+<div class="modal-bg hidden" id="akpGruppeModal">
+  <div class="modal wide">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:10px">
+      <h3 id="akpGruppeTitle" style="margin:0">Weitere Zuordnung (AKP)</h3>
+      <span style="display:flex;gap:8px">
+        <button class="btn btn-ghost no-print" id="akpGruppePdfBtn" style="padding:7px 12px">⬇ PDF</button>
+        <button class="btn btn-ghost" id="akpGruppeClose" style="padding:7px 12px">✕ Schließen</button>
+      </span>
+    </div>
+    <div id="akpGruppeBody" style="max-height:75vh;overflow:auto"></div>
+  </div>
+</div>
 <div class="modal-bg hidden" id="filialGruppeModal">
   <div class="modal wide">
     <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:6px">
@@ -1641,7 +1678,10 @@ body.pdf-mode .wrap{width:1400px;max-width:1400px;margin:0;padding:10px 14px 20p
 <div class="modal-bg hidden" id="akpContactModal">
   <div class="modal wide">
     <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-bottom:2px">
-      <h3 id="acName" style="margin:0">AKP</h3>
+      <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <h3 id="acName" style="margin:0">AKP</h3>
+        <button class="btn btn-ghost hidden" id="acGruppeBtn" style="padding:4px 9px;font-size:11.5px">👥 Alle AKP dieser Zuordnung ⤢</button>
+      </span>
       <button class="btn btn-ghost" id="acClose" style="padding:7px 12px">✕ Schließen</button>
     </div>
     <div id="acMeta" style="font-size:12.5px;color:var(--muted);margin-bottom:14px"></div>
@@ -4044,6 +4084,9 @@ function buildFhContactsIndices(rows){
       filialbetriebe:(exAll&&exAll.filialbetriebe)||r.filialbetriebe||null,
       weitereZuordnung:(exAll&&exAll.weitereZuordnung)||r.weitere_zuordnung||null,
       gesperrt_am:(exAll&&exAll.gesperrt_am)||r.gesperrt_am||null,
+      // Volltext für die Header-Suche (Nutzervorgabe 26.11.2026): Adresse,
+      // Kontakt, Ansprechpartner, Kooperation, Sonstige Infos.
+      search:[exAll&&exAll.search,r.name,r.akq_name,r.miete_name,r.strasse,r.plz,r.ort,r.telefon,r.email,r.ansprechpartner,r.ansprechpartner_email,r.homepage,r.kooperation,r.hauptzweig,r.sonstige_infos].filter(Boolean).join(" "),
     };
   }
   return {bulkIdx,mieteIdx,erledigt,akqIdx,manualNameIdx,mieteNameIdx,allIdx};
@@ -4096,7 +4139,7 @@ async function loadFhContactsIndicesAll(){
   fhContactsIndicesLoading=(async()=>{
     try{
       const allRows=await fetchAllRowsParallel("fh_contacts",
-        "fh_nr,ort,prod_monthly,miete_monthly,neunwochen_erledigt,akq_punkte,akq_staffeln,akq_gl,akq_name,name,miete_name,filialbetriebe,weitere_zuordnung,gesperrt_am");
+        "fh_nr,ort,prod_monthly,miete_monthly,neunwochen_erledigt,akq_punkte,akq_staffeln,akq_gl,akq_name,name,miete_name,filialbetriebe,weitere_zuordnung,gesperrt_am,strasse,plz,telefon,email,ansprechpartner,ansprechpartner_email,homepage,kooperation,hauptzweig,sonstige_infos");
       const {bulkIdx,mieteIdx,erledigt,akqIdx,manualNameIdx,mieteNameIdx,allIdx}=buildFhContactsIndices(allRows);
       fhContactsBulkIndex=bulkIdx;
       fhMieteIndex=mieteIdx;
@@ -4105,6 +4148,7 @@ async function loadFhContactsIndicesAll(){
       fhManualNameIndex=manualNameIdx;
       fhMieteNameIndex=mieteNameIdx;
       fhContactsAllIndex=allIdx;
+      loadFilialgruppenSearchIndex();
       if(hasData()) render();
       // Direkt (statt nur über render()) - falls IRGENDEINE andere
       // render()-Teilfunktion bei ungewöhnlichen Live-Daten wirft, würde das
@@ -6288,7 +6332,7 @@ async function loadAkpContactsIndex(){
   if(!(sb&&supaUser)) return;
   try{
     const rows=await fetchAllRowsParallel("akp_contacts",
-      "nr,vorname,nachname,firma,ort,fh_nr,email,prod_monthly,prod_monthly_other,poquote_monthly,q3fuer2_monthly,gesperrt_am,storno_widerruf_quote,storno_erstpraemie_quote,storno_wegfall_quote,weitere_zuordnung",
+      "nr,vorname,nachname,firma,strasse,plz,ort,telefon,fh_nr,email,prod_monthly,prod_monthly_other,poquote_monthly,q3fuer2_monthly,gesperrt_am,storno_widerruf_quote,storno_erstpraemie_quote,storno_wegfall_quote,weitere_zuordnung",
       q=>q.order("nr"));
     const idx={};
     // FH-Nr auf kanonische Nummer auflösen (FH-Duplikate zusammenführen,
@@ -9695,7 +9739,7 @@ function fhFallbackFromAkp(fhNr){
 // Import/Reload) - nicht bei jedem Tastendruck.
 let fhAllKnownListCache=null, fhAllKnownListCacheSrc=[null,null,null,null,null];
 function fhAllKnownList(){
-  const srcs=[state.latest.fh,fhContactsAllIndex,state.latest.akq,akpContactsIndex,FH_DUP_MAP];
+  const srcs=[state.latest.fh,fhContactsAllIndex,state.latest.akq,akpContactsIndex,FH_DUP_MAP,filialgruppenSearchIndex];
   if(fhAllKnownListCache&&srcs.every((s,i)=>s===fhAllKnownListCacheSrc[i])) return fhAllKnownListCache;
   fhAllKnownListCacheSrc=srcs;
   const out=[], seen=new Set();
@@ -9718,18 +9762,18 @@ function fhAllKnownList(){
     if(FH_DUP_MAP[nr]) return;
     seen.add(nr);
     const rec=fhContactsAllIndex&&fhContactsAllIndex[nr];
-    out.push({nr,name:f.name||fhAkpFirmaFallback(nr),ort:f.ort,emp:f.emp,filialbetriebe:(rec&&rec.filialbetriebe)||null,weitereZuordnung:(rec&&rec.weitereZuordnung)||null});
+    out.push({nr,name:f.name||fhAkpFirmaFallback(nr),ort:f.ort,plz:f.plz||null,emp:f.emp,filialbetriebe:(rec&&rec.filialbetriebe)||null,weitereZuordnung:(rec&&rec.weitereZuordnung)||null,extra:(rec&&rec.search)||null});
   });
   Object.entries(fhContactsAllIndex||{}).forEach(([nr,r])=>{
     if(seen.has(nr)||FH_DUP_MAP[nr]) return;
     seen.add(nr);
     const akq=akqLeadFor(nr);
-    out.push({nr,name:r.name||(akq&&akq.name)||fhAkpFirmaFallback(nr)||nr,ort:r.ort||(akq&&akq.ort)||null,emp:matchEmployee(r.gl||"")||(akq&&akq.emp)||null,filialbetriebe:r.filialbetriebe||null,weitereZuordnung:r.weitereZuordnung||null});
+    out.push({nr,name:r.name||(akq&&akq.name)||fhAkpFirmaFallback(nr)||nr,ort:r.ort||(akq&&akq.ort)||null,emp:matchEmployee(r.gl||"")||(akq&&akq.emp)||null,filialbetriebe:r.filialbetriebe||null,weitereZuordnung:r.weitereZuordnung||null,extra:r.search||null});
   });
   (state.latest.akq||[]).forEach(a=>{
     if(seen.has(a.nr)||FH_DUP_MAP[a.nr]) return;
     seen.add(a.nr);
-    out.push({nr:a.nr,name:a.name||fhAkpFirmaFallback(a.nr)||a.nr,ort:a.ort||null,emp:a.emp||null,filialbetriebe:null,weitereZuordnung:null});
+    out.push({nr:a.nr,name:a.name||fhAkpFirmaFallback(a.nr)||a.nr,ort:a.ort||null,emp:a.emp||null,filialbetriebe:null,weitereZuordnung:null,extra:[a.strasse,a.plz,a.telefon,a.email].filter(Boolean).join(" ")||null});
   });
   fhAllKnownListCache=out;
   return out;
@@ -9740,10 +9784,38 @@ function fhAllKnownList(){
 // Eingaben wie "Hus Klagenfurt" (Name-Teil + Ort) oder "A1 Hartberg"
 // (Weitere-Zuordnung-Tag + Ort) ab, die vorher nur ein einzelnes Feld
 // durchsuchten und deshalb leer blieben, obwohl der Händler existiert.
+// Normalisierung für alle Suchen (Nutzervorgabe 26.11.2026): Groß/klein,
+// Umlaute/Akzente egal ("muller" findet "Müller"), ß = ss, "Straße"/
+// "Strasse"/"Str." gleichwertig, Satzzeichen ignoriert.
+function searchNorm(t){
+  return String(t??"").toLowerCase().replace(/ß/g,"ss").normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/stra(ss)?e\b/g,"str").replace(/[.,;:()"'\/]/g," ");
+}
+function searchWords(q){ return searchNorm(q).split(/\s+/).filter(Boolean); }
+// Kontaktdaten der Filialgruppen (Zentrale + Ansprechpartner mit Rolle wie
+// Geschäftsführer/Vertriebsleiter/Inhaber) - jeder Filiale der Gruppe für
+// die Suche zugeordnet. Klein, deshalb einmal komplett geladen.
+let filialgruppenSearchIndex={};
+async function loadFilialgruppenSearchIndex(){
+  if(!(sb&&supaUser)) return;
+  try{
+    const {data,error}=await sb.from("filialgruppen_contacts").select("*");
+    if(error||!data) return;
+    const idx={};
+    for(const c of data){
+      const aps=(c.ansprechpartner_liste||[]).map(a=>a&&[a.rolle,a.name,a.email,a.telefon].filter(Boolean).join(" ")).filter(Boolean);
+      idx[c.filialbetriebe]=[c.strasse,c.plz,c.ort,c.zentral_telefon,c.zentral_email,...aps].filter(Boolean).join(" ");
+    }
+    filialgruppenSearchIndex=idx;
+  }catch(e){ console.error("loadFilialgruppenSearchIndex:",e); }
+}
 function fhMatchesSearch(f,q){
   if(!q) return true;
-  const haystack=[f.name,f.ort,f.filialbetriebe,f.weitereZuordnung,f.nr].filter(Boolean).join(" ").toLowerCase();
-  return q.split(/\s+/).filter(Boolean).every(w=>haystack.includes(w));
+  if(!f._hay){
+    const gc=f.filialbetriebe&&filialgruppenSearchIndex[f.filialbetriebe];
+    f._hay=searchNorm([f.name,f.ort,f.plz,f.filialbetriebe,f.weitereZuordnung,f.nr,f.emp,f.extra,gc].filter(Boolean).join(" "));
+  }
+  return searchWords(q).every(w=>f._hay.includes(w));
 }
 // Name/Ort zu einer FH-Nr auflösen, egal ob der Händler heute Tagesproduktion
 // hatte oder nur aus fh_contacts (Akquisestaffeln/Miete/manuell) bekannt ist -
@@ -10578,6 +10650,177 @@ function renderFilialGruppe(value,members){
     };
   });
 }
+// ---------- "Alle AKP dieser Zuordnung" (Nutzervorgabe 26.11.2026) ----------
+// Wie die Filialgruppen-Übersicht, aber für alle (nicht gesperrten) AKP mit
+// derselben "Weiteren Zuordnung" - zusätzlich "Produktion nach Tag" mit
+// Monats-/Jahresauswahl (Tageswerte aus der täglichen Einspielung,
+// state.dailyAKP; ein "–" heißt: an diesem Tag gab es keine Einspielung).
+let akpGruppeValue=null, akpGruppeMembers=[], akpGruppeYm=null;
+function akpGruppeImportDays(){
+  const days=new Set();
+  for(const m of Object.values(state.dailyGLTotals||{})) for(const d of Object.keys(m||{})) days.add(d);
+  for(const m of Object.values(state.dailyGL||{})) for(const d of Object.keys(m||{})) days.add(d);
+  return days;
+}
+function akpGruppeCompute(members){
+  const year=String((state.latest&&state.latest.jahr)||new Date().getFullYear());
+  const per=members.map(a=>{
+    const bulk={};
+    for(const [k,v] of Object.entries(a.prod_monthly||{})) bulk[k]=(bulk[k]||0)+(Number(v)||0);
+    for(const [k,v] of Object.entries(a.prod_monthly_other||{})) bulk[k]=(bulk[k]||0)+(Number(v)||0);
+    const daily=(state.dailyAKP&&state.dailyAKP[a.nr])||{};
+    const merged=mergedMonthlyFromDaily(daily,bulk);
+    const total=Object.entries(merged).reduce((s2,[k,v])=>k.slice(0,4)===year?s2+v:s2,0);
+    const fh=fhResolveNameOrt(a.fh_nr);
+    return {nr:a.nr,name:[a.vorname,a.nachname].filter(Boolean).join(" ")||a.nr,firma:a.firma||fh.name||"",ort:a.ort||fh.ort||"",
+      fhNr:a.fh_nr||"",telefon:a.telefon||"",email:a.email||"",merged,daily,total};
+  }).sort((x,y)=>y.total-x.total);
+  const gesamt=per.reduce((s2,a)=>s2+a.total,0);
+  const mergedAll={};
+  per.forEach(a=>{ for(const [k,v] of Object.entries(a.merged)) mergedAll[k]=(mergedAll[k]||0)+v; });
+  return {per,gesamt,mergedAll,year};
+}
+// Tagesproduktion eines Monats (ym = "JJJJ-MM"): Gruppe je Tag + je AKP.
+function akpGruppeDailyData(per,ym){
+  const [y,m]=ym.split("-").map(Number);
+  const daysInMonth=new Date(Date.UTC(y,m,0)).getUTCDate();
+  const importDays=akpGruppeImportDays();
+  const days=[];
+  for(let d=1;d<=daysInMonth;d++){
+    const dIso=ym+"-"+String(d).padStart(2,"0");
+    const imported=importDays.has(dIso);
+    const sum=per.reduce((s2,a)=>s2+(Number(a.daily[dIso])||0),0);
+    days.push({iso:dIso,imported,sum,active:per.filter(a=>(Number(a.daily[dIso])||0)>0).length});
+  }
+  const perAkp=per.map(a=>{
+    let sum=0,tage=0;
+    for(const dd of days){ const v=Number(a.daily[dd.iso])||0; sum+=v; if(v>0) tage++; }
+    return {name:a.name,firma:a.firma,sum,tage};
+  }).filter(r=>r.sum>0).sort((x,y)=>y.sum-x.sum);
+  return {days,perAkp,monthSum:days.reduce((s2,dd)=>s2+dd.sum,0),anyImport:days.some(dd=>dd.imported)};
+}
+function akpGruppeDailyHtml(per,ym,forPdf){
+  const {days,perAkp,monthSum,anyImport}=akpGruppeDailyData(per,ym);
+  const [y,m]=ym.split("-").map(Number);
+  if(!anyImport) return `<div class="empty-note">Für ${MONATE[m-1]} ${y} liegen keine Tageswerte vor (Tageswerte gibt es erst ab Beginn der täglichen Einspielung).</div>`;
+  const wd=["So","Mo","Di","Mi","Do","Fr","Sa"];
+  const dayRows=days.map(dd=>{
+    const dt=new Date(dd.iso+"T00:00:00Z");
+    const label=wd[dt.getUTCDay()]+", "+dd.iso.slice(8,10)+"."+dd.iso.slice(5,7)+".";
+    return `<tr><td>${label}</td><td class="r">${dd.imported?`<b>${fmt(dd.sum)}</b>`:`<span style="color:var(--muted)">–</span>`}</td><td class="r">${dd.imported?fmt(dd.active):"–"}</td></tr>`;
+  }).join("");
+  const akpRows=perAkp.map(r=>`<tr><td><b>${escapeHtml(r.name)}</b>${r.firma?` <span style="color:var(--muted);font-weight:600">· ${escapeHtml(r.firma)}</span>`:""}</td><td class="r">${fmt(r.sum)}</td><td class="r">${r.tage}</td></tr>`).join("");
+  const blockCls=forPdf?' class="pdf-block"':'';
+  return `<div${blockCls} style="margin-bottom:10px"><span class="ac-lbl">Summe ${MONATE[m-1]} ${y} (aus Tageswerten)</span><div class="ac-val" style="font-size:18px;font-weight:900;color:var(--wg-navy)">${fmt(monthSum)} Stk.</div></div>
+    <div${blockCls} style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+      <div style="flex:1;min-width:240px;overflow:auto"><table class="ac-yearly-table"><thead><tr><th>Tag</th><th class="r">Produktion</th><th class="r">AKP aktiv</th></tr></thead><tbody>${dayRows}</tbody></table></div>
+      <div style="flex:1;min-width:240px;overflow:auto">${akpRows?`<table class="ac-yearly-table"><thead><tr><th>AKP (${MONATE[m-1]})</th><th class="r">Produktion</th><th class="r">Tage</th></tr></thead><tbody>${akpRows}</tbody></table>`:`<div class="empty-note">Kein AKP mit Produktion in diesem Monat.</div>`}</div>
+    </div>
+    <div${blockCls} style="font-size:11px;color:var(--muted);margin-top:6px">„–“ = an diesem Tag keine Einspielung (z.B. Sonn-/Feiertag). Die Monatssumme aus Tageswerten kann von der Monatsproduktion oben abweichen, wenn Einspielungen fehlen.</div>`;
+}
+function akpGruppeMonthOptions(per){
+  const yms=new Set();
+  per.forEach(a=>Object.keys(a.daily).forEach(d=>yms.add(d.slice(0,7))));
+  const s0=state.latest;
+  if(s0&&s0.jahr&&s0.monat) yms.add(s0.jahr+"-"+String(s0.monat).padStart(2,"0"));
+  return [...yms].sort().reverse();
+}
+async function openAkpGruppeModal(){
+  const value=akpContactCurrent&&akpContactCurrent.weitere_zuordnung;
+  if(!value) return;
+  akpGruppeValue=value; akpGruppeMembers=[];
+  $("akpGruppeTitle").textContent="Weitere Zuordnung (AKP): "+value;
+  $("akpGruppeBody").innerHTML=`<div class="empty-note">Lädt …</div>`;
+  $("akpGruppeModal").classList.remove("hidden");
+  if(!akpContactsIndex) await loadAkpContactsIndex();
+  if(akpGruppeValue!==value) return;
+  akpGruppeMembers=Object.values(akpContactsIndex||{}).filter(a=>a.weitere_zuordnung===value&&!a.gesperrt_am);
+  const s0=state.latest;
+  akpGruppeYm=(s0&&s0.jahr&&s0.monat)?s0.jahr+"-"+String(s0.monat).padStart(2,"0"):iso(new Date()).slice(0,7);
+  renderAkpGruppe();
+}
+function akpGruppeBodyHtml(data,forPdf){
+  const {per,gesamt,mergedAll,year}=data;
+  const B=forPdf?' class="pdf-block"':'';
+  const h4=t=>`<div${B} style="font-size:13px;font-weight:800;color:#062A3F;margin:0 0 8px">${t}</div>`;
+  const breakdown=per.map(a=>{
+    const pct=gesamt>0?(a.total/gesamt*100):0;
+    return `<tr><td><b>${escapeHtml(a.name)}</b>${a.firma?` <span style="color:var(--muted);font-weight:600">· ${escapeHtml(a.firma)}</span>`:""}</td><td class="r">${fmt(a.total)}</td><td class="r">${pct.toFixed(1).replace(".",",")} %</td></tr>`;
+  }).join("");
+  const yearly=fhYearlyTrendTableHtml(mergedAll);
+  const perBlocks=per.map(a=>{
+    const contact=[a.firma&&("Fachhändler: "+escapeHtml(a.firma)+(a.fhNr?" (FH "+escapeHtml(a.fhNr)+")":"")),a.telefon&&("Tel: "+escapeHtml(a.telefon)),a.email&&("E-Mail: "+escapeHtml(a.email))].filter(Boolean).join(" · ");
+    const yt=fhYearlyTrendTableHtml(a.merged);
+    return `<div${B} style="border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px">
+      <div style="font-size:14px;font-weight:900;color:var(--wg-navy);margin-bottom:4px">${forPdf?escapeHtml(a.name):`<button type="button" class="akp-name-link" data-akp-nr="${escapeHtml(a.nr)}">${escapeHtml(a.name)}</button>`}${a.ort?` <span style="color:var(--muted);font-weight:600;font-size:12px">· ${escapeHtml(a.ort)}</span>`:""}</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">${contact||"<i>Keine Kontaktdaten hinterlegt.</i>"}</div>
+      ${fhMonthlyTableHtml(a.merged)}
+      ${yt?`<div style="margin-top:10px">${yt}</div>`:""}
+    </div>`;
+  }).join("");
+  const opts=akpGruppeMonthOptions(per).map(ym=>{ const [y,m]=ym.split("-").map(Number); return `<option value="${ym}"${ym===akpGruppeYm?" selected":""}>${MONATE[m-1]} ${y}</option>`; }).join("");
+  const [ySel,mSel]=akpGruppeYm.split("-").map(Number);
+  return `
+    <div${B} style="font-size:13px;color:var(--muted);margin-bottom:14px">${per.length} AKP: ${per.map(a=>escapeHtml(a.name)).join(" · ")}</div>
+    <div${B} style="margin-bottom:18px"><span class="ac-lbl">Gesamtproduktion ${year}</span><div class="ac-val" style="font-size:22px;font-weight:900;color:var(--wg-navy)">${fmt(gesamt)} Stk.</div></div>
+    ${h4("Aufteilung nach AKP ("+year+")")}
+    <div${B} style="overflow:auto;margin-bottom:18px"><table class="ac-yearly-table"><thead><tr><th>AKP</th><th class="r">Produktion ${year}</th><th class="r">Anteil</th></tr></thead><tbody>${breakdown}</tbody></table></div>
+    ${h4("Produktion nach Monaten (gesamte Zuordnung)")}
+    <div${B} style="margin-bottom:18px">${fhMonthlyTableHtml(mergedAll)}</div>
+    ${yearly?h4("Jahresvergleich (gesamte Zuordnung)")+`<div${B} style="margin-bottom:18px">${yearly}</div>`:""}
+    <div${B} style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 8px">
+      <div style="font-size:13px;font-weight:800;color:#062A3F">Produktion nach Tag${forPdf?" – "+MONATE[mSel-1]+" "+ySel:""}</div>
+      ${forPdf?"":`<select id="akpGruppeYmSelect" style="padding:5px 8px;font-size:12.5px">${opts}</select>`}
+    </div>
+    <div id="akpGruppeDailyBox" style="margin-bottom:18px">${akpGruppeDailyHtml(per,akpGruppeYm,forPdf)}</div>
+    ${h4("Produktion je AKP")}
+    ${perBlocks}`;
+}
+function renderAkpGruppe(){
+  const box=$("akpGruppeBody");
+  if(!akpGruppeMembers.length){ box.innerHTML=`<div class="empty-note">Keine (nicht gesperrten) AKP mit dieser Zuordnung gefunden.</div>`; return; }
+  const data=akpGruppeCompute(akpGruppeMembers);
+  box.innerHTML=akpGruppeBodyHtml(data,false);
+  const sel=$("akpGruppeYmSelect");
+  if(sel) sel.onchange=()=>{ akpGruppeYm=sel.value; $("akpGruppeDailyBox").innerHTML=akpGruppeDailyHtml(data.per,akpGruppeYm,false); };
+  // Klick auf einen AKP-Namen öffnet dessen PopUp (liegt eine Stufe tiefer) -
+  // Übersicht dafür schließen, sonst ginge es dahinter auf.
+  box.querySelectorAll(".akp-name-link").forEach(b=>b.addEventListener("click",()=>$("akpGruppeModal").classList.add("hidden")));
+}
+let akpGruppePdfBusy=false;
+async function exportAkpGruppePdf(){
+  if(akpGruppePdfBusy) return;
+  if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)){ toast("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals klicken."); pdfSendTarget=null; return; }
+  if(!akpGruppeValue||!akpGruppeMembers.length) return;
+  akpGruppePdfBusy=true;
+  toast("PDF wird erstellt …");
+  const box=document.createElement("div");
+  try{
+    const data=akpGruppeCompute(akpGruppeMembers);
+    box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:'Segoe UI',Arial,sans-serif;color:#10202C";
+    box.innerHTML=`
+      <div class="pdf-block" style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #009FE3;padding-bottom:12px;margin-bottom:18px">
+        <div>
+          <div style="font-size:11px;font-weight:800;color:#009FE3;text-transform:uppercase;letter-spacing:.4px">Weitere Zuordnung (AKP)</div>
+          <div style="font-size:21px;font-weight:900;color:#062A3F;margin-top:2px">${escapeHtml(akpGruppeValue)}</div>
+          <div style="font-size:12px;color:#5D7284;margin-top:3px">${data.per.length} AKP · Erstellt am: ${fmtNowDateTime()}</div>
+        </div>
+        <div style="font-size:10.5px;color:#5D7284;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>AKP-Übersicht</div>
+      </div>
+      ${akpGruppeBodyHtml(data,true)}`;
+    document.body.appendChild(box);
+    await new Promise(r=>setTimeout(r,30));
+    const pdf=await pdfBoxRenderToPdf(box);
+    await finalizePdf(pdf,"AKP_Zuordnung_"+asciiFilenamePart(akpGruppeValue)+".pdf");
+  }catch(e){
+    console.error("exportAkpGruppePdf failed:",e);
+    toast("PDF-Erstellung fehlgeschlagen: "+(e.message||e));
+    pdfSendTarget=null;
+  }finally{
+    if(box.parentNode) box.parentNode.removeChild(box);
+    akpGruppePdfBusy=false;
+  }
+}
 let filialGruppePdfBusy=false;
 async function exportFilialGruppePdf(){
   if(filialGruppePdfBusy) return;
@@ -10720,7 +10963,60 @@ function renderChefgespraechChips(){
 // AKP-Suche (renderAkpSearch) bzw. die FH-Suche im Chefgespräch
 // (renderChefgespraechSearch direkt darunter), öffnet einen Treffer aber
 // direkt im FH-PopUp statt ihn einer Auswahlliste hinzuzufügen.
+// AKP-Liste für die Header-Suche: ALLE AKP der Kontaktdatenbank (auch ohne
+// Produktion, gesperrte markiert) plus heutige AKP ohne Datenbankeintrag -
+// mit vorberechnetem, normalisiertem Suchtext.
+let akpHeaderListCache=null, akpHeaderListKey=null;
+function akpHeaderList(){
+  const s=state.latest||{};
+  const key=(s.vortag||"")+":"+akpIndexGen+":"+(akpContactsIndex?1:0);
+  if(akpHeaderListCache&&akpHeaderListKey===key) return akpHeaderListCache;
+  const out=[], seen=new Set();
+  for(const [nr,a] of Object.entries(akpContactsIndex||{})){
+    if(isAkpCampaignEntry(nr)) continue;
+    seen.add(nr);
+    const fh=fhResolveNameOrt(a.fh_nr);
+    const snapFh=s.fh&&s.fh[a.fh_nr];
+    const name=[a.vorname,a.nachname].filter(Boolean).join(" ")||nr;
+    out.push({nr,name,firma:a.firma||fh.name||"",ort:a.ort||fh.ort||"",fhNr:a.fh_nr||"",fhName:fh.name,emp:(snapFh&&snapFh.emp)||null,gesperrt:!!a.gesperrt_am,
+      hay:searchNorm([name,a.firma,a.strasse,a.plz,a.ort,a.telefon,a.email,nr,a.fh_nr,a.weitere_zuordnung,fh.name,fh.ort,snapFh&&snapFh.emp].filter(Boolean).join(" "))});
+  }
+  for(const a of (s.akp||[])){
+    if(!a.nr||seen.has(a.nr)||isAkpCampaignEntry(a.nr)) continue;
+    seen.add(a.nr);
+    out.push({nr:a.nr,name:a.name||a.nr,firma:a.firma||"",ort:a.ort||"",fhNr:a.fhNr||"",fhName:a.firma||"",emp:a.emp||null,gesperrt:false,
+      hay:searchNorm([a.name,a.firma,a.ort,a.nr,a.fhNr,a.emp].filter(Boolean).join(" "))});
+  }
+  akpHeaderListCache=out; akpHeaderListKey=key;
+  return out;
+}
+function renderHeaderAkpSearch(){
+  const q=($("fhSearchInput").value||"").trim();
+  const box=$("fhSearchResults");
+  if(!q||!hasData()){ box.innerHTML=""; return; }
+  const words=searchWords(q);
+  const first=words[0]||"";
+  const hits=akpHeaderList()
+    .filter(a=>currentEmp===AT_GESAMT||a.emp===currentEmp||a.emp==null)
+    .filter(a=>words.every(w=>a.hay.includes(w)));
+  // Treffer im Namen zuerst, gesperrte ans Ende
+  hits.sort((a,b)=>(a.gesperrt-b.gesperrt)||((searchNorm(a.name).includes(first)?0:1)-(searchNorm(b.name).includes(first)?0:1)));
+  const rows=hits.slice(0,20);
+  if(!rows.length){ box.innerHTML=`<div class="empty-note">Keine AKP gefunden.</div>`; return; }
+  box.innerHTML=rows.map(a=>`<div class="akp-search-row" style="cursor:pointer" data-akp-nr="${escapeHtml(a.nr)}" data-akp-name="${escapeHtml(a.name)}">
+      <span><b>${a.gesperrt?"🔒 ":""}${escapeHtml(a.name)}</b><span class="betr">${escapeHtml(a.firma||"")}${a.ort?" · "+escapeHtml(a.ort):""} · AKP-Nr. ${escapeHtml(a.nr)}${a.fhNr?" · FH "+escapeHtml(a.fhNr):""}${a.emp?" · "+escapeHtml(a.emp):""}</span></span>
+    </div>`).join("")+(hits.length>20?`<div class="empty-note">${hits.length} Treffer – bitte genauer suchen (z.B. Name + Ort).</div>`:"");
+  box.querySelectorAll("[data-akp-nr]").forEach(row=>{
+    row.onclick=()=>{
+      openAkpContact(row.dataset.akpNr,row.dataset.akpName);
+      $("fhSearchInput").value="";
+      box.innerHTML="";
+    };
+  });
+}
+function headerSearchIsAkp(){ const c=$("headerSearchAkpChk"); return !!(c&&c.checked); }
 function renderFhSearch(){
+  if(headerSearchIsAkp()) return renderHeaderAkpSearch();
   const q=($("fhSearchInput").value||"").trim().toLowerCase();
   const box=$("fhSearchResults");
   if(!q){ box.innerHTML=""; return; }
@@ -10731,12 +11027,17 @@ function renderFhSearch(){
     // Mitarbeiter-Ansicht sichtbar statt komplett zu verschwinden - sonst
     // findet sie niemand, weil sich keiner zuständig fühlen kann.
     .filter(f=>currentEmp===AT_GESAMT||f.emp===currentEmp||f.emp==null)
-    .filter(f=>fhMatchesSearch(f,q))
-    .slice(0,20);
+    .filter(f=>fhMatchesSearch(f,q));
+  const total=rows.length;
+  const firstW=searchWords(q)[0]||"";
+  // Treffer im Namen zuerst
+  rows.sort((a,b)=>(searchNorm(a.name).includes(firstW)?0:1)-(searchNorm(b.name).includes(firstW)?0:1));
+  rows.length=Math.min(rows.length,20);
   if(!rows.length){ box.innerHTML=`<div class="empty-note">Kein Fachhändler gefunden.</div>`; return; }
-  box.innerHTML=rows.map(f=>`<div class="akp-search-row" style="cursor:pointer" data-fh-nr="${escapeHtml(f.nr)}">
-      <span><b>${escapeHtml(f.name||f.nr)}</b><span class="betr">${escapeHtml(f.ort||"")} · FH-Nr. ${escapeHtml(f.nr)} · ${f.emp?escapeHtml(f.emp):"keine Zuordnung"}${f.weitereZuordnung?" · "+escapeHtml(f.weitereZuordnung):""}</span></span>
-    </div>`).join("");
+  box.innerHTML=rows.map(f=>{
+    return `<div class="akp-search-row" style="cursor:pointer" data-fh-nr="${escapeHtml(f.nr)}">
+      <span><b>${escapeHtml(f.name||f.nr)}</b><span class="betr">${escapeHtml(f.ort||"")} · FH-Nr. ${escapeHtml(f.nr)} · ${f.emp?escapeHtml(f.emp):"keine Zuordnung"}${f.weitereZuordnung?" · "+escapeHtml(f.weitereZuordnung):""}${f.filialbetriebe?" · "+escapeHtml(f.filialbetriebe):""}</span></span>
+    </div>`;}).join("")+(total>20?`<div class="empty-note">${total} Treffer – bitte genauer suchen (z.B. Name + Straße).</div>`:"");
   box.querySelectorAll("[data-fh-nr]").forEach(row=>{
     row.onclick=()=>{
       openFhModal(row.dataset.fhNr);
@@ -14331,6 +14632,7 @@ function renderAkpContactView(){
   const lastDay=akpLastProdDay(c.nr);
   $("acLastProdView").textContent=lastDay?fmtDate(lastDay):"Noch keine Tagesdaten erfasst";
   $("acWeitereZuordnungViewRow").classList.toggle("hidden",!c.weitere_zuordnung);
+  $("acGruppeBtn").classList.toggle("hidden",!c.weitere_zuordnung);
   $("acWeitereZuordnungView").textContent=c.weitere_zuordnung||"–";
   // PO-/3-für-2-Quote kommen aus der heutigen Einspielung (state.latest.akp),
   // nicht aus den persistierten Stammdaten - deshalb bewusst unten bei der
@@ -15738,6 +16040,13 @@ $("akqShowAllBtn").onclick=()=>{ akqShowAll=!akqShowAll; $("akqShowAllBtn").clas
 $("akpMoreBtn").onclick=()=>{ fhAkpFilter=null; openAkpModal(); };
 $("akpSearchInput").oninput=()=>renderAkpSearch();
 $("fhSearchInput").oninput=()=>renderFhSearch();
+$("headerSearchAkpChk").onchange=()=>{
+  $("fhSearchInput").placeholder=headerSearchIsAkp()
+    ? "AKP suchen: Name, Firma, Straße, Ort, Mail, Telefon …"
+    : "Fachhändler suchen: Name, Straße, Ort, Mail, Ansprechpartner …";
+  renderFhSearch();
+  $("fhSearchInput").focus();
+};
 $("amClose").onclick=()=>$("akpModal").classList.add("hidden");
 // Nur bei FH-scoped Aufruf ("Top & Flop AKP dieses Händlers") gibt es einen
 // einzelnen Händler, dessen Stammdaten die zusätzlichen Versandziele
@@ -15810,6 +16119,9 @@ $("fhFilialbetriebeSiblings").addEventListener("click",e=>{
 });
 $("fhFilialGruppeBtn").onclick=openFilialGruppeModal;
 $("filialGruppeClose").onclick=()=>$("filialGruppeModal").classList.add("hidden");
+$("acGruppeBtn").onclick=openAkpGruppeModal;
+$("akpGruppeClose").onclick=()=>$("akpGruppeModal").classList.add("hidden");
+$("akpGruppePdfBtn").onclick=()=>openPdfTargetChoice(()=>exportAkpGruppePdf());
 $("mieteListClose").onclick=()=>$("mieteListModal").classList.add("hidden");
 document.querySelectorAll("#mieteListTabs button").forEach(b=>{
   b.onclick=()=>{ mieteListPeriod=b.dataset.p; renderMieteListModal(); };
