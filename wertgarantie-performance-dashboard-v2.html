@@ -5883,6 +5883,10 @@ function mergeSnapshot(snap){
   snap.akp.forEach(a=>{
     const k=a.nr||a.name+"@"+a.firma;
     if(a.vt>0){ if(!state.dailyAKP) state.dailyAKP={}; if(!state.dailyAKP[k]) state.dailyAKP[k]={}; state.dailyAKP[k][snap.vortag]=a.vt; }
+    // Nutzervorgabe 28.11.2026: 3-für-2-Quote (LJ) je AKP und Berichtstag
+    // festhalten - nur für AKP mit Produktion an diesem Tag (hält den
+    // Speicherstand klein), Grundlage für das Tages-PDF der AKP-Zuordnung.
+    if(a.vt>0&&a.q3fuer2!=null){ if(!state.dailyAKPq3) state.dailyAKPq3={}; if(!state.dailyAKPq3[k]) state.dailyAKPq3[k]={}; state.dailyAKPq3[k][snap.vortag]=a.q3fuer2; }
   });
   // Offizielle Aktivierungsquote (Blatt "PO + AKQ") je Berichtstag ablegen -
   // ermöglicht perfGoal2Snapshot(), den Wert exakt für den abgeschlossenen
@@ -8476,6 +8480,7 @@ function migrateState(){
   // abstürzen (Cannot set properties of undefined).
   if(!state.dailyGLTotals){ state.dailyGLTotals={}; changed=true; }
   if(!state.dailyAktivierungsquote){ state.dailyAktivierungsquote={}; changed=true; }
+  if(!state.dailyAKPq3){ state.dailyAKPq3={}; changed=true; }
   if(!state.dailyFHTotals){ state.dailyFHTotals={}; changed=true; }
   if(L.glPlan==null){
     L.glPlan={}; L.glPlan[AT_KEY]=0;
@@ -10681,8 +10686,10 @@ function akpGruppeCompute(members){
     const merged=mergedMonthlyFromDaily(daily,bulk);
     const total=Object.entries(merged).reduce((s2,[k,v])=>k.slice(0,4)===year?s2+v:s2,0);
     const fh=fhResolveNameOrt(a.fh_nr);
+    const snapAkp=(state.latest&&state.latest.akp||[]).find(x=>x.nr===a.nr);
+    const q3=snapAkp&&snapAkp.q3fuer2!=null?snapAkp.q3fuer2:akpLatestYearQuota(a.q3fuer2_monthly,year);
     return {nr:a.nr,name:[a.vorname,a.nachname].filter(Boolean).join(" ")||a.nr,firma:a.firma||fh.name||"",ort:a.ort||fh.ort||"",
-      fhNr:a.fh_nr||"",telefon:a.telefon||"",email:a.email||"",merged,daily,total};
+      fhNr:a.fh_nr||"",telefon:a.telefon||"",email:a.email||"",merged,daily,total,q3:q3!=null?Number(q3):null,lj:snapAkp?snapAkp.lj:null};
   }).sort((x,y)=>y.total-x.total);
   const gesamt=per.reduce((s2,a)=>s2+a.total,0);
   const mergedAll={};
@@ -10716,7 +10723,9 @@ function akpGruppeDailyHtml(per,ym,forPdf){
   const dayRows=days.map(dd=>{
     const dt=new Date(dd.iso+"T00:00:00Z");
     const label=wd[dt.getUTCDay()]+", "+dd.iso.slice(8,10)+"."+dd.iso.slice(5,7)+".";
-    return `<tr><td>${label}</td><td class="r">${dd.imported?`<b>${fmt(dd.sum)}</b>`:`<span style="color:var(--muted)">–</span>`}</td><td class="r">${dd.imported?fmt(dd.active):"–"}</td></tr>`;
+    // Nutzervorgabe 28.11.2026: Klick auf einen Tag = Tages-PDF (druckoptimiert)
+    const click=(!forPdf&&dd.imported)?` class="akg-day" data-day="${dd.iso}" title="Tages-PDF erstellen" style="cursor:pointer"`:"";
+    return `<tr${click}><td>${dd.imported&&!forPdf?`<span style="color:var(--wg-blue);font-weight:800">${label}</span> <span style="font-size:11px">📄</span>`:label}</td><td class="r">${dd.imported?`<b>${fmt(dd.sum)}</b>`:`<span style="color:var(--muted)">–</span>`}</td><td class="r">${dd.imported?fmt(dd.active):"–"}</td></tr>`;
   }).join("");
   const akpRows=perAkp.map(r=>`<tr><td><b>${escapeHtml(r.name)}</b>${r.firma?`<br><span style="color:var(--muted);font-weight:600;font-size:11.5px">${escapeHtml(r.firma)}</span>`:""}</td><td class="r" data-label="Produktion">${fmt(r.sum)}</td><td class="r" data-label="Tage">${r.tage}</td></tr>`).join("");
   const blockCls=forPdf?' class="pdf-block"':'';
@@ -10725,7 +10734,7 @@ function akpGruppeDailyHtml(per,ym,forPdf){
       <div style="flex:1;min-width:240px;overflow:auto"><table class="ac-yearly-table"><thead><tr><th>Tag</th><th class="r">Produktion</th><th class="r">AKP aktiv</th></tr></thead><tbody>${dayRows}</tbody></table></div>
       <div style="flex:1;min-width:240px;overflow:auto">${akpRows?`<table class="ac-yearly-table akg-tbl"><thead><tr><th>AKP (${MONATE[m-1]})</th><th class="r">Produktion</th><th class="r">Tage</th></tr></thead><tbody>${akpRows}</tbody></table>`:`<div class="empty-note">Kein AKP mit Produktion in diesem Monat.</div>`}</div>
     </div>
-    <div${blockCls} style="font-size:11px;color:var(--muted);margin-top:6px">„–“ = an diesem Tag keine Einspielung (z.B. Sonn-/Feiertag). Die Monatssumme aus Tageswerten kann von der Monatsproduktion oben abweichen, wenn Einspielungen fehlen.</div>`;
+    <div${blockCls} style="font-size:11px;color:var(--muted);margin-top:6px">${forPdf?"":"📄 Tag antippen = Tages-PDF mit Produktion und 3-für-2-Quote je AKP. "}„–“ = an diesem Tag keine Einspielung (z.B. Sonn-/Feiertag). Die Monatssumme aus Tageswerten kann von der Monatsproduktion oben abweichen, wenn Einspielungen fehlen.</div>`;
 }
 function akpGruppeMonthOptions(per){
   const yms=new Set();
@@ -10754,7 +10763,7 @@ function akpGruppeBodyHtml(data,forPdf){
   const h4=t=>`<div${B} style="font-size:13px;font-weight:800;color:#062A3F;margin:0 0 8px">${t}</div>`;
   const breakdown=per.map(a=>{
     const pct=gesamt>0?(a.total/gesamt*100):0;
-    return `<tr><td><b>${escapeHtml(a.name)}</b>${a.firma?`<br><span style="color:var(--muted);font-weight:600;font-size:11.5px">${escapeHtml(a.firma)}</span>`:""}</td><td class="r" data-label="Produktion">${fmt(a.total)}</td><td class="r" data-label="Anteil">${pct.toFixed(1).replace(".",",")} %</td></tr>`;
+    return `<tr><td><b>${escapeHtml(a.name)}</b>${a.firma?`<br><span style="color:var(--muted);font-weight:600;font-size:11.5px">${escapeHtml(a.firma)}</span>`:""}</td><td class="r" data-label="Produktion">${fmt(a.total)}</td><td class="r" data-label="Anteil">${pct.toFixed(1).replace(".",",")} %</td><td class="r" data-label="3 für 2 (LJ)">${a.q3!=null?(a.q3*100).toFixed(1).replace(".",",")+" %":"–"}</td></tr>`;
   }).join("");
   const yearly=fhYearlyTrendTableHtml(mergedAll);
   const perBlocks=per.map(a=>{
@@ -10773,7 +10782,7 @@ function akpGruppeBodyHtml(data,forPdf){
     <div${B} style="font-size:13px;color:var(--muted);margin-bottom:14px">${per.length} AKP: ${per.map(a=>escapeHtml(a.name)).join(" · ")}</div>
     <div${B} style="margin-bottom:18px"><span class="ac-lbl">Gesamtproduktion ${year}</span><div class="ac-val" style="font-size:22px;font-weight:900;color:var(--wg-navy)">${fmt(gesamt)} Stk.</div></div>
     ${h4("Aufteilung nach AKP ("+year+")")}
-    <div${B} style="overflow:auto;margin-bottom:18px"><table class="ac-yearly-table akg-tbl"><thead><tr><th>AKP</th><th class="r">Produktion</th><th class="r">Anteil</th></tr></thead><tbody>${breakdown}</tbody></table></div>
+    <div${B} style="overflow:auto;margin-bottom:18px"><table class="ac-yearly-table akg-tbl"><thead><tr><th>AKP</th><th class="r">Produktion</th><th class="r">Anteil</th><th class="r">3 für 2 (LJ)</th></tr></thead><tbody>${breakdown}</tbody></table></div>
     ${h4("Produktion nach Monaten (gesamte Zuordnung)")}
     <div${B} style="margin-bottom:18px">${fhMonthlyTableHtml(mergedAll)}</div>
     ${yearly?h4("Jahresvergleich (gesamte Zuordnung)")+`<div${B} style="margin-bottom:18px">${yearly}</div>`:""}
@@ -10791,10 +10800,90 @@ function renderAkpGruppe(){
   const data=akpGruppeCompute(akpGruppeMembers);
   box.innerHTML=akpGruppeBodyHtml(data,false);
   const sel=$("akpGruppeYmSelect");
-  if(sel) sel.onchange=()=>{ akpGruppeYm=sel.value; $("akpGruppeDailyBox").innerHTML=akpGruppeDailyHtml(data.per,akpGruppeYm,false); };
+  const wireDays=()=>$("akpGruppeDailyBox").querySelectorAll(".akg-day").forEach(tr=>tr.onclick=()=>openPdfTargetChoice(()=>exportAkpGruppeDayPdf(tr.dataset.day)));
+  if(sel) sel.onchange=()=>{ akpGruppeYm=sel.value; $("akpGruppeDailyBox").innerHTML=akpGruppeDailyHtml(data.per,akpGruppeYm,false); wireDays(); };
+  wireDays();
   // Klick auf einen AKP-Namen öffnet dessen PopUp (liegt eine Stufe tiefer) -
   // Übersicht dafür schließen, sonst ginge es dahinter auf.
   box.querySelectorAll(".akp-name-link").forEach(b=>b.addEventListener("click",()=>$("akpGruppeModal").classList.add("hidden")));
+}
+// Tages-PDF (Nutzervorgabe 28.11.2026): druckoptimiert (weißer Grund,
+// schwarze Schrift, feine Linien, keine Farbflächen) - Produktion je AKP am
+// gewählten Tag, Monat bis zu diesem Tag und 3-für-2-Quote (LJ). Die Quote
+// stammt aus der Tageshistorie (state.dailyAKPq3, ab 28.11.2026 erfasst) -
+// fehlt sie für den Tag, wird der aktuelle Wert verwendet und markiert.
+let akpGruppeDayPdfBusy=false;
+async function exportAkpGruppeDayPdf(dayIso){
+  if(akpGruppeDayPdfBusy) return;
+  if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF)){ toast("PDF-Modul lädt noch – bitte in 2–3 Sekunden nochmals klicken."); pdfSendTarget=null; return; }
+  if(!akpGruppeValue||!akpGruppeMembers.length) return;
+  akpGruppeDayPdfBusy=true;
+  toast("Tages-PDF wird erstellt …");
+  const box=document.createElement("div");
+  try{
+    const {per}=akpGruppeCompute(akpGruppeMembers);
+    const ym=dayIso.slice(0,7);
+    const pctTxt=v=>v!=null?(v*100).toFixed(1).replace(".",",")+" %":"–";
+    let anyFallback=false;
+    const rows=per.map(a=>{
+      const tag=Number(a.daily[dayIso])||0;
+      let mtd=0; for(const [d,v] of Object.entries(a.daily)) if(d.slice(0,7)===ym&&d<=dayIso) mtd+=Number(v)||0;
+      const hist=state.dailyAKPq3&&state.dailyAKPq3[a.nr]&&state.dailyAKPq3[a.nr][dayIso];
+      let q3=hist!=null?Number(hist):a.q3, fb=false;
+      if(hist==null&&q3!=null){ fb=true; anyFallback=true; }
+      return {...a,tag,mtd,q3d:q3,fb};
+    }).sort((x,y)=>(y.tag-x.tag)||(y.mtd-x.mtd));
+    const sumTag=rows.reduce((s2,r)=>s2+r.tag,0), sumMtd=rows.reduce((s2,r)=>s2+r.mtd,0);
+    const aktiv=rows.filter(r=>r.tag>0).length;
+    // gewichtete 3-für-2-Quote der AKP mit Produktion am Tag (Gewicht = Tagesproduktion)
+    const wq=rows.filter(r=>r.tag>0&&r.q3d!=null);
+    const wSum=wq.reduce((s2,r)=>s2+r.tag,0);
+    const q3Gruppe=wSum>0?wq.reduce((s2,r)=>s2+r.q3d*r.tag,0)/wSum:null;
+    const dt=new Date(dayIso+"T00:00:00Z");
+    const dayLabel=WOCHENTAGE[dt.getUTCDay()]+", "+fmtDate(dayIso);
+    const td="padding:6px 8px;border-bottom:1px solid #BFBFBF;font-size:11.5px;color:#000";
+    const th="padding:6px 8px;border-bottom:1.5px solid #000;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#000;text-align:right";
+    const body=rows.map(r=>`<tr>
+      <td style="${td};text-align:left;white-space:normal"><b>${escapeHtml(r.name)}</b><br><span style="font-size:10px;color:#333">${escapeHtml(r.firma||"")}${r.fhNr?" · FH "+escapeHtml(r.fhNr):""}</span></td>
+      <td style="${td};text-align:right;font-weight:800">${r.tag?fmt(r.tag):"–"}</td>
+      <td style="${td};text-align:right">${fmt(r.mtd)}</td>
+      <td style="${td};text-align:right">${pctTxt(r.q3d)}${r.fb?"*":""}</td>
+    </tr>`).join("");
+    const kpi=(l,v)=>`<div style="flex:1;border:1px solid #000;padding:8px 10px"><div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#000">${l}</div><div style="font-size:18px;font-weight:900;color:#000;margin-top:2px">${v}</div></div>`;
+    box.style.cssText="position:fixed;left:-99999px;top:0;width:780px;background:#fff;padding:30px;font-family:Arial,'Segoe UI',sans-serif;color:#000";
+    box.innerHTML=`
+      <div class="pdf-block" style="border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:flex-end;gap:10px">
+        <div>
+          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px">Tagesproduktion · Weitere Zuordnung (AKP)</div>
+          <div style="font-size:20px;font-weight:900;margin-top:2px">${escapeHtml(akpGruppeValue)}</div>
+          <div style="font-size:13px;font-weight:700;margin-top:2px">${dayLabel}</div>
+        </div>
+        <div style="font-size:10px;text-align:right;white-space:nowrap">Wertgarantie Performance Dashboard<br>Erstellt am: ${fmtNowDateTime()}</div>
+      </div>
+      <div class="pdf-block" style="display:flex;gap:8px;margin-bottom:16px">
+        ${kpi("Produktion am Tag",fmt(sumTag)+" Stk.")}
+        ${kpi("AKP mit Produktion",aktiv+" von "+rows.length)}
+        ${kpi(MONATE[+ym.slice(5,7)-1]+" bis "+fmtDate(dayIso).slice(0,6),fmt(sumMtd)+" Stk.")}
+        ${kpi("3 für 2 (LJ, gewichtet)",pctTxt(q3Gruppe))}
+      </div>
+      <div class="pdf-block"><table style="width:100%;border-collapse:collapse">
+        <thead><tr><th style="${th};text-align:left">AKP / Fachhändler</th><th style="${th}">Produktion am Tag</th><th style="${th}">Monat bis Tag</th><th style="${th}">3 für 2 (LJ)</th></tr></thead>
+        <tbody>${body}</tbody>
+        <tfoot><tr><td style="${td};border-top:1.5px solid #000;border-bottom:none;font-weight:800">Summe (${rows.length} AKP)</td><td style="${td};border-top:1.5px solid #000;border-bottom:none;text-align:right;font-weight:900">${fmt(sumTag)}</td><td style="${td};border-top:1.5px solid #000;border-bottom:none;text-align:right;font-weight:800">${fmt(sumMtd)}</td><td style="${td};border-top:1.5px solid #000;border-bottom:none;text-align:right;font-weight:800">${pctTxt(q3Gruppe)}</td></tr></tfoot>
+      </table></div>
+      <div class="pdf-block" style="font-size:9.5px;color:#000;margin-top:12px;line-height:1.4">3 für 2 (LJ) = Anteil 3-für-2-Verträge an der Produktion des laufenden Jahres laut Tageseinspielung; Summenzeile gewichtet nach Tagesproduktion.${anyFallback?" * Für diesen Tag liegt kein gespeicherter Quotenwert vor (Erfassung ab 28.11.2026) - aktueller Wert verwendet.":""}</div>`;
+    document.body.appendChild(box);
+    await new Promise(r=>setTimeout(r,30));
+    const pdf=await pdfBoxRenderToPdf(box);
+    await finalizePdf(pdf,"Tagesproduktion_"+asciiFilenamePart(akpGruppeValue)+"_"+dayIso+".pdf");
+  }catch(e){
+    console.error("exportAkpGruppeDayPdf failed:",e);
+    toast("PDF-Erstellung fehlgeschlagen: "+(e.message||e));
+    pdfSendTarget=null;
+  }finally{
+    if(box.parentNode) box.parentNode.removeChild(box);
+    akpGruppeDayPdfBusy=false;
+  }
 }
 let akpGruppePdfBusy=false;
 async function exportAkpGruppePdf(){
@@ -16197,6 +16286,20 @@ function buildMitarbeiterDropdown(){
 <!-- ---------- Home-Bildschirm-App (PWA) ----------
      Fertige Dateien (PDFs) in der App über das iOS-Teilen-Menü ausgeben,
      Offline-Hinweis und Service Worker. -->
+<!-- Mac-App: PDF-Vorschau im Dashboard (Nutzervorgabe 28.11.2026) -->
+<div class="modal-bg hidden" id="appPdfPreviewModal" style="z-index:90">
+  <div class="modal" style="max-width:min(1000px,96vw);width:96vw;height:92vh;display:flex;flex-direction:column;padding:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+      <div id="appPdfPreviewName" style="font-weight:800;font-size:13px;word-break:break-all;flex:1;min-width:0"></div>
+      <span style="display:flex;gap:8px">
+        <button class="btn btn-blue" id="appPdfPreviewDownload" type="button" style="padding:7px 12px">⬇ Herunterladen</button>
+        <button class="btn btn-ghost" id="appPdfPreviewPrint" type="button" style="padding:7px 12px">🖨 Drucken</button>
+        <button class="btn btn-ghost" id="appPdfPreviewClose" type="button" style="padding:7px 12px">✕ Schließen</button>
+      </span>
+    </div>
+    <iframe id="appPdfPreviewFrame" title="PDF-Vorschau" style="flex:1;width:100%;border:1px solid var(--line);border-radius:8px;background:#fff"></iframe>
+  </div>
+</div>
 <div class="modal-bg hidden" id="appFileModal" style="z-index:90">
   <div class="modal" style="max-width:380px">
     <h3 style="margin:0 0 6px">Datei ist fertig</h3>
@@ -16226,10 +16329,15 @@ function buildMitarbeiterDropdown(){
 // dessen Button-Tipp dann das Teilen-Menü öffnet.
 let appFilePending=null;
 function deliverFileInApp(blob,filename,type){
-  // Mac-/Desktop-App: direkt herunterladen statt Teilen-Dialog.
+  // Mac-/Desktop-App (Nutzervorgabe 28.11.2026: "macht nichts auf, landet
+  // nur im Download-Ordner"): PDFs in einem Vorschaufenster im Dashboard
+  // öffnen (Herunterladen/Drucken/Schließen), alles andere (Excel) direkt
+  // herunterladen + deutlicher Hinweis, wo die Datei liegt.
   if(!IS_IOS_DEVICE){
+    const t=type||blob.type||"";
+    if(/pdf/i.test(t)||/\.pdf$/i.test(filename)){ openAppPdfPreview(blob,filename); return; }
     appFileFallbackOpen({blob,filename,type});
-    if(typeof toast==="function") toast("Datei erstellt ✓ Download gestartet");
+    if(typeof toast==="function") toast("✓ "+filename+" gespeichert – im Ordner „Downloads“ (Safari: Download-Symbol oben rechts, dann Klick zum Öffnen)");
     return;
   }
   appFilePending={blob,filename,type:type||blob.type||"application/octet-stream"};
@@ -16267,6 +16375,32 @@ document.getElementById("appFileDownload").onclick=()=>{
   appFileFallbackOpen(f);
   document.getElementById("appFileModal").classList.add("hidden");
   appFilePending=null;
+};
+let appPdfPreviewUrl=null, appPdfPreviewFile=null;
+function openAppPdfPreview(blob,filename){
+  if(appPdfPreviewUrl) URL.revokeObjectURL(appPdfPreviewUrl);
+  appPdfPreviewUrl=URL.createObjectURL(blob.type==="application/pdf"?blob:new Blob([blob],{type:"application/pdf"}));
+  appPdfPreviewFile={blob,filename,type:"application/pdf"};
+  document.getElementById("appPdfPreviewName").textContent=filename;
+  document.getElementById("appPdfPreviewFrame").src=appPdfPreviewUrl;
+  document.getElementById("appPdfPreviewModal").classList.remove("hidden");
+}
+function closeAppPdfPreview(){
+  document.getElementById("appPdfPreviewModal").classList.add("hidden");
+  document.getElementById("appPdfPreviewFrame").src="about:blank";
+  if(appPdfPreviewUrl){ const u=appPdfPreviewUrl; setTimeout(()=>URL.revokeObjectURL(u),1000); appPdfPreviewUrl=null; }
+  appPdfPreviewFile=null;
+}
+document.getElementById("appPdfPreviewClose").onclick=closeAppPdfPreview;
+document.getElementById("appPdfPreviewDownload").onclick=()=>{
+  if(!appPdfPreviewFile) return;
+  appFileFallbackOpen(appPdfPreviewFile);
+  toast("✓ "+appPdfPreviewFile.filename+" im Ordner „Downloads“ gespeichert");
+};
+document.getElementById("appPdfPreviewPrint").onclick=()=>{
+  const fr=document.getElementById("appPdfPreviewFrame");
+  try{ fr.contentWindow.focus(); fr.contentWindow.print(); }
+  catch(e){ if(appPdfPreviewUrl) window.open(appPdfPreviewUrl,"_blank"); }
 };
 document.getElementById("appFileClose").onclick=()=>{
   document.getElementById("appFileModal").classList.add("hidden");
